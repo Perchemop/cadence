@@ -1,0 +1,18 @@
+[package]
+name = "cadence-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Cadence — construction project scheduling application"
+
+[[bin]]
+name = "cadence"
+path = "src/main.rs"
+
+[dependencies]
+cadence-core.workspace = true
+cadence-commands.workspace = true
+cadence-persistence.workspace = true

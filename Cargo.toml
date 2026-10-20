@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/commands",
+    "crates/persistence",
+    "crates/app",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT OR Apache-2.0"
+authors = ["Cadence contributors"]
+repository = "https://github.com/Perchemop/cadence"
+
+[workspace.dependencies]
+cadence-core = { path = "crates/core" }
+cadence-commands = { path = "crates/commands" }
+cadence-persistence = { path = "crates/persistence" }
+
+time = { version = "0.3", features = ["formatting", "parsing", "serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+thiserror = "2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

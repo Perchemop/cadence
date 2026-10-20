@@ -1,0 +1,14 @@
+[package]
+name = "cadence-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Cadence scheduling domain model and CPM engine"
+
+[dependencies]
+time.workspace = true
+serde.workspace = true
+thiserror.workspace = true
