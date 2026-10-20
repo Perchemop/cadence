@@ -498,7 +498,7 @@ mod tests {
         ));
     }
 
-    fn result<'a>(schedule: &'a Schedule, id: ActivityId) -> &'a ActivitySchedule {
+    fn result(schedule: &Schedule, id: ActivityId) -> &ActivitySchedule {
         schedule.activity(id).expect("activity is scheduled")
     }
 
