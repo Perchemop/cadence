@@ -30,21 +30,58 @@ app (binary)
    snapshot of the model. The engine is deterministic and side-effect free,
    which makes it trivially testable and usable from CLI/tests/future
    scripting.
-3. **Dates.** Calendar arithmetic uses the `time` crate (`NaiveDate`).
+3. **Dates.** Calendar arithmetic uses the `time` crate (`Date`).
    Working-day logic is driven by `Calendar` values in the model.
 4. **Error handling.** No panics outside tests. Rich `Result` types
    (`thiserror`) at crate boundaries.
 5. **Performance target.** Smooth interaction with thousands of activities
    (engine pass over 10k activities well under 100 ms).
 
-## CPM engine design (Phase 1 scope, foundation laid now)
+## Domain model
 
-- Forward pass: earliest start/finish per activity, honouring relationship
-  types (FS/SS/FF/SF), lag/lead, calendars, and constraints.
-- Backward pass: latest start/finish from project end; total float and free
-  float derived from the two passes.
-- Cycle detection: relationship graphs are validated before scheduling;
-  cycles are reported as errors, never as hangs.
-- The vertical slice currently implements FS links with lag and basic
-  forward/backward pass over working days; the remaining relationship types,
-  constraints, and calendars land in Phase 1.
+`Project` is the aggregate root: name, start date, calendar, activities, and
+relationships. `Activity` stores `original_duration` in working days plus
+optional cached schedule fields (`early_start`, `early_finish`, `late_start`,
+`late_finish`, `total_float`, `free_float`, `critical`). `Relationship` stores
+predecessor/successor, a `LinkType` (`FS`, `SS`, `FF`, `SF`), and a signed lag
+in working days (negative values are leads). IDs are `u64` newtypes.
+
+`Calendar` is a serialisable value type: a Monday-first weekly working pattern
+plus holiday exceptions. `is_working_day`, `next`/`prev_working_day`,
+`add_working_days`, and `working_days_between` are the date-arithmetic
+primitives. The default is Monday–Friday with no holidays. Keeping calendars in
+the model (instead of behind a trait object) lets projects round-trip through
+JSON and prepares Phase 1 for multiple named calendars assigned per activity.
+
+## Command layer
+
+`CommandStack` stores both the forward command and the inverse returned by
+`Command::apply`, so undo and redo apply the correct direction. Commands
+validate before mutating, keeping a failed command atomic. Implemented
+commands: `CreateActivity`, `CreateRelationship`, `DeleteActivity`,
+`DeleteRelationship`, `SetActivityDuration`, and `RenameActivity`. Deleting an
+activity also removes and records its relationships so undo restores the whole
+prior state.
+
+## CPM engine design
+
+`engine::schedule(&Project) -> Result<Schedule, SchedError>` is pure and
+deterministic:
+
+- Validate duplicate IDs and relationship endpoints.
+- Detect cycles with Kahn's algorithm and report a concrete cycle path instead
+  of hanging.
+- Forward pass: earliest start/finish, honouring FS/SS/FF/SF and signed lag.
+- Backward pass: latest start/finish from the project finish.
+- Total float = `LS - ES`; free float = minimum slack over outgoing
+  relationships, or total float for terminal activities; critical = total
+  float <= 0.
+- Return `Schedule` with per-activity `ActivitySchedule` values and a
+  `critical_path` of critical activities ordered by early start.
+  `Schedule::apply_to` copies results into the optional cached `Activity`
+  fields.
+
+All date arithmetic is in working days. FS uses the conventional extra day
+(`ES_succ >= EF_pred + 1 + lag`); SS, FF, and SF use their documented
+constraints. WBS, activity constraints (date/ASAP/ALAP), resources, and
+multiple named calendars remain later-phase work.

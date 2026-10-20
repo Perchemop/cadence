@@ -1,0 +1,759 @@
+//! Domain model for Cadence.
+//!
+//! The model is deliberately free of UI and I/O concerns. Everything here is
+//! plain data plus a small amount of calendar arithmetic, which makes the
+//! scheduling engine easy to test headlessly.
+//!
+//! Durations, lags and floats are measured in **working days**. Dates are
+//! calendar dates (`time::Date`) and every date produced by the engine falls
+//! on a working day under the activity's calendar (the project calendar in
+//! this phase).
+
+use std::cmp::Ordering;
+use std::collections::BTreeSet;
+
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+use time::{Date, Duration};
+
+/// Stable identifier for an [`Activity`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ActivityId(pub u64);
+
+impl ActivityId {
+    /// Construct an activity identifier from a raw value.
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+impl std::fmt::Display for ActivityId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+/// Stable identifier for a [`Relationship`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct RelationshipId(pub u64);
+
+impl RelationshipId {
+    /// Construct a relationship identifier from a raw value.
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+impl std::fmt::Display for RelationshipId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+/// Precedence relationship type between two activities.
+///
+/// The four public CPM link types are:
+///
+/// * `FS` — finish-to-start: the successor starts after the predecessor finishes.
+/// * `SS` — start-to-start: the successor starts relative to the predecessor start.
+/// * `FF` — finish-to-finish: the successor finishes relative to the predecessor finish.
+/// * `SF` — start-to-finish: the successor finishes relative to the predecessor start.
+///
+/// Variant names use Rust's usual casing; serialised forms use the conventional
+/// upper-case abbreviations (`"FS"`, `"SS"`, `"FF"`, `"SF"`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum LinkType {
+    /// Finish-to-start.
+    Fs,
+    /// Start-to-start.
+    Ss,
+    /// Finish-to-finish.
+    Ff,
+    /// Start-to-finish.
+    Sf,
+}
+
+impl LinkType {
+    /// Conventional two-letter abbreviation.
+    pub const fn abbreviation(self) -> &'static str {
+        match self {
+            Self::Fs => "FS",
+            Self::Ss => "SS",
+            Self::Ff => "FF",
+            Self::Sf => "SF",
+        }
+    }
+
+    /// All relationship types, in documentation order.
+    pub const ALL: [Self; 4] = [Self::Fs, Self::Ss, Self::Ff, Self::Sf];
+}
+
+impl std::fmt::Display for LinkType {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.abbreviation())
+    }
+}
+
+/// Errors produced by working-day calendar arithmetic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum CalendarError {
+    /// The calendar has no working weekdays, so working-day arithmetic is
+    /// undefined.
+    #[error("calendar has no working weekdays")]
+    NoWorkingWeekdays,
+    /// The requested arithmetic falls outside the range of representable dates.
+    #[error("date arithmetic is outside the supported range")]
+    DateOutOfRange,
+}
+
+/// A working-time calendar expressed as a weekly pattern plus holiday exceptions.
+///
+/// This is intentionally a value type rather than a trait so that calendars can
+/// be serialised with a project and compared in tests. Phase 1 can add multiple
+/// named calendars to [`Project`] without changing the arithmetic; the engine
+/// currently uses the project calendar for every activity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Calendar {
+    /// Working flags indexed by day of week, Monday = 0 through Sunday = 6.
+    working_weekdays: [bool; 7],
+    /// Non-working exception dates, regardless of weekday.
+    #[serde(default)]
+    holidays: BTreeSet<Date>,
+}
+
+impl Calendar {
+    /// Build a calendar from a Monday-first weekly pattern.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CalendarError::NoWorkingWeekdays`] when every weekday is a
+    /// non-working day.
+    pub fn new(working_weekdays: [bool; 7]) -> Result<Self, CalendarError> {
+        if working_weekdays.iter().any(|working| *working) {
+            Ok(Self {
+                working_weekdays,
+                holidays: BTreeSet::new(),
+            })
+        } else {
+            Err(CalendarError::NoWorkingWeekdays)
+        }
+    }
+
+    /// The default Monday-to-Friday calendar with no holidays.
+    pub fn weekend() -> Self {
+        Self {
+            working_weekdays: [true, true, true, true, true, false, false],
+            holidays: BTreeSet::new(),
+        }
+    }
+
+    /// Add a single non-working exception date.
+    pub fn with_holiday(mut self, date: Date) -> Self {
+        self.holidays.insert(date);
+        self
+    }
+
+    /// Add several non-working exception dates.
+    pub fn with_holidays<I>(mut self, dates: I) -> Self
+    where
+        I: IntoIterator<Item = Date>,
+    {
+        self.holidays.extend(dates);
+        self
+    }
+
+    /// Monday-first weekly working pattern.
+    pub fn working_weekdays(&self) -> [bool; 7] {
+        self.working_weekdays
+    }
+
+    /// Exception dates configured on this calendar.
+    pub fn holidays(&self) -> &BTreeSet<Date> {
+        &self.holidays
+    }
+
+    /// Number of working weekdays per full week.
+    pub fn working_days_per_week(&self) -> usize {
+        self.working_weekdays.iter().filter(|day| **day).count()
+    }
+
+    /// Whether `date` is a working day under this calendar.
+    pub fn is_working_day(&self, date: Date) -> bool {
+        self.working_weekdays[weekday_index(date)] && !self.holidays.contains(&date)
+    }
+
+    /// First working day on or after `date`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CalendarError::NoWorkingWeekdays`] for a calendar with no
+    /// working weekdays, or [`CalendarError::DateOutOfRange`] if the search
+    /// runs past the representable date range.
+    pub fn next_working_day_on_or_after(&self, date: Date) -> Result<Date, CalendarError> {
+        if self.working_days_per_week() == 0 {
+            return Err(CalendarError::NoWorkingWeekdays);
+        }
+        let mut current = date;
+        loop {
+            if self.is_working_day(current) {
+                return Ok(current);
+            }
+            current = current
+                .checked_add(Duration::days(1))
+                .ok_or(CalendarError::DateOutOfRange)?;
+        }
+    }
+
+    /// Last working day on or before `date`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CalendarError::NoWorkingWeekdays`] for a calendar with no
+    /// working weekdays, or [`CalendarError::DateOutOfRange`] if the search
+    /// runs past the representable date range.
+    pub fn prev_working_day_on_or_before(&self, date: Date) -> Result<Date, CalendarError> {
+        if self.working_days_per_week() == 0 {
+            return Err(CalendarError::NoWorkingWeekdays);
+        }
+        let mut current = date;
+        loop {
+            if self.is_working_day(current) {
+                return Ok(current);
+            }
+            current = current
+                .checked_sub(Duration::days(1))
+                .ok_or(CalendarError::DateOutOfRange)?;
+        }
+    }
+
+    /// Move `days` working days from `date`.
+    ///
+    /// Positive values move forward and negative values move backward. Zero
+    /// normalises a non-working date to the next working day on or after it.
+    /// The anchor is always a working day; moving one working day forward from
+    /// a Friday gives the following Monday, and moving one working day backward
+    /// from a Monday gives the preceding Friday.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an invalid calendar or when the result falls
+    /// outside the representable date range.
+    pub fn add_working_days(&self, date: Date, days: i64) -> Result<Date, CalendarError> {
+        if self.working_days_per_week() == 0 {
+            return Err(CalendarError::NoWorkingWeekdays);
+        }
+        match days.cmp(&0) {
+            Ordering::Equal => self.next_working_day_on_or_after(date),
+            Ordering::Greater => {
+                let anchor = self.next_working_day_on_or_after(date)?;
+                self.find_forward(anchor, days)
+            }
+            Ordering::Less => {
+                let anchor = self.prev_working_day_on_or_before(date)?;
+                let distance = days.checked_neg().ok_or(CalendarError::DateOutOfRange)?;
+                self.find_backward(anchor, distance)
+            }
+        }
+    }
+
+    /// Signed number of working days between two dates.
+    ///
+    /// The count is taken over the half-open interval `[earlier, later)`, so a
+    /// Friday to the following Monday is one working day and Monday to Friday
+    /// is four. The function is intended for working-day anchors (the values
+    /// produced by [`Calendar::add_working_days`]); non-working anchors still
+    /// return a stable result.
+    pub fn working_days_between(&self, from: Date, to: Date) -> i64 {
+        match from.cmp(&to) {
+            Ordering::Less => self.count_working_days_between(from, to),
+            Ordering::Greater => -self.count_working_days_between(to, from),
+            Ordering::Equal => 0,
+        }
+    }
+
+    /// Count working days in `[start, end)`. `start` must be before `end`.
+    fn count_working_days_between(&self, start: Date, end: Date) -> i64 {
+        let weekdays = self.count_weekdays_between(start, end);
+        let holiday_count = self
+            .holidays
+            .range(start..end)
+            .filter(|date| self.working_weekdays[weekday_index(**date)])
+            .count();
+        // A calendar cannot hold more holidays than memory allows, which is far
+        // below i64::MAX, so this conversion is lossless in practice.
+        weekdays - holiday_count as i64
+    }
+
+    /// Count working weekdays in `[start, end)` ignoring holidays.
+    fn count_weekdays_between(&self, start: Date, end: Date) -> i64 {
+        let days = i64::from(end.to_julian_day()) - i64::from(start.to_julian_day());
+        let per_week = self.working_days_per_week() as i64;
+        let full_weeks = days / 7;
+        let remainder = days % 7;
+        let mut count = full_weeks * per_week;
+        let first_weekday = weekday_index(start);
+        for offset in 0..remainder {
+            let index = (first_weekday + offset as usize) % 7;
+            if self.working_weekdays[index] {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    /// Extra calendar days that are guaranteed to contain `distance` working
+    /// days even if every holiday in the calendar falls inside the window.
+    fn search_window(&self, distance: i64) -> Result<i64, CalendarError> {
+        let holiday_padding = i64::try_from(self.holidays.len())
+            .ok()
+            .and_then(|len| len.checked_mul(7))
+            .ok_or(CalendarError::DateOutOfRange)?;
+        distance
+            .checked_mul(7)
+            .and_then(|base| base.checked_add(holiday_padding))
+            .and_then(|base| base.checked_add(7))
+            .ok_or(CalendarError::DateOutOfRange)
+    }
+
+    /// Find the first date whose working-day distance from `anchor` is at least
+    /// `distance`, then normalise it to a working day.
+    fn find_forward(&self, anchor: Date, distance: i64) -> Result<Date, CalendarError> {
+        let window = self.search_window(distance)?;
+        let anchor_julian = i64::from(anchor.to_julian_day());
+        let mut low = anchor_julian;
+        let mut high = anchor_julian
+            .checked_add(window)
+            .ok_or(CalendarError::DateOutOfRange)?;
+
+        let high_date = date_from_julian(high)?;
+        if self.working_days_between(anchor, high_date) < distance {
+            return Err(CalendarError::DateOutOfRange);
+        }
+
+        while low < high {
+            let mid = low + (high - low) / 2;
+            let mid_date = date_from_julian(mid)?;
+            if self.working_days_between(anchor, mid_date) >= distance {
+                high = mid;
+            } else {
+                low = mid + 1;
+            }
+        }
+
+        let found = date_from_julian(low)?;
+        self.next_working_day_on_or_after(found)
+    }
+
+    /// Find the latest date whose working-day distance back to `anchor` is at
+    /// least `distance`, then normalise it to a working day.
+    fn find_backward(&self, anchor: Date, distance: i64) -> Result<Date, CalendarError> {
+        let window = self.search_window(distance)?;
+        let anchor_julian = i64::from(anchor.to_julian_day());
+        let mut low = anchor_julian
+            .checked_sub(window)
+            .ok_or(CalendarError::DateOutOfRange)?;
+        let mut high = anchor_julian;
+
+        let low_date = date_from_julian(low)?;
+        if self.working_days_between(low_date, anchor) < distance {
+            return Err(CalendarError::DateOutOfRange);
+        }
+
+        while low < high {
+            let mid = low + (high - low + 1) / 2;
+            let mid_date = date_from_julian(mid)?;
+            if self.working_days_between(mid_date, anchor) >= distance {
+                low = mid;
+            } else {
+                high = mid - 1;
+            }
+        }
+
+        let found = date_from_julian(low)?;
+        self.prev_working_day_on_or_before(found)
+    }
+}
+
+impl Default for Calendar {
+    fn default() -> Self {
+        Self::weekend()
+    }
+}
+
+/// Convert a signed Julian-day number into a `time::Date`.
+fn date_from_julian(julian_day: i64) -> Result<Date, CalendarError> {
+    let julian_day = i32::try_from(julian_day).map_err(|_| CalendarError::DateOutOfRange)?;
+    Date::from_julian_day(julian_day).map_err(|_| CalendarError::DateOutOfRange)
+}
+
+/// Monday-first index into a weekly calendar (Monday = 0, Sunday = 6).
+fn weekday_index(date: Date) -> usize {
+    usize::from(date.weekday().number_days_from_monday())
+}
+
+/// A single scheduled activity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Activity {
+    /// Stable identifier.
+    pub id: ActivityId,
+    /// Human-readable name.
+    pub name: String,
+    /// Duration in working days. Zero denotes a milestone.
+    pub original_duration: u32,
+    /// Earliest start produced by the forward pass.
+    #[serde(default)]
+    pub early_start: Option<Date>,
+    /// Earliest finish produced by the forward pass.
+    #[serde(default)]
+    pub early_finish: Option<Date>,
+    /// Latest start produced by the backward pass.
+    #[serde(default)]
+    pub late_start: Option<Date>,
+    /// Latest finish produced by the backward pass.
+    #[serde(default)]
+    pub late_finish: Option<Date>,
+    /// Total float in working days.
+    #[serde(default)]
+    pub total_float: Option<i64>,
+    /// Free float in working days.
+    #[serde(default)]
+    pub free_float: Option<i64>,
+    /// Whether total float is zero or negative.
+    #[serde(default)]
+    pub critical: bool,
+}
+
+impl Activity {
+    /// Create an unscheduled activity.
+    pub fn new(id: ActivityId, name: impl Into<String>, original_duration: u32) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            original_duration,
+            early_start: None,
+            early_finish: None,
+            late_start: None,
+            late_finish: None,
+            total_float: None,
+            free_float: None,
+            critical: false,
+        }
+    }
+
+    /// Clear cached schedule results, for example after a duration change.
+    pub fn clear_schedule(&mut self) {
+        self.early_start = None;
+        self.early_finish = None;
+        self.late_start = None;
+        self.late_finish = None;
+        self.total_float = None;
+        self.free_float = None;
+        self.critical = false;
+    }
+}
+
+/// A precedence relationship between two activities.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Relationship {
+    /// Stable identifier.
+    pub id: RelationshipId,
+    /// Activity that must satisfy the relationship.
+    pub predecessor: ActivityId,
+    /// Activity constrained by the relationship.
+    pub successor: ActivityId,
+    /// Relationship type.
+    pub link_type: LinkType,
+    /// Lag in working days. Negative values are leads.
+    pub lag: i64,
+}
+
+impl Relationship {
+    /// Create a relationship.
+    pub fn new(
+        id: RelationshipId,
+        predecessor: ActivityId,
+        successor: ActivityId,
+        link_type: LinkType,
+        lag: i64,
+    ) -> Self {
+        Self {
+            id,
+            predecessor,
+            successor,
+            link_type,
+            lag,
+        }
+    }
+}
+
+/// Root aggregate for a scheduling project.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Project {
+    /// Project name.
+    pub name: String,
+    /// Calendar date on which the forward pass is anchored.
+    pub start_date: Date,
+    /// Activities in display order.
+    #[serde(default)]
+    pub activities: Vec<Activity>,
+    /// Precedence relationships.
+    #[serde(default)]
+    pub relationships: Vec<Relationship>,
+    /// Project calendar. Defaults to Monday-to-Friday.
+    #[serde(default)]
+    pub calendar: Calendar,
+}
+
+impl Project {
+    /// Create an empty project with the default weekend calendar.
+    pub fn new(name: impl Into<String>, start_date: Date) -> Self {
+        Self {
+            name: name.into(),
+            start_date,
+            activities: Vec::new(),
+            relationships: Vec::new(),
+            calendar: Calendar::default(),
+        }
+    }
+
+    /// Next unused activity identifier.
+    ///
+    /// The identifier is derived from the current maximum so it remains stable
+    /// for a project loaded from disk. It saturates rather than overflowing if
+    /// the maximum value is already `u64::MAX`.
+    pub fn next_activity_id(&self) -> ActivityId {
+        ActivityId(
+            self.activities
+                .iter()
+                .map(|activity| activity.id.0)
+                .max()
+                .unwrap_or_default()
+                .saturating_add(1),
+        )
+    }
+
+    /// Next unused relationship identifier.
+    pub fn next_relationship_id(&self) -> RelationshipId {
+        RelationshipId(
+            self.relationships
+                .iter()
+                .map(|relationship| relationship.id.0)
+                .max()
+                .unwrap_or_default()
+                .saturating_add(1),
+        )
+    }
+
+    /// Look up an activity by identifier.
+    pub fn activity(&self, id: ActivityId) -> Option<&Activity> {
+        self.activities.iter().find(|activity| activity.id == id)
+    }
+
+    /// Mutably look up an activity by identifier.
+    pub fn activity_mut(&mut self, id: ActivityId) -> Option<&mut Activity> {
+        self.activities
+            .iter_mut()
+            .find(|activity| activity.id == id)
+    }
+
+    /// Look up a relationship by identifier.
+    pub fn relationship(&self, id: RelationshipId) -> Option<&Relationship> {
+        self.relationships
+            .iter()
+            .find(|relationship| relationship.id == id)
+    }
+
+    /// Mutably look up a relationship by identifier.
+    pub fn relationship_mut(&mut self, id: RelationshipId) -> Option<&mut Relationship> {
+        self.relationships
+            .iter_mut()
+            .find(|relationship| relationship.id == id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::Month;
+
+    fn date(year: i32, month: Month, day: u8) -> Date {
+        Date::from_calendar_date(year, month, day).expect("valid test date")
+    }
+
+    fn jan(day: u8) -> Date {
+        date(2026, Month::January, day)
+    }
+
+    #[test]
+    fn weekend_calendar_knows_working_days() {
+        let calendar = Calendar::weekend();
+        assert!(calendar.is_working_day(jan(5))); // Monday
+        assert!(calendar.is_working_day(jan(9))); // Friday
+        assert!(!calendar.is_working_day(jan(10))); // Saturday
+        assert!(!calendar.is_working_day(jan(11))); // Sunday
+        assert_eq!(calendar.working_days_per_week(), 5);
+    }
+
+    #[test]
+    fn calendar_adds_working_days_across_weekends() {
+        let calendar = Calendar::weekend();
+        let monday = jan(5);
+
+        assert_eq!(calendar.add_working_days(monday, 0), Ok(monday));
+        assert_eq!(calendar.add_working_days(monday, 1), Ok(jan(6)));
+        assert_eq!(calendar.add_working_days(monday, 4), Ok(jan(9)));
+        assert_eq!(calendar.add_working_days(monday, 5), Ok(jan(12)));
+        assert_eq!(calendar.add_working_days(jan(9), 1), Ok(jan(12)));
+        assert_eq!(calendar.add_working_days(jan(9), 2), Ok(jan(13)));
+    }
+
+    #[test]
+    fn calendar_subtracts_working_days_across_weekends() {
+        let calendar = Calendar::weekend();
+
+        assert_eq!(calendar.add_working_days(jan(12), -1), Ok(jan(9)));
+        assert_eq!(calendar.add_working_days(jan(12), -5), Ok(jan(5)));
+        assert_eq!(calendar.add_working_days(jan(9), -1), Ok(jan(8)));
+        assert_eq!(calendar.add_working_days(jan(5), -1), Ok(jan(2)));
+        assert_eq!(calendar.add_working_days(jan(9), 0), Ok(jan(9)));
+    }
+
+    #[test]
+    fn calendar_normalises_non_working_zero_offsets() {
+        let calendar = Calendar::weekend();
+
+        assert_eq!(calendar.add_working_days(jan(10), 0), Ok(jan(12)));
+        assert_eq!(calendar.add_working_days(jan(11), 0), Ok(jan(12)));
+        assert_eq!(calendar.next_working_day_on_or_after(jan(10)), Ok(jan(12)));
+        assert_eq!(calendar.prev_working_day_on_or_before(jan(11)), Ok(jan(9)));
+    }
+
+    #[test]
+    fn calendar_skips_holidays() {
+        let calendar = Calendar::weekend().with_holiday(jan(5));
+        assert!(!calendar.is_working_day(jan(5)));
+        assert_eq!(calendar.add_working_days(jan(2), 1), Ok(jan(6)));
+        assert_eq!(calendar.add_working_days(jan(6), -1), Ok(jan(2)));
+    }
+
+    #[test]
+    fn calendar_counts_working_days_between_dates() {
+        let calendar = Calendar::weekend();
+
+        assert_eq!(calendar.working_days_between(jan(5), jan(9)), 4);
+        assert_eq!(calendar.working_days_between(jan(9), jan(12)), 1);
+        assert_eq!(calendar.working_days_between(jan(5), jan(12)), 5);
+        assert_eq!(calendar.working_days_between(jan(12), jan(9)), -1);
+        assert_eq!(calendar.working_days_between(jan(5), jan(5)), 0);
+    }
+
+    #[test]
+    fn calendar_rejects_empty_week() {
+        assert_eq!(
+            Calendar::new([false; 7]),
+            Err(CalendarError::NoWorkingWeekdays)
+        );
+    }
+
+    #[test]
+    fn identifiers_display_as_raw_values() {
+        assert_eq!(ActivityId::new(7).to_string(), "7");
+        assert_eq!(RelationshipId::new(9).to_string(), "9");
+    }
+
+    #[test]
+    fn link_types_use_conventional_abbreviations() {
+        assert_eq!(LinkType::Fs.to_string(), "FS");
+        assert_eq!(LinkType::Ss.to_string(), "SS");
+        assert_eq!(LinkType::Ff.to_string(), "FF");
+        assert_eq!(LinkType::Sf.to_string(), "SF");
+        assert_eq!(LinkType::ALL.len(), 4);
+    }
+
+    #[test]
+    fn project_allocates_sequential_identifiers() {
+        let mut project = Project::new("Test", jan(5));
+        assert_eq!(project.next_activity_id(), ActivityId(1));
+        project
+            .activities
+            .push(Activity::new(ActivityId(1), "A", 1));
+        project
+            .activities
+            .push(Activity::new(ActivityId(4), "B", 1));
+        assert_eq!(project.next_activity_id(), ActivityId(5));
+
+        assert_eq!(project.next_relationship_id(), RelationshipId(1));
+        project.relationships.push(Relationship::new(
+            RelationshipId(3),
+            ActivityId(1),
+            ActivityId(4),
+            LinkType::Fs,
+            0,
+        ));
+        assert_eq!(project.next_relationship_id(), RelationshipId(4));
+    }
+
+    #[test]
+    fn activity_clear_schedule_removes_derived_values() {
+        let mut activity = Activity::new(ActivityId(1), "A", 2);
+        activity.early_start = Some(jan(5));
+        activity.early_finish = Some(jan(6));
+        activity.late_start = Some(jan(5));
+        activity.late_finish = Some(jan(6));
+        activity.total_float = Some(0);
+        activity.free_float = Some(0);
+        activity.critical = true;
+
+        activity.clear_schedule();
+
+        assert_eq!(activity.early_start, None);
+        assert_eq!(activity.early_finish, None);
+        assert_eq!(activity.late_start, None);
+        assert_eq!(activity.late_finish, None);
+        assert_eq!(activity.total_float, None);
+        assert_eq!(activity.free_float, None);
+        assert!(!activity.critical);
+    }
+
+    #[test]
+    fn project_round_trips_through_json() {
+        let calendar = Calendar::weekend().with_holiday(jan(6));
+        let mut project = Project::new("Serde project", jan(5));
+        project.calendar = calendar;
+
+        let mut activity = Activity::new(ActivityId(1), "Excavate", 3);
+        activity.early_start = Some(jan(5));
+        activity.early_finish = Some(jan(7));
+        activity.late_start = Some(jan(5));
+        activity.late_finish = Some(jan(8));
+        activity.total_float = Some(1);
+        activity.free_float = Some(0);
+        activity.critical = false;
+        project.activities.push(activity);
+
+        project.relationships.push(Relationship::new(
+            RelationshipId(1),
+            ActivityId(1),
+            ActivityId(2),
+            LinkType::Ss,
+            -1,
+        ));
+
+        let json = serde_json::to_string(&project).expect("serialise project");
+        let decoded: Project = serde_json::from_str(&json).expect("deserialise project");
+        assert_eq!(decoded, project);
+    }
+
+    #[test]
+    fn link_type_round_trips_through_json() {
+        for link_type in LinkType::ALL {
+            let json = serde_json::to_string(&link_type).expect("serialise link type");
+            assert_eq!(json, format!("\"{}\"", link_type.abbreviation()));
+            let decoded: LinkType = serde_json::from_str(&json).expect("deserialise link type");
+            assert_eq!(decoded, link_type);
+        }
+    }
+}

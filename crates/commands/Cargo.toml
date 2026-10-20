@@ -11,3 +11,6 @@ description = "Typed command layer for Cadence (single mutation path, undo/redo)
 [dependencies]
 cadence-core.workspace = true
 serde.workspace = true
+
+[dev-dependencies]
+time.workspace = true
