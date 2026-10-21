@@ -480,8 +480,7 @@ fn render_gantt(
                 egui::Stroke::new(1.0, Color32::GRAY),
             );
             if day % tick_step == 0 {
-                let date =
-                    Date::from_julian_day(origin.to_julian_day() + day as i32).unwrap_or(origin);
+                let date = Date::from_julian_day(origin.to_julian_day() + day).unwrap_or(origin);
                 painter.text(
                     Pos2::new(x, rect.min.y + 8.0),
                     Align2::CENTER_TOP,
