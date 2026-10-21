@@ -258,21 +258,18 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
             let relationship = &project.relationships[relationship_index];
             let predecessor = relationship_predecessor[relationship_index];
             let candidate = match relationship.link_type {
-                LinkType::Fs => {
-                    let offset = lag_plus_one(relationship.lag)?;
-                    calendar.add_working_days(early_finish[predecessor], offset)?
-                }
-                LinkType::Ss => {
-                    calendar.add_working_days(early_start[predecessor], relationship.lag)?
-                }
+                LinkType::Fs => advance(
+                    calendar,
+                    early_finish[predecessor],
+                    lag_plus_one(relationship.lag)?,
+                )?,
+                LinkType::Ss => advance(calendar, early_start[predecessor], relationship.lag)?,
                 LinkType::Ff => {
-                    let finish =
-                        calendar.add_working_days(early_finish[predecessor], relationship.lag)?;
+                    let finish = advance(calendar, early_finish[predecessor], relationship.lag)?;
                     start_from_finish(calendar, finish, duration)?
                 }
                 LinkType::Sf => {
-                    let finish =
-                        calendar.add_working_days(early_start[predecessor], relationship.lag)?;
+                    let finish = advance(calendar, early_start[predecessor], relationship.lag)?;
                     start_from_finish(calendar, finish, duration)?
                 }
             };
@@ -300,22 +297,18 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
             let relationship = &project.relationships[relationship_index];
             let successor = relationship_successor[relationship_index];
             let candidate = match relationship.link_type {
-                LinkType::Fs => {
-                    let offset = negated_lag_plus_one(relationship.lag)?;
-                    calendar.add_working_days(late_start[successor], offset)?
-                }
+                LinkType::Fs => retreat(
+                    calendar,
+                    late_start[successor],
+                    lag_plus_one(relationship.lag)?,
+                )?,
                 LinkType::Ss => {
-                    let offset = negated(relationship.lag)?;
-                    let start = calendar.add_working_days(late_start[successor], offset)?;
+                    let start = retreat(calendar, late_start[successor], relationship.lag)?;
                     finish_from_start(calendar, start, duration)?
                 }
-                LinkType::Ff => {
-                    let offset = negated(relationship.lag)?;
-                    calendar.add_working_days(late_finish[successor], offset)?
-                }
+                LinkType::Ff => retreat(calendar, late_finish[successor], relationship.lag)?,
                 LinkType::Sf => {
-                    let offset = negated(relationship.lag)?;
-                    let start = calendar.add_working_days(late_finish[successor], offset)?;
+                    let start = retreat(calendar, late_finish[successor], relationship.lag)?;
                     finish_from_start(calendar, start, duration)?
                 }
             };
@@ -363,7 +356,7 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
                 .ok_or(SchedError::ArithmeticOverflow)?;
                 minimum = minimum.min(slack);
             }
-            free_float = minimum;
+            free_float = minimum.max(0);
         }
 
         activities.push(ActivitySchedule {
@@ -508,21 +501,45 @@ fn start_from_finish(calendar: &Calendar, finish: Date, duration: u32) -> Result
     }
 }
 
+/// Move `days` working days forward from `date`.
+///
+/// Unlike [`Calendar::add_working_days`], a non-working `date` does not become
+/// an anchor that is then shifted an extra step: zero moves to the next working
+/// day on or after `date`, and positive distances are counted strictly after
+/// `date`. CPM needs this exact meaning when linked activities use different
+/// calendars (for example, a Friday finish followed by a six-day calendar
+/// starting on Saturday).
+fn advance(calendar: &Calendar, date: Date, days: i64) -> Result<Date, SchedError> {
+    if days == 0 {
+        Ok(calendar.next_working_day_on_or_after(date)?)
+    } else if days > 0 {
+        let first = calendar.next_working_day_after(date)?;
+        Ok(calendar.add_working_days(first, days - 1)?)
+    } else {
+        let distance = days.checked_neg().ok_or(SchedError::ArithmeticOverflow)?;
+        retreat(calendar, date, distance)
+    }
+}
+
+/// Move `days` working days backward from `date`.
+///
+/// The mirror of [`advance`]: zero moves to the previous working day on or
+/// before `date`, and positive distances are counted strictly before `date`.
+fn retreat(calendar: &Calendar, date: Date, days: i64) -> Result<Date, SchedError> {
+    if days == 0 {
+        Ok(calendar.prev_working_day_on_or_before(date)?)
+    } else if days > 0 {
+        let first = calendar.prev_working_day_before(date)?;
+        Ok(calendar.add_working_days(first, -(days - 1))?)
+    } else {
+        let distance = days.checked_neg().ok_or(SchedError::ArithmeticOverflow)?;
+        advance(calendar, date, distance)
+    }
+}
+
 /// `lag + 1`, used by the FS forward constraint.
 fn lag_plus_one(lag: i64) -> Result<i64, SchedError> {
     lag.checked_add(1).ok_or(SchedError::ArithmeticOverflow)
-}
-
-/// `-(lag + 1)`, used by the FS backward constraint.
-fn negated_lag_plus_one(lag: i64) -> Result<i64, SchedError> {
-    lag.checked_add(1)
-        .and_then(i64::checked_neg)
-        .ok_or(SchedError::ArithmeticOverflow)
-}
-
-/// `-lag`, used by the SS, FF, and SF constraints.
-fn negated(lag: i64) -> Result<i64, SchedError> {
-    lag.checked_neg().ok_or(SchedError::ArithmeticOverflow)
 }
 
 #[cfg(test)]
