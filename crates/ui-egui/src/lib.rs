@@ -10,7 +10,7 @@ use cadence_core::engine::schedule;
 use cadence_core::engine::Schedule;
 use cadence_core::model::{Activity, ActivityId, Constraint, Project};
 use egui::{Color32, ComboBox, Context, Grid, ScrollArea, Ui, Visuals};
-use time::Date;
+use time::{Date, Month};
 
 /// Accent colour used for selection and highlights in both themes.
 pub const ACCENT: Color32 = Color32::from_rgb(0x2F, 0x6F, 0xED);
@@ -163,32 +163,16 @@ impl CadenceApp {
         let constraint = match self.constraint_kind {
             0 => Constraint::AsSoonAsPossible,
             1 => Constraint::AsLateAsPossible,
-            2 => self
-                .constraint_date_buffer
-                .trim()
-                .parse::<Date>()
-                .ok()
+            2 => parse_date(self.constraint_date_buffer.trim())
                 .map(Constraint::StartNoEarlierThan)
                 .unwrap_or(activity.constraint),
-            3 => self
-                .constraint_date_buffer
-                .trim()
-                .parse::<Date>()
-                .ok()
+            3 => parse_date(self.constraint_date_buffer.trim())
                 .map(Constraint::StartNoLaterThan)
                 .unwrap_or(activity.constraint),
-            4 => self
-                .constraint_date_buffer
-                .trim()
-                .parse::<Date>()
-                .ok()
+            4 => parse_date(self.constraint_date_buffer.trim())
                 .map(Constraint::FinishNoEarlierThan)
                 .unwrap_or(activity.constraint),
-            _ => self
-                .constraint_date_buffer
-                .trim()
-                .parse::<Date>()
-                .ok()
+            _ => parse_date(self.constraint_date_buffer.trim())
                 .map(Constraint::FinishNoLaterThan)
                 .unwrap_or(activity.constraint),
         };
@@ -290,7 +274,7 @@ impl eframe::App for CadenceApp {
         });
 
         egui::Panel::right("inspector")
-            .default_width(260.0)
+            .default_size(260.0)
             .show(ui, |ui| {
                 ui.heading("Inspector");
                 if let Some(id) = self.selected {
@@ -381,6 +365,18 @@ impl eframe::App for CadenceApp {
             }
         });
     }
+}
+
+fn parse_date(value: &str) -> Option<Date> {
+    let mut parts = value.split('-');
+    let year = parts.next()?.parse::<i32>().ok()?;
+    let month = parts.next()?.parse::<u8>().ok()?;
+    let day = parts.next()?.parse::<u8>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    let month = Month::try_from(month).ok()?;
+    Date::from_calendar_date(year, month, day).ok()
 }
 
 /// Run the Cadence GUI with the given project.
