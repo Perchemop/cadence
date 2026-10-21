@@ -448,7 +448,7 @@ fn render_gantt(
             Vec2::new(timeline_width, total_height),
             Sense::click_and_drag(),
         );
-        let painter = ui.painter_at(rect);
+        let mut painter = ui.painter_at(rect);
         let clip = ui.clip_rect().intersect(rect);
         painter.set_clip_rect(clip);
 
