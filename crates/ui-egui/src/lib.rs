@@ -12,7 +12,7 @@ use cadence_core::model::{Activity, ActivityId, Constraint, Project};
 use egui::{
     Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2, Visuals,
 };
-use time::{Date, Duration, Month};
+use time::{Date, Month};
 
 /// Accent colour used for selection and highlights in both themes.
 pub const ACCENT: Color32 = Color32::from_rgb(0x2F, 0x6F, 0xED);
@@ -454,7 +454,7 @@ fn render_gantt(
 
         // Zoom with Ctrl + wheel.
         if response.hovered() {
-            let scroll = ui.ctx().input(|input| input.raw_scroll_delta.y);
+            let scroll = ui.ctx().input(|input| input.smooth_scroll_delta.y);
             if scroll != 0.0 && ui.ctx().input(|input| input.modifiers.ctrl) {
                 *pixels_per_day_out =
                     (*pixels_per_day_out * (1.0 + scroll * 0.001)).clamp(2.0, 60.0);
