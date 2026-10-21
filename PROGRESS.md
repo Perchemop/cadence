@@ -14,7 +14,8 @@ green CI (`main` branch).
   and undoable commands.
 - P1-3 done: named calendars (`calendar_set.rs`), per-activity calendar
   selection, cross-calendar CPM convention (D6), undoable calendar commands.
-- CI verification pending for this slice (push in progress).
+  CI green on `main` (run 39559389569) after fixing cross-calendar
+  working-day stepping with dedicated `advance`/`retreat` helpers.
 
 ## 2026-10-20 — Vertical slice complete
 
