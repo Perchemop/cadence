@@ -1300,5 +1300,4 @@ mod tests {
             elapsed.as_millis()
         );
     }
-
 }
