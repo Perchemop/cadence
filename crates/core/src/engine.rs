@@ -22,6 +22,15 @@
 //! next working day, the conventional CPM interpretation. Negative lags are
 //! leads. Durations are inclusive: an activity of duration 1 starting on Monday
 //! finishes on Monday, and a duration of 0 is a milestone.
+//!
+//! # Multiple calendars
+//!
+//! Each activity may select a named calendar and otherwise inherits the project
+//! default. When a relationship crosses calendars, the **successor's** calendar
+//! governs the forward pass constraint (when the successor may start or
+//! finish), while the **predecessor's** calendar governs the backward pass
+//! (how late it may finish). This keeps every activity's dates on its own
+//! working days. See `DECISIONS.md` D6.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -29,7 +38,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use time::Date;
 
+use crate::calendar_set::CalendarId;
 use crate::model::{ActivityId, Calendar, CalendarError, LinkType, Project, RelationshipId};
+use crate::wbs::WbsId;
 
 /// Errors returned by [`schedule`].
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -60,6 +71,22 @@ pub enum SchedError {
     /// The project calendar could not perform the requested arithmetic.
     #[error(transparent)]
     Calendar(#[from] CalendarError),
+    /// An activity selects a named calendar that does not exist.
+    #[error("activity {activity} selects unknown calendar {calendar}")]
+    UnknownCalendar {
+        /// Activity with the bad selection.
+        activity: ActivityId,
+        /// Missing calendar identifier.
+        calendar: CalendarId,
+    },
+    /// An activity references a WBS node that does not exist.
+    #[error("activity {activity} references unknown WBS node {wbs}")]
+    UnknownWbs {
+        /// Activity with the bad reference.
+        activity: ActivityId,
+        /// Missing WBS node identifier.
+        wbs: WbsId,
+    },
 }
 
 /// Scheduled dates and float for one activity.
@@ -141,6 +168,34 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
 
     let index = index_activities(project)?;
 
+    // Resolve each activity's calendar once. Activities without a named
+    // calendar inherit the project default.
+    let activity_calendars: Vec<&Calendar> = project
+        .activities
+        .iter()
+        .map(|activity| match activity.calendar {
+            None => Ok(&project.calendar),
+            Some(id) => project
+                .calendars
+                .calendar(id)
+                .map_err(|_| SchedError::UnknownCalendar {
+                    activity: activity.id,
+                    calendar: id,
+                }),
+        })
+        .collect::<Result<_, SchedError>>()?;
+
+    for activity in &project.activities {
+        if let Some(wbs) = activity.wbs {
+            if project.wbs.node(wbs).is_none() {
+                return Err(SchedError::UnknownWbs {
+                    activity: activity.id,
+                    wbs,
+                });
+            }
+        }
+    }
+
     let mut successors: Vec<Vec<usize>> = vec![Vec::new(); count];
     let mut incoming: Vec<Vec<usize>> = vec![Vec::new(); count];
     let mut outgoing: Vec<Vec<usize>> = vec![Vec::new(); count];
@@ -195,7 +250,9 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
     let mut early_finish = vec![origin; count];
     for &activity_index in &order {
         let duration = project.activities[activity_index].original_duration;
-        let mut start = origin;
+        // The successor's calendar governs when it may start and finish.
+        let calendar = activity_calendars[activity_index];
+        let mut start = calendar.next_working_day_on_or_after(project.start_date)?;
 
         for &relationship_index in &incoming[activity_index] {
             let relationship = &project.relationships[relationship_index];
@@ -223,6 +280,7 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
             start = start.max(candidate);
         }
 
+        let start = calendar.next_working_day_on_or_after(start)?;
         early_start[activity_index] = start;
         early_finish[activity_index] = finish_from_start(calendar, start, duration)?;
     }
@@ -234,6 +292,8 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
     let mut late_start = vec![project_finish; count];
     for &activity_index in order.iter().rev() {
         let duration = project.activities[activity_index].original_duration;
+        // The predecessor's calendar governs how late it may finish.
+        let calendar = activity_calendars[activity_index];
         let mut finish = project_finish;
 
         for &relationship_index in &outgoing[activity_index] {
@@ -263,6 +323,11 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
             finish = finish.min(candidate);
         }
 
+        // Activities without successors must still finish on a working day of
+        // their own calendar.
+        if outgoing[activity_index].is_empty() {
+            finish = calendar.prev_working_day_on_or_before(finish)?;
+        }
         late_finish[activity_index] = finish;
         late_start[activity_index] = start_from_finish(calendar, finish, duration)?;
     }
@@ -270,6 +335,7 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
     // Float values and the critical set.
     let mut activities = Vec::with_capacity(count);
     for (activity_index, activity) in project.activities.iter().enumerate() {
+        let calendar = activity_calendars[activity_index];
         let total_float =
             calendar.working_days_between(early_start[activity_index], late_start[activity_index]);
         let mut free_float = total_float;
@@ -329,7 +395,7 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
         .collect();
 
     Ok(Schedule {
-        project_start: origin,
+        project_start: early_start.iter().copied().min().unwrap_or(origin),
         project_finish,
         activities,
         critical_path,
@@ -781,5 +847,108 @@ mod tests {
         let decoded: Schedule = serde_json::from_str(&json).expect("deserialise schedule");
 
         assert_eq!(decoded, schedule);
+    }
+
+    fn six_day_week() -> Calendar {
+        Calendar::new([true, true, true, true, true, true, false]).expect("valid six-day week")
+    }
+
+    fn add_named_calendar(
+        project: &mut Project,
+        id: u64,
+        name: &str,
+        calendar: Calendar,
+    ) -> CalendarId {
+        let calendar_id = CalendarId(id);
+        project
+            .calendars
+            .add(calendar_id, name, calendar)
+            .expect("named calendar is valid");
+        calendar_id
+    }
+
+    #[test]
+    fn successor_uses_its_own_calendar_for_start_and_finish() {
+        let mut project = project();
+        let six_day = add_named_calendar(&mut project, 1, "Six day", six_day_week());
+        let a = add_activity(&mut project, 1, "A", 1); // Mon 5 Jan
+        let b = add_activity(&mut project, 2, "B", 2);
+        project.activity_mut(b).expect("b").calendar = Some(six_day);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+
+        let schedule = schedule(&project).expect("schedule succeeds");
+        let a_result = result(&schedule, a);
+        let b_result = result(&schedule, b);
+
+        assert_eq!(a_result.early_finish, jan(5));
+        assert_eq!(b_result.early_start, jan(10)); // Saturday
+        assert_eq!(b_result.early_finish, jan(12)); // Sunday skipped
+        assert_eq!(schedule.project_finish, jan(12));
+        // B's six-day week pushes its start to Saturday, giving A four days of
+        // float.
+        assert_eq!(a_result.total_float, 4);
+        assert!(b_result.critical);
+    }
+
+    #[test]
+    fn holiday_on_named_calendar_does_not_affect_default_calendar() {
+        let mut project = Project::new("Holiday", jan(10)); // Saturday
+        let calendar = six_day_week().with_holiday(jan(12));
+        add_named_calendar(&mut project, 1, "Six day + holiday", calendar);
+        let a = add_activity(&mut project, 1, "Default", 1);
+        let b = add_activity(&mut project, 2, "Named", 2);
+        project.activity_mut(b).expect("b").calendar = Some(CalendarId(1));
+
+        let schedule = schedule(&project).expect("schedule succeeds");
+
+        assert_eq!(result(&schedule, a).early_start, jan(12)); // Monday
+        assert_eq!(result(&schedule, b).early_start, jan(10)); // Saturday
+        assert_eq!(result(&schedule, b).early_finish, jan(13)); // skips Sunday + holiday
+        assert_eq!(result(&schedule, a).early_finish, jan(12));
+    }
+
+    #[test]
+    fn activity_calendar_can_start_before_default_calendar_origin() {
+        let mut project = Project::new("Weekend start", jan(10)); // Saturday
+        add_named_calendar(&mut project, 1, "Six day", six_day_week());
+        let a = add_activity(&mut project, 1, "Six day", 1);
+        project.activity_mut(a).expect("a").calendar = Some(CalendarId(1));
+        let b = add_activity(&mut project, 2, "Five day", 1);
+
+        let schedule = schedule(&project).expect("schedule succeeds");
+
+        assert_eq!(result(&schedule, a).early_start, jan(10)); // Saturday
+        assert_eq!(result(&schedule, b).early_start, jan(12)); // Monday
+        assert_eq!(schedule.project_start, jan(10));
+    }
+
+    #[test]
+    fn unknown_calendar_selection_is_rejected() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 1);
+        project.activity_mut(a).expect("a").calendar = Some(CalendarId(99));
+
+        assert_eq!(
+            schedule(&project),
+            Err(SchedError::UnknownCalendar {
+                activity: a,
+                calendar: CalendarId(99),
+            })
+        );
+    }
+
+    #[test]
+    fn unknown_wbs_reference_is_rejected() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 1);
+        project.activity_mut(a).expect("a").wbs = Some(WbsId(99));
+
+        assert_eq!(
+            schedule(&project),
+            Err(SchedError::UnknownWbs {
+                activity: a,
+                wbs: WbsId(99),
+            })
+        );
     }
 }

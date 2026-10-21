@@ -27,10 +27,10 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 
 | Capability | Status | Notes |
 |---|---|---|
-| WBS hierarchy | todo | |
+| WBS hierarchy | done | tree with cycle-safe reparenting, undoable commands |
 | SS / FF / SF relationships | done | signed lag/lead supported |
 | Working-day calendar arithmetic | done | Mon–Fri pattern + holiday exceptions |
-| Multiple calendars (working time, exceptions) | todo | one project calendar now; model ready for named calendars |
+| Multiple calendars (working time, exceptions) | done | named calendars, per-activity selection; cross-calendar convention in `architecture.md` |
 | Constraints (ASAP/ALAP, dates) | todo | |
 | Total float / free float / critical path | done | critical activity set ordered by early start; longest-path extraction later |
 | Cycle detection & diagnostics | done | Kahn + DFS path, reported as `SchedError::Cycle` |

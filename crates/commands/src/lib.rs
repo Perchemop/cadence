@@ -9,7 +9,11 @@
 //! command that reverses it; the stack keeps both directions so undo and redo
 //! never need to inspect project state heuristically.
 
-use cadence_core::model::{Activity, ActivityId, LinkType, Project, Relationship, RelationshipId};
+use cadence_core::calendar_set::{CalendarId, NamedCalendar};
+use cadence_core::model::{
+    Activity, ActivityId, Calendar, LinkType, Project, Relationship, RelationshipId,
+};
+use cadence_core::wbs::{WbsId, WbsNode};
 
 /// A reversible mutation of a [`Project`].
 pub trait Command {
@@ -496,6 +500,341 @@ impl Command for RenameActivity {
     }
 }
 
+/// Create a work-breakdown-structure node.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreateWbsNode {
+    /// Identifier to assign.
+    pub id: WbsId,
+    /// Node name.
+    pub name: String,
+    /// Parent node.
+    pub parent: WbsId,
+}
+
+impl CreateWbsNode {
+    /// Construct a create-node command.
+    pub fn new(id: WbsId, name: impl Into<String>, parent: WbsId) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            parent,
+        }
+    }
+}
+
+impl Command for CreateWbsNode {
+    fn description(&self) -> String {
+        format!("create WBS node \"{}\"", self.name)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        project
+            .wbs
+            .add(self.id, self.name.clone(), self.parent)
+            .map_err(|error| error.to_string())?;
+        Ok(Box::new(DeleteWbsNode { id: self.id }))
+    }
+}
+
+/// Delete a leaf WBS node.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeleteWbsNode {
+    /// Identifier of the node to delete.
+    pub id: WbsId,
+}
+
+impl Command for DeleteWbsNode {
+    fn description(&self) -> String {
+        format!("delete WBS node {}", self.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if project
+            .activities
+            .iter()
+            .any(|activity| activity.wbs == Some(self.id))
+        {
+            return Err(format!(
+                "WBS node {} still has activities assigned",
+                self.id
+            ));
+        }
+        let node = project
+            .wbs
+            .delete(self.id)
+            .map_err(|error| error.to_string())?;
+        Ok(Box::new(RestoreWbsNode { node }))
+    }
+}
+
+/// Restore a deleted WBS node snapshot, used by undo.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreWbsNode {
+    /// Snapshot of the deleted node.
+    pub node: WbsNode,
+}
+
+impl Command for RestoreWbsNode {
+    fn description(&self) -> String {
+        format!("restore WBS node \"{}\"", self.node.name)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let id = self.node.id;
+        project
+            .wbs
+            .restore(self.node.clone())
+            .map_err(|error| error.to_string())?;
+        Ok(Box::new(DeleteWbsNode { id }))
+    }
+}
+
+/// Rename a WBS node.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenameWbsNode {
+    /// Node to rename.
+    pub id: WbsId,
+    /// New name.
+    pub name: String,
+}
+
+impl Command for RenameWbsNode {
+    fn description(&self) -> String {
+        format!("rename WBS node {} to \"{}\"", self.id, self.name)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let previous = project
+            .wbs
+            .rename(self.id, self.name.clone())
+            .map_err(|error| error.to_string())?;
+        Ok(Box::new(RenameWbsNode {
+            id: self.id,
+            name: previous,
+        }))
+    }
+}
+
+/// Move a WBS node (and its subtree) under a new parent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MoveWbsNode {
+    /// Node to move.
+    pub id: WbsId,
+    /// Requested parent.
+    pub parent: WbsId,
+}
+
+impl Command for MoveWbsNode {
+    fn description(&self) -> String {
+        format!("move WBS node {} under {}", self.id, self.parent)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let previous = project
+            .wbs
+            .move_node(self.id, self.parent)
+            .map_err(|error| error.to_string())?;
+        let previous = previous.ok_or_else(|| "the WBS root cannot be moved".to_string())?;
+        Ok(Box::new(MoveWbsNode {
+            id: self.id,
+            parent: previous,
+        }))
+    }
+}
+
+/// Assign an activity to a WBS node (or clear the assignment).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssignActivityWbs {
+    /// Activity to update.
+    pub activity: ActivityId,
+    /// New WBS node, or `None` to clear.
+    pub wbs: Option<WbsId>,
+}
+
+impl Command for AssignActivityWbs {
+    fn description(&self) -> String {
+        match self.wbs {
+            Some(wbs) => format!("assign activity {} to WBS node {}", self.activity, wbs),
+            None => format!("clear WBS assignment for activity {}", self.activity),
+        }
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if let Some(wbs) = self.wbs {
+            if project.wbs.node(wbs).is_none() {
+                return Err(format!("WBS node {wbs} does not exist"));
+            }
+        }
+        let activity = project
+            .activity_mut(self.activity)
+            .ok_or_else(|| format!("activity {} does not exist", self.activity))?;
+        let previous = std::mem::replace(&mut activity.wbs, self.wbs);
+        Ok(Box::new(AssignActivityWbs {
+            activity: self.activity,
+            wbs: previous,
+        }))
+    }
+}
+
+/// Create a named calendar.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreateCalendar {
+    /// Identifier to assign.
+    pub id: CalendarId,
+    /// Calendar name.
+    pub name: String,
+    /// Working-time definition.
+    pub calendar: Calendar,
+}
+
+impl CreateCalendar {
+    /// Construct a create-calendar command.
+    pub fn new(id: CalendarId, name: impl Into<String>, calendar: Calendar) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            calendar,
+        }
+    }
+}
+
+impl Command for CreateCalendar {
+    fn description(&self) -> String {
+        format!("create calendar \"{}\"", self.name)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        project
+            .calendars
+            .add(self.id, self.name.clone(), self.calendar.clone())
+            .map_err(|error| error.to_string())?;
+        Ok(Box::new(DeleteCalendar { id: self.id }))
+    }
+}
+
+/// Delete a named calendar that no activity uses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeleteCalendar {
+    /// Identifier of the calendar to delete.
+    pub id: CalendarId,
+}
+
+impl Command for DeleteCalendar {
+    fn description(&self) -> String {
+        format!("delete calendar {}", self.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if project
+            .activities
+            .iter()
+            .any(|activity| activity.calendar == Some(self.id))
+        {
+            return Err(format!(
+                "calendar {} is still selected by an activity",
+                self.id
+            ));
+        }
+        let position = project
+            .calendars
+            .calendars()
+            .iter()
+            .position(|entry| entry.id == self.id)
+            .ok_or_else(|| format!("calendar {} does not exist", self.id))?;
+        let calendar = project
+            .calendars
+            .remove(self.id)
+            .map_err(|error| error.to_string())?;
+        Ok(Box::new(RestoreCalendar { calendar, position }))
+    }
+}
+
+/// Restore a deleted calendar snapshot, used by undo.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreCalendar {
+    /// Snapshot of the deleted calendar.
+    pub calendar: NamedCalendar,
+    /// Original position in the calendar list.
+    pub position: usize,
+}
+
+impl Command for RestoreCalendar {
+    fn description(&self) -> String {
+        format!("restore calendar \"{}\"", self.calendar.name)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let id = self.calendar.id;
+        project
+            .calendars
+            .restore(self.calendar.clone(), self.position)
+            .map_err(|error| error.to_string())?;
+        Ok(Box::new(DeleteCalendar { id }))
+    }
+}
+
+/// Rename a named calendar.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenameCalendar {
+    /// Calendar to rename.
+    pub id: CalendarId,
+    /// New name.
+    pub name: String,
+}
+
+impl Command for RenameCalendar {
+    fn description(&self) -> String {
+        format!("rename calendar {} to \"{}\"", self.id, self.name)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let previous = project
+            .calendars
+            .rename(self.id, self.name.clone())
+            .map_err(|error| error.to_string())?;
+        Ok(Box::new(RenameCalendar {
+            id: self.id,
+            name: previous,
+        }))
+    }
+}
+
+/// Select the calendar an activity uses (or fall back to the project default).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityCalendar {
+    /// Activity to update.
+    pub activity: ActivityId,
+    /// Named calendar, or `None` for the project default.
+    pub calendar: Option<CalendarId>,
+}
+
+impl Command for SetActivityCalendar {
+    fn description(&self) -> String {
+        match self.calendar {
+            Some(calendar) => {
+                format!("set calendar of activity {} to {}", self.activity, calendar)
+            }
+            None => format!("reset calendar of activity {} to default", self.activity),
+        }
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if let Some(calendar) = self.calendar {
+            if project.calendars.named(calendar).is_none() {
+                return Err(format!("calendar {calendar} does not exist"));
+            }
+        }
+        let activity = project
+            .activity_mut(self.activity)
+            .ok_or_else(|| format!("activity {} does not exist", self.activity))?;
+        let previous = std::mem::replace(&mut activity.calendar, self.calendar);
+        Ok(Box::new(SetActivityCalendar {
+            activity: self.activity,
+            calendar: previous,
+        }))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -734,5 +1073,213 @@ mod tests {
                 "create activity \"B\"".to_string(),
             ]
         );
+    }
+
+    fn six_day_week() -> Calendar {
+        Calendar::new([true, true, true, true, true, true, false]).expect("valid six-day week")
+    }
+
+    #[test]
+    fn wbs_create_rename_move_and_undo() {
+        let mut project = project();
+        let root = project.wbs.root();
+        let mut stack = CommandStack::new();
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateWbsNode::new(WbsId(2), "Design", root)),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(RenameWbsNode {
+                id: WbsId(2),
+                name: "Engineering".to_string(),
+            }),
+        );
+        assert_eq!(
+            project.wbs.node(WbsId(2)).expect("node").name,
+            "Engineering"
+        );
+
+        stack.undo(&mut project).expect("undo rename");
+        assert_eq!(project.wbs.node(WbsId(2)).expect("node").name, "Design");
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateWbsNode::new(WbsId(3), "Details", root)),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(MoveWbsNode {
+                id: WbsId(3),
+                parent: WbsId(2),
+            }),
+        );
+        assert_eq!(
+            project.wbs.node(WbsId(3)).expect("node").parent,
+            Some(WbsId(2))
+        );
+
+        stack.undo(&mut project).expect("undo move");
+        assert_eq!(project.wbs.node(WbsId(3)).expect("node").parent, Some(root));
+    }
+
+    #[test]
+    fn wbs_delete_is_rejected_while_activities_are_assigned() {
+        let mut project = project();
+        let root = project.wbs.root();
+        let mut stack = CommandStack::new();
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateWbsNode::new(WbsId(2), "Design", root)),
+        );
+        add_activity(&mut stack, &mut project, 1, "A", 1);
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(AssignActivityWbs {
+                activity: ActivityId(1),
+                wbs: Some(WbsId(2)),
+            }),
+        );
+        assert_eq!(
+            project.activity(ActivityId(1)).expect("activity").wbs,
+            Some(WbsId(2))
+        );
+
+        let error = stack
+            .execute(&mut project, Box::new(DeleteWbsNode { id: WbsId(2) }))
+            .expect_err("delete must be rejected");
+        assert!(error.contains("still has activities"));
+        assert!(project.wbs.node(WbsId(2)).is_some());
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(AssignActivityWbs {
+                activity: ActivityId(1),
+                wbs: None,
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(DeleteWbsNode { id: WbsId(2) }),
+        );
+        assert!(project.wbs.node(WbsId(2)).is_none());
+
+        stack.undo(&mut project).expect("undo delete");
+        assert!(project.wbs.node(WbsId(2)).is_some());
+    }
+
+    #[test]
+    fn calendar_commands_undo_assignment_and_creation() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        add_activity(&mut stack, &mut project, 1, "A", 1);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateCalendar::new(
+                CalendarId(1),
+                "Six day",
+                six_day_week(),
+            )),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(RenameCalendar {
+                id: CalendarId(1),
+                name: "Site".to_string(),
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityCalendar {
+                activity: ActivityId(1),
+                calendar: Some(CalendarId(1)),
+            }),
+        );
+        assert_eq!(
+            project.activity(ActivityId(1)).expect("activity").calendar,
+            Some(CalendarId(1))
+        );
+
+        stack.undo(&mut project).expect("undo assignment");
+        assert_eq!(
+            project.activity(ActivityId(1)).expect("activity").calendar,
+            None
+        );
+        stack.undo(&mut project).expect("undo rename");
+        assert_eq!(
+            project
+                .calendars
+                .named(CalendarId(1))
+                .expect("calendar")
+                .name,
+            "Six day"
+        );
+        stack.undo(&mut project).expect("undo creation");
+        assert!(project.calendars.is_empty());
+
+        stack.redo(&mut project).expect("redo creation");
+        assert_eq!(project.calendars.len(), 1);
+    }
+
+    #[test]
+    fn calendar_delete_is_rejected_while_in_use_and_undo_restores_position() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        add_activity(&mut stack, &mut project, 1, "A", 1);
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateCalendar::new(CalendarId(1), "First", six_day_week())),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateCalendar::new(CalendarId(2), "Second", six_day_week())),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityCalendar {
+                activity: ActivityId(1),
+                calendar: Some(CalendarId(2)),
+            }),
+        );
+
+        let error = stack
+            .execute(&mut project, Box::new(DeleteCalendar { id: CalendarId(2) }))
+            .expect_err("delete must be rejected");
+        assert!(error.contains("still selected"));
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityCalendar {
+                activity: ActivityId(1),
+                calendar: None,
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(DeleteCalendar { id: CalendarId(2) }),
+        );
+        assert_eq!(project.calendars.len(), 1);
+
+        stack.undo(&mut project).expect("undo delete");
+        assert_eq!(project.calendars.calendars()[1].id, CalendarId(2));
     }
 }

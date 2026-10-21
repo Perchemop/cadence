@@ -49,9 +49,20 @@ in working days (negative values are leads). IDs are `u64` newtypes.
 `Calendar` is a serialisable value type: a Monday-first weekly working pattern
 plus holiday exceptions. `is_working_day`, `next`/`prev_working_day`,
 `add_working_days`, and `working_days_between` are the date-arithmetic
-primitives. The default is Monday–Friday with no holidays. Keeping calendars in
-the model (instead of behind a trait object) lets projects round-trip through
-JSON and prepares Phase 1 for multiple named calendars assigned per activity.
+primitives. The default is Monday–Friday with no holidays.
+
+`CalendarSet` holds named calendars with unique (case-insensitive) names and
+stable ids; each `Activity` may select one or inherit the project default.
+Keeping calendars as values (instead of behind trait objects) lets projects
+round-trip through JSON.
+
+## WBS hierarchy
+
+The WBS is a single-rooted tree (`crates/core/src/wbs.rs`). Nodes have stable
+`WbsId`s and ordered children; activities reference a node by id. Invariants
+are enforced at mutation time: no orphan parents, no duplicate ids, no cycles
+when reparenting. Deleting a node with children is rejected (D7); activity
+assignments are checked by the command layer, which owns activity state.
 
 ## Command layer
 
@@ -83,5 +94,13 @@ deterministic:
 
 All date arithmetic is in working days. FS uses the conventional extra day
 (`ES_succ >= EF_pred + 1 + lag`); SS, FF, and SF use their documented
-constraints. WBS, activity constraints (date/ASAP/ALAP), resources, and
-multiple named calendars remain later-phase work.
+constraints.
+
+When a relationship crosses calendars, the successor's calendar governs the
+forward-pass constraint (when it may start or finish) and the predecessor's
+calendar governs the backward pass (how late it may finish). Activities with
+no successors are normalised to the latest working day of their own calendar.
+Total float is measured in each activity's working days.
+
+Constraints (date/ASAP/ALAP), resources, baselines, and SQLite persistence
+remain later-phase work.

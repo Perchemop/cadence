@@ -16,6 +16,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use time::{Date, Duration};
 
+use crate::calendar_set::{CalendarId, CalendarSet, CalendarSetError};
+use crate::wbs::{WbsId, WbsTree};
+
 /// Stable identifier for an [`Activity`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -112,9 +115,9 @@ pub enum CalendarError {
 /// A working-time calendar expressed as a weekly pattern plus holiday exceptions.
 ///
 /// This is intentionally a value type rather than a trait so that calendars can
-/// be serialised with a project and compared in tests. Phase 1 can add multiple
-/// named calendars to [`Project`] without changing the arithmetic; the engine
-/// currently uses the project calendar for every activity.
+/// be serialised with a project and compared in tests. Projects hold a default
+/// calendar plus a set of named calendars ([`crate::calendar_set::CalendarSet`]);
+/// activities may select a named calendar and otherwise inherit the default.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Calendar {
     /// Working flags indexed by day of week, Monday = 0 through Sunday = 6.
@@ -205,6 +208,34 @@ impl Calendar {
                 .checked_add(Duration::days(1))
                 .ok_or(CalendarError::DateOutOfRange)?;
         }
+    }
+
+    /// First working day strictly after `date`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CalendarError::NoWorkingWeekdays`] for a calendar with no
+    /// working weekdays, or [`CalendarError::DateOutOfRange`] when the date is
+    /// outside the representable range.
+    pub fn next_working_day_after(&self, date: Date) -> Result<Date, CalendarError> {
+        let next = date
+            .checked_add(Duration::days(1))
+            .ok_or(CalendarError::DateOutOfRange)?;
+        self.next_working_day_on_or_after(next)
+    }
+
+    /// Last working day strictly before `date`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CalendarError::NoWorkingWeekdays`] for a calendar with no
+    /// working weekdays, or [`CalendarError::DateOutOfRange`] when the date is
+    /// outside the representable range.
+    pub fn prev_working_day_before(&self, date: Date) -> Result<Date, CalendarError> {
+        let previous = date
+            .checked_sub(Duration::days(1))
+            .ok_or(CalendarError::DateOutOfRange)?;
+        self.prev_working_day_on_or_before(previous)
     }
 
     /// Last working day on or before `date`.
@@ -403,6 +434,12 @@ pub struct Activity {
     pub name: String,
     /// Duration in working days. Zero denotes a milestone.
     pub original_duration: u32,
+    /// Optional work-breakdown-structure node this activity belongs to.
+    #[serde(default)]
+    pub wbs: Option<WbsId>,
+    /// Optional named calendar. `None` selects the project default calendar.
+    #[serde(default)]
+    pub calendar: Option<CalendarId>,
     /// Earliest start produced by the forward pass.
     #[serde(default)]
     pub early_start: Option<Date>,
@@ -433,6 +470,8 @@ impl Activity {
             id,
             name: name.into(),
             original_duration,
+            wbs: None,
+            calendar: None,
             early_start: None,
             early_finish: None,
             late_start: None,
@@ -502,9 +541,16 @@ pub struct Project {
     /// Precedence relationships.
     #[serde(default)]
     pub relationships: Vec<Relationship>,
-    /// Project calendar. Defaults to Monday-to-Friday.
+    /// Default project calendar, used by activities that select no named
+    /// calendar. Defaults to Monday-to-Friday.
     #[serde(default)]
     pub calendar: Calendar,
+    /// Named calendars that activities may select instead of the default.
+    #[serde(default)]
+    pub calendars: CalendarSet,
+    /// Work breakdown structure. Defaults to a single root node.
+    #[serde(default)]
+    pub wbs: WbsTree,
 }
 
 impl Project {
@@ -516,6 +562,8 @@ impl Project {
             activities: Vec::new(),
             relationships: Vec::new(),
             calendar: Calendar::default(),
+            calendars: CalendarSet::new(),
+            wbs: WbsTree::new(),
         }
     }
 
@@ -545,6 +593,35 @@ impl Project {
                 .unwrap_or_default()
                 .saturating_add(1),
         )
+    }
+
+    /// Next unused WBS node identifier.
+    pub fn next_wbs_id(&self) -> WbsId {
+        self.wbs.next_id()
+    }
+
+    /// Next unused calendar identifier.
+    pub fn next_calendar_id(&self) -> CalendarId {
+        self.calendars.next_id()
+    }
+
+    /// Resolve an optional calendar selection to a calendar value.
+    ///
+    /// `None` selects the project default calendar. A named selection must
+    /// exist in [`Project::calendars`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CalendarSetError::UnknownCalendar`] when the named calendar is
+    /// not present.
+    pub fn resolve_calendar(
+        &self,
+        calendar: Option<CalendarId>,
+    ) -> Result<&Calendar, CalendarSetError> {
+        match calendar {
+            None => Ok(&self.calendar),
+            Some(id) => self.calendars.calendar(id),
+        }
     }
 
     /// Look up an activity by identifier.

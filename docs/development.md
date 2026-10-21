@@ -25,8 +25,19 @@ only in CI (`.github/workflows/ci.yml`).
 - `crates/commands` — typed command layer, undo/redo
 - `crates/persistence` — SQLite project files + open interchange
 - `crates/app` — application binary
+- `.opencode/agents/` — project-local agent definitions (orchestrator, coder,
+  explorer, reviewer)
 - `docs/parity.md` — living capability list
 - `docs/qc/` — manual QC checklists per phase
+- Root tracking files: `IMPLEMENTATION_PLAN.md`, `REQUIREMENTS_TRACEABILITY.md`,
+  `DECISIONS.md`, `PROGRESS.md`, `CHANGELOG.md`
+
+## Agent model tiers
+
+Per the guide, the orchestrator plans only; heavy multi-file implementation
+goes to the strongest free coding model; exploration and review use fast free
+tiers. Model IDs in `.opencode/agents/*.md` are defaults and may be adjusted
+to whatever free provider is currently available.
 
 ## Conventions
 
