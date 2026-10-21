@@ -486,6 +486,7 @@ fn parse_date(value: &str) -> Option<Date> {
     Date::from_calendar_date(year, month, day).ok()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_gantt(
     ui: &mut Ui,
     project: &mut Project,
@@ -575,6 +576,15 @@ fn render_gantt(
                         }
                     }
                 }
+            }
+        }
+
+        // Zoom with Ctrl + wheel.
+        if response.hovered() {
+            let scroll = ui.ctx().input(|input| input.smooth_scroll_delta.y);
+            if scroll != 0.0 && ui.ctx().input(|input| input.modifiers.ctrl) {
+                *pixels_per_day_out =
+                    (*pixels_per_day_out * (1.0 + scroll * 0.001)).clamp(2.0, 60.0);
             }
         }
 
