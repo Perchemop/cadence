@@ -687,6 +687,7 @@ fn lag_plus_one(lag: i64) -> Result<i64, SchedError> {
 mod tests {
     use super::*;
     use crate::model::{Activity, Constraint, LinkType, Relationship};
+    use std::time::Instant;
     use time::Month;
 
     fn jan(day: u8) -> Date {
@@ -1270,4 +1271,34 @@ mod tests {
         assert_eq!(result(&schedule, a).early_finish, jan(10));
         assert_eq!(schedule.project_start, jan(10));
     }
+    #[test]
+    fn ten_thousand_activities_schedule_quickly() {
+        let mut project = Project::new("Performance", jan(5));
+        for index in 0..10_000 {
+            project
+                .activities
+                .push(Activity::new(ActivityId(index + 1), format!("A{index}"), 1));
+        }
+        for index in 0..9_999 {
+            project.relationships.push(Relationship::new(
+                RelationshipId(index + 1),
+                ActivityId(index + 1),
+                ActivityId(index + 2),
+                LinkType::Fs,
+                0,
+            ));
+        }
+
+        let started = Instant::now();
+        let schedule = schedule(&project).expect("large project schedules");
+        let elapsed = started.elapsed();
+
+        assert_eq!(schedule.activities.len(), 10_000);
+        assert!(
+            elapsed.as_millis() < 500,
+            "scheduling 10,000 activities took {} ms",
+            elapsed.as_millis()
+        );
+    }
+
 }

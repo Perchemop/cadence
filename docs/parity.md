@@ -46,7 +46,7 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | Activity table | done | sortable columns, selection, inspector edits via commands |
 | Dependency editing | done | drag-to-create links, lag editing, cycle prevention |
 | Zoom / pan | todo | |
-| Light + dark design system | todo | |
+| Phase-2 QC gate | done | `docs/qc/phase-2.md` |
 
 ## Later phases
 

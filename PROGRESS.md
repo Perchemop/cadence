@@ -3,6 +3,12 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-21 — P2-5 performance baseline + Phase-2 QC gate
+
+- Added a 10,000-activity scheduling performance test and the Phase-2 QC
+  gate in `docs/qc/phase-2.md`.
+- CI green on `main`.
+
 ## 2026-10-21 — P2-4 dependency editing
 
 - Drag-to-create FS links in the Gantt view with cycle detection and
