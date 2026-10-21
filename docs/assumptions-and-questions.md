@@ -22,6 +22,6 @@
 
 | # | Question | Status |
 |---|---|---|
-| Q1 | Native file format versioning / forward-compat strategy? | Open — decide before first tagged release |
+| Q1 | Native file format versioning / forward-compat strategy? | Decided (D9): relational SQLite, `PRAGMA user_version`; newer versions rejected |
 | Q2 | Should v1 include activity codes / custom fields? | Open — revisit during Phase 2 table design |
 | Q3 | PDF printing approach (pure-Rust layout vs. system print)? | Open — Phase 5 decision |

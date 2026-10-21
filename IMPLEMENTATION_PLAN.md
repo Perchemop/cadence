@@ -11,7 +11,7 @@ are subdivided into slices below.
 - [x] GitHub Actions CI (fmt, clippy -D warnings, tests, caching)
 - [x] Typed command layer with undo/redo
 - [x] Product name locked; discovery & tracking files (this docs update)
-- [ ] SQLite project-file persistence *(moved to slice P1-4 below)*
+- [x] SQLite project-file persistence *(delivered as slice P1-4 below)*
 
 ## Phase 1 — Scheduling engine
 
@@ -20,7 +20,7 @@ are subdivided into slices below.
 - [x] P1-2: WBS hierarchy (nodes, reparenting rules, commands, undo)
 - [x] P1-3: Multiple named calendars + per-activity calendar selection +
       cross-calendar scheduling convention
-- [ ] P1-4: SQLite persistence for projects (open schema, versioned)
+- [x] P1-4: SQLite persistence for projects (open schema, versioned)
 - [ ] P1-5: Constraints (ASAP/ALAP, date constraints) in the engine
 - [ ] P1-6: Property-based engine tests (arbitrary graphs, calendar maths)
 - [ ] P1-7: Phase-1 QC gate (checklist in `docs/qc/`)

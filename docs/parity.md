@@ -10,7 +10,7 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | GitHub Actions CI (fmt, clippy, test) | done | `.github/workflows/ci.yml` |
 | Typed command layer + undo/redo | done | `cadence-commands` |
 | Product name locked | done | `docs/product-name.md` |
-| SQLite project file persistence | todo | Phase 0 target, JSON first |
+| SQLite project file persistence | done | relational schema, `PRAGMA user_version`, transactional save/load, CLI `save`/`load` |
 | Minimal project model | done | Project, Activity, Relationship |
 
 ## Vertical slice (guide §12.4)

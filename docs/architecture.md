@@ -39,12 +39,13 @@ app (binary)
 
 ## Domain model
 
-`Project` is the aggregate root: name, start date, calendar, activities, and
-relationships. `Activity` stores `original_duration` in working days plus
-optional cached schedule fields (`early_start`, `early_finish`, `late_start`,
-`late_finish`, `total_float`, `free_float`, `critical`). `Relationship` stores
-predecessor/successor, a `LinkType` (`FS`, `SS`, `FF`, `SF`), and a signed lag
-in working days (negative values are leads). IDs are `u64` newtypes.
+`Project` is the aggregate root: name, start date, default calendar, named
+calendars, WBS, activities, and relationships. `Activity` stores
+`original_duration` in working days plus optional cached schedule fields
+(`early_start`, `early_finish`, `late_start`, `late_finish`, `total_float`,
+`free_float`, `critical`). `Relationship` stores predecessor/successor, a
+`LinkType` (`FS`, `SS`, `FF`, `SF`), and a signed lag in working days
+(negative values are leads). IDs are `u64` newtypes.
 
 `Calendar` is a serialisable value type: a Monday-first weekly working pattern
 plus holiday exceptions. `is_working_day`, `next`/`prev_working_day`,
@@ -102,5 +103,27 @@ calendar governs the backward pass (how late it may finish). Activities with
 no successors are normalised to the latest working day of their own calendar.
 Total float is measured in each activity's working days.
 
-Constraints (date/ASAP/ALAP), resources, baselines, and SQLite persistence
-remain later-phase work.
+## Persistence
+
+`cadence-persistence` stores a project in a native SQLite file (D9). Schema
+version 1 is relational rather than a JSON blob: `project` and
+`project_holidays` hold the aggregate settings and default calendar;
+`calendars` and `calendar_holidays` hold named calendars; `wbs_nodes` stores
+the tree with a `preorder` column that preserves sibling order on load;
+`activities` stores durations plus optional WBS/calendar references; and
+`relationships` stores endpoints, link type, and signed lag. Foreign keys are
+enabled on every connection.
+
+`save_project` validates the aggregate (dangling WBS, calendar, and
+relationship references are errors), creates the schema when the file is new,
+then replaces all rows inside one transaction. A failed save rolls back, so
+the previous file survives. `load_project` distinguishes a missing file from
+empty data, rejects newer schema versions, parses dates strictly, and rebuilds
+`WbsTree`/`CalendarSet` through their validating constructors.
+
+Cached schedule fields are not persisted: schedules are derived data and are
+recomputed on load. Records are written in project order (and WBS pre-order)
+so round-trips preserve ordering.
+
+Constraints (date/ASAP/ALAP), resources, and baselines remain later-phase
+work, as do the open interchange formats (JSON/CSV/XML).

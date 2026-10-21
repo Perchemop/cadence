@@ -48,3 +48,18 @@ explicit cascade command later.
 Discovery answer: no existing brand. Light and dark themes designed from
 scratch; contrast, keyboard support, and screen-reader basics are
 requirements.
+
+## D9 — SQLite schema versioning and save strategy (2026-10-21)
+
+The project file is a relational SQLite database. Schema version lives in
+`PRAGMA user_version` (currently 1). Opening a file with a newer version is
+an explicit error rather than a best-effort read, so an old build can never
+silently misinterpret or overwrite newer data. A version 0 database gets the
+schema created; future migrations will be ordered, idempotent steps keyed by
+version.
+
+Saving is a single transaction that clears and rewrites all tables. Failed
+saves roll back, leaving the previous project intact. Dangling WBS, calendar,
+and relationship references are rejected before writing. Cached schedule
+fields are deliberately not persisted; the schedule is derived data and is
+recomputed on load.

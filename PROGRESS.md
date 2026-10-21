@@ -3,6 +3,20 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-21 — P1-4 SQLite persistence
+
+- Project files are ordinary SQLite databases with a relational schema
+  (`project`, `project_holidays`, `calendars`, `calendar_holidays`,
+  `wbs_nodes`, `activities`, `relationships`) versioned with
+  `PRAGMA user_version` (D9).
+- Saves validate dangling WBS/calendar/relationship references before
+  writing, then replace the file contents in one transaction; a failed save
+  leaves the previous file intact. Loads reject newer schema versions and
+  malformed data with explicit errors.
+- CLI now supports `cadence save <file>` and `cadence load <file>` on top of
+  the demo; `LinkType::from_abbreviation` round-trips precedence types.
+- CI green on `main` (run 39566216222, 58 tests).
+
 ## 2026-10-21 — Guide updated → process retro-fit + WBS & calendars
 
 - Adopted the updated generic guide: discovery conversation completed with
@@ -28,5 +42,5 @@ green CI (`main` branch).
 
 ## Next slice
 
-- P1-4: SQLite persistence (versioned schema), then P1-5 constraints and
-  P1-6 property-based engine tests.
+- P1-5: constraints (ASAP/ALAP, date constraints) in the engine, then P1-6
+  property-based engine tests and the Phase-1 QC gate.
