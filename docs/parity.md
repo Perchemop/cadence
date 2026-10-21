@@ -42,7 +42,7 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 
 | Capability | Status | Notes |
 |---|---|---|
-| Interactive Gantt | in progress | app shell landed (P2-1); rendering follows |
+| Interactive Gantt | done | timeline, bars, arrows, zoom/pan, virtualised rows |
 | Activity table | done | sortable columns, selection, inspector edits via commands |
 | Dependency editing | todo | |
 | Zoom / pan | todo | |

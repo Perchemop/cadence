@@ -3,6 +3,12 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-21 — P2-3 Gantt rendering
+
+- Added a Gantt view with timeline axis, activity bars, dependency arrows,
+  zoom (Ctrl+wheel), scrolling, and row virtualisation.
+- CI green on `main` (run 39579147001).
+
 ## 2026-10-21 — P2-2 activity table
 
 - Activity table now supports column sorting, row selection, an inspector
