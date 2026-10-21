@@ -2,8 +2,9 @@
 //!
 //! With no arguments the binary runs a small demo project through the CPM
 //! engine and prints the resulting schedule as an aligned plain-text table.
-//! The GUI arrives in Phase 2; this headless path keeps the engine usable and
-//! observable from the command line in the meantime.
+//! `save` and `load` exercise SQLite project files. The GUI arrives in Phase 2;
+//! this headless path keeps the engine usable and observable from the command
+//! line in the meantime.
 
 use std::process::ExitCode;
 
@@ -12,8 +13,33 @@ use cadence_core::engine::{schedule, Schedule};
 use cadence_core::model::{LinkType, Project};
 use time::{Date, Month};
 
+const USAGE: &str = "\
+Cadence — construction project scheduling
+
+Usage:
+  cadence               Run the built-in demo project
+  cadence save <file>   Save the demo project to a SQLite project file
+  cadence load <file>   Load a project file and print its schedule
+  cadence --help        Show this help
+";
+
 fn main() -> ExitCode {
-    match run() {
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let result = match arguments.as_slice() {
+        [] => run_demo(),
+        [flag] if flag == "--help" || flag == "-h" => {
+            print!("{USAGE}");
+            Ok(())
+        }
+        [command, path] if command == "save" => save_demo(path),
+        [command, path] if command == "load" => load_and_print(path),
+        _ => {
+            eprint!("{USAGE}");
+            Err("invalid arguments".to_string())
+        }
+    };
+
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
             eprintln!("cadence: {message}");
@@ -22,7 +48,28 @@ fn main() -> ExitCode {
     }
 }
 
-fn run() -> Result<(), String> {
+fn run_demo() -> Result<(), String> {
+    let project = demo_project()?;
+    let schedule = schedule(&project).map_err(|error| error.to_string())?;
+    print_schedule(&project, &schedule);
+    Ok(())
+}
+
+fn save_demo(path: &str) -> Result<(), String> {
+    let project = demo_project()?;
+    cadence_persistence::save_project(&project, path).map_err(|error| error.to_string())?;
+    println!("Saved \"{}\" to {path}", project.name);
+    Ok(())
+}
+
+fn load_and_print(path: &str) -> Result<(), String> {
+    let project = cadence_persistence::load_project(path).map_err(|error| error.to_string())?;
+    let schedule = schedule(&project).map_err(|error| error.to_string())?;
+    print_schedule(&project, &schedule);
+    Ok(())
+}
+
+fn demo_project() -> Result<Project, String> {
     let start = Date::from_calendar_date(2026, Month::January, 5)
         .map_err(|error| format!("invalid demo start date: {error}"))?;
     let mut project = Project::new("Cadence Demo Project", start);
@@ -75,9 +122,7 @@ fn run() -> Result<(), String> {
         )),
     )?;
 
-    let schedule = schedule(&project).map_err(|error| error.to_string())?;
-    print_schedule(&project, &schedule);
-    Ok(())
+    Ok(project)
 }
 
 fn execute(

@@ -92,6 +92,19 @@ impl LinkType {
 
     /// All relationship types, in documentation order.
     pub const ALL: [Self; 4] = [Self::Fs, Self::Ss, Self::Ff, Self::Sf];
+
+    /// Parse a conventional abbreviation (`"FS"`, `"SS"`, `"FF"`, `"SF"`).
+    ///
+    /// Matching is case-insensitive. Returns `None` for any other value.
+    pub fn from_abbreviation(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_uppercase().as_str() {
+            "FS" => Some(Self::Fs),
+            "SS" => Some(Self::Ss),
+            "FF" => Some(Self::Ff),
+            "SF" => Some(Self::Sf),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for LinkType {
@@ -748,6 +761,23 @@ mod tests {
         assert_eq!(LinkType::Ff.to_string(), "FF");
         assert_eq!(LinkType::Sf.to_string(), "SF");
         assert_eq!(LinkType::ALL.len(), 4);
+    }
+
+    #[test]
+    fn link_types_parse_from_abbreviations_case_insensitively() {
+        for link_type in LinkType::ALL {
+            assert_eq!(
+                LinkType::from_abbreviation(link_type.abbreviation()),
+                Some(link_type)
+            );
+            assert_eq!(
+                LinkType::from_abbreviation(&link_type.abbreviation().to_lowercase()),
+                Some(link_type)
+            );
+        }
+        assert_eq!(LinkType::from_abbreviation("FS "), Some(LinkType::Fs));
+        assert_eq!(LinkType::from_abbreviation("XX"), None);
+        assert_eq!(LinkType::from_abbreviation(""), None);
     }
 
     #[test]
