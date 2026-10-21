@@ -5,10 +5,13 @@
 //! source of truth; this crate only displays its results and routes edits
 //! through the command layer.
 
-use cadence_commands::{CommandStack, RenameActivity, SetActivityConstraint, SetActivityDuration};
+use cadence_commands::{
+    CommandStack, CreateRelationship, RenameActivity, SetActivityConstraint, SetActivityDuration,
+    SetRelationshipLag,
+};
 use cadence_core::engine::schedule;
 use cadence_core::engine::Schedule;
-use cadence_core::model::{Activity, ActivityId, Constraint, Project};
+use cadence_core::model::{Activity, ActivityId, Constraint, Project, RelationshipId};
 use egui::{
     Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2, Visuals,
 };
@@ -97,6 +100,11 @@ pub struct CadenceApp {
     sort_ascending: bool,
     view_mode: ViewMode,
     pixels_per_day: f32,
+    drag_start: Option<usize>,
+    status_message: Option<String>,
+    selected_relationship: Option<cadence_core::model::RelationshipId>,
+    lag_buffer: String,
+    last_rel: Option<cadence_core::model::RelationshipId>,
     name_buffer: String,
     duration_buffer: String,
     constraint_kind: usize,
@@ -117,6 +125,11 @@ impl CadenceApp {
             sort_ascending: true,
             view_mode: ViewMode::Table,
             pixels_per_day: 14.0,
+            drag_start: None,
+            status_message: None,
+            selected_relationship: None,
+            lag_buffer: String::new(),
+            last_rel: None,
             name_buffer: String::new(),
             duration_buffer: String::new(),
             constraint_kind: 0,
@@ -283,6 +296,9 @@ impl eframe::App for CadenceApp {
                     let _ = self.stack.redo(&mut self.project);
                     self.recompute();
                 }
+                if let Some(message) = &self.status_message {
+                    ui.label(message);
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("Toggle theme").clicked() {
                         self.dark = !self.dark;
@@ -322,6 +338,51 @@ impl eframe::App for CadenceApp {
                             }
                             if ui.button("Apply").clicked() {
                                 self.apply_edits();
+                            }
+
+                            ui.separator();
+                            ui.heading("Relationships");
+                            ComboBox::from_id_salt("relationship_select")
+                                .selected_text(
+                                    self.selected_relationship
+                                        .and_then(|id| self.project.relationship(id))
+                                        .map(|r| format!("rel {}", r.id))
+                                        .unwrap_or_else(|| "Select relationship".to_string()),
+                                )
+                                .show_ui(ui, |ui| {
+                                    for rel in self.project.relationships.clone() {
+                                        ui.selectable_value(
+                                            &mut self.selected_relationship,
+                                            Some(rel.id),
+                                            format!("{} -> {}", rel.predecessor, rel.successor),
+                                        );
+                                    }
+                                });
+
+                            if self.last_rel != self.selected_relationship {
+                                self.last_rel = self.selected_relationship;
+                                self.lag_buffer = self
+                                    .selected_relationship
+                                    .and_then(|id| self.project.relationship(id))
+                                    .map(|r| r.lag.to_string())
+                                    .unwrap_or_default();
+                            }
+
+                            if self.selected_relationship.is_some() {
+                                ui.label("Lag (working days)");
+                                ui.text_edit_singleline(&mut self.lag_buffer);
+                                if ui.button("Apply lag").clicked() {
+                                    if let (Some(id), Ok(lag)) = (
+                                        self.selected_relationship,
+                                        self.lag_buffer.trim().parse::<i64>(),
+                                    ) {
+                                        let _ = self.stack.execute(
+                                            &mut self.project,
+                                            Box::new(SetRelationshipLag { id, lag }),
+                                        );
+                                        self.recompute();
+                                    }
+                                }
                             }
                         } else {
                             ui.label("Select an activity in the table.");
@@ -395,21 +456,8 @@ impl eframe::App for CadenceApp {
                 });
             }
             ViewMode::Gantt => {
-                let schedule = self.schedule.clone();
-                let project = self.project.clone();
-                let pixels_per_day = self.pixels_per_day;
                 egui::CentralPanel::default().show(ui, |ui| {
-                    if let Ok(schedule) = &schedule {
-                        render_gantt(
-                            ui,
-                            &project,
-                            schedule,
-                            pixels_per_day,
-                            &mut self.pixels_per_day,
-                        );
-                    } else if let Err(error) = &schedule {
-                        ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
-                    }
+                    self.render_gantt(ui);
                 });
             }
         }
@@ -430,13 +478,23 @@ fn parse_date(value: &str) -> Option<Date> {
 
 fn render_gantt(
     ui: &mut Ui,
-    project: &Project,
-    schedule: &Schedule,
+    project: &mut Project,
+    schedule: &mut Result<Schedule, String>,
+    stack: &mut CommandStack,
+    drag_start: &mut Option<usize>,
+    status_message: &mut Option<String>,
     pixels_per_day: f32,
     pixels_per_day_out: &mut f32,
 ) {
+    let current_schedule = match schedule.as_ref() {
+        Ok(schedule) => schedule.clone(),
+        Err(error) => {
+            ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
+            return;
+        }
+    };
     let origin = project.start_date;
-    let finish = schedule.project_finish;
+    let finish = current_schedule.project_finish;
     let total_days = (finish.to_julian_day() - origin.to_julian_day()).max(1) as f32 + 2.0;
     let row_height = 20.0;
     let header_height = 24.0;
@@ -452,12 +510,59 @@ fn render_gantt(
         let clip = ui.clip_rect().intersect(rect);
         painter.set_clip_rect(clip);
 
-        // Zoom with Ctrl + wheel.
-        if response.hovered() {
-            let scroll = ui.ctx().input(|input| input.smooth_scroll_delta.y);
-            if scroll != 0.0 && ui.ctx().input(|input| input.modifiers.ctrl) {
-                *pixels_per_day_out =
-                    (*pixels_per_day_out * (1.0 + scroll * 0.001)).clamp(2.0, 60.0);
+        // Drag-to-create dependency links.
+        if response.drag_started() {
+            if let Some(pos) = response.interact_pos() {
+                let row = ((pos.y - rect.min.y - header_height) / row_height).floor() as usize;
+                if row < project.activities.len() {
+                    *drag_start = Some(row);
+                }
+            }
+        }
+
+        if let Some(start_row) = *drag_start {
+            if let Some(pos) = response.interact_pos() {
+                let start_y =
+                    rect.min.y + header_height + start_row as f32 * row_height + row_height / 2.0;
+                let start_activity = &project.activities[start_row];
+                if let Some(result) = current_schedule.activity(start_activity.id) {
+                    let start_days =
+                        (result.scheduled_finish.to_julian_day() - origin.to_julian_day()) as f32;
+                    let start_x = rect.min.x + (start_days + 1.0) * pixels_per_day;
+                    painter.line_segment(
+                        [Pos2::new(start_x, start_y), pos],
+                        egui::Stroke::new(1.5, Color32::YELLOW),
+                    );
+                }
+            }
+        }
+
+        if response.drag_stopped() {
+            if let Some(start_row) = drag_start.take() {
+                if let Some(pos) = response.interact_pos() {
+                    let end_row =
+                        ((pos.y - rect.min.y - header_height) / row_height).floor() as usize;
+                    if end_row < project.activities.len() && end_row != start_row {
+                        let predecessor = project.activities[start_row].id;
+                        let successor = project.activities[end_row].id;
+                        let id = project.next_relationship_id();
+                        let command =
+                            CreateRelationship::new(id, predecessor, successor, LinkType::Fs, 0);
+                        if stack.execute(project, Box::new(command)).is_ok() {
+                            *schedule = schedule(project).map_err(|e| e.to_string());
+                            if schedule.is_err() {
+                                let _ = stack.undo(project);
+                                *schedule = schedule(project).map_err(|e| e.to_string());
+                                *status_message =
+                                    Some("Cannot add link: cycle detected".to_string());
+                            } else {
+                                *status_message = None;
+                            }
+                        } else {
+                            *status_message = Some("Cannot add link".to_string());
+                        }
+                    }
+                }
             }
         }
 
@@ -503,7 +608,7 @@ fn render_gantt(
         for row in first_row..last_row {
             let activity = &project.activities[row];
             let y = rect.min.y + header_height + row as f32 * row_height;
-            if let Some(result) = schedule.activity(activity.id) {
+            if let Some(result) = current_schedule.activity(activity.id) {
                 let start_days =
                     (result.scheduled_start.to_julian_day() - origin.to_julian_day()) as f32;
                 let finish_days =
@@ -549,10 +654,10 @@ fn render_gantt(
                 // skip off-screen successors
                 continue;
             }
-            let Some(pred_result) = schedule.activity(relationship.predecessor) else {
+            let Some(pred_result) = current_schedule.activity(relationship.predecessor) else {
                 continue;
             };
-            let Some(succ_result) = schedule.activity(relationship.successor) else {
+            let Some(succ_result) = current_schedule.activity(relationship.successor) else {
                 continue;
             };
             let pred_days =
