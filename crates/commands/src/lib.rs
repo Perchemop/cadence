@@ -865,6 +865,36 @@ impl Command for SetActivityCalendar {
     }
 }
 
+/// Change a relationship's lag in working days.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetRelationshipLag {
+    /// Relationship to update.
+    pub id: RelationshipId,
+    /// New lag in working days; negative values are leads.
+    pub lag: i64,
+}
+
+impl Command for SetRelationshipLag {
+    fn description(&self) -> String {
+        format!("set lag of relationship {} to {}", self.id, self.lag)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(relationship) = project.relationship_mut(self.id) else {
+            return Err(format!("relationship {} does not exist", self.id));
+        };
+        let previous = relationship.lag;
+        relationship.lag = self.lag;
+        for activity in &mut project.activities {
+            activity.clear_schedule();
+        }
+        Ok(Box::new(SetRelationshipLag {
+            id: self.id,
+            lag: previous,
+        }))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

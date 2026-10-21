@@ -11,7 +11,7 @@ use cadence_commands::{
 };
 use cadence_core::engine::schedule;
 use cadence_core::engine::Schedule;
-use cadence_core::model::{Activity, ActivityId, Constraint, Project, RelationshipId};
+use cadence_core::model::{Activity, ActivityId, Constraint, LinkType, Project};
 use egui::{
     Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2, Visuals,
 };
@@ -457,7 +457,17 @@ impl eframe::App for CadenceApp {
             }
             ViewMode::Gantt => {
                 egui::CentralPanel::default().show(ui, |ui| {
-                    self.render_gantt(ui);
+                    let px = self.pixels_per_day;
+                    render_gantt(
+                        ui,
+                        &mut self.project,
+                        &mut self.schedule,
+                        &mut self.stack,
+                        &mut self.drag_start,
+                        &mut self.status_message,
+                        px,
+                        &mut self.pixels_per_day,
+                    );
                 });
             }
         }
@@ -512,7 +522,7 @@ fn render_gantt(
 
         // Drag-to-create dependency links.
         if response.drag_started() {
-            if let Some(pos) = response.interact_pos() {
+            if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
                 let row = ((pos.y - rect.min.y - header_height) / row_height).floor() as usize;
                 if row < project.activities.len() {
                     *drag_start = Some(row);
@@ -521,7 +531,7 @@ fn render_gantt(
         }
 
         if let Some(start_row) = *drag_start {
-            if let Some(pos) = response.interact_pos() {
+            if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
                 let start_y =
                     rect.min.y + header_height + start_row as f32 * row_height + row_height / 2.0;
                 let start_activity = &project.activities[start_row];
@@ -539,7 +549,7 @@ fn render_gantt(
 
         if response.drag_stopped() {
             if let Some(start_row) = drag_start.take() {
-                if let Some(pos) = response.interact_pos() {
+                if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
                     let end_row =
                         ((pos.y - rect.min.y - header_height) / row_height).floor() as usize;
                     if end_row < project.activities.len() && end_row != start_row {
@@ -549,10 +559,12 @@ fn render_gantt(
                         let command =
                             CreateRelationship::new(id, predecessor, successor, LinkType::Fs, 0);
                         if stack.execute(project, Box::new(command)).is_ok() {
-                            *schedule = schedule(project).map_err(|e| e.to_string());
+                            *schedule =
+                                cadence_core::engine::schedule(project).map_err(|e| e.to_string());
                             if schedule.is_err() {
                                 let _ = stack.undo(project);
-                                *schedule = schedule(project).map_err(|e| e.to_string());
+                                *schedule = cadence_core::engine::schedule(project)
+                                    .map_err(|e| e.to_string());
                                 *status_message =
                                     Some("Cannot add link: cycle detected".to_string());
                             } else {
