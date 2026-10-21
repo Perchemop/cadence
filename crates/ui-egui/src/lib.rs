@@ -74,13 +74,15 @@ impl CadenceApp {
 }
 
 impl eframe::App for CadenceApp {
-    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+
         if ctx.input(|input| input.key_pressed(egui::Key::D) && input.modifiers.ctrl) {
             self.dark = !self.dark;
-            apply_theme(ctx, self.dark);
+            apply_theme(&ctx, self.dark);
         }
 
-        egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
+        egui::Panel::top("toolbar").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("Cadence");
                 ui.separator();
@@ -88,13 +90,13 @@ impl eframe::App for CadenceApp {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("Toggle theme").clicked() {
                         self.dark = !self.dark;
-                        apply_theme(ctx, self.dark);
+                        apply_theme(&ctx, self.dark);
                     }
                 });
             });
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| match &self.schedule {
+        egui::CentralPanel::default().show_inside(ui, |ui| match &self.schedule {
             Err(error) => {
                 ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
             }
