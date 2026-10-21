@@ -3,6 +3,12 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-21 — P2-4 dependency editing
+
+- Drag-to-create FS links in the Gantt view with cycle detection and
+  feedback; lag editing via the inspector and `SetRelationshipLag`.
+- CI green on `main` (run 39586623396).
+
 ## 2026-10-21 — P2-3 Gantt rendering
 
 - Added a Gantt view with timeline axis, activity bars, dependency arrows,

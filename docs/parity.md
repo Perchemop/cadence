@@ -44,7 +44,7 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 |---|---|---|
 | Interactive Gantt | done | timeline, bars, arrows, zoom/pan, virtualised rows |
 | Activity table | done | sortable columns, selection, inspector edits via commands |
-| Dependency editing | todo | |
+| Dependency editing | done | drag-to-create links, lag editing, cycle prevention |
 | Zoom / pan | todo | |
 | Light + dark design system | todo | |
 
