@@ -5,13 +5,15 @@
 //! source of truth; this crate only displays its results and routes edits
 //! through the command layer.
 
-use cadence_commands::{
-    Command, CommandStack, RenameActivity, SetActivityConstraint, SetActivityDuration,
-};
+use cadence_commands::{CommandStack, RenameActivity, SetActivityConstraint, SetActivityDuration};
 use cadence_core::engine::schedule;
 use cadence_core::engine::Schedule;
 use cadence_core::model::{Activity, ActivityId, Constraint, Project};
-use egui::{Color32, ComboBox, Context, Grid, ScrollArea, TextEdit, Ui, Visuals};
+use egui::{Color32, ComboBox, Context, Grid, ScrollArea, Ui, Visuals};
+use time::Date;
+
+/// Accent colour used for selection and highlights in both themes.
+pub const ACCENT: Color32 = Color32::from_rgb(0x2F, 0x6F, 0xED);
 
 const CONSTRAINT_LABELS: [&str; 6] = [
     "As soon as possible",
@@ -164,28 +166,28 @@ impl CadenceApp {
             2 => self
                 .constraint_date_buffer
                 .trim()
-                .parse::<time::Date>()
+                .parse::<Date>()
                 .ok()
                 .map(Constraint::StartNoEarlierThan)
                 .unwrap_or(activity.constraint),
             3 => self
                 .constraint_date_buffer
                 .trim()
-                .parse::<time::Date>()
+                .parse::<Date>()
                 .ok()
                 .map(Constraint::StartNoLaterThan)
                 .unwrap_or(activity.constraint),
             4 => self
                 .constraint_date_buffer
                 .trim()
-                .parse::<time::Date>()
+                .parse::<Date>()
                 .ok()
                 .map(Constraint::FinishNoEarlierThan)
                 .unwrap_or(activity.constraint),
             _ => self
                 .constraint_date_buffer
                 .trim()
-                .parse::<time::Date>()
+                .parse::<Date>()
                 .ok()
                 .map(Constraint::FinishNoLaterThan)
                 .unwrap_or(activity.constraint),
@@ -287,7 +289,7 @@ impl eframe::App for CadenceApp {
             });
         });
 
-        egui::SidePanel::right("inspector")
+        egui::Panel::right("inspector")
             .default_width(260.0)
             .show(ui, |ui| {
                 ui.heading("Inspector");

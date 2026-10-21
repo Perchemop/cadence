@@ -14,3 +14,4 @@ cadence-commands.workspace = true
 cadence-persistence.workspace = true
 eframe.workspace = true
 egui.workspace = true
+time.workspace = true
