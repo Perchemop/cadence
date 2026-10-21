@@ -3,6 +3,13 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-21 — P2-2 activity table
+
+- Activity table now supports column sorting, row selection, an inspector
+  with name/duration/constraint editing routed through commands (with
+  undo/redo), and schedule recomputation.
+- CI green on `main` (run 39578242160).
+
 ## 2026-10-21 — P2-1 egui app shell
 
 - Added `cadence-ui-egui` crate with design tokens, light/dark theme

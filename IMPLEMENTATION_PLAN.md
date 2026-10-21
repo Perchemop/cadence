@@ -28,7 +28,7 @@ are subdivided into slices below.
 ## Phase 2 — Gantt & tables
 
 - [x] P2-1: egui/eframe app shell, design tokens, light+dark themes
-- [ ] P2-2: Activity table (columns, sorting, inline editing via commands)
+- [x] P2-2: Activity table (columns, sorting, inline editing via commands)
 - [ ] P2-3: Gantt rendering at scale (virtualised rows, timeline zoom/pan)
 - [ ] P2-4: Dependency editing (drag links, lag editing, cycle prevention)
 - [ ] P2-5: Phase-2 QC gate + performance baseline (10k activities)
