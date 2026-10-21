@@ -82,7 +82,7 @@ impl eframe::App for CadenceApp {
             apply_theme(&ctx, self.dark);
         }
 
-        egui::Panel::top("toolbar").show_inside(ui, |ui| {
+        egui::Panel::top("toolbar").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("Cadence");
                 ui.separator();
@@ -96,7 +96,7 @@ impl eframe::App for CadenceApp {
             });
         });
 
-        egui::CentralPanel::default().show_inside(ui, |ui| match &self.schedule {
+        egui::CentralPanel::default().show(ui, |ui| match &self.schedule {
             Err(error) => {
                 ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
             }
