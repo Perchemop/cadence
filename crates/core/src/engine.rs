@@ -389,11 +389,11 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
             finish = finish.min(candidate);
         }
 
-        // Activities without successors must still finish on a working day of
-        // their own calendar.
-        if outgoing[activity_index].is_empty() {
-            finish = calendar.prev_working_day_on_or_before(finish)?;
-        }
+        // Every activity must finish on a working day of its own calendar.
+        // `project_finish` is taken from whichever calendar produced it and may
+        // not be a working day here, so normalise (working-day inputs are left
+        // untouched by `prev_working_day_on_or_before`).
+        finish = calendar.prev_working_day_on_or_before(finish)?;
 
         match constraint {
             Constraint::StartNoLaterThan(date) => {
