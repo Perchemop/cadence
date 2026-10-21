@@ -21,7 +21,7 @@ are subdivided into slices below.
 - [x] P1-3: Multiple named calendars + per-activity calendar selection +
       cross-calendar scheduling convention
 - [x] P1-4: SQLite persistence for projects (open schema, versioned)
-- [ ] P1-5: Constraints (ASAP/ALAP, date constraints) in the engine
+- [x] P1-5: Constraints (ASAP/ALAP, date constraints) in the engine
 - [ ] P1-6: Property-based engine tests (arbitrary graphs, calendar maths)
 - [ ] P1-7: Phase-1 QC gate (checklist in `docs/qc/`)
 

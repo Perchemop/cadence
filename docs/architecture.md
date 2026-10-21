@@ -41,11 +41,11 @@ app (binary)
 
 `Project` is the aggregate root: name, start date, default calendar, named
 calendars, WBS, activities, and relationships. `Activity` stores
-`original_duration` in working days plus optional cached schedule fields
-(`early_start`, `early_finish`, `late_start`, `late_finish`, `total_float`,
-`free_float`, `critical`). `Relationship` stores predecessor/successor, a
-`LinkType` (`FS`, `SS`, `FF`, `SF`), and a signed lag in working days
-(negative values are leads). IDs are `u64` newtypes.
+`original_duration` in working days, a scheduling `Constraint`, and optional
+cached schedule fields (`early_*`, `late_*`, `scheduled_*`, float, critical).
+`Relationship` stores predecessor/successor, a `LinkType` (`FS`, `SS`, `FF`,
+`SF`), and a signed lag in working days (negative values are leads). IDs are
+`u64` newtypes.
 
 `Calendar` is a serialisable value type: a Monday-first weekly working pattern
 plus holiday exceptions. `is_working_day`, `next`/`prev_working_day`,
@@ -83,11 +83,17 @@ deterministic:
 - Validate duplicate IDs and relationship endpoints.
 - Detect cycles with Kahn's algorithm and report a concrete cycle path instead
   of hanging.
-- Forward pass: earliest start/finish, honouring FS/SS/FF/SF and signed lag.
-- Backward pass: latest start/finish from the project finish.
+- Forward pass: earliest start/finish, honouring FS/SS/FF/SF, signed lag,
+  and lower-bound date constraints (SNET/FNET).
+- Backward pass: latest start/finish from the project finish, capped by
+  upper-bound date constraints (SNLT/FNLT). An upper bound missed by the
+  earliest schedule is a hard error.
 - Total float = `LS - ES`; free float = minimum slack over outgoing
   relationships, or total float for terminal activities; critical = total
   float <= 0.
+- Scheduled dates: early dates for ASAP activities; late dates for ALAP
+  activities, pulled back only where a successor's scheduled date would be
+  violated.
 - Return `Schedule` with per-activity `ActivitySchedule` values and a
   `critical_path` of critical activities ordered by early start.
   `Schedule::apply_to` copies results into the optional cached `Activity`
@@ -106,13 +112,14 @@ Total float is measured in each activity's working days.
 ## Persistence
 
 `cadence-persistence` stores a project in a native SQLite file (D9). Schema
-version 1 is relational rather than a JSON blob: `project` and
+version 2 is relational rather than a JSON blob: `project` and
 `project_holidays` hold the aggregate settings and default calendar;
 `calendars` and `calendar_holidays` hold named calendars; `wbs_nodes` stores
 the tree with a `preorder` column that preserves sibling order on load;
-`activities` stores durations plus optional WBS/calendar references; and
-`relationships` stores endpoints, link type, and signed lag. Foreign keys are
-enabled on every connection.
+`activities` stores durations, constraints, and optional WBS/calendar
+references; and `relationships` stores endpoints, link type, and signed lag.
+Foreign keys are enabled on every connection. Version 1 files are migrated
+in place by adding the constraint columns.
 
 `save_project` validates the aggregate (dangling WBS, calendar, and
 relationship references are errors), creates the schema when the file is new,
@@ -125,5 +132,5 @@ Cached schedule fields are not persisted: schedules are derived data and are
 recomputed on load. Records are written in project order (and WBS pre-order)
 so round-trips preserve ordering.
 
-Constraints (date/ASAP/ALAP), resources, and baselines remain later-phase
+Constraints are documented in D10. Resources and baselines remain later-phase
 work, as do the open interchange formats (JSON/CSV/XML).

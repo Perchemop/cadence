@@ -52,14 +52,35 @@ requirements.
 ## D9 — SQLite schema versioning and save strategy (2026-10-21)
 
 The project file is a relational SQLite database. Schema version lives in
-`PRAGMA user_version` (currently 1). Opening a file with a newer version is
+`PRAGMA user_version` (currently 2). Opening a file with a newer version is
 an explicit error rather than a best-effort read, so an old build can never
 silently misinterpret or overwrite newer data. A version 0 database gets the
-schema created; future migrations will be ordered, idempotent steps keyed by
-version.
+current schema created; each older version runs an ordered, in-place
+migration step (v1 → v2 adds activity constraint columns).
 
 Saving is a single transaction that clears and rewrites all tables. Failed
 saves roll back, leaving the previous project intact. Dangling WBS, calendar,
 and relationship references are rejected before writing. Cached schedule
 fields are deliberately not persisted; the schedule is derived data and is
 recomputed on load.
+
+## D10 — Constraint semantics (2026-10-21)
+
+Activities support ASAP (default), ALAP, SNET, SNLT, FNET, and FNLT.
+Constraint dates are inclusive bounds interpreted on the activity's own
+calendar: lower bounds round forward to the next working day, upper bounds
+round backward to the previous working day. Exact "must start/finish on"
+constraints are deferred until the UI can resolve conflicts.
+
+A lower bound raises the forward-pass dates. An upper bound caps the
+backward-pass dates and tightens float. If the earliest feasible schedule
+already misses an upper bound, scheduling fails with
+`SchedError::ConstraintViolated`; we do not silently emit negative float for
+an impossible hard constraint.
+
+ALAP is a reporting preference, not a logic change: CPM early/late bounds are
+always calculated normally, and `scheduled_start`/`scheduled_finish` choose
+late dates for ALAP activities. Scheduled dates are finalised in reverse
+topological order so a delayed ALAP activity never pushes an already-scheduled
+successor past its own dates; precedence always wins over the ALAP
+preference.

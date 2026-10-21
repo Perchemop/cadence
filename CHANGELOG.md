@@ -11,9 +11,12 @@ follows Keep a Changelog; releases use git tags.
   (typed commands, undo/redo), `cadence-persistence`, `cadence-app` (CLI)
 - CPM engine: forward/backward pass, FS/SS/FF/SF with lag/lead, total and
   free float, critical set, cycle detection with path diagnostics
+- Activity constraints: ASAP (default), ALAP, and start/finish
+  no-earlier/no-later-than date bounds; scheduled dates reported alongside
+  CPM early/late bounds, with an undoable constraint command
 - SQLite project files: relational schema versioned with `PRAGMA user_version`,
-  transactional save/load, validation of dangling references, and CLI
-  `save <file>` / `load <file>` commands
+  transactional save/load, validation of dangling references, in-place
+  migrations, and CLI `save <file>` / `load <file>` commands
 - Working-day calendar (Mon–Fri + holiday exceptions)
 - Multiple named calendars with per-activity selection and a documented
   cross-calendar scheduling convention

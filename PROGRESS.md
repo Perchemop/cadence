@@ -3,6 +3,22 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-21 — P1-5 constraints
+
+- Activities carry a `Constraint`: ASAP (default), ALAP, and start/finish
+  no-earlier/no-later-than date bounds. Lower bounds raise the forward pass;
+  upper bounds cap the backward pass and produce
+  `SchedError::ConstraintViolated` when even the earliest schedule misses
+  them.
+- `ActivitySchedule` now reports `scheduled_start`/`scheduled_finish` next to
+  the CPM early/late bounds. ALAP activities use their late dates, pulled
+  back only where an already-scheduled successor would be violated (D10).
+- Added the undoable `SetActivityConstraint` command and CLI columns for
+  scheduled dates.
+- Project-file schema is now version 2 with an in-place migration from
+  version 1 (new `constraint_kind`/`constraint_date` columns).
+- CI green on `main` (run 39574713546, 84 tests).
+
 ## 2026-10-21 — P1-4 SQLite persistence
 
 - Project files are ordinary SQLite databases with a relational schema
@@ -42,5 +58,5 @@ green CI (`main` branch).
 
 ## Next slice
 
-- P1-5: constraints (ASAP/ALAP, date constraints) in the engine, then P1-6
-  property-based engine tests and the Phase-1 QC gate.
+- P1-6: property-based engine tests (arbitrary graphs and calendar maths),
+  then the Phase-1 QC gate.
