@@ -144,6 +144,8 @@ fn print_schedule(project: &Project, schedule: &Schedule) {
     let headers = [
         "Activity",
         "Duration",
+        "Start",
+        "Finish",
         "Early Start",
         "Early Finish",
         "Late Start",
@@ -152,7 +154,7 @@ fn print_schedule(project: &Project, schedule: &Schedule) {
         "Critical",
     ];
 
-    let rows: Vec<[String; 8]> = project
+    let rows: Vec<[String; 10]> = project
         .activities
         .iter()
         .filter_map(|activity| {
@@ -161,6 +163,8 @@ fn print_schedule(project: &Project, schedule: &Schedule) {
                 [
                     activity.name.clone(),
                     activity.original_duration.to_string(),
+                    result.scheduled_start.to_string(),
+                    result.scheduled_finish.to_string(),
                     result.early_start.to_string(),
                     result.early_finish.to_string(),
                     result.late_start.to_string(),

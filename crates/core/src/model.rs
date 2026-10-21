@@ -438,6 +438,92 @@ fn weekday_index(date: Date) -> usize {
     usize::from(date.weekday().number_days_from_monday())
 }
 
+/// Scheduling constraint attached to an activity.
+///
+/// The default is [`Constraint::AsSoonAsPossible`]. Date constraints are
+/// inclusive bounds interpreted on the activity's calendar: a lower bound
+/// moves forward to the next working day and an upper bound moves backward to
+/// the previous working day.
+///
+/// `AsLateAsPossible` delays the activity as far as its float and successors
+/// allow, without moving any successor earlier. It never delays the project
+/// finish.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum Constraint {
+    /// Schedule as early as the logic and lower-bound constraints allow.
+    #[default]
+    AsSoonAsPossible,
+    /// Schedule as late as possible without delaying successors or the project.
+    AsLateAsPossible,
+    /// Start no earlier than the given date.
+    StartNoEarlierThan(Date),
+    /// Start no later than the given date.
+    StartNoLaterThan(Date),
+    /// Finish no earlier than the given date.
+    FinishNoEarlierThan(Date),
+    /// Finish no later than the given date.
+    FinishNoLaterThan(Date),
+}
+
+impl Constraint {
+    /// Stable lower-case code used by project files.
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::AsSoonAsPossible => "asap",
+            Self::AsLateAsPossible => "alap",
+            Self::StartNoEarlierThan(_) => "snet",
+            Self::StartNoLaterThan(_) => "snlt",
+            Self::FinishNoEarlierThan(_) => "fnet",
+            Self::FinishNoLaterThan(_) => "fnlt",
+        }
+    }
+
+    /// Constraint date, when the variant carries one.
+    pub const fn date(self) -> Option<Date> {
+        match self {
+            Self::StartNoEarlierThan(date)
+            | Self::StartNoLaterThan(date)
+            | Self::FinishNoEarlierThan(date)
+            | Self::FinishNoLaterThan(date) => Some(date),
+            Self::AsSoonAsPossible | Self::AsLateAsPossible => None,
+        }
+    }
+
+    /// Rebuild a constraint from a project-file code and optional date.
+    ///
+    /// Returns `None` when the code is unknown, a date variant has no date, or
+    /// a mode variant carries a date.
+    pub fn from_parts(code: &str, date: Option<Date>) -> Option<Self> {
+        let code = code.trim().to_ascii_lowercase();
+        match (code.as_str(), date) {
+            ("asap", None) => Some(Self::AsSoonAsPossible),
+            ("alap", None) => Some(Self::AsLateAsPossible),
+            ("snet", Some(date)) => Some(Self::StartNoEarlierThan(date)),
+            ("snlt", Some(date)) => Some(Self::StartNoLaterThan(date)),
+            ("fnet", Some(date)) => Some(Self::FinishNoEarlierThan(date)),
+            ("fnlt", Some(date)) => Some(Self::FinishNoLaterThan(date)),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for Constraint {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AsSoonAsPossible => formatter.write_str("as soon as possible"),
+            Self::AsLateAsPossible => formatter.write_str("as late as possible"),
+            Self::StartNoEarlierThan(date) => {
+                write!(formatter, "start no earlier than {date}")
+            }
+            Self::StartNoLaterThan(date) => write!(formatter, "start no later than {date}"),
+            Self::FinishNoEarlierThan(date) => {
+                write!(formatter, "finish no earlier than {date}")
+            }
+            Self::FinishNoLaterThan(date) => write!(formatter, "finish no later than {date}"),
+        }
+    }
+}
+
 /// A single scheduled activity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Activity {
@@ -453,6 +539,9 @@ pub struct Activity {
     /// Optional named calendar. `None` selects the project default calendar.
     #[serde(default)]
     pub calendar: Option<CalendarId>,
+    /// Scheduling constraint. Defaults to as soon as possible.
+    #[serde(default)]
+    pub constraint: Constraint,
     /// Earliest start produced by the forward pass.
     #[serde(default)]
     pub early_start: Option<Date>,
@@ -465,6 +554,12 @@ pub struct Activity {
     /// Latest finish produced by the backward pass.
     #[serde(default)]
     pub late_finish: Option<Date>,
+    /// Scheduled start: early for ASAP activities, late for ALAP activities.
+    #[serde(default)]
+    pub scheduled_start: Option<Date>,
+    /// Scheduled finish: early for ASAP activities, late for ALAP activities.
+    #[serde(default)]
+    pub scheduled_finish: Option<Date>,
     /// Total float in working days.
     #[serde(default)]
     pub total_float: Option<i64>,
@@ -485,10 +580,13 @@ impl Activity {
             original_duration,
             wbs: None,
             calendar: None,
+            constraint: Constraint::AsSoonAsPossible,
             early_start: None,
             early_finish: None,
             late_start: None,
             late_finish: None,
+            scheduled_start: None,
+            scheduled_finish: None,
             total_float: None,
             free_float: None,
             critical: false,
@@ -501,6 +599,8 @@ impl Activity {
         self.early_finish = None;
         self.late_start = None;
         self.late_finish = None;
+        self.scheduled_start = None;
+        self.scheduled_finish = None;
         self.total_float = None;
         self.free_float = None;
         self.critical = false;
@@ -810,6 +910,8 @@ mod tests {
         activity.early_finish = Some(jan(6));
         activity.late_start = Some(jan(5));
         activity.late_finish = Some(jan(6));
+        activity.scheduled_start = Some(jan(5));
+        activity.scheduled_finish = Some(jan(6));
         activity.total_float = Some(0);
         activity.free_float = Some(0);
         activity.critical = true;
@@ -820,6 +922,8 @@ mod tests {
         assert_eq!(activity.early_finish, None);
         assert_eq!(activity.late_start, None);
         assert_eq!(activity.late_finish, None);
+        assert_eq!(activity.scheduled_start, None);
+        assert_eq!(activity.scheduled_finish, None);
         assert_eq!(activity.total_float, None);
         assert_eq!(activity.free_float, None);
         assert!(!activity.critical);
@@ -836,9 +940,12 @@ mod tests {
         activity.early_finish = Some(jan(7));
         activity.late_start = Some(jan(5));
         activity.late_finish = Some(jan(8));
+        activity.scheduled_start = Some(jan(5));
+        activity.scheduled_finish = Some(jan(7));
         activity.total_float = Some(1);
         activity.free_float = Some(0);
         activity.critical = false;
+        activity.constraint = Constraint::StartNoEarlierThan(jan(5));
         project.activities.push(activity);
 
         project.relationships.push(Relationship::new(
@@ -862,5 +969,44 @@ mod tests {
             let decoded: LinkType = serde_json::from_str(&json).expect("deserialise link type");
             assert_eq!(decoded, link_type);
         }
+    }
+
+    #[test]
+    fn activities_default_to_asap() {
+        let activity = Activity::new(ActivityId(1), "A", 1);
+        assert_eq!(activity.constraint, Constraint::AsSoonAsPossible);
+        assert_eq!(activity.constraint.code(), "asap");
+        assert_eq!(activity.constraint.date(), None);
+    }
+
+    #[test]
+    fn constraints_round_trip_codes_and_json() {
+        let constraints = [
+            Constraint::AsSoonAsPossible,
+            Constraint::AsLateAsPossible,
+            Constraint::StartNoEarlierThan(jan(5)),
+            Constraint::StartNoLaterThan(jan(9)),
+            Constraint::FinishNoEarlierThan(jan(12)),
+            Constraint::FinishNoLaterThan(jan(16)),
+        ];
+
+        for constraint in constraints {
+            let decoded =
+                Constraint::from_parts(constraint.code(), constraint.date()).expect("known code");
+            assert_eq!(decoded, constraint);
+
+            let json = serde_json::to_string(&constraint).expect("serialise constraint");
+            let from_json: Constraint =
+                serde_json::from_str(&json).expect("deserialise constraint");
+            assert_eq!(from_json, constraint);
+        }
+
+        assert_eq!(
+            Constraint::from_parts(" SNET ", Some(jan(5))),
+            Some(Constraint::StartNoEarlierThan(jan(5)))
+        );
+        assert_eq!(Constraint::from_parts("asap", Some(jan(5))), None);
+        assert_eq!(Constraint::from_parts("snet", None), None);
+        assert_eq!(Constraint::from_parts("mfo", Some(jan(5))), None);
     }
 }

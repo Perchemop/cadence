@@ -11,7 +11,7 @@
 
 use cadence_core::calendar_set::{CalendarId, NamedCalendar};
 use cadence_core::model::{
-    Activity, ActivityId, Calendar, LinkType, Project, Relationship, RelationshipId,
+    Activity, ActivityId, Calendar, Constraint, LinkType, Project, Relationship, RelationshipId,
 };
 use cadence_core::wbs::{WbsId, WbsNode};
 
@@ -470,6 +470,36 @@ impl Command for SetActivityDuration {
         Ok(Box::new(SetActivityDuration {
             id: self.id,
             duration: previous,
+        }))
+    }
+}
+
+/// Change an activity's scheduling constraint.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityConstraint {
+    /// Activity to update.
+    pub id: ActivityId,
+    /// New constraint.
+    pub constraint: Constraint,
+}
+
+impl Command for SetActivityConstraint {
+    fn description(&self) -> String {
+        format!(
+            "set constraint of activity {} to {}",
+            self.id, self.constraint
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.id) else {
+            return Err(format!("activity {} does not exist", self.id));
+        };
+        let previous = std::mem::replace(&mut activity.constraint, self.constraint);
+        activity.clear_schedule();
+        Ok(Box::new(SetActivityConstraint {
+            id: self.id,
+            constraint: previous,
         }))
     }
 }
@@ -944,6 +974,36 @@ mod tests {
                 .activity(a)
                 .map(|activity| activity.original_duration),
             Some(7)
+        );
+    }
+
+    #[test]
+    fn constraint_change_is_undoable_and_clears_cached_schedule() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 2);
+        let constraint = Constraint::StartNoEarlierThan(jan(7));
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityConstraint { id: a, constraint }),
+        );
+
+        let activity = project.activity(a).expect("activity exists");
+        assert_eq!(activity.constraint, constraint);
+        assert_eq!(activity.early_start, None);
+
+        stack.undo(&mut project).expect("undo constraint change");
+        assert_eq!(
+            project.activity(a).expect("activity exists").constraint,
+            Constraint::AsSoonAsPossible
+        );
+
+        stack.redo(&mut project).expect("redo constraint change");
+        assert_eq!(
+            project.activity(a).expect("activity exists").constraint,
+            constraint
         );
     }
 

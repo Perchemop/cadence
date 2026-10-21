@@ -1,7 +1,9 @@
 //! SQLite project files for Cadence.
 //!
 //! A Cadence project file is an ordinary SQLite database. The schema is
-//! versioned with `PRAGMA user_version`; this build reads and writes version 1.
+//! versioned with `PRAGMA user_version`; this build reads and writes version 2
+//! and migrates version 1 files in place.
+//!
 //! Saving runs in a single transaction that replaces the previous contents, so
 //! a failed save never corrupts an existing project.
 //!
@@ -13,7 +15,7 @@ use std::path::Path;
 
 use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::model::{
-    Activity, ActivityId, Calendar, LinkType, Project, Relationship, RelationshipId,
+    Activity, ActivityId, Calendar, Constraint, LinkType, Project, Relationship, RelationshipId,
 };
 use cadence_core::wbs::{WbsId, WbsTree};
 use rusqlite::{params, Connection};
@@ -21,7 +23,7 @@ use thiserror::Error;
 use time::{Date, Month};
 
 /// Project-file schema version written by this build.
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 const SCHEMA: &str = r#"
 CREATE TABLE project (
@@ -61,6 +63,8 @@ CREATE TABLE activities (
     duration   INTEGER NOT NULL,
     wbs_id     INTEGER REFERENCES wbs_nodes(id),
     calendar_id INTEGER REFERENCES calendars(id),
+    constraint TEXT    NOT NULL DEFAULT 'asap',
+    constraint_date TEXT,
     position   INTEGER NOT NULL
 );
 
@@ -146,6 +150,16 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
         0 => {
             connection.execute_batch(SCHEMA)?;
             connection.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            Ok(())
+        }
+        1 => {
+            // Version 2 adds activity constraints. Existing activities keep
+            // the historical behaviour (as soon as possible).
+            connection.execute_batch(
+                "ALTER TABLE activities ADD COLUMN constraint TEXT NOT NULL DEFAULT 'asap';
+                 ALTER TABLE activities ADD COLUMN constraint_date TEXT;
+                 PRAGMA user_version = 2;",
+            )?;
             Ok(())
         }
         SCHEMA_VERSION => Ok(()),
@@ -259,9 +273,11 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
     }
 
     for (position, activity) in project.activities.iter().enumerate() {
+        let constraint_date = activity.constraint.date().map(|date| date.to_string());
         transaction.execute(
-            "INSERT INTO activities (id, name, duration, wbs_id, calendar_id, position)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO activities
+                (id, name, duration, wbs_id, calendar_id, constraint, constraint_date, position)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 to_sql_id(activity.id.0, "activity")?,
                 activity.name,
@@ -274,6 +290,8 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
                     .calendar
                     .map(|calendar| to_sql_id(calendar.0, "calendar"))
                     .transpose()?,
+                activity.constraint.code(),
+                constraint_date,
                 position as i64,
             ],
         )?;
@@ -437,7 +455,8 @@ fn read_wbs(connection: &Connection) -> Result<WbsTree> {
 fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
     let rows = collect_rows(
         connection,
-        "SELECT id, name, duration, wbs_id, calendar_id FROM activities ORDER BY position",
+        "SELECT id, name, duration, wbs_id, calendar_id, constraint, constraint_date
+         FROM activities ORDER BY position",
         |row| {
             Ok((
                 row.get::<_, i64>(0)?,
@@ -445,16 +464,28 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
                 row.get::<_, i64>(2)?,
                 row.get::<_, Option<i64>>(3)?,
                 row.get::<_, Option<i64>>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, Option<String>>(6)?,
             ))
         },
     )?;
 
     let mut activities = Vec::with_capacity(rows.len());
-    for (id, name, duration, wbs, calendar) in rows {
+    for (id, name, duration, wbs, calendar, constraint_code, constraint_date) in rows {
         let duration = u32::try_from(duration).map_err(|_| {
             PersistenceError::InvalidData(format!("activity {id} has invalid duration {duration}"))
         })?;
+        let constraint_date = constraint_date
+            .map(|value| parse_date(&value))
+            .transpose()?;
+        let constraint =
+            Constraint::from_parts(&constraint_code, constraint_date).ok_or_else(|| {
+                PersistenceError::InvalidData(format!(
+                    "activity {id} has invalid constraint \"{constraint_code}\""
+                ))
+            })?;
         let mut activity = Activity::new(ActivityId(from_sql_id(id, "activity")?), name, duration);
+        activity.constraint = constraint;
         activity.wbs = wbs
             .map(|wbs| from_sql_id(wbs, "WBS node").map(WbsId))
             .transpose()?;
@@ -649,13 +680,17 @@ mod tests {
 
         let mut a = Activity::new(ActivityId(1), "Site preparation", 5);
         a.wbs = Some(WbsId(2));
+        a.constraint = Constraint::StartNoEarlierThan(date(7));
         let mut b = Activity::new(ActivityId(2), "Foundation", 2);
         b.wbs = Some(WbsId(4));
         b.calendar = Some(CalendarId(1));
+        b.constraint = Constraint::AsLateAsPossible;
         let mut c = Activity::new(ActivityId(3), "Milestone", 0);
         c.wbs = Some(WbsId(3));
+        c.constraint = Constraint::FinishNoLaterThan(date(20));
         let mut d = Activity::new(ActivityId(4), "Inspection", 1);
         d.wbs = Some(WbsId(2));
+        d.constraint = Constraint::StartNoLaterThan(date(16));
 
         project.activities = vec![a, b, c, d];
         project.relationships = vec![
@@ -754,6 +789,63 @@ mod tests {
             Err(PersistenceError::UnsupportedVersion { found: 99, .. }) => {}
             other => panic!("expected UnsupportedVersion, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn version_one_files_are_migrated_in_place() {
+        let dir = TempDir::new();
+        let path = dir.file("v1.cadence");
+        {
+            let connection = Connection::open(&path).expect("create database");
+            connection.execute_batch(SCHEMA).expect("create schema");
+            // Turn the current schema into the version 1 shape.
+            connection
+                .execute_batch(
+                    "ALTER TABLE activities DROP COLUMN constraint;
+                     ALTER TABLE activities DROP COLUMN constraint_date;
+                     PRAGMA user_version = 1;",
+                )
+                .expect("downgrade schema");
+            connection
+                .execute(
+                    "INSERT INTO project (id, name, start_date, workweek) VALUES (1, ?1, ?2, ?3)",
+                    params!["Legacy", "2026-01-05", 0b001_1111],
+                )
+                .expect("insert project");
+            connection
+                .execute(
+                    "INSERT INTO wbs_nodes (id, name, parent_id, preorder)
+                     VALUES (1, 'Project', NULL, 0)",
+                    [],
+                )
+                .expect("insert root");
+            connection
+                .execute(
+                    "INSERT INTO activities (id, name, duration, wbs_id, calendar_id, position)
+                     VALUES (1, 'Legacy activity', 2, NULL, NULL, 0)",
+                    [],
+                )
+                .expect("insert activity");
+        }
+
+        let project = load_project(&path).expect("load and migrate");
+        assert_eq!(project.name, "Legacy");
+        assert_eq!(project.activities.len(), 1);
+        assert_eq!(
+            project.activities[0].constraint,
+            Constraint::AsSoonAsPossible
+        );
+
+        {
+            let connection = Connection::open(&path).expect("reopen database");
+            let version: i64 = connection
+                .pragma_query_value(None, "user_version", |row| row.get(0))
+                .expect("read version");
+            assert_eq!(version, SCHEMA_VERSION);
+        }
+
+        save_project(&project, &path).expect("save after migration");
+        assert_eq!(load_project(&path).expect("reload"), project);
     }
 
     #[test]

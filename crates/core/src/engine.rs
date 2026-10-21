@@ -31,6 +31,22 @@
 //! finish), while the **predecessor's** calendar governs the backward pass
 //! (how late it may finish). This keeps every activity's dates on its own
 //! working days. See `DECISIONS.md` D6.
+//!
+//! # Constraints
+//!
+//! Each activity carries a [`Constraint`]. Date constraints are inclusive
+//! bounds on the activity's own calendar: a lower bound moves forward to the
+//! next working day and an upper bound moves backward to the previous working
+//! day. `StartNoEarlierThan` and `FinishNoEarlierThan` raise the forward-pass
+//! dates; `StartNoLaterThan` and `FinishNoLaterThan` cap the backward-pass
+//! dates. An upper bound that the earliest feasible schedule already misses is
+//! a [`SchedError::ConstraintViolated`], not negative float by stealth.
+//!
+//! [`ActivitySchedule`] always exposes the CPM bounds (`early_*`, `late_*`)
+//! and additionally reports `scheduled_*`. ASAP activities report their early
+//! dates. ALAP activities report their late dates, pulled back only where a
+//! successor's scheduled date would otherwise be violated; precedence always
+//! wins over the ALAP preference.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -39,7 +55,9 @@ use thiserror::Error;
 use time::Date;
 
 use crate::calendar_set::CalendarId;
-use crate::model::{ActivityId, Calendar, CalendarError, LinkType, Project, RelationshipId};
+use crate::model::{
+    ActivityId, Calendar, CalendarError, Constraint, LinkType, Project, RelationshipId,
+};
 use crate::wbs::WbsId;
 
 /// Errors returned by [`schedule`].
@@ -87,6 +105,14 @@ pub enum SchedError {
         /// Missing WBS node identifier.
         wbs: WbsId,
     },
+    /// A hard upper-bound constraint cannot be met by the earliest schedule.
+    #[error("activity {activity} cannot satisfy its constraint: {constraint}")]
+    ConstraintViolated {
+        /// Activity carrying the unsatisfiable constraint.
+        activity: ActivityId,
+        /// Constraint that could not be met.
+        constraint: Constraint,
+    },
 }
 
 /// Scheduled dates and float for one activity.
@@ -102,6 +128,10 @@ pub struct ActivitySchedule {
     pub late_start: Date,
     /// Latest finish produced by the backward pass.
     pub late_finish: Date,
+    /// Start date used for reporting: early for ASAP, late for ALAP.
+    pub scheduled_start: Date,
+    /// Finish date used for reporting: early for ASAP, late for ALAP.
+    pub scheduled_finish: Date,
     /// Total float in working days (`late_start - early_start`).
     pub total_float: i64,
     /// Free float in working days; equals total float for terminal activities.
@@ -146,6 +176,8 @@ impl Schedule {
                 activity.early_finish = Some(result.early_finish);
                 activity.late_start = Some(result.late_start);
                 activity.late_finish = Some(result.late_finish);
+                activity.scheduled_start = Some(result.scheduled_start);
+                activity.scheduled_finish = Some(result.scheduled_finish);
                 activity.total_float = Some(result.total_float);
                 activity.free_float = Some(result.free_float);
                 activity.critical = result.critical;
@@ -249,7 +281,9 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
     let mut early_start = vec![origin; count];
     let mut early_finish = vec![origin; count];
     for &activity_index in &order {
-        let duration = project.activities[activity_index].original_duration;
+        let activity = &project.activities[activity_index];
+        let duration = activity.original_duration;
+        let constraint = activity.constraint;
         // The successor's calendar governs when it may start and finish.
         let calendar = activity_calendars[activity_index];
         let mut start = calendar.next_working_day_on_or_after(project.start_date)?;
@@ -277,9 +311,46 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
             start = start.max(candidate);
         }
 
+        match constraint {
+            Constraint::StartNoEarlierThan(date) => {
+                start = start.max(calendar.next_working_day_on_or_after(date)?);
+            }
+            Constraint::FinishNoEarlierThan(date) => {
+                let earliest_finish = calendar.next_working_day_on_or_after(date)?;
+                start = start.max(start_from_finish(calendar, earliest_finish, duration)?);
+            }
+            _ => {}
+        }
+
         let start = calendar.next_working_day_on_or_after(start)?;
+        let finish = finish_from_start(calendar, start, duration)?;
+
+        // Upper bounds are hard: if the earliest feasible dates already miss
+        // one, no schedule can satisfy the constraint.
+        match constraint {
+            Constraint::StartNoLaterThan(date) => {
+                let latest_start = calendar.prev_working_day_on_or_before(date)?;
+                if start > latest_start {
+                    return Err(SchedError::ConstraintViolated {
+                        activity: activity.id,
+                        constraint,
+                    });
+                }
+            }
+            Constraint::FinishNoLaterThan(date) => {
+                let latest_finish = calendar.prev_working_day_on_or_before(date)?;
+                if finish > latest_finish {
+                    return Err(SchedError::ConstraintViolated {
+                        activity: activity.id,
+                        constraint,
+                    });
+                }
+            }
+            _ => {}
+        }
+
         early_start[activity_index] = start;
-        early_finish[activity_index] = finish_from_start(calendar, start, duration)?;
+        early_finish[activity_index] = finish;
     }
 
     let project_finish = early_finish.iter().copied().max().unwrap_or(origin);
@@ -288,7 +359,9 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
     let mut late_finish = vec![project_finish; count];
     let mut late_start = vec![project_finish; count];
     for &activity_index in order.iter().rev() {
-        let duration = project.activities[activity_index].original_duration;
+        let activity = &project.activities[activity_index];
+        let duration = activity.original_duration;
+        let constraint = activity.constraint;
         // The predecessor's calendar governs how late it may finish.
         let calendar = activity_calendars[activity_index];
         let mut finish = project_finish;
@@ -321,8 +394,74 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
         if outgoing[activity_index].is_empty() {
             finish = calendar.prev_working_day_on_or_before(finish)?;
         }
+
+        match constraint {
+            Constraint::StartNoLaterThan(date) => {
+                let latest_start = calendar.prev_working_day_on_or_before(date)?;
+                finish = finish.min(finish_from_start(calendar, latest_start, duration)?);
+            }
+            Constraint::FinishNoLaterThan(date) => {
+                finish = finish.min(calendar.prev_working_day_on_or_before(date)?);
+            }
+            _ => {}
+        }
+
+        match constraint {
+            Constraint::StartNoEarlierThan(date) => {
+                let earliest_start = calendar.next_working_day_on_or_after(date)?;
+                finish = finish.max(finish_from_start(calendar, earliest_start, duration)?);
+            }
+            Constraint::FinishNoEarlierThan(date) => {
+                finish = finish.max(calendar.next_working_day_on_or_after(date)?);
+            }
+            _ => {}
+        }
+
         late_finish[activity_index] = finish;
         late_start[activity_index] = start_from_finish(calendar, finish, duration)?;
+    }
+
+    // Scheduled dates. ASAP activities report their early dates. ALAP
+    // activities are moved to their late dates, pulled back only when a
+    // successor's scheduled date (which is fixed by then, because this walks
+    // in reverse topological order) would otherwise be violated.
+    let mut scheduled_start = early_start.clone();
+    let mut scheduled_finish = early_finish.clone();
+    for &activity_index in order.iter().rev() {
+        let activity = &project.activities[activity_index];
+        if activity.constraint != Constraint::AsLateAsPossible {
+            continue;
+        }
+        let duration = activity.original_duration;
+        let calendar = activity_calendars[activity_index];
+        let mut finish = late_finish[activity_index];
+
+        for &relationship_index in &outgoing[activity_index] {
+            let relationship = &project.relationships[relationship_index];
+            let successor = relationship_successor[relationship_index];
+            let candidate = match relationship.link_type {
+                LinkType::Fs => retreat(
+                    calendar,
+                    scheduled_start[successor],
+                    lag_plus_one(relationship.lag)?,
+                )?,
+                LinkType::Ss => {
+                    let start = retreat(calendar, scheduled_start[successor], relationship.lag)?;
+                    finish_from_start(calendar, start, duration)?
+                }
+                LinkType::Ff => retreat(calendar, scheduled_finish[successor], relationship.lag)?,
+                LinkType::Sf => {
+                    let start = retreat(calendar, scheduled_finish[successor], relationship.lag)?;
+                    finish_from_start(calendar, start, duration)?
+                }
+            };
+
+            finish = finish.min(candidate);
+        }
+
+        let finish = finish.max(early_finish[activity_index]);
+        scheduled_finish[activity_index] = finish;
+        scheduled_start[activity_index] = start_from_finish(calendar, finish, duration)?;
     }
 
     // Float values and the critical set.
@@ -365,6 +504,8 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
             early_finish: early_finish[activity_index],
             late_start: late_start[activity_index],
             late_finish: late_finish[activity_index],
+            scheduled_start: scheduled_start[activity_index],
+            scheduled_finish: scheduled_finish[activity_index],
             total_float,
             free_float,
             critical: total_float <= 0,
@@ -545,7 +686,7 @@ fn lag_plus_one(lag: i64) -> Result<i64, SchedError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Activity, LinkType, Relationship};
+    use crate::model::{Activity, Constraint, LinkType, Relationship};
     use time::Month;
 
     fn jan(day: u8) -> Date {
@@ -968,5 +1109,165 @@ mod tests {
                 wbs: WbsId(99),
             })
         );
+    }
+
+    fn constrain(project: &mut Project, id: ActivityId, constraint: Constraint) {
+        project
+            .activity_mut(id)
+            .expect("activity exists")
+            .constraint = constraint;
+    }
+
+    #[test]
+    fn start_no_earlier_than_delays_the_activity() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 2);
+        constrain(&mut project, a, Constraint::StartNoEarlierThan(jan(7)));
+
+        let schedule = schedule(&project).expect("schedule succeeds");
+        let a_result = result(&schedule, a);
+
+        assert_eq!(a_result.early_start, jan(7));
+        assert_eq!(a_result.early_finish, jan(8));
+        assert_eq!(a_result.scheduled_start, jan(7));
+        assert_eq!(a_result.scheduled_finish, jan(8));
+        assert_eq!(a_result.total_float, 0);
+        assert_eq!(schedule.project_start, jan(7));
+        assert_eq!(schedule.project_finish, jan(8));
+    }
+
+    #[test]
+    fn finish_no_earlier_than_raises_the_forward_dates() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 1);
+        let c = add_activity(&mut project, 2, "C", 5);
+        constrain(&mut project, a, Constraint::FinishNoEarlierThan(jan(7)));
+
+        let schedule = schedule(&project).expect("schedule succeeds");
+
+        assert_eq!(result(&schedule, a).early_start, jan(7));
+        assert_eq!(result(&schedule, a).early_finish, jan(7));
+        assert_eq!(result(&schedule, a).scheduled_start, jan(7));
+        assert_eq!(schedule.project_finish, jan(9));
+        assert!(result(&schedule, c).critical);
+    }
+
+    #[test]
+    fn finish_no_later_than_caps_late_dates() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 2);
+        add_activity(&mut project, 2, "C", 5);
+        constrain(&mut project, a, Constraint::FinishNoLaterThan(jan(9)));
+
+        let schedule = schedule(&project).expect("schedule succeeds");
+        let a_result = result(&schedule, a);
+
+        assert_eq!(a_result.early_start, jan(5));
+        assert_eq!(a_result.early_finish, jan(6));
+        assert_eq!(a_result.late_finish, jan(9));
+        assert_eq!(a_result.late_start, jan(8));
+        assert_eq!(a_result.total_float, 3);
+        assert_eq!(a_result.scheduled_start, jan(5));
+    }
+
+    #[test]
+    fn start_no_later_than_limits_float() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 1);
+        add_activity(&mut project, 2, "C", 5);
+        constrain(&mut project, a, Constraint::StartNoLaterThan(jan(7)));
+
+        let schedule = schedule(&project).expect("schedule succeeds");
+        let a_result = result(&schedule, a);
+
+        assert_eq!(a_result.late_start, jan(7));
+        assert_eq!(a_result.late_finish, jan(7));
+        assert_eq!(a_result.total_float, 2);
+        assert_eq!(a_result.scheduled_start, jan(5));
+    }
+
+    #[test]
+    fn an_unsatisfiable_upper_bound_is_reported() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 5);
+        let constraint = Constraint::FinishNoLaterThan(jan(7));
+        constrain(&mut project, a, constraint);
+
+        assert_eq!(
+            schedule(&project),
+            Err(SchedError::ConstraintViolated {
+                activity: a,
+                constraint,
+            })
+        );
+    }
+
+    #[test]
+    fn alap_uses_late_dates_without_delaying_the_project() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 1);
+        let c = add_activity(&mut project, 2, "C", 5);
+        constrain(&mut project, a, Constraint::AsLateAsPossible);
+
+        let schedule = schedule(&project).expect("schedule succeeds");
+        let a_result = result(&schedule, a);
+
+        assert_eq!(a_result.early_start, jan(5));
+        assert_eq!(a_result.early_finish, jan(5));
+        assert_eq!(a_result.late_start, jan(9));
+        assert_eq!(a_result.scheduled_start, jan(9));
+        assert_eq!(a_result.scheduled_finish, jan(9));
+        assert_eq!(a_result.total_float, 4);
+        assert_eq!(result(&schedule, c).scheduled_start, jan(5));
+        assert_eq!(schedule.project_finish, jan(9));
+    }
+
+    #[test]
+    fn alap_predecessor_does_not_delay_an_asap_successor() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 1);
+        let b = add_activity(&mut project, 2, "B", 1);
+        add_activity(&mut project, 3, "C", 5);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+        constrain(&mut project, a, Constraint::AsLateAsPossible);
+
+        let schedule = schedule(&project).expect("schedule succeeds");
+
+        assert_eq!(result(&schedule, a).late_start, jan(8));
+        assert_eq!(result(&schedule, a).scheduled_start, jan(5));
+        assert_eq!(result(&schedule, b).scheduled_start, jan(6));
+        assert_eq!(schedule.project_finish, jan(9));
+    }
+
+    #[test]
+    fn alap_successor_moves_to_its_late_date() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 1);
+        let b = add_activity(&mut project, 2, "B", 1);
+        add_activity(&mut project, 3, "C", 5);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+        constrain(&mut project, b, Constraint::AsLateAsPossible);
+
+        let schedule = schedule(&project).expect("schedule succeeds");
+
+        assert_eq!(result(&schedule, a).scheduled_start, jan(5));
+        assert_eq!(result(&schedule, b).scheduled_start, jan(9));
+        assert!(result(&schedule, b).scheduled_start > result(&schedule, a).scheduled_finish);
+        assert_eq!(schedule.project_finish, jan(9));
+    }
+
+    #[test]
+    fn constraint_dates_use_the_activity_calendar() {
+        let mut project = Project::new("Constraint calendar", jan(10)); // Saturday
+        add_named_calendar(&mut project, 1, "Six day", six_day_week());
+        let a = add_activity(&mut project, 1, "A", 1);
+        project.activity_mut(a).expect("a").calendar = Some(CalendarId(1));
+        constrain(&mut project, a, Constraint::StartNoEarlierThan(jan(10)));
+
+        let schedule = schedule(&project).expect("schedule succeeds");
+
+        assert_eq!(result(&schedule, a).early_start, jan(10)); // Saturday
+        assert_eq!(result(&schedule, a).early_finish, jan(10));
+        assert_eq!(schedule.project_start, jan(10));
     }
 }
