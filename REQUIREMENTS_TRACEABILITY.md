@@ -17,7 +17,7 @@ requirement lives.
 | R9 | Multiple named calendars, per-activity selection | `cadence-core/src/calendar_set.rs`, engine per-activity resolution | `calendar_set.rs` tests, mixed-calendar engine tests, commands tests | done |
 | R10 | SQLite project-file persistence | `cadence-persistence/src/lib.rs` (versioned schema, transactional save/load) | persistence unit tests (full round-trip, overwrite, missing file, newer schema, dangling references, invalid data) | done |
 | R11 | Constraints (ASAP/ALAP, dates) | `cadence-core/src/model.rs` (`Constraint`), `engine.rs` (constraint-aware passes), `cadence-commands` (`SetActivityConstraint`), persistence schema v2 | engine constraint tests, command undo test, persistence round-trip and v1→v2 migration test | done |
-| R12 | Property-based engine tests | *pending slice P1-6* | — | todo |
+| R12 | Property-based engine tests | `crates/core/tests/properties.rs` (proptest) | 5 property tests covering calendar invariants, DAG scheduling, ALAP, constraints | done |
 | R13 | Interactive Gantt + activity table | Phase 2 slices | — | todo |
 | R14 | Design system, light/dark, keyboard, a11y | Phase 2/3 slices | QC checklists | todo |
 | R15 | Resources: dictionary, assignments, histograms, leveling | Phase 3 slices | — | todo |

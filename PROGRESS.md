@@ -3,6 +3,18 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-21 — P1-6 property-based tests + Phase-1 QC gate
+
+- Added `crates/core/tests/properties.rs` (proptest): working-day invariants
+  for arbitrary DAGs, relationship logic and non-negative float, ALAP
+  preservation of bounds/logic/project finish, constraint acceptance or
+  violation, and calendar arithmetic round-trips.
+- Fixed a mixed-calendar backward-pass bug found by the property tests:
+  late finish is now normalised to the activity's own working calendar even
+  for non-terminal activities.
+- Recorded the Phase-1 QC gate in `docs/qc/phase-1.md`.
+- CI green on `main` (run 39576146773, 89 tests + proptest cases).
+
 ## 2026-10-21 — P1-5 constraints
 
 - Activities carry a `Constraint`: ASAP (default), ALAP, and start/finish
@@ -58,5 +70,5 @@ green CI (`main` branch).
 
 ## Next slice
 
-- P1-6: property-based engine tests (arbitrary graphs and calendar maths),
-  then the Phase-1 QC gate.
+- Phase 2 (P2-1..): egui/eframe app shell, design system, then Gantt and
+  tables. No further Phase-1 work remains.

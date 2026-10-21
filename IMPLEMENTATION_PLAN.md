@@ -22,8 +22,8 @@ are subdivided into slices below.
       cross-calendar scheduling convention
 - [x] P1-4: SQLite persistence for projects (open schema, versioned)
 - [x] P1-5: Constraints (ASAP/ALAP, date constraints) in the engine
-- [ ] P1-6: Property-based engine tests (arbitrary graphs, calendar maths)
-- [ ] P1-7: Phase-1 QC gate (checklist in `docs/qc/`)
+- [x] P1-6: Property-based engine tests (arbitrary graphs, calendar maths)
+- [x] P1-7: Phase-1 QC gate (checklist in `docs/qc/`)
 
 ## Phase 2 — Gantt & tables
 

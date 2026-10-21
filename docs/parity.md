@@ -34,7 +34,8 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | Constraints (ASAP/ALAP, dates) | done | SNET/SNLT/FNET/FNLT date bounds, scheduled vs early/late dates, undoable command |
 | Total float / free float / critical path | done | critical activity set ordered by early start; longest-path extraction later |
 | Cycle detection & diagnostics | done | Kahn + DFS path, reported as `SchedError::Cycle` |
-| Property-based engine tests | todo | unit coverage in core and commands |
+| Property-based engine tests | done | `crates/core/tests/properties.rs` (proptest) |
+| Phase-1 QC gate | done | `docs/qc/phase-1.md` |
 | Serde round-trip for model/schedule | done | project, link types, schedule |
 
 ## Phase 2 — Gantt & tables
