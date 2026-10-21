@@ -42,8 +42,8 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 
 | Capability | Status | Notes |
 |---|---|---|
-| Interactive Gantt | todo | egui/eframe, custom rendering |
-| Activity table | todo | |
+| Interactive Gantt | in progress | app shell landed (P2-1); rendering follows |
+| Activity table | in progress | schedule grid landed (P2-1); editing follows |
 | Dependency editing | todo | |
 | Zoom / pan | todo | |
 | Light + dark design system | todo | |

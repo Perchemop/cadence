@@ -3,6 +3,13 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-21 — P2-1 egui app shell
+
+- Added `cadence-ui-egui` crate with design tokens, light/dark theme
+  switching, and a window rendering the project and scheduled dates.
+- CLI gains `cadence gui [file]` (demo if no file).
+- CI green on `main` (run 39577082469).
+
 ## 2026-10-21 — P1-6 property-based tests + Phase-1 QC gate
 
 - Added `crates/core/tests/properties.rs` (proptest): working-day invariants

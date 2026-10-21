@@ -11,8 +11,8 @@ follows Keep a Changelog; releases use git tags.
   (typed commands, undo/redo), `cadence-persistence`, `cadence-app` (CLI)
 - CPM engine: forward/backward pass, FS/SS/FF/SF with lag/lead, total and
   free float, critical set, cycle detection with path diagnostics
-- Property-based engine tests (proptest) for arbitrary DAGs, calendar
-  arithmetic, ALAP, and constraints
+- egui/eframe app shell with design tokens and light/dark theme switching
+- CLI `gui [file]` command opening a window over the demo or a project file
 - Phase-1 QC gate recorded in `docs/qc/phase-1.md`
 - SQLite project files: relational schema versioned with `PRAGMA user_version`,
   transactional save/load, validation of dangling references, in-place
