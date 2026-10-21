@@ -20,6 +20,7 @@ Usage:
   cadence               Run the built-in demo project
   cadence save <file>   Save the demo project to a SQLite project file
   cadence load <file>   Load a project file and print its schedule
+  cadence gui [file]    Open the project in the GUI (demo if no file)
   cadence --help        Show this help
 ";
 
@@ -33,6 +34,8 @@ fn main() -> ExitCode {
         }
         [command, path] if command == "save" => save_demo(path),
         [command, path] if command == "load" => load_and_print(path),
+        [command] if command == "gui" => gui_demo(),
+        [command, path] if command == "gui" => gui_file(path),
         _ => {
             eprint!("{USAGE}");
             Err("invalid arguments".to_string())
@@ -67,6 +70,16 @@ fn load_and_print(path: &str) -> Result<(), String> {
     let schedule = schedule(&project).map_err(|error| error.to_string())?;
     print_schedule(&project, &schedule);
     Ok(())
+}
+
+fn gui_demo() -> Result<(), String> {
+    let project = demo_project()?;
+    cadence_ui_egui::run(project)
+}
+
+fn gui_file(path: &str) -> Result<(), String> {
+    let project = cadence_persistence::load_project(path).map_err(|error| error.to_string())?;
+    cadence_ui_egui::run(project)
 }
 
 fn demo_project() -> Result<Project, String> {

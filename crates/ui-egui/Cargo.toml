@@ -1,0 +1,16 @@
+[package]
+name = "cadence-ui-egui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "egui/eframe user interface for Cadence"
+
+[dependencies]
+cadence-core.workspace = true
+cadence-commands.workspace = true
+cadence-persistence.workspace = true
+eframe.workspace = true
+egui.workspace = true

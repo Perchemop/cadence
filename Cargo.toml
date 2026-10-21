@@ -5,6 +5,7 @@ members = [
     "crates/commands",
     "crates/persistence",
     "crates/app",
+    "crates/ui-egui",
 ]
 
 [workspace.package]
@@ -19,6 +20,7 @@ repository = "https://github.com/Perchemop/cadence"
 cadence-core = { path = "crates/core" }
 cadence-commands = { path = "crates/commands" }
 cadence-persistence = { path = "crates/persistence" }
+cadence-ui-egui = { path = "crates/ui-egui" }
 
 time = { version = "0.3", features = ["formatting", "parsing", "serde"] }
 serde = { version = "1", features = ["derive"] }
@@ -26,6 +28,8 @@ serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 thiserror = "2"
 proptest = "1"
+eframe = "0.35"
+egui = "0.35"
 
 [profile.release]
 lto = "thin"
