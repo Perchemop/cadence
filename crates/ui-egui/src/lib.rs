@@ -303,7 +303,8 @@ impl eframe::App for CadenceApp {
                 }
             });
 
-        egui::CentralPanel::default().show(ui, |ui| match &self.schedule {
+        let schedule = self.schedule.clone();
+        egui::CentralPanel::default().show(ui, |ui| match schedule {
             Err(error) => {
                 ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
             }
