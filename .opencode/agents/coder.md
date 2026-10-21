@@ -1,7 +1,7 @@
 ---
 description: Cadence implementation specialist. Writes focused code + tests, follows project conventions.
 mode: subagent
-model: opencode/glm-5.3-flash-free#high
+model: opencode/big-pickle
 ---
 You implement one vertical slice at a time in the **Cadence** Rust workspace.
 

@@ -1,7 +1,6 @@
 ---
 description: Fast read-only exploration of the Cadence codebase.
 mode: subagent
-model: opencode/mimo-v2.6-flash-free
 permission:
   edit: deny
   bash: deny

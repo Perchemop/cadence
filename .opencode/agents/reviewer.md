@@ -1,7 +1,6 @@
 ---
 description: Read-only review of Cadence changes. Reports issues, risks, missing tests.
 mode: subagent
-model: opencode/beam-free#high
 permission:
   edit: deny
   bash: deny
