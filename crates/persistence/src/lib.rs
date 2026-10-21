@@ -63,7 +63,7 @@ CREATE TABLE activities (
     duration   INTEGER NOT NULL,
     wbs_id     INTEGER REFERENCES wbs_nodes(id),
     calendar_id INTEGER REFERENCES calendars(id),
-    constraint TEXT    NOT NULL DEFAULT 'asap',
+    constraint_kind TEXT NOT NULL DEFAULT 'asap',
     constraint_date TEXT,
     position   INTEGER NOT NULL
 );
@@ -156,7 +156,7 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
             // Version 2 adds activity constraints. Existing activities keep
             // the historical behaviour (as soon as possible).
             connection.execute_batch(
-                "ALTER TABLE activities ADD COLUMN constraint TEXT NOT NULL DEFAULT 'asap';
+                "ALTER TABLE activities ADD COLUMN constraint_kind TEXT NOT NULL DEFAULT 'asap';
                  ALTER TABLE activities ADD COLUMN constraint_date TEXT;
                  PRAGMA user_version = 2;",
             )?;
@@ -276,7 +276,7 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
         let constraint_date = activity.constraint.date().map(|date| date.to_string());
         transaction.execute(
             "INSERT INTO activities
-                (id, name, duration, wbs_id, calendar_id, constraint, constraint_date, position)
+                (id, name, duration, wbs_id, calendar_id, constraint_kind, constraint_date, position)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 to_sql_id(activity.id.0, "activity")?,
@@ -455,7 +455,7 @@ fn read_wbs(connection: &Connection) -> Result<WbsTree> {
 fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
     let rows = collect_rows(
         connection,
-        "SELECT id, name, duration, wbs_id, calendar_id, constraint, constraint_date
+        "SELECT id, name, duration, wbs_id, calendar_id, constraint_kind, constraint_date
          FROM activities ORDER BY position",
         |row| {
             Ok((
@@ -801,7 +801,7 @@ mod tests {
             // Turn the current schema into the version 1 shape.
             connection
                 .execute_batch(
-                    "ALTER TABLE activities DROP COLUMN constraint;
+                    "ALTER TABLE activities DROP COLUMN constraint_kind;
                      ALTER TABLE activities DROP COLUMN constraint_date;
                      PRAGMA user_version = 1;",
                 )
