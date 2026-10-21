@@ -871,7 +871,7 @@ mod tests {
     fn successor_uses_its_own_calendar_for_start_and_finish() {
         let mut project = project();
         let six_day = add_named_calendar(&mut project, 1, "Six day", six_day_week());
-        let a = add_activity(&mut project, 1, "A", 1); // Mon 5 Jan
+        let a = add_activity(&mut project, 1, "A", 5); // Mon 5 Jan – Fri 9 Jan
         let b = add_activity(&mut project, 2, "B", 2);
         project.activity_mut(b).expect("b").calendar = Some(six_day);
         add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
@@ -880,13 +880,14 @@ mod tests {
         let a_result = result(&schedule, a);
         let b_result = result(&schedule, b);
 
-        assert_eq!(a_result.early_finish, jan(5));
+        assert_eq!(a_result.early_finish, jan(9));
         assert_eq!(b_result.early_start, jan(10)); // Saturday
         assert_eq!(b_result.early_finish, jan(12)); // Sunday skipped
         assert_eq!(schedule.project_finish, jan(12));
-        // B's six-day week pushes its start to Saturday, giving A four days of
-        // float.
-        assert_eq!(a_result.total_float, 4);
+        // B's six-day week starts the day after A finishes, so both are
+        // critical despite the different calendars.
+        assert_eq!(a_result.total_float, 0);
+        assert!(a_result.critical);
         assert!(b_result.critical);
     }
 
