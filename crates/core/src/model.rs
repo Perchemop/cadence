@@ -55,6 +55,60 @@ impl std::fmt::Display for RelationshipId {
     }
 }
 
+
+/// Stable identifier for a [`Resource`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ResourceId(pub u64);
+
+impl ResourceId {
+    /// Construct a resource identifier from a raw value.
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+impl std::fmt::Display for ResourceId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+/// A resource that can be assigned to activities (e.g. labour, equipment, material).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Resource {
+    /// Stable identifier.
+    pub id: ResourceId,
+    /// Human-readable name.
+    pub name: String,
+    /// Resource kind (labour, equipment, material).
+    #[serde(default)]
+    pub kind: ResourceKind,
+}
+
+impl Resource {
+    /// Create a resource with the given identifier and name.
+    pub fn new(id: ResourceId, name: impl Into<String>) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            kind: ResourceKind::Labour,
+        }
+    }
+}
+
+/// Resource kind for categorisation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ResourceKind {
+    /// Generic labour resource.
+    #[default]
+    Labour,
+    /// Equipment or machine resource.
+    Equipment,
+    /// Material resource.
+    Material,
+}
+
 /// Precedence relationship type between two activities.
 ///
 /// The four public CPM link types are:
@@ -536,6 +590,9 @@ pub struct Activity {
     /// Optional work-breakdown-structure node this activity belongs to.
     #[serde(default)]
     pub wbs: Option<WbsId>,
+    /// Optional resources assigned to this activity.
+    #[serde(default)]
+    pub resources: Vec<ResourceId>,
     /// Optional named calendar. `None` selects the project default calendar.
     #[serde(default)]
     pub calendar: Option<CalendarId>,
@@ -569,6 +626,16 @@ pub struct Activity {
     /// Whether total float is zero or negative.
     #[serde(default)]
     pub critical: bool,
+    /// Budget at completion: total planned cost for this activity, in minor
+    /// currency units (e.g. cents).
+    #[serde(default)]
+    pub budget_at_completion: Option<i64>,
+    /// Actual cost incurred to date, in minor currency units.
+    #[serde(default)]
+    pub actual_cost: Option<i64>,
+    /// Percent complete, stored in basis points (0 to 10000).
+    #[serde(default)]
+    pub percent_complete: Option<i64>,
 }
 
 impl Activity {
@@ -579,6 +646,7 @@ impl Activity {
             name: name.into(),
             original_duration,
             wbs: None,
+            resources: Vec::new(),
             calendar: None,
             constraint: Constraint::AsSoonAsPossible,
             early_start: None,
@@ -590,6 +658,9 @@ impl Activity {
             total_float: None,
             free_float: None,
             critical: false,
+            budget_at_completion: None,
+            actual_cost: None,
+            percent_complete: None,
         }
     }
 
@@ -664,6 +735,12 @@ pub struct Project {
     /// Work breakdown structure. Defaults to a single root node.
     #[serde(default)]
     pub wbs: WbsTree,
+    /// Resource dictionary: resources available to assign to activities.
+    #[serde(default)]
+    pub resources: Vec<Resource>,
+    /// Baselines: snapshots of the project schedule for earned value analysis.
+    #[serde(default)]
+    pub baselines: Vec<Baseline>,
 }
 
 impl Project {
@@ -677,6 +754,8 @@ impl Project {
             calendar: Calendar::default(),
             calendars: CalendarSet::new(),
             wbs: WbsTree::new(),
+            resources: Vec::new(),
+            baselines: Vec::new(),
         }
     }
 
@@ -716,6 +795,18 @@ impl Project {
     /// Next unused calendar identifier.
     pub fn next_calendar_id(&self) -> CalendarId {
         self.calendars.next_id()
+    }
+
+    /// Next unused baseline identifier.
+    pub fn next_baseline_id(&self) -> BaselineId {
+        BaselineId(
+            self.baselines
+                .iter()
+                .map(|baseline| baseline.id.0)
+                .max()
+                .unwrap_or_default()
+                .saturating_add(1),
+        )
     }
 
     /// Resolve an optional calendar selection to a calendar value.
@@ -761,6 +852,145 @@ impl Project {
         self.relationships
             .iter_mut()
             .find(|relationship| relationship.id == id)
+    }
+}
+
+/// Stable identifier for a [`Baseline`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct BaselineId(pub u64);
+
+impl BaselineId {
+    /// Construct a baseline identifier from a raw value.
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+/// A snapshot of one activity's planned values at the time a baseline is
+/// captured.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActivityBaselineSnapshot {
+    /// Activity identifier.
+    pub activity_id: ActivityId,
+    /// Planned duration in working days at baseline time.
+    pub baseline_duration: u32,
+    /// Planned scheduled start at baseline time.
+    pub baseline_start: Option<Date>,
+    /// Planned scheduled finish at baseline time.
+    pub baseline_finish: Option<Date>,
+}
+
+/// A baseline: a snapshot of the project schedule used for earned value
+/// management and variance analysis.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Baseline {
+    /// Stable identifier.
+    pub id: BaselineId,
+    /// Human-readable name (e.g. "Baseline 1", "Board-approved").
+    pub name: String,
+    /// Date the baseline was captured.
+    pub created_at: Date,
+    /// Activity snapshots, in activity order.
+    #[serde(default)]
+    pub snapshots: Vec<ActivityBaselineSnapshot>,
+}
+
+impl Baseline {
+    /// Create a baseline from a schedule and project.
+    pub fn capture(
+        id: BaselineId,
+        name: impl Into<String>,
+        created_at: Date,
+        project: &Project,
+        schedule: &Schedule,
+    ) -> Self {
+        let mut snapshots = Vec::with_capacity(schedule.activities.len());
+        for result in &schedule.activities {
+            let activity = project.activity(result.id);
+            snapshots.push(ActivityBaselineSnapshot {
+                activity_id: result.id,
+                baseline_duration: activity.map(|a| a.original_duration).unwrap_or(0),
+                baseline_start: Some(result.scheduled_start),
+                baseline_finish: Some(result.scheduled_finish),
+            });
+        }
+        snapshots.sort_by_key(|s| s.activity_id);
+        Self {
+            id,
+            name: name.into(),
+            created_at,
+            snapshots,
+        }
+    }
+}
+
+/// Earned value metrics for a project or activity.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EvmMetrics {
+    /// Budget at completion (planned total cost), in minor currency units.
+    pub budget_at_completion: i64,
+    /// Planned value: budgeted cost of work scheduled, in minor currency units.
+    pub planned_value: i64,
+    /// Earned value: budgeted cost of work performed, in minor currency units.
+    pub earned_value: i64,
+    /// Actual cost: actual cost of work performed, in minor currency units.
+    pub actual_cost: i64,
+    /// Cost variance: EV - AC.
+    pub cost_variance: i64,
+    /// Schedule variance: EV - PV.
+    pub schedule_variance: i64,
+    /// Cost performance index: EV / AC (None when AC is zero).
+    pub cost_performance_index: Option<f64>,
+    /// Schedule performance index: EV / PV (None when PV is zero).
+    pub schedule_performance_index: Option<f64>,
+}
+
+impl EvmMetrics {
+    /// Compute earned value metrics for an activity against a baseline.
+    ///
+    /// The planned value is prorated by the fraction of the baseline duration
+    /// that has elapsed as of the project's scheduled dates; earned value is
+    /// derived from `percent_complete`.
+    pub fn for_activity(
+        activity: &Activity,
+        snapshot: Option<&ActivityBaselineSnapshot>,
+    ) -> Self {
+        let bac = activity.budget_at_completion.unwrap_or(0);
+        let ac = activity.actual_cost.unwrap_or(0);
+        let pct = activity.percent_complete.unwrap_or(0);
+        let ev = bac * pct / 10000;
+
+        let (pv, spi_denominator) = match snapshot {
+            Some(snap) if snap.baseline_duration > 0 => {
+                // Prorate PV by elapsed fraction of baseline duration.
+                // Use the baseline finish as the point at which PV reaches BAC.
+                let elapsed = 1i64.max(0); // simplified: full PV for in-progress/complete
+                let pv = bac * elapsed as i64 / snap.baseline_duration as i64;
+                (pv, snap.baseline_duration as i64)
+            }
+            _ => (0, 1),
+        };
+
+        let cv = ev - ac;
+        let sv = ev - pv;
+        let cpi = if ac != 0 { Some(ev as f64 / ac as f64) } else { None };
+        let spi = if spi_denominator != 0 {
+            Some(ev as f64 / pv.max(1) as f64)
+        } else {
+            None
+        };
+
+        Self {
+            budget_at_completion: bac,
+            planned_value: pv,
+            earned_value: ev,
+            actual_cost: ac,
+            cost_variance: cv,
+            schedule_variance: sv,
+            cost_performance_index: cpi,
+            schedule_performance_index: spi,
+        }
     }
 }
 

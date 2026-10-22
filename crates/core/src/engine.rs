@@ -48,15 +48,16 @@
 //! successor's scheduled date would otherwise be violated; precedence always
 //! wins over the ALAP preference.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use time::Date;
+use time::{Date, Duration};
 
 use crate::calendar_set::CalendarId;
 use crate::model::{
-    ActivityId, Calendar, CalendarError, Constraint, LinkType, Project, RelationshipId,
+    ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, CalendarError,
+    Constraint, EvmMetrics, LinkType, Project, RelationshipId, ResourceId,
 };
 use crate::wbs::WbsId;
 
@@ -183,6 +184,152 @@ impl Schedule {
                 activity.critical = result.critical;
             }
         }
+    }
+}
+
+/// A single resource unit assigned to an activity on a given day.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResourceAssignment {
+    /// Resource identifier.
+    pub resource_id: ResourceId,
+    /// Activity identifier using the resource.
+    pub activity_id: ActivityId,
+}
+
+/// Resource histogram: for each working day in the project window, the set of
+/// (resource, activity) pairs actively consuming that resource.
+///
+/// Each activity with assigned resources contributes one entry per resource for
+/// every working day between its scheduled start and scheduled finish
+/// (inclusive). Activities with no scheduled dates or no resources contribute
+/// nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ResourceHistogram {
+    /// Working days to resource assignments active on that day, in chronological
+    /// order.
+    pub entries: BTreeMap<Date, Vec<ResourceAssignment>>,
+}
+
+impl ResourceHistogram {
+    /// Number of distinct working days with at least one resource active.
+    pub fn days_with_usage(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Resources active on a given date, in insertion order.
+    pub fn assignments_on(&self, date: Date) -> Option<&Vec<ResourceAssignment>> {
+        self.entries.get(&date)
+    }
+}
+
+/// Build a resource histogram from a schedule and project.
+///
+/// For every activity that has scheduled dates and at least one assigned
+/// resource, emit an entry for each working day between its scheduled start and
+/// scheduled finish (inclusive) under the activity's own calendar.
+pub fn resource_histogram(project: &Project, schedule: &Schedule) -> ResourceHistogram {
+    let mut histogram = ResourceHistogram::default();
+
+    for result in &schedule.activities {
+        let Some(activity) = project.activity(result.id) else {
+            continue;
+        };
+        if activity.resources.is_empty() {
+            continue;
+        }
+
+        let calendar = match activity.calendar {
+            None => &project.calendar,
+            Some(id) => project
+                .calendars
+                .calendar(id)
+                .unwrap_or(&project.calendar),
+        };
+
+        let mut day = result.scheduled_start;
+        let finish = result.scheduled_finish;
+        while day <= finish {
+            if calendar.is_working_day(day) {
+                for &resource_id in &activity.resources {
+                    histogram
+                        .entries
+                        .entry(day)
+                        .or_default()
+                        .push(ResourceAssignment {
+                            resource_id,
+                            activity_id: result.id,
+                        });
+                }
+            }
+            day = day
+                .checked_add(Duration::days(1))
+                .expect("resource histogram date overflow");
+        }
+    }
+
+    histogram
+}
+
+/// Compute earned value metrics for the whole project against a baseline.
+///
+/// Aggregates per-activity [`EvmMetrics`] using [`Baseline`] snapshots as the
+/// planned-value reference. When no baseline is supplied, planned value is
+/// derived from the activity's own budget-at-completion.
+pub fn evm_metrics(
+    project: &Project,
+    schedule: &Schedule,
+    baseline: Option<&Baseline>,
+) -> EvmMetrics {
+    let mut total_bac = 0i64;
+    let mut total_pv = 0i64;
+    let mut total_ev = 0i64;
+    let mut total_ac = 0i64;
+
+    // Index baseline snapshots by activity id for quick lookup.
+    let snapshots: Option<std::collections::HashMap<ActivityId, &ActivityBaselineSnapshot>> =
+        baseline.map(|b| {
+            b.snapshots
+                .iter()
+                .map(|s| (s.activity_id, s))
+                .collect()
+        });
+
+    for result in &schedule.activities {
+        let Some(activity) = project.activity(result.id) else {
+            continue;
+        };
+        let snapshot = snapshots
+            .as_ref()
+            .and_then(|map| map.get(&result.id).copied());
+        let metrics = EvmMetrics::for_activity(activity, snapshot);
+        total_bac += metrics.budget_at_completion;
+        total_pv += metrics.planned_value;
+        total_ev += metrics.earned_value;
+        total_ac += metrics.actual_cost;
+    }
+
+    let cv = total_ev - total_ac;
+    let sv = total_ev - total_pv;
+    let cpi = if total_ac != 0 {
+        Some(total_ev as f64 / total_ac as f64)
+    } else {
+        None
+    };
+    let spi = if total_pv != 0 {
+        Some(total_ev as f64 / total_pv as f64)
+    } else {
+        None
+    };
+
+    EvmMetrics {
+        budget_at_completion: total_bac,
+        planned_value: total_pv,
+        earned_value: total_ev,
+        actual_cost: total_ac,
+        cost_variance: cv,
+        schedule_variance: sv,
+        cost_performance_index: cpi,
+        schedule_performance_index: spi,
     }
 }
 
@@ -686,7 +833,7 @@ fn lag_plus_one(lag: i64) -> Result<i64, SchedError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Activity, Constraint, LinkType, Relationship};
+    use crate::model::{Activity, Constraint, LinkType, Relationship, Resource};
     use std::time::Instant;
     use time::Month;
 
@@ -1299,5 +1446,79 @@ mod tests {
             "scheduling 10,000 activities took {} ms",
             elapsed.as_millis()
         );
+    }
+
+    fn add_resource(project: &mut Project, id: u64, name: &str) -> ResourceId {
+        let resource_id = ResourceId(id);
+        project.resources.push(Resource::new(resource_id, name));
+        resource_id
+    }
+
+    #[test]
+    fn resource_histogram_counts_assigned_days() {
+        let mut project = project();
+        let a1 = add_activity(&mut project, 1, "A1", 2);
+        let a2 = add_activity(&mut project, 2, "A2", 1);
+        let r1 = add_resource(&mut project, 1, "Resource one");
+        let r2 = add_resource(&mut project, 2, "Resource two");
+
+        project.activities[0].resources.push(r1);
+        project.activities[1].resources.push(r2);
+        project
+            .relationships
+            .push(Relationship::new(RelationshipId(1), a1, a2, LinkType::Fs, 0));
+
+        let schedule = schedule(&project).expect("schedule");
+        let histogram = resource_histogram(&project, &schedule);
+
+        assert_eq!(histogram.days_with_usage(), 3);
+
+        let jan5 = jan(5);
+        let jan6 = jan(6);
+        let jan7 = jan(7);
+
+        assert_eq!(
+            histogram.assignments_on(jan5),
+            Some(&vec![ResourceAssignment {
+                resource_id: r1,
+                activity_id: a1,
+            }])
+        );
+        assert_eq!(
+            histogram.assignments_on(jan6),
+            Some(&vec![ResourceAssignment {
+                resource_id: r1,
+                activity_id: a1,
+            }])
+        );
+        assert_eq!(
+            histogram.assignments_on(jan7),
+            Some(&vec![ResourceAssignment {
+                resource_id: r2,
+                activity_id: a2,
+            }])
+        );
+        assert!(histogram.assignments_on(jan(4)).is_none());
+    }
+
+    #[test]
+    fn resource_histogram_skips_unscheduled_and_unassigned_activities() {
+        let mut project = project();
+        let scheduled = add_activity(&mut project, 1, "Scheduled", 2);
+        let unscheduled = add_activity(&mut project, 2, "Unscheduled", 2);
+        let no_resources = add_activity(&mut project, 3, "No resources", 2);
+        let r = add_resource(&mut project, 1, "R");
+
+        project.activities[0].resources.push(r);
+        project.resources.push(Resource::new(ResourceId(2), "Unused"));
+
+        let schedule = schedule(&project).expect("schedule");
+        let histogram = resource_histogram(&project, &schedule);
+
+        // Only activity 1 has resources and scheduled dates.
+        assert_eq!(histogram.days_with_usage(), 2);
+        assert!(histogram.assignments_on(jan(5)).is_some());
+        assert!(histogram.assignments_on(jan(6)).is_some());
+        assert!(histogram.assignments_on(jan(7)).is_none());
     }
 }

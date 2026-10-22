@@ -10,10 +10,13 @@
 //! never need to inspect project state heuristically.
 
 use cadence_core::calendar_set::{CalendarId, NamedCalendar};
+use cadence_core::engine::schedule;
 use cadence_core::model::{
-    Activity, ActivityId, Calendar, Constraint, LinkType, Project, Relationship, RelationshipId,
+    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, Project,
+    Relationship, RelationshipId, ResourceId,
 };
 use cadence_core::wbs::{WbsId, WbsNode};
+use time::Date;
 
 /// A reversible mutation of a [`Project`].
 pub trait Command {
@@ -500,6 +503,99 @@ impl Command for SetActivityConstraint {
         Ok(Box::new(SetActivityConstraint {
             id: self.id,
             constraint: previous,
+        }))
+    }
+}
+
+
+/// Add a resource to an activity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddResourceToActivity {
+    /// Activity to which the resource is added.
+    pub activity_id: ActivityId,
+    /// Resource to add.
+    pub resource_id: ResourceId,
+}
+
+impl Command for AddResourceToActivity {
+    fn description(&self) -> String {
+        format!(
+            "add resource {} to activity {}",
+            self.resource_id, self.activity_id
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.activity_id) else {
+            return Err(format!("activity {} does not exist", self.activity_id));
+        };
+        if activity.resources.contains(&self.resource_id) {
+            return Err(format!("activity {} already has resource {}", self.activity_id, self.resource_id));
+        }
+        activity.resources.push(self.resource_id);
+        activity.clear_schedule();
+        Ok(Box::new(AddResourceToActivity {
+            activity_id: self.activity_id,
+            resource_id: self.resource_id,
+        }))
+    }
+}
+
+/// Remove a resource from an activity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoveResourceFromActivity {
+    /// Activity from which the resource is removed.
+    pub activity_id: ActivityId,
+    /// Resource to remove.
+    pub resource_id: ResourceId,
+}
+
+impl Command for RemoveResourceFromActivity {
+    fn description(&self) -> String {
+        format!(
+            "remove resource {} from activity {}",
+            self.resource_id, self.activity_id
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.activity_id) else {
+            return Err(format!("activity {} does not exist", self.activity_id));
+        };
+        if !activity.resources.contains(&self.resource_id) {
+            return Err(format!("activity {} does not have resource {}", self.activity_id, self.resource_id));
+        }
+        activity.resources.retain(|&id| id != self.resource_id);
+        activity.clear_schedule();
+        Ok(Box::new(RemoveResourceFromActivity {
+            activity_id: self.activity_id,
+            resource_id: self.resource_id,
+        }))
+    }
+}
+
+/// Capture a baseline snapshot of the current schedule.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaptureBaseline {
+    /// Name of the baseline (e.g. "Baseline 1", "Board-approved").
+    pub name: String,
+    /// Date the baseline is captured as of.
+    pub created_at: Date,
+}
+
+impl Command for CaptureBaseline {
+    fn description(&self) -> String {
+        format!("capture baseline '{}'", self.name)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let schedule = schedule(project).map_err(|error| error.to_string())?;
+        let id = project.next_baseline_id();
+        let baseline = Baseline::capture(id, &self.name, self.created_at, project, &schedule);
+        project.baselines.push(baseline);
+        Ok(Box::new(CaptureBaseline {
+            name: self.name.clone(),
+            created_at: self.created_at,
         }))
     }
 }

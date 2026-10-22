@@ -15,7 +15,8 @@ use std::path::Path;
 
 use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::model::{
-    Activity, ActivityId, Calendar, Constraint, LinkType, Project, Relationship, RelationshipId,
+    Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
+    LinkType, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsTree};
 use rusqlite::{params, Connection};
@@ -23,7 +24,7 @@ use thiserror::Error;
 use time::{Date, Month};
 
 /// Project-file schema version written by this build.
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 const SCHEMA: &str = r#"
 CREATE TABLE project (
@@ -75,6 +76,33 @@ CREATE TABLE relationships (
     link_type   TEXT    NOT NULL CHECK (link_type IN ('FS', 'SS', 'FF', 'SF')),
     lag         INTEGER NOT NULL,
     position    INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS resources (
+    id      INTEGER PRIMARY KEY,
+    name    TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+    kind    TEXT    NOT NULL DEFAULT 'labour'
+);
+
+CREATE TABLE IF NOT EXISTS activity_resources (
+    activity_id   INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    resource_id   INTEGER NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    PRIMARY KEY (activity_id, resource_id)
+);
+
+CREATE TABLE IF NOT EXISTS baselines (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS baseline_snapshots (
+    baseline_id     INTEGER NOT NULL REFERENCES baselines(id) ON DELETE CASCADE,
+    activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    baseline_duration INTEGER NOT NULL,
+    baseline_start  TEXT,
+    baseline_finish TEXT,
+    PRIMARY KEY (baseline_id, activity_id)
 );
 "#;
 
@@ -155,10 +183,67 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
         1 => {
             // Version 2 adds activity constraints. Existing activities keep
             // the historical behaviour (as soon as possible).
+            // Version 3 adds the resource dictionary. Migrate straight through
+            // to the current schema version.
             connection.execute_batch(
                 "ALTER TABLE activities ADD COLUMN constraint_kind TEXT NOT NULL DEFAULT 'asap';
                  ALTER TABLE activities ADD COLUMN constraint_date TEXT;
-                 PRAGMA user_version = 2;",
+                 PRAGMA user_version = 2;
+                 CREATE TABLE IF NOT EXISTS resources (
+                     id      INTEGER PRIMARY KEY,
+                     name    TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+                     kind    TEXT    NOT NULL DEFAULT 'labour'
+                 );
+                 CREATE TABLE IF NOT EXISTS activity_resources (
+                     activity_id   INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     resource_id   INTEGER NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+                     PRIMARY KEY (activity_id, resource_id)
+                 );
+                 CREATE TABLE IF NOT EXISTS baselines (
+                     id          INTEGER PRIMARY KEY,
+                     name        TEXT    NOT NULL,
+                     created_at  TEXT    NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS baseline_snapshots (
+                     baseline_id     INTEGER NOT NULL REFERENCES baselines(id) ON DELETE CASCADE,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     baseline_duration INTEGER NOT NULL,
+                     baseline_start  TEXT,
+                     baseline_finish TEXT,
+                     PRIMARY KEY (baseline_id, activity_id)
+                 );
+                 PRAGMA user_version = 3;",
+            )?;
+            Ok(())
+        }
+        2 => {
+            // Version 3 adds the resource dictionary and activity-resource
+            // assignments.
+            connection.execute_batch(
+                "CREATE TABLE IF NOT EXISTS resources (
+                    id      INTEGER PRIMARY KEY,
+                    name    TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+                    kind    TEXT    NOT NULL DEFAULT 'labour'
+                );
+                 CREATE TABLE IF NOT EXISTS activity_resources (
+                    activity_id   INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                    resource_id   INTEGER NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+                    PRIMARY KEY (activity_id, resource_id)
+                );
+                 CREATE TABLE IF NOT EXISTS baselines (
+                     id          INTEGER PRIMARY KEY,
+                     name        TEXT    NOT NULL,
+                     created_at  TEXT    NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS baseline_snapshots (
+                     baseline_id     INTEGER NOT NULL REFERENCES baselines(id) ON DELETE CASCADE,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     baseline_duration INTEGER NOT NULL,
+                     baseline_start  TEXT,
+                     baseline_finish TEXT,
+                     PRIMARY KEY (baseline_id, activity_id)
+                 );
+                 PRAGMA user_version = 3;",
             )?;
             Ok(())
         }
@@ -208,7 +293,11 @@ fn validate(project: &Project) -> Result<()> {
 
 fn clear_project(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
     transaction.execute_batch(
-        "DELETE FROM relationships;
+        "DELETE FROM baseline_snapshots;
+         DELETE FROM baselines;
+         DELETE FROM activity_resources;
+         DELETE FROM resources;
+         DELETE FROM relationships;
          DELETE FROM activities;
          DELETE FROM wbs_nodes;
          DELETE FROM calendar_holidays;
@@ -312,6 +401,57 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
         )?;
     }
 
+    for resource in project.resources.iter() {
+        transaction.execute(
+            "INSERT INTO resources (id, name, kind) VALUES (?1, ?2, ?3)",
+            params![
+                to_sql_id(resource.id.0, "resource")?,
+                resource.name,
+                match resource.kind {
+                    ResourceKind::Labour => "labour",
+                    ResourceKind::Equipment => "equipment",
+                    ResourceKind::Material => "material",
+                },
+            ],
+        )?;
+    }
+
+    for activity in &project.activities {
+        for &resource_id in &activity.resources {
+            transaction.execute(
+                "INSERT INTO activity_resources (activity_id, resource_id) VALUES (?1, ?2)",
+                params![
+                    to_sql_id(activity.id.0, "activity")?,
+                    to_sql_id(resource_id.0, "resource")?,
+                ],
+            )?;
+        }
+    }
+
+    for baseline in &project.baselines {
+        transaction.execute(
+            "INSERT INTO baselines (id, name, created_at) VALUES (?1, ?2, ?3)",
+            params![
+                to_sql_id(baseline.id.0, "baseline")?,
+                baseline.name,
+                baseline.created_at.to_string(),
+            ],
+        )?;
+        for snapshot in &baseline.snapshots {
+            transaction.execute(
+                "INSERT INTO baseline_snapshots (baseline_id, activity_id, baseline_duration, baseline_start, baseline_finish)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    to_sql_id(baseline.id.0, "baseline")?,
+                    to_sql_id(snapshot.activity_id.0, "activity")?,
+                    i64::from(snapshot.baseline_duration),
+                    snapshot.baseline_start.map(|date| date.to_string()),
+                    snapshot.baseline_finish.map(|date| date.to_string()),
+                ],
+            )?;
+        }
+    }
+
     Ok(())
 }
 
@@ -340,6 +480,10 @@ fn read_project(connection: &Connection) -> Result<Project> {
     let wbs = read_wbs(connection)?;
     let activities = read_activities(connection)?;
     let relationships = read_relationships(connection)?;
+    let resources = read_resources(connection)?;
+    let activity_resources = read_activity_resources(connection)?;
+    let baselines = read_baselines(connection)?;
+    let baseline_snapshots = read_baseline_snapshots(connection)?;
 
     let mut project = Project::new(name, parse_date(&start_date)?);
     project.calendar = default_calendar;
@@ -347,6 +491,28 @@ fn read_project(connection: &Connection) -> Result<Project> {
     project.wbs = wbs;
     project.activities = activities;
     project.relationships = relationships;
+    project.resources = resources;
+    for (activity_id, resource_id) in activity_resources {
+        if let Some(activity) = project.activity_mut(activity_id) {
+            activity.resources.push(resource_id);
+        }
+    }
+    project.baselines = baselines;
+    for (baseline_id, activity_id, baseline_duration, baseline_start, baseline_finish) in baseline_snapshots
+    {
+        if let Some(baseline) = project
+            .baselines
+            .iter_mut()
+            .find(|b| b.id == BaselineId(baseline_id))
+        {
+            baseline.snapshots.push(ActivityBaselineSnapshot {
+                activity_id: ActivityId(activity_id),
+                baseline_duration,
+                baseline_start,
+                baseline_finish,
+            });
+        }
+    }
     Ok(project)
 }
 
@@ -529,6 +695,122 @@ fn read_relationships(connection: &Connection) -> Result<Vec<Relationship>> {
         ));
     }
     Ok(relationships)
+}
+
+fn read_resources(connection: &Connection) -> Result<Vec<Resource>> {
+    let rows = collect_rows(
+        connection,
+        "SELECT id, name, kind FROM resources ORDER BY id",
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        },
+    )?;
+
+    let mut resources = Vec::with_capacity(rows.len());
+    for (id, name, kind) in rows {
+        let kind = match kind.as_str() {
+            "labour" => ResourceKind::Labour,
+            "equipment" => ResourceKind::Equipment,
+            "material" => ResourceKind::Material,
+            other => {
+                return Err(PersistenceError::InvalidData(format!(
+                    "resource {id} has unknown kind \"{other}\""
+                )))
+            }
+        };
+        resources.push(Resource::new(ResourceId(from_sql_id(id, "resource")?), name));
+        // Restore the kind field (Resource::new doesn't set it)
+        if let Some(resource) = resources.last_mut() {
+            resource.kind = kind;
+        }
+    }
+    Ok(resources)
+}
+
+fn read_activity_resources(connection: &Connection) -> Result<Vec<(ActivityId, ResourceId)>> {
+    let rows = collect_rows(
+        connection,
+        "SELECT activity_id, resource_id FROM activity_resources ORDER BY activity_id, resource_id",
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+            ))
+        },
+    )?;
+
+    let mut assignments = Vec::with_capacity(rows.len());
+    for (activity_id, resource_id) in rows {
+        assignments.push((
+            ActivityId(from_sql_id(activity_id, "activity")?),
+            ResourceId(from_sql_id(resource_id, "resource")?),
+        ));
+    }
+    Ok(assignments)
+}
+
+fn read_baselines(connection: &Connection) -> Result<Vec<Baseline>> {
+    let rows = collect_rows(
+        connection,
+        "SELECT id, name, created_at FROM baselines ORDER BY id",
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        },
+    )?;
+
+    let mut baselines = Vec::with_capacity(rows.len());
+    for (id, name, created_at) in rows {
+        baselines.push(Baseline {
+            id: BaselineId(from_sql_id(id, "baseline")?),
+            name,
+            created_at: parse_date(&created_at)?,
+            snapshots: Vec::new(),
+        });
+    }
+    Ok(baselines)
+}
+
+fn read_baseline_snapshots(
+    connection: &Connection,
+) -> Result<Vec<(u64, u64, u32, Option<Date>, Option<Date>)>> {
+    let rows = collect_rows(
+        connection,
+        "SELECT baseline_id, activity_id, baseline_duration, baseline_start, baseline_finish
+         FROM baseline_snapshots ORDER BY baseline_id, activity_id",
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, Option<String>>(3)?
+                    .map(|s| parse_date(&s))
+                    .transpose()?,
+                row.get::<_, Option<String>>(4)?
+                    .map(|s| parse_date(&s))
+                    .transpose()?,
+            ))
+        },
+    )?;
+
+    let mut snapshots = Vec::with_capacity(rows.len());
+    for (baseline_id, activity_id, duration, start, finish) in rows {
+        snapshots.push((
+            from_sql_id(baseline_id, "baseline")?,
+            from_sql_id(activity_id, "activity")?,
+            duration as u32,
+            start,
+            finish,
+        ));
+    }
+    Ok(snapshots)
 }
 
 fn read_holidays(connection: &Connection, query: &str) -> Result<BTreeSet<Date>> {
