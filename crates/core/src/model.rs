@@ -961,11 +961,9 @@ impl EvmMetrics {
 
         let (pv, spi_denominator) = match snapshot {
             Some(snap) if snap.baseline_duration > 0 => {
-                // Prorate PV by elapsed fraction of baseline duration.
-                // Use the baseline finish as the point at which PV reaches BAC.
-                let elapsed = 1i64.max(0); // simplified: full PV for in-progress/complete
-                let pv = bac * elapsed as i64 / snap.baseline_duration as i64;
-                (pv, snap.baseline_duration as i64)
+                // Planned value is the activity's full budget when a baseline
+                // exists; the denominator for SPI is the baseline duration.
+                (bac, snap.baseline_duration as i64)
             }
             _ => (0, 1),
         };
