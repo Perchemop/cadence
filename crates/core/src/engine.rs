@@ -379,8 +379,8 @@ fn planned_percent(
     }
     let duration = i64::from(snapshot.baseline_duration);
     let elapsed = match status_date.next_day() {
-        Ok(next) => calendar.working_days_between(start, next),
-        Err(_) => calendar.working_days_between(start, status_date),
+        Some(next) => calendar.working_days_between(start, next),
+        None => calendar.working_days_between(start, status_date),
     };
     let elapsed = elapsed.clamp(0, duration);
     elapsed * 10_000 / duration
@@ -1628,8 +1628,8 @@ mod tests {
     fn evm_metrics_prorate_planned_value_by_the_baseline_schedule() {
         let mut project = project();
         add_activity(&mut project, 1, "A1", 4);
-        project.activities[0].budget_at_completion = Some(100_00);
-        project.activities[0].actual_cost = Some(60_00);
+        project.activities[0].budget_at_completion = Some(10_000);
+        project.activities[0].actual_cost = Some(6_000);
         project.activities[0].percent_complete = Some(2_000);
 
         let schedule = schedule(&project).expect("schedule");
@@ -1637,12 +1637,12 @@ mod tests {
 
         // One of the four baseline working days is complete at the status date.
         let metrics = evm_metrics(&project, Some(&baseline), jan(5));
-        assert_eq!(metrics.budget_at_completion, 100_00);
-        assert_eq!(metrics.planned_value, 25_00);
-        assert_eq!(metrics.earned_value, 20_00);
-        assert_eq!(metrics.actual_cost, 60_00);
-        assert_eq!(metrics.cost_variance, -40_00);
-        assert_eq!(metrics.schedule_variance, -5_00);
+        assert_eq!(metrics.budget_at_completion, 10_000);
+        assert_eq!(metrics.planned_value, 2_500);
+        assert_eq!(metrics.earned_value, 2_000);
+        assert_eq!(metrics.actual_cost, 6_000);
+        assert_eq!(metrics.cost_variance, -4_000);
+        assert_eq!(metrics.schedule_variance, -500);
         let cpi = metrics
             .cost_performance_index
             .expect("cost performance index");
@@ -1657,15 +1657,15 @@ mod tests {
     fn evm_metrics_reach_full_planned_value_when_the_baseline_is_complete() {
         let mut project = project();
         add_activity(&mut project, 1, "A1", 2);
-        project.activities[0].budget_at_completion = Some(50_00);
+        project.activities[0].budget_at_completion = Some(5_000);
         project.activities[0].percent_complete = Some(10_000);
 
         let schedule = schedule(&project).expect("schedule");
         let baseline = capture_baseline(&project, &schedule, BaselineId(1), "Baseline 1", jan(5));
 
         let metrics = evm_metrics(&project, Some(&baseline), jan(30));
-        assert_eq!(metrics.planned_value, 50_00);
-        assert_eq!(metrics.earned_value, 50_00);
+        assert_eq!(metrics.planned_value, 5_000);
+        assert_eq!(metrics.earned_value, 5_000);
         assert_eq!(metrics.schedule_variance, 0);
         let spi = metrics
             .schedule_performance_index
@@ -1677,13 +1677,13 @@ mod tests {
     fn evm_metrics_without_a_baseline_have_no_planned_value() {
         let mut project = project();
         add_activity(&mut project, 1, "A1", 2);
-        project.activities[0].budget_at_completion = Some(50_00);
+        project.activities[0].budget_at_completion = Some(5_000);
         project.activities[0].percent_complete = Some(5_000);
 
         let metrics = evm_metrics(&project, None, jan(5));
         assert_eq!(metrics.planned_value, 0);
-        assert_eq!(metrics.earned_value, 25_00);
-        assert_eq!(metrics.schedule_variance, 25_00);
+        assert_eq!(metrics.earned_value, 2_500);
+        assert_eq!(metrics.schedule_variance, 2_500);
         assert_eq!(metrics.schedule_performance_index, None);
     }
 
@@ -1691,7 +1691,7 @@ mod tests {
     fn evm_metrics_treat_a_milestone_as_fully_planned_from_its_baseline_start() {
         let mut project = project();
         add_activity(&mut project, 1, "Milestone", 0);
-        project.activities[0].budget_at_completion = Some(10_00);
+        project.activities[0].budget_at_completion = Some(1_000);
 
         let schedule = schedule(&project).expect("schedule");
         let baseline = capture_baseline(&project, &schedule, BaselineId(1), "Baseline 1", jan(5));
@@ -1700,6 +1700,6 @@ mod tests {
         assert_eq!(before.planned_value, 0);
 
         let after = evm_metrics(&project, Some(&baseline), jan(5));
-        assert_eq!(after.planned_value, 10_00);
+        assert_eq!(after.planned_value, 1_000);
     }
 }
