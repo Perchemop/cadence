@@ -1886,7 +1886,8 @@ mod tests {
         assert_eq!(second.original_start, jan(5));
         assert_eq!(second.start, jan(8));
         assert_eq!(second.delay, 3);
-        assert_eq!(second.finish, jan(10));
+        // The three working days after the delay are Thu 8, Fri 9 and Mon 12.
+        assert_eq!(second.finish, jan(12));
     }
 
     #[test]
