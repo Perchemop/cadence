@@ -5,13 +5,19 @@
 //! source of truth; this crate only displays its results and routes edits
 //! through the command layer.
 
+use std::collections::BTreeMap;
+
 use cadence_commands::{
-    CommandStack, CreateRelationship, RenameActivity, SetActivityConstraint, SetActivityDuration,
-    SetRelationshipLag,
+    AddResourceToActivity, CommandStack, CreateRelationship, CreateResource, DeleteResource,
+    RemoveResourceFromActivity, RenameActivity, RenameResource, SetActivityConstraint,
+    SetActivityDuration, SetRelationshipLag, SetResourceCapacity, SetResourceKind,
 };
 use cadence_core::engine::schedule;
+use cadence_core::engine::{level_resources, resource_conflicts, resource_histogram};
 use cadence_core::engine::Schedule;
-use cadence_core::model::{Activity, ActivityId, Constraint, LinkType, Project};
+use cadence_core::model::{
+    Activity, ActivityId, Constraint, LinkType, Project, ResourceId, ResourceKind,
+};
 use egui::{
     Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2, Visuals,
 };
@@ -78,6 +84,7 @@ enum SortKey {
 enum ViewMode {
     Table,
     Gantt,
+    Resources,
 }
 
 const CONSTRAINT_LABELS: [&str; 6] = [
@@ -88,6 +95,27 @@ const CONSTRAINT_LABELS: [&str; 6] = [
     "Finish no earlier than",
     "Finish no later than",
 ];
+
+/// Labels for the resource kinds, in the order of [`ResourceKind`].
+const RESOURCE_KIND_LABELS: [&str; 3] = ["Labour", "Equipment", "Material"];
+
+/// Convert a resource kind into its index in [`RESOURCE_KIND_LABELS`].
+fn resource_kind_index(kind: ResourceKind) -> usize {
+    match kind {
+        ResourceKind::Labour => 0,
+        ResourceKind::Equipment => 1,
+        ResourceKind::Material => 2,
+    }
+}
+
+/// Convert a resource kind index back into a [`ResourceKind`].
+fn resource_kind_from_index(index: usize) -> ResourceKind {
+    match index {
+        1 => ResourceKind::Equipment,
+        2 => ResourceKind::Material,
+        _ => ResourceKind::Labour,
+    }
+}
 
 /// The Cadence application state.
 pub struct CadenceApp {
@@ -109,6 +137,11 @@ pub struct CadenceApp {
     duration_buffer: String,
     constraint_kind: usize,
     constraint_date_buffer: String,
+    selected_resource: Option<ResourceId>,
+    resource_name_buffer: String,
+    resource_kind_index: usize,
+    resource_capacity_buffer: String,
+    leveling_report: Option<String>,
 }
 
 impl CadenceApp {
@@ -134,6 +167,11 @@ impl CadenceApp {
             duration_buffer: String::new(),
             constraint_kind: 0,
             constraint_date_buffer: String::new(),
+            selected_resource: None,
+            resource_name_buffer: String::new(),
+            resource_kind_index: 0,
+            resource_capacity_buffer: "1".to_string(),
+            leveling_report: None,
         }
     }
 
@@ -214,6 +252,211 @@ impl CadenceApp {
         self.select(id);
     }
 
+    /// Load the resource editor buffers for the given resource.
+    fn select_resource(&mut self, id: ResourceId) {
+        self.selected_resource = Some(id);
+        if let Some(resource) = self.project.resource(id) {
+            self.resource_name_buffer = resource.name.clone();
+            self.resource_capacity_buffer = resource.capacity.to_string();
+            self.resource_kind_index = resource_kind_index(resource.kind);
+        }
+    }
+
+    /// Apply the resource editor buffers through the command stack.
+    fn apply_resource_edits(&mut self) {
+        let Some(id) = self.selected_resource else {
+            return;
+        };
+        let Some(resource) = self.project.resource(id).cloned() else {
+            return;
+        };
+
+        let name = self.resource_name_buffer.trim().to_string();
+        if !name.is_empty() && name != resource.name {
+            if let Err(error) = self
+                .stack
+                .execute(&mut self.project, Box::new(RenameResource { id, name }))
+            {
+                self.status_message = Some(error);
+            }
+        }
+
+        if let Ok(capacity) = self.resource_capacity_buffer.trim().parse::<u32>() {
+            if capacity != resource.capacity {
+                if let Err(error) = self.stack.execute(
+                    &mut self.project,
+                    Box::new(SetResourceCapacity { id, capacity }),
+                ) {
+                    self.status_message = Some(error);
+                }
+            }
+        }
+
+        let kind = resource_kind_from_index(self.resource_kind_index);
+        if kind != resource.kind {
+            if let Err(error) = self
+                .stack
+                .execute(&mut self.project, Box::new(SetResourceKind { id, kind }))
+            {
+                self.status_message = Some(error);
+            }
+        }
+
+        self.recompute();
+        self.select_resource(id);
+    }
+
+    /// Add a new resource to the dictionary.
+    fn create_resource(&mut self) {
+        let name = self.resource_name_buffer.trim().to_string();
+        if name.is_empty() {
+            self.status_message = Some("Resource name must not be empty".to_string());
+            return;
+        }
+        let id = self.project.next_resource_id();
+        let command = CreateResource {
+            id,
+            name,
+            kind: resource_kind_from_index(self.resource_kind_index),
+            capacity: self
+                .resource_capacity_buffer
+                .trim()
+                .parse::<u32>()
+                .unwrap_or(1)
+                .max(1),
+        };
+        match self.stack.execute(&mut self.project, Box::new(command)) {
+            Ok(()) => {
+                self.status_message = None;
+                self.recompute();
+                self.select_resource(id);
+            }
+            Err(error) => self.status_message = Some(error),
+        }
+    }
+
+    /// Remove the selected resource from the dictionary.
+    fn delete_selected_resource(&mut self) {
+        let Some(id) = self.selected_resource else {
+            return;
+        };
+        match self.stack.execute(&mut self.project, Box::new(DeleteResource { id })) {
+            Ok(()) => {
+                self.selected_resource = None;
+                self.status_message = None;
+                self.recompute();
+            }
+            Err(error) => self.status_message = Some(error),
+        }
+    }
+
+    /// Assign the given resource to the selected activity, or remove it.
+    fn toggle_assignment(&mut self, resource_id: ResourceId) {
+        let Some(activity_id) = self.selected else {
+            self.status_message = Some("Select an activity first".to_string());
+            return;
+        };
+        let assigned = self
+            .project
+            .activity(activity_id)
+            .map(|activity| activity.resources.contains(&resource_id))
+            .unwrap_or(false);
+
+        let outcome = if assigned {
+            self.stack.execute(
+                &mut self.project,
+                Box::new(RemoveResourceFromActivity {
+                    activity_id,
+                    resource_id,
+                }),
+            )
+        } else {
+            self.stack.execute(
+                &mut self.project,
+                Box::new(AddResourceToActivity {
+                    activity_id,
+                    resource_id,
+                }),
+            )
+        };
+
+        match outcome {
+            Ok(()) => {
+                self.status_message = None;
+                self.recompute();
+            }
+            Err(error) => self.status_message = Some(error),
+        }
+    }
+
+    /// Compute the leveled schedule and report what it would change.
+    fn preview_leveling(&mut self) {
+        let Some(schedule) = self.schedule.clone().ok() else {
+            self.leveling_report = Some("The project cannot be scheduled".to_string());
+            return;
+        };
+        match level_resources(&self.project, &schedule) {
+            Ok(result) => {
+                let delayed: Vec<&cadence_core::engine::LeveledActivity> = result
+                    .activities
+                    .iter()
+                    .filter(|activity| activity.delay > 0)
+                    .collect();
+                if !result.conflicts.is_empty() {
+                    self.leveling_report = Some(format!(
+                        "{} over-allocated days remain after leveling",
+                        result.conflicts.len()
+                    ));
+                } else if delayed.is_empty() {
+                    self.leveling_report =
+                        Some("The schedule is already free of over-allocation".to_string());
+                } else {
+                    self.leveling_report = Some(format!(
+                        "Leveling delays {} activities, for example {}",
+                        delayed.len(),
+                        describe_delay(delayed[0])
+                    ));
+                }
+            }
+            Err(error) => self.leveling_report = Some(format!("Leveling failed: {error}")),
+        }
+    }
+
+    /// Apply the leveled dates as start-no-earlier-than constraints.
+    fn apply_leveling(&mut self) {
+        let Some(schedule) = self.schedule.clone().ok() else {
+            self.status_message = Some("The project cannot be scheduled".to_string());
+            return;
+        };
+        let Ok(result) = level_resources(&self.project, &schedule) else {
+            self.status_message = Some("The project cannot be leveled".to_string());
+            return;
+        };
+
+        let mut applied = 0usize;
+        for activity in &result.activities {
+            if activity.delay <= 0 {
+                continue;
+            }
+            let constraint = Constraint::StartNoEarlierThan(activity.start);
+            if self
+                .stack
+                .execute(
+                    &mut self.project,
+                    Box::new(SetActivityConstraint {
+                        id: activity.id,
+                        constraint,
+                    }),
+                )
+                .is_ok()
+            {
+                applied += 1;
+            }
+        }
+        self.recompute();
+        self.leveling_report = Some(format!("Applied leveling to {applied} activities"));
+    }
+
     fn sorted_activities(&self) -> Vec<Activity> {
         let mut activities = self.project.activities.clone();
         let schedule = self.schedule.as_ref().ok();
@@ -287,6 +530,9 @@ impl eframe::App for CadenceApp {
                 }
                 if ui.button("Gantt").clicked() {
                     self.view_mode = ViewMode::Gantt;
+                }
+                if ui.button("Resources").clicked() {
+                    self.view_mode = ViewMode::Resources;
                 }
                 if ui.button("Undo").clicked() {
                     let _ = self.stack.undo(&mut self.project);
@@ -470,6 +716,194 @@ impl eframe::App for CadenceApp {
                     );
                 });
             }
+            ViewMode::Resources => {
+                egui::Panel::right("resource_inspector")
+                    .default_size(300.0)
+                    .show(ui, |ui| {
+                        ui.heading("Resource");
+                        ui.label("Name");
+                        ui.text_edit_singleline(&mut self.resource_name_buffer);
+                        ui.label("Kind");
+                        ComboBox::from_id_salt("resource_kind")
+                            .selected_text(RESOURCE_KIND_LABELS[self.resource_kind_index])
+                            .show_ui(ui, |ui| {
+                                for (index, label) in RESOURCE_KIND_LABELS.iter().enumerate() {
+                                    ui.selectable_value(
+                                        &mut self.resource_kind_index,
+                                        index,
+                                        *label,
+                                    );
+                                }
+                            });
+                        ui.label("Capacity (units per working day)");
+                        ui.text_edit_singleline(&mut self.resource_capacity_buffer);
+
+                        if ui.button("Add resource").clicked() {
+                            self.create_resource();
+                        }
+                        if self.selected_resource.is_some() {
+                            if ui.button("Apply changes").clicked() {
+                                self.apply_resource_edits();
+                            }
+                            if ui.button("Delete resource").clicked() {
+                                self.delete_selected_resource();
+                            }
+                        }
+
+                        ui.separator();
+                        ui.heading("Leveling");
+                        if ui.button("Preview leveling").clicked() {
+                            self.preview_leveling();
+                        }
+                        if ui.button("Apply leveled dates").clicked() {
+                            self.apply_leveling();
+                        }
+                        if let Some(report) = &self.leveling_report {
+                            ui.label(report);
+                        }
+                    });
+
+                let schedule = self.schedule.clone();
+                let conflicts = schedule
+                    .as_ref()
+                    .ok()
+                    .map(|schedule| resource_conflicts(&self.project, schedule))
+                    .unwrap_or_default();
+                let resources = self.project.resources.clone();
+                let activities = self.sorted_activities();
+                let selected_resource = self.selected_resource;
+
+                egui::CentralPanel::default().show(ui, |ui| match schedule {
+                    Err(error) => {
+                        ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
+                    }
+                    Ok(schedule) => {
+                        ui.heading("Resource dictionary");
+                        if resources.is_empty() {
+                            ui.label("No resources yet. Add one in the panel on the right.");
+                        }
+                        Grid::new("resource_rows")
+                            .striped(true)
+                            .spacing([12.0, 4.0])
+                            .show(ui, |ui| {
+                                ui.label("Name");
+                                ui.label("Kind");
+                                ui.label("Capacity");
+                                ui.label("Assigned");
+                                ui.label("Over-allocated days");
+                                ui.end_row();
+
+                                for resource in &resources {
+                                    let selected = selected_resource == Some(resource.id);
+                                    if ui
+                                        .selectable_label(selected, &resource.name)
+                                        .clicked()
+                                    {
+                                        self.select_resource(resource.id);
+                                    }
+                                    ui.label(RESOURCE_KIND_LABELS[resource_kind_index(resource.kind)]);
+                                    ui.label(resource.capacity.to_string());
+                                    let assigned = activities
+                                        .iter()
+                                        .filter(|activity| activity.resources.contains(&resource.id))
+                                        .count();
+                                    ui.label(assigned.to_string());
+                                    let over = conflicts
+                                        .iter()
+                                        .filter(|conflict| conflict.resource_id == resource.id)
+                                        .count();
+                                    if over == 0 {
+                                        ui.label("0");
+                                    } else {
+                                        ui.colored_label(
+                                            egui::Color32::from_rgb(0xC0, 0x39, 0x2B),
+                                            over.to_string(),
+                                        );
+                                    }
+                                    ui.end_row();
+                                }
+                            });
+
+                        ui.separator();
+                        ui.heading("Usage");
+                        if let Some(id) = selected_resource {
+                            let usage = resource_day_usage(&self.project, &schedule, id);
+                            if usage.is_empty() {
+                                ui.label("This resource is not assigned to any scheduled activity.");
+                            } else {
+                                let capacity = self
+                                    .project
+                                    .resource(id)
+                                    .map(|resource| resource.capacity)
+                                    .unwrap_or(1);
+                                ScrollArea::vertical()
+                                    .id_salt("resource_usage")
+                                    .max_height(160.0)
+                                    .show(ui, |ui| {
+                                        Grid::new("resource_usage_rows")
+                                            .striped(true)
+                                            .spacing([12.0, 4.0])
+                                            .show(ui, |ui| {
+                                                for (date, units) in usage {
+                                                    ui.label(date.to_string());
+                                                    if units > capacity {
+                                                        ui.colored_label(
+                                                            egui::Color32::from_rgb(0xC0, 0x39, 0x2B),
+                                                            format!("{units} / {capacity}"),
+                                                        );
+                                                    } else {
+                                                        ui.label(format!("{units} / {capacity}"));
+                                                    }
+                                                    ui.end_row();
+                                                }
+                                            });
+                                    });
+                            }
+                        } else {
+                            ui.label("Select a resource to see its daily usage.");
+                        }
+
+                        ui.separator();
+                        ui.heading("Assignments");
+                        if let Some(id) = selected_resource {
+                            ui.label(format!(
+                                "Toggle '{}' on an activity to assign or remove it.",
+                                self.project
+                                    .resource(id)
+                                    .map(|resource| resource.name.clone())
+                                    .unwrap_or_default()
+                            ));
+                            Grid::new("assignment_rows")
+                                .striped(true)
+                                .spacing([12.0, 4.0])
+                                .show(ui, |ui| {
+                                    for activity in &activities {
+                                        let assigned = activity.resources.contains(&id);
+                                        if ui
+                                            .selectable_label(assigned, &activity.name)
+                                            .clicked()
+                                        {
+                                            self.selected = Some(activity.id);
+                                            self.select(activity.id);
+                                            self.toggle_assignment(id);
+                                        }
+                                        ui.label(activity.original_duration.to_string());
+                                        if let Some(result) = schedule.activity(activity.id) {
+                                            ui.label(result.scheduled_start.to_string());
+                                            ui.label(result.scheduled_finish.to_string());
+                                        } else {
+                                            ui.label("-");
+                                            ui.label("-");
+                                        }
+                                        ui.end_row();
+                                    }
+                                });
+                        } else {
+                            ui.label("Select a resource to assign it to activities.");
+                        }
+                    }
+                });
+            }
         }
     }
 }
@@ -484,6 +918,34 @@ fn parse_date(value: &str) -> Option<Date> {
     }
     let month = Month::try_from(month).ok()?;
     Date::from_calendar_date(year, month, day).ok()
+}
+
+/// Describe how one activity is delayed by resource leveling.
+fn describe_delay(activity: &cadence_core::engine::LeveledActivity) -> String {
+    format!(
+        "activity {} by {} working days ({} to {})",
+        activity.id, activity.delay, activity.original_start, activity.start
+    )
+}
+
+/// Units of one resource that are committed on each day that uses it.
+fn resource_day_usage(
+    project: &Project,
+    schedule: &Schedule,
+    resource_id: ResourceId,
+) -> BTreeMap<Date, u32> {
+    let histogram = resource_histogram(project, schedule);
+    let mut usage = BTreeMap::new();
+    for (date, assignments) in &histogram.entries {
+        let units = assignments
+            .iter()
+            .filter(|assignment| assignment.resource_id == resource_id)
+            .count() as u32;
+        if units > 0 {
+            usage.insert(*date, units);
+        }
+    }
+    usage
 }
 
 #[allow(clippy::too_many_arguments)]
