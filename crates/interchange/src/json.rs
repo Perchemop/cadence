@@ -174,10 +174,7 @@ pub fn export(project: &Project) -> String {
         (
             "project".to_string(),
             Value::Object(vec![
-                (
-                    "name".to_string(),
-                    Value::String(project.name.clone()),
-                ),
+                ("name".to_string(), Value::String(project.name.clone())),
                 (
                     "start_date".to_string(),
                     Value::String(project.start_date.to_string()),
@@ -244,12 +241,15 @@ fn import_activity(value: &Value) -> Result<Activity, InterchangeError> {
     activity.actual_finish = value.get("actual_finish").and_then(date_from_json);
     if let Some(resources) = value.get("resources").and_then(Value::as_array) {
         for resource in resources {
-            let resource_id = ResourceId(resource.as_u64().ok_or_else(|| {
-                InterchangeError::InvalidField {
-                    field: "activity/resources".to_string(),
-                    value: "expected a resource id".to_string(),
-                }
-            })?);
+            let resource_id =
+                ResourceId(
+                    resource
+                        .as_u64()
+                        .ok_or_else(|| InterchangeError::InvalidField {
+                            field: "activity/resources".to_string(),
+                            value: "expected a resource id".to_string(),
+                        })?,
+                );
             if !activity.resources.contains(&resource_id) {
                 activity.resources.push(resource_id);
             }
@@ -318,7 +318,11 @@ fn import_resource(value: &Value) -> Result<Resource, InterchangeError> {
     if name.is_empty() {
         return Err(InterchangeError::MissingField("resource/name".to_string()));
     }
-    let kind = match value.get("kind").and_then(Value::as_str).unwrap_or("labour") {
+    let kind = match value
+        .get("kind")
+        .and_then(Value::as_str)
+        .unwrap_or("labour")
+    {
         "material" => ResourceKind::Material,
         "equipment" => ResourceKind::Equipment,
         _ => ResourceKind::Labour,
@@ -359,7 +363,10 @@ fn import_baseline(value: &Value) -> Result<Baseline, InterchangeError> {
                     .and_then(Value::as_u64)
                     .unwrap_or(0)
                     .min(u64::from(u32::MAX)) as u32,
-                baseline_start: row.get("start").and_then(Value::as_str).and_then(parse_date),
+                baseline_start: row
+                    .get("start")
+                    .and_then(Value::as_str)
+                    .and_then(parse_date),
                 baseline_finish: row
                     .get("finish")
                     .and_then(Value::as_str)
@@ -384,7 +391,10 @@ fn date_from_json(value: &Value) -> Option<Date> {
 
 fn activity_json(activity: &Activity) -> Value {
     Value::Object(vec![
-        ("id".to_string(), Value::Number(Number::Int(activity.id.0 as i64))),
+        (
+            "id".to_string(),
+            Value::Number(Number::Int(activity.id.0 as i64)),
+        ),
         ("name".to_string(), Value::String(activity.name.clone())),
         (
             "duration".to_string(),
@@ -413,10 +423,7 @@ fn activity_json(activity: &Activity) -> Value {
             money_json(activity.budget_at_completion),
         ),
         ("actual_cost".to_string(), money_json(activity.actual_cost)),
-        (
-            "actual_start".to_string(),
-            date_json(activity.actual_start),
-        ),
+        ("actual_start".to_string(), date_json(activity.actual_start)),
         (
             "actual_finish".to_string(),
             date_json(activity.actual_finish),
@@ -455,7 +462,10 @@ fn relationship_json(relationship: &Relationship) -> Value {
             Value::Number(Number::Int(relationship.successor.0 as i64)),
         ),
         ("type".to_string(), Value::String(code.to_string())),
-        ("lag".to_string(), Value::Number(Number::Int(relationship.lag))),
+        (
+            "lag".to_string(),
+            Value::Number(Number::Int(relationship.lag)),
+        ),
     ])
 }
 
@@ -504,9 +514,7 @@ fn baseline_json(baseline: &Baseline) -> Value {
                             ),
                             (
                                 "duration".to_string(),
-                                Value::Number(Number::Int(i64::from(
-                                    snapshot.baseline_duration,
-                                ))),
+                                Value::Number(Number::Int(i64::from(snapshot.baseline_duration))),
                             ),
                             (
                                 "start".to_string(),
@@ -674,10 +682,7 @@ fn parse_value(characters: &mut Characters<'_>, depth: usize) -> Result<Value, I
     }
 }
 
-fn parse_object(
-    characters: &mut Characters<'_>,
-    depth: usize,
-) -> Result<Value, InterchangeError> {
+fn parse_object(characters: &mut Characters<'_>, depth: usize) -> Result<Value, InterchangeError> {
     characters.next();
     let mut members = Vec::new();
     skip_whitespace(characters);
@@ -706,10 +711,7 @@ fn parse_object(
     }
 }
 
-fn parse_array(
-    characters: &mut Characters<'_>,
-    depth: usize,
-) -> Result<Value, InterchangeError> {
+fn parse_array(characters: &mut Characters<'_>, depth: usize) -> Result<Value, InterchangeError> {
     characters.next();
     let mut items = Vec::new();
     skip_whitespace(characters);
@@ -792,9 +794,7 @@ fn hex_quartet(characters: &mut Characters<'_>) -> Result<u32, InterchangeError>
 fn parse_number(characters: &mut Characters<'_>) -> Result<Value, InterchangeError> {
     let mut token = String::new();
     while let Some(&character) = characters.peek() {
-        if character.is_ascii_digit()
-            || matches!(character, '-' | '+' | '.' | 'e' | 'E')
-        {
+        if character.is_ascii_digit() || matches!(character, '-' | '+' | '.' | 'e' | 'E') {
             token.push(character);
             characters.next();
         } else {
@@ -955,7 +955,9 @@ mod tests {
             lag: -1,
         });
 
-        project.resources.push(Resource::new(ResourceId(1), "Crew A"));
+        project
+            .resources
+            .push(Resource::new(ResourceId(1), "Crew A"));
         let mut crane = Resource::with_capacity(ResourceId(2), "Crane", 2);
         crane.kind = ResourceKind::Equipment;
         project.resources.push(crane);
@@ -998,7 +1000,10 @@ mod tests {
         assert_eq!(loaded.relationships, project.relationships);
         assert_eq!(loaded.resources, project.resources);
         assert_eq!(loaded.baselines.len(), 1);
-        assert_eq!(loaded.baselines[0].snapshots, project.baselines[0].snapshots);
+        assert_eq!(
+            loaded.baselines[0].snapshots,
+            project.baselines[0].snapshots
+        );
     }
 
     #[test]
@@ -1072,7 +1077,10 @@ mod tests {
             }
         }"#;
         let error = import(text).expect_err("no resource name");
-        assert_eq!(error, InterchangeError::MissingField("resource/name".to_string()));
+        assert_eq!(
+            error,
+            InterchangeError::MissingField("resource/name".to_string())
+        );
     }
 
     #[test]
@@ -1091,8 +1099,8 @@ mod tests {
 
     #[test]
     fn the_reader_accepts_escapes_and_rejects_malformed_documents() {
-        let value = parse(r#""caf\u00e9 \uD83D\uDE00 tab\tline\nquote\"back\\""#)
-            .expect("escape handling");
+        let value =
+            parse(r#""caf\u00e9 \uD83D\uDE00 tab\tline\nquote\"back\\""#).expect("escape handling");
         assert_eq!(
             value.as_str(),
             Some("café \u{1F600} tab\tline\nquote\"back\\")
@@ -1115,7 +1123,10 @@ mod tests {
     #[test]
     fn numbers_are_read_as_integers_or_floats() {
         assert_eq!(parse("42").expect("int"), Value::Number(Number::Int(42)));
-        assert_eq!(parse("-7").expect("negative"), Value::Number(Number::Int(-7)));
+        assert_eq!(
+            parse("-7").expect("negative"),
+            Value::Number(Number::Int(-7))
+        );
         assert_eq!(
             parse("1500.00").expect("float"),
             Value::Number(Number::Float(1500.0))
@@ -1136,7 +1147,10 @@ mod tests {
 
     #[test]
     fn strings_with_special_characters_survive_a_round_trip() {
-        let project = Project::new("A \"quoted\" \\ name, with\nnewline\tand\ttab", date(2026, Month::January, 5));
+        let project = Project::new(
+            "A \"quoted\" \\ name, with\nnewline\tand\ttab",
+            date(2026, Month::January, 5),
+        );
         let text = export(&project);
         assert!(text.contains("A \\\"quoted\\\" \\\\ name, with\\nnewline\\tand\\ttab"));
 
@@ -1153,4 +1167,3 @@ mod tests {
         assert!(text.contains("\"resources\": []"));
     }
 }
-
