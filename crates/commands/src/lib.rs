@@ -536,7 +536,7 @@ impl Command for AddResourceToActivity {
         }
         activity.resources.push(self.resource_id);
         activity.clear_schedule();
-        Ok(Box::new(AddResourceToActivity {
+        Ok(Box::new(RemoveResourceFromActivity {
             activity_id: self.activity_id,
             resource_id: self.resource_id,
         }))
@@ -564,13 +564,57 @@ impl Command for RemoveResourceFromActivity {
         let Some(activity) = project.activity_mut(self.activity_id) else {
             return Err(format!("activity {} does not exist", self.activity_id));
         };
-        if !activity.resources.contains(&self.resource_id) {
+        let Some(index) = activity
+            .resources
+            .iter()
+            .position(|&id| id == self.resource_id)
+        else {
             return Err(format!(
                 "activity {} does not have resource {}",
                 self.activity_id, self.resource_id
             ));
+        };
+        activity.resources.remove(index);
+        activity.clear_schedule();
+        Ok(Box::new(RestoreResourceOnActivity {
+            activity_id: self.activity_id,
+            resource_id: self.resource_id,
+            index,
+        }))
+    }
+}
+
+/// Put a previously removed resource assignment back where it was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreResourceOnActivity {
+    /// Activity the resource belongs to.
+    pub activity_id: ActivityId,
+    /// Resource to restore.
+    pub resource_id: ResourceId,
+    /// Index the assignment occupied before it was removed.
+    pub index: usize,
+}
+
+impl Command for RestoreResourceOnActivity {
+    fn description(&self) -> String {
+        format!(
+            "restore resource {} on activity {}",
+            self.resource_id, self.activity_id
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.activity_id) else {
+            return Err(format!("activity {} does not exist", self.activity_id));
+        };
+        if activity.resources.contains(&self.resource_id) {
+            return Err(format!(
+                "activity {} already has resource {}",
+                self.activity_id, self.resource_id
+            ));
         }
-        activity.resources.retain(|&id| id != self.resource_id);
+        let index = self.index.min(activity.resources.len());
+        activity.resources.insert(index, self.resource_id);
         activity.clear_schedule();
         Ok(Box::new(RemoveResourceFromActivity {
             activity_id: self.activity_id,
@@ -1549,6 +1593,65 @@ mod tests {
 
         stack.undo(&mut project).expect("undo remove");
         assert_eq!(project.activities[0].resources, vec![ResourceId(7)]);
+    }
+
+    #[test]
+    fn removing_a_resource_assignment_keeps_the_order_of_the_others() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let activity = add_activity(&mut stack, &mut project, 1, "Task", 2);
+
+        for resource in [7, 8, 9] {
+            execute(
+                &mut stack,
+                &mut project,
+                Box::new(AddResourceToActivity {
+                    activity_id: activity,
+                    resource_id: ResourceId(resource),
+                }),
+            );
+        }
+        assert_eq!(
+            project.activities[0].resources,
+            vec![ResourceId(7), ResourceId(8), ResourceId(9)]
+        );
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(RemoveResourceFromActivity {
+                activity_id: activity,
+                resource_id: ResourceId(8),
+            }),
+        );
+        assert_eq!(
+            project.activities[0].resources,
+            vec![ResourceId(7), ResourceId(9)]
+        );
+
+        stack.undo(&mut project).expect("undo remove");
+        assert_eq!(
+            project.activities[0].resources,
+            vec![ResourceId(7), ResourceId(8), ResourceId(9)]
+        );
+    }
+
+    #[test]
+    fn removing_a_resource_that_is_not_assigned_is_rejected() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let activity = add_activity(&mut stack, &mut project, 1, "Task", 2);
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(RemoveResourceFromActivity {
+                    activity_id: activity,
+                    resource_id: ResourceId(7),
+                }),
+            )
+            .expect_err("missing assignment must be rejected");
+        assert!(error.contains("does not have resource"), "{error}");
     }
 
     #[test]
