@@ -66,7 +66,7 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | Multiple baselines | done | project-wide baselines with per-activity snapshots, undoable capture/remove/restore |
 | Variance views | done | Baselines view: per-activity duration/start/finish variance against the selected baseline, coloured by sign |
 | EVM metrics | done | `engine::evm_metrics`: PV, EV, AC, SV, CV, SPI, CPI shown against an editable status date (D13) |
-| Progress updating (actual dates) | todo | `percent_complete` is modelled and persisted; actual start/finish editing and progress-driven rescheduling are not |
+| Progress updating (percent complete, actual dates) | done | inspector edits via undoable commands; Gantt bars show a progress overlay; schema v4 records actual dates |
 
 ## Phase 5 — Polish & interop
 

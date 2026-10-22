@@ -27,6 +27,10 @@ follows Keep a Changelog; releases use git tags.
 - SQLite schema v3: resource capacities, resources, activity assignments,
   baselines, baseline snapshots and activity cost columns, with v1→v3 and
   v2→v3 migrations
+- Progress updating: percent complete (basis points), budget at completion,
+  actual cost and recorded actual start/finish dates, editable through
+  undoable commands and persisted in schema v4 (with v1, v2 and v3
+  migrations); Gantt bars draw a progress overlay
 - Phase-3 QC gate recorded in `docs/qc/phase-3.md`
 - Cargo workspace: `cadence-core` (domain + CPM engine), `cadence-commands`
   (typed commands, undo/redo), `cadence-persistence`, `cadence-app` (CLI)

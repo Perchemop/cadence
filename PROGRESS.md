@@ -3,6 +3,22 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-22 — P4-2 progress updating
+
+- Activities now record `actual_start`/`actual_finish` alongside the existing
+  `percent_complete` and cost fields, persisted in schema v4 with in-place
+  v1, v2 and v3 migrations.
+- New undoable commands: `SetActivityProgress` (basis points, range-checked),
+  `SetActivityBudget`, `SetActivityActualCost`, and `SetActivityActualDates`
+  (finish-before-start rejected).
+- The activity inspector edits all five progress fields in one apply, routed
+  through the command stack.
+- Gantt bars draw a progress overlay over the completed share.
+- MSPDI imports and exports `ActualStart`/`ActualFinish`.
+- Recorded progress stays out of the scheduling inputs (D15), so variance and
+  earned-value comparisons stay honest.
+- CI green on `opencode/ci` (runs 39774816170 and 39775089237).
+
 ## 2026-10-22 — P4-1/P4-3 baseline variance and earned-value panel
 
 - New Baselines view in the egui shell: capture a baseline from the current

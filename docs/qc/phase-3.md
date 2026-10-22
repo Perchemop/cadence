@@ -1,7 +1,7 @@
 # Phase 3 Quality Gate
 
-Checklist for the Phase-3 resources slices, the Phase-4 baselines and EVM
-slices that landed with them, and the Phase-5 interchange slice.
+Checklist for the Phase-3 resources slices, the Phase-4 baselines, EVM and
+progress slices that landed with them, and the Phase-5 interchange slice.
 
 ## Functionality
 
@@ -23,24 +23,24 @@ slices that landed with them, and the Phase-5 interchange slice.
 - [x] Baselines view: capture and delete baselines, a per-activity variance
       table against the selected baseline, and an earned-value panel driven by
       an editable status date (P4-1, P4-3).
+- [x] Progress updating: percent complete in basis points, budget at
+      completion, actual cost and recorded actual start/finish dates, all
+      editable in the inspector through undoable commands (P4-2).
+- [x] Gantt bars draw a progress overlay over the completed share (P4-2).
 - [x] Microsoft Project XML (MSPDI) import and export, including resources,
-      assignments and baselines (P5-1).
+      assignments, baselines and actual dates (P5-1).
 - [x] MPX import and export (P5-1).
-- [x] SQLite schema v3 with in-place v1→v3 and v2→v3 migrations (P3-1).
+- [x] SQLite schema v4 with in-place v1, v2 and v3 migrations (P3-1, P4-2).
 
 ## Engineering
 
 - [x] `cargo fmt --check --all` passes.
 - [x] `cargo clippy --workspace --all-targets -- -D warnings` passes.
-- [x] `cargo test --workspace` passes (152 tests).
-- [x] CI green on `opencode/ci` (run 39764500014, 152 tests passed), pending
-      merge to `main`.
+- [x] `cargo test --workspace` passes.
+- [x] CI green on `opencode/ci` (run 39775089237), pending merge to `main`.
 
 ## Known limitations (carried forward)
 
-- Progress updating is limited to the stored `percent_complete` basis-point
-  field; editing actual start/finish dates and progress-driven rescheduling
-  (P4-2) are not implemented.
 - Leveling is a greedy heuristic, not an optimiser: it can delay an activity
   more than strictly necessary, and it reports remaining conflicts rather
   than failing when the iteration budget runs out (D12).
@@ -49,3 +49,5 @@ slices that landed with them, and the Phase-5 interchange slice.
 - MSPDI durations assume the Microsoft Project eight-hour default day, and
   lag is quantised to whole working days (D14).
 - The MSPDI reader ignores namespaces and prefixed element names.
+- Recorded actual dates do not drive the schedule; they are kept as facts for
+  variance and earned-value comparison (D15).

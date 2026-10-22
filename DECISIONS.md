@@ -52,7 +52,7 @@ requirements.
 ## D9 — SQLite schema versioning and save strategy (2026-10-21)
 
 The project file is a relational SQLite database. Schema version lives in
-`PRAGMA user_version` (currently 3). Opening a file with a newer version is
+`PRAGMA user_version` (currently 4). Opening a file with a newer version is
 an explicit error rather than a best-effort read, so an old build can never
 silently misinterpret or overwrite newer data. A version 0 database gets the
 current schema created; each older version runs an ordered, in-place
@@ -169,3 +169,24 @@ read as *start no earlier than* and *must finish on* as *finish no earlier
 than*. Cadence's `Constraint` set has no "must" variant, and inventing one at
 the interchange boundary would put a value in the model that the engine cannot
 schedule exactly.
+
+## D15 — Recorded progress is a fact, not a constraint (2026-10-22)
+
+Progress is stored in three places: `percent_complete` in basis points
+(0–10000, edited in the UI as a percentage), `actual_cost` in minor units, and
+`actual_start`/`actual_finish` dates. These are **recorded facts about what
+happened**, kept next to — never instead of — the plan. The engine still
+derives schedules from logic, calendars and constraints; actual dates do not
+feed the forward or backward pass, and they are cleared by no command because
+they are not cached schedule state.
+
+This keeps the model honest: the variance views and the earned-value panel
+compare the plan against reality, and mixing reality into the scheduling
+inputs would make that comparison circular. If progress-driven rescheduling is
+wanted later, it should be an explicit engine mode rather than a silent
+rewrite of constraints.
+
+Percent complete is exposed as basis points in the model and as a percentage
+in the UI and interchange formats, because every format that surrounds Cadence
+speaks percentages. The conversion happens at the boundary in both directions
+and rounds to whole basis points.

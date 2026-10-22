@@ -114,18 +114,17 @@ Total float is measured in each activity's working days.
 ## Persistence
 
 `cadence-persistence` stores a project in a native SQLite file (D9). Schema
-version 3 is relational rather than a JSON blob: `project` and
+version 4 is relational rather than a JSON blob: `project` and
 `project_holidays` hold the aggregate settings and default calendar;
 `calendars` and `calendar_holidays` hold named calendars; `wbs_nodes` stores
 the tree with a `preorder` column that preserves sibling order on load;
 `activities` stores durations, constraints, optional WBS/calendar references,
-cost and progress fields; `relationships` stores endpoints, link type, and
-signed lag; `resources` stores the dictionary and each resource's capacity;
-`activity_resources` stores assignments; and `baselines` with
-`baseline_snapshots` store captured plans. Foreign keys are enabled on every
-connection. Version 1 files are migrated in place by adding the constraint
-columns, and both version 1 and 2 files are migrated to version 3 by adding
-the resource, assignment, baseline and cost structures.
+cost, progress and recorded actual dates; `relationships` stores endpoints,
+link type, and signed lag; `resources` stores the dictionary and each
+resource's capacity; `activity_resources` stores assignments; and `baselines`
+with `baseline_snapshots` store captured plans. Foreign keys are enabled on
+every connection. Version 1, 2 and 3 files are migrated in place by adding
+the missing columns and tables.
 
 `save_project` validates the aggregate (dangling WBS, calendar, and
 relationship references are errors), creates the schema when the file is new,
@@ -139,10 +138,11 @@ recomputed on load. Records are written in project order (and WBS pre-order)
 so round-trips preserve ordering.
 
 Constraints are documented in D10, the resource model in D11, leveling in
-D12, money and percentage representation in D13, and the interchange formats
-in D14. `cadence-interchange` handles open interchange outside the SQLite
-file: Microsoft Project XML (MSPDI) and MPX, both as documented subsets.
-JSON/CSV interchange and printing/PDF remain later-phase work.
+D12, money and percentage representation in D13, the interchange formats in
+D14, and recorded progress in D15. `cadence-interchange` handles open
+interchange outside the SQLite file: Microsoft Project XML (MSPDI) and MPX,
+both as documented subsets. JSON/CSV interchange and printing/PDF remain
+later-phase work.
 
 ## Resources
 

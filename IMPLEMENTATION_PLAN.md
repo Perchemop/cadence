@@ -42,7 +42,7 @@ are subdivided into slices below.
 ## Phase 4 — Baselines & progress
 
 - [x] P4-1: Multiple baselines + variance views
-- [ ] P4-2: Progress updating (percent complete, actual dates)
+- [x] P4-2: Progress updating (percent complete, actual dates)
 - [x] P4-3: EVM metrics (SPI/CPI)
 
 ## Phase 5 — Polish & interop
