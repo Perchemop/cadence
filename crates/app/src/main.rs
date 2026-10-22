@@ -27,6 +27,8 @@ Usage:
   cadence import-mpx <in> <out>  Import an MPX file into a project file
   cadence export-csv <in> <out>  Save a project file as a CSV activity table
   cadence import-csv <in> <out>  Import a CSV activity table into a project file
+  cadence export-json <in> <out> Save a project file as Cadence JSON
+  cadence import-json <in> <out> Import Cadence JSON into a project file
   cadence --help                 Show this help
 ";
 
@@ -60,6 +62,12 @@ fn main() -> ExitCode {
         [command, input, output] if command == "import-csv" => {
             import_interchange(input, output, Format::Csv)
         }
+        [command, input, output] if command == "export-json" => {
+            export_interchange(input, output, Format::Json)
+        }
+        [command, input, output] if command == "import-json" => {
+            import_interchange(input, output, Format::Json)
+        }
         _ => {
             eprint!("{USAGE}");
             Err("invalid arguments".to_string())
@@ -81,6 +89,7 @@ enum Format {
     Mspdi,
     Mpx,
     Csv,
+    Json,
 }
 
 impl Format {
@@ -89,6 +98,7 @@ impl Format {
             Self::Mspdi => "Microsoft Project XML",
             Self::Mpx => "MPX",
             Self::Csv => "CSV",
+            Self::Json => "JSON",
         }
     }
 }
@@ -99,6 +109,7 @@ fn export_interchange(input: &str, output: &str, format: Format) -> Result<(), S
         Format::Mspdi => cadence_interchange::mspdi::export(&project),
         Format::Mpx => cadence_interchange::mpx::export(&project),
         Format::Csv => cadence_interchange::csv::export(&project),
+        Format::Json => Ok(cadence_interchange::json::export(&project)),
     }
     .map_err(|error| error.to_string())?;
     std::fs::write(output, document).map_err(|error| format!("cannot write {output}: {error}"))?;
@@ -117,6 +128,7 @@ fn import_interchange(input: &str, output: &str, format: Format) -> Result<(), S
         Format::Mspdi => cadence_interchange::mspdi::import(&document),
         Format::Mpx => cadence_interchange::mpx::import(&document),
         Format::Csv => cadence_interchange::csv::import(&document),
+        Format::Json => cadence_interchange::json::import(&document),
     }
     .map_err(|error| error.to_string())?;
     cadence_persistence::save_project(&project, output).map_err(|error| error.to_string())?;
