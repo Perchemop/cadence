@@ -10,7 +10,8 @@ use std::collections::BTreeMap;
 use cadence_commands::{
     AddResourceToActivity, CaptureBaseline, CommandStack, CreateRelationship, CreateResource,
     DeleteResource, RemoveBaseline, RemoveResourceFromActivity, RenameActivity, RenameResource,
-    SetActivityConstraint, SetActivityDuration, SetRelationshipLag, SetResourceCapacity,
+    SetActivityActualCost, SetActivityActualDates, SetActivityBudget, SetActivityConstraint,
+    SetActivityDuration, SetActivityProgress, SetRelationshipLag, SetResourceCapacity,
     SetResourceKind,
 };
 use cadence_core::engine::schedule;
@@ -140,6 +141,11 @@ pub struct CadenceApp {
     duration_buffer: String,
     constraint_kind: usize,
     constraint_date_buffer: String,
+    progress_buffer: String,
+    actual_cost_buffer: String,
+    actual_start_buffer: String,
+    actual_finish_buffer: String,
+    budget_buffer: String,
     selected_resource: Option<ResourceId>,
     resource_name_buffer: String,
     resource_kind_index: usize,
@@ -173,6 +179,11 @@ impl CadenceApp {
             duration_buffer: String::new(),
             constraint_kind: 0,
             constraint_date_buffer: String::new(),
+            progress_buffer: String::new(),
+            actual_cost_buffer: String::new(),
+            actual_start_buffer: String::new(),
+            actual_finish_buffer: String::new(),
+            budget_buffer: String::new(),
             selected_resource: None,
             resource_name_buffer: String::new(),
             resource_kind_index: 0,
@@ -203,6 +214,26 @@ impl CadenceApp {
             };
             self.constraint_kind = kind;
             self.constraint_date_buffer = date.map(|d| d.to_string()).unwrap_or_default();
+            self.progress_buffer = activity
+                .percent_complete
+                .map(|percent| (percent as f64 / 100.0).to_string())
+                .unwrap_or_default();
+            self.actual_cost_buffer = activity
+                .actual_cost
+                .map(format_money)
+                .unwrap_or_default();
+            self.actual_start_buffer = activity
+                .actual_start
+                .map(|date| date.to_string())
+                .unwrap_or_default();
+            self.actual_finish_buffer = activity
+                .actual_finish
+                .map(|date| date.to_string())
+                .unwrap_or_default();
+            self.budget_buffer = activity
+                .budget_at_completion
+                .map(format_money)
+                .unwrap_or_default();
         }
     }
 
@@ -254,6 +285,53 @@ impl CadenceApp {
             let _ = self.stack.execute(
                 &mut self.project,
                 Box::new(SetActivityConstraint { id, constraint }),
+            );
+        }
+
+        if let Ok(percent) = parse_percent(self.progress_buffer.trim()) {
+            if percent != activity.percent_complete {
+                let _ = self.stack.execute(
+                    &mut self.project,
+                    Box::new(SetActivityProgress {
+                        id,
+                        percent_complete: percent,
+                    }),
+                );
+            }
+        }
+
+        let budget = parse_money(self.budget_buffer.trim());
+        if budget != activity.budget_at_completion {
+            let _ = self.stack.execute(
+                &mut self.project,
+                Box::new(SetActivityBudget {
+                    id,
+                    budget_at_completion: budget,
+                }),
+            );
+        }
+
+        let cost = parse_money(self.actual_cost_buffer.trim());
+        if cost != activity.actual_cost {
+            let _ = self.stack.execute(
+                &mut self.project,
+                Box::new(SetActivityActualCost {
+                    id,
+                    actual_cost: cost,
+                }),
+            );
+        }
+
+        let actual_start = parse_date(self.actual_start_buffer.trim());
+        let actual_finish = parse_date(self.actual_finish_buffer.trim());
+        if actual_start != activity.actual_start || actual_finish != activity.actual_finish {
+            let _ = self.stack.execute(
+                &mut self.project,
+                Box::new(SetActivityActualDates {
+                    id,
+                    actual_start,
+                    actual_finish,
+                }),
             );
         }
 
@@ -637,6 +715,20 @@ impl eframe::App for CadenceApp {
                                 ui.label("Constraint date (YYYY-MM-DD)");
                                 ui.text_edit_singleline(&mut self.constraint_date_buffer);
                             }
+
+                            ui.separator();
+                            ui.heading("Progress");
+                            ui.label("Percent complete");
+                            ui.text_edit_singleline(&mut self.progress_buffer);
+                            ui.label("Budget at completion");
+                            ui.text_edit_singleline(&mut self.budget_buffer);
+                            ui.label("Actual cost");
+                            ui.text_edit_singleline(&mut self.actual_cost_buffer);
+                            ui.label("Actual start (YYYY-MM-DD)");
+                            ui.text_edit_singleline(&mut self.actual_start_buffer);
+                            ui.label("Actual finish (YYYY-MM-DD)");
+                            ui.text_edit_singleline(&mut self.actual_finish_buffer);
+
                             if ui.button("Apply").clicked() {
                                 self.apply_edits();
                             }
@@ -1181,6 +1273,31 @@ fn variance_color(value: Option<i64>) -> Color32 {
 fn format_money(minor_units: i64) -> String {
     let units = minor_units as f64 / 100.0;
     format!("{units:.2}")
+}
+
+/// Parse a decimal amount into minor currency units.
+///
+/// An empty string means "not recorded", so it yields `None` rather than 0.
+fn parse_money(text: &str) -> Option<i64> {
+    let value: f64 = text.parse().ok()?;
+    if !value.is_finite() {
+        return None;
+    }
+    Some((value * 100.0).round() as i64)
+}
+
+/// Parse a percentage into basis points (0 to 10000).
+///
+/// An empty string means "not recorded".
+fn parse_percent(text: &str) -> Option<Option<i64>> {
+    if text.is_empty() {
+        return Some(None);
+    }
+    let value: f64 = text.parse().ok()?;
+    if !value.is_finite() || !(0.0..=100.0).contains(&value) {
+        return None;
+    }
+    Some(Some((value * 100.0).round() as i64))
 }
 
 /// Format a performance index, or `n/a` when it is undefined.

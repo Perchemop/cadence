@@ -13,6 +13,7 @@
 //! | `Task/PercentComplete` | [`Activity::percent_complete`] (basis points) |
 //! | `Task/FixedCost` | [`Activity::budget_at_completion`] (minor units) |
 //! | `Task/ActualCost` | [`Activity::actual_cost`] (minor units) |
+//! | `Task/ActualStart`, `Task/ActualFinish` | [`Activity::actual_start`], [`Activity::actual_finish`] |
 //! | `Task/PredecessorLink` | [`Relationship`] (type and lag) |
 //! | `Resource/UID`, `Name`, `Type`, `MaxUnits` | [`Resource`] |
 //! | `Assignment/TaskUID`, `ResourceUID` | [`Activity::resources`] |
@@ -98,6 +99,8 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
                 .map(|percent| percent.clamp(0, 100) * 100);
             activity.budget_at_completion = task.text_of("FixedCost").and_then(parse_money);
             activity.actual_cost = task.text_of("ActualCost").and_then(parse_money);
+            activity.actual_start = task.text_of("ActualStart").and_then(parse_date_prefix);
+            activity.actual_finish = task.text_of("ActualFinish").and_then(parse_date_prefix);
 
             for baseline in task.children_named("Baseline") {
                 let number = baseline.parse_of::<i64>("Number").unwrap_or(0);
@@ -319,6 +322,20 @@ pub fn export(project: &Project) -> Result<String, InterchangeError> {
                 output,
                 "      <ActualCost>{}</ActualCost>",
                 format_money(cost)
+            );
+        }
+        if let Some(start) = activity.actual_start {
+            let _ = writeln!(
+                output,
+                "      <ActualStart>{}</ActualStart>",
+                format_datetime(start, "08:00:00")
+            );
+        }
+        if let Some(finish) = activity.actual_finish {
+            let _ = writeln!(
+                output,
+                "      <ActualFinish>{}</ActualFinish>",
+                format_datetime(finish, "17:00:00")
             );
         }
 
@@ -586,6 +603,8 @@ mod tests {
         survey.percent_complete = Some(5000);
         survey.budget_at_completion = Some(150_000);
         survey.actual_cost = Some(75_050);
+        survey.actual_start = Some(start);
+        survey.actual_finish = Some(date(2026, Month::January, 6));
         project.activities.push(survey);
 
         let mut excavate = Activity::new(ActivityId(2), "Excavate", 3);
@@ -653,6 +672,14 @@ mod tests {
         assert_eq!(loaded.activities[0].percent_complete, Some(5000));
         assert_eq!(loaded.activities[0].budget_at_completion, Some(150_000));
         assert_eq!(loaded.activities[0].actual_cost, Some(75_050));
+        assert_eq!(
+            loaded.activities[0].actual_start,
+            Some(date(2026, Month::January, 5))
+        );
+        assert_eq!(
+            loaded.activities[0].actual_finish,
+            Some(date(2026, Month::January, 6))
+        );
 
         assert_eq!(loaded.relationships.len(), 1);
         assert_eq!(loaded.relationships[0].predecessor, ActivityId(1));

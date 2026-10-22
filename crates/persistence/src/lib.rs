@@ -1,8 +1,8 @@
 //! SQLite project files for Cadence.
 //!
 //! A Cadence project file is an ordinary SQLite database. The schema is
-//! versioned with `PRAGMA user_version`; this build reads and writes version 3
-//! and migrates version 1 and 2 files in place.
+//! versioned with `PRAGMA user_version`; this build reads and writes version 4
+//! and migrates version 1, 2 and 3 files in place.
 //!
 //! Saving runs in a single transaction that replaces the previous contents, so
 //! a failed save never corrupts an existing project.
@@ -24,7 +24,7 @@ use thiserror::Error;
 use time::{Date, Month};
 
 /// Project-file schema version written by this build.
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 4;
 
 const SCHEMA: &str = r#"
 CREATE TABLE project (
@@ -69,6 +69,8 @@ CREATE TABLE activities (
     budget_at_completion INTEGER,
     actual_cost INTEGER,
     percent_complete INTEGER,
+    actual_start TEXT,
+    actual_finish TEXT,
     position   INTEGER NOT NULL
 );
 
@@ -188,7 +190,8 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
             // Version 2 adds activity constraints. Existing activities keep
             // the historical behaviour (as soon as possible).
             // Version 3 adds the resource dictionary, the activity cost fields
-            // used by earned value management, and baselines. Migrate straight
+            // used by earned value management, and baselines.
+            // Version 4 adds the recorded actual dates. Migrate straight
             // through to the current schema version.
             connection.execute_batch(
                 "ALTER TABLE activities ADD COLUMN constraint_kind TEXT NOT NULL DEFAULT 'asap';
@@ -196,6 +199,8 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                  ALTER TABLE activities ADD COLUMN budget_at_completion INTEGER;
                  ALTER TABLE activities ADD COLUMN actual_cost INTEGER;
                  ALTER TABLE activities ADD COLUMN percent_complete INTEGER;
+                 ALTER TABLE activities ADD COLUMN actual_start TEXT;
+                 ALTER TABLE activities ADD COLUMN actual_finish TEXT;
                  PRAGMA user_version = 2;
                  CREATE TABLE IF NOT EXISTS resources (
                      id      INTEGER PRIMARY KEY,
@@ -221,7 +226,7 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      baseline_finish TEXT,
                      PRIMARY KEY (baseline_id, activity_id)
                  );
-                 PRAGMA user_version = 3;",
+                 PRAGMA user_version = 4;",
             )?;
             Ok(())
         }
@@ -229,10 +234,13 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
             // Version 3 adds the resource dictionary and activity-resource
             // assignments, the activity cost fields used by earned value
             // management, and baselines.
+            // Version 4 adds the recorded actual dates.
             connection.execute_batch(
                 "ALTER TABLE activities ADD COLUMN budget_at_completion INTEGER;
                  ALTER TABLE activities ADD COLUMN actual_cost INTEGER;
                  ALTER TABLE activities ADD COLUMN percent_complete INTEGER;
+                 ALTER TABLE activities ADD COLUMN actual_start TEXT;
+                 ALTER TABLE activities ADD COLUMN actual_finish TEXT;
                  CREATE TABLE IF NOT EXISTS resources (
                     id      INTEGER PRIMARY KEY,
                     name    TEXT    NOT NULL UNIQUE COLLATE NOCASE,
@@ -257,7 +265,16 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      baseline_finish TEXT,
                      PRIMARY KEY (baseline_id, activity_id)
                  );
-                 PRAGMA user_version = 3;",
+                 PRAGMA user_version = 4;",
+            )?;
+            Ok(())
+        }
+        3 => {
+            // Version 4 adds the recorded actual start and finish dates.
+            connection.execute_batch(
+                "ALTER TABLE activities ADD COLUMN actual_start TEXT;
+                 ALTER TABLE activities ADD COLUMN actual_finish TEXT;
+                 PRAGMA user_version = 4;",
             )?;
             Ok(())
         }
@@ -388,8 +405,9 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
         transaction.execute(
             "INSERT INTO activities
                 (id, name, duration, wbs_id, calendar_id, constraint_kind, constraint_date,
-                 budget_at_completion, actual_cost, percent_complete, position)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                 budget_at_completion, actual_cost, percent_complete, actual_start,
+                 actual_finish, position)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 to_sql_id(activity.id.0, "activity")?,
                 activity.name,
@@ -407,6 +425,8 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
                 activity.budget_at_completion,
                 activity.actual_cost,
                 activity.percent_complete,
+                activity.actual_start.map(|date| date.to_string()),
+                activity.actual_finish.map(|date| date.to_string()),
                 position as i64,
             ],
         )?;
@@ -648,7 +668,7 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
     let rows = collect_rows(
         connection,
         "SELECT id, name, duration, wbs_id, calendar_id, constraint_kind, constraint_date,
-                budget_at_completion, actual_cost, percent_complete
+                budget_at_completion, actual_cost, percent_complete, actual_start, actual_finish
          FROM activities ORDER BY position",
         |row| {
             Ok((
@@ -662,6 +682,8 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
                 row.get::<_, Option<i64>>(7)?,
                 row.get::<_, Option<i64>>(8)?,
                 row.get::<_, Option<i64>>(9)?,
+                row.get::<_, Option<String>>(10)?,
+                row.get::<_, Option<String>>(11)?,
             ))
         },
     )?;
@@ -678,6 +700,8 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
         budget,
         cost,
         percent,
+        actual_start,
+        actual_finish,
     ) in rows
     {
         let duration = u32::try_from(duration).map_err(|_| {
@@ -703,6 +727,8 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
         activity.budget_at_completion = budget;
         activity.actual_cost = cost;
         activity.percent_complete = percent;
+        activity.actual_start = actual_start.map(|value| parse_date(&value)).transpose()?;
+        activity.actual_finish = actual_finish.map(|value| parse_date(&value)).transpose()?;
         activities.push(activity);
     }
     Ok(activities)
@@ -1078,6 +1104,8 @@ mod tests {
         project.activities[0].budget_at_completion = Some(12_500);
         project.activities[0].actual_cost = Some(11_000);
         project.activities[0].percent_complete = Some(4_000);
+        project.activities[0].actual_start = Some(date(5));
+        project.activities[0].actual_finish = Some(date(6));
 
         project.baselines = vec![Baseline {
             id: BaselineId(1),
@@ -1154,9 +1182,13 @@ mod tests {
         assert_eq!(loaded.activities[0].budget_at_completion, Some(12_500));
         assert_eq!(loaded.activities[0].actual_cost, Some(11_000));
         assert_eq!(loaded.activities[0].percent_complete, Some(4_000));
+        assert_eq!(loaded.activities[0].actual_start, Some(date(5)));
+        assert_eq!(loaded.activities[0].actual_finish, Some(date(6)));
         assert_eq!(loaded.activities[1].budget_at_completion, None);
         assert_eq!(loaded.activities[1].actual_cost, None);
         assert_eq!(loaded.activities[1].percent_complete, None);
+        assert_eq!(loaded.activities[1].actual_start, None);
+        assert_eq!(loaded.activities[1].actual_finish, None);
     }
 
     #[test]
@@ -1252,6 +1284,8 @@ mod tests {
                      ALTER TABLE activities DROP COLUMN budget_at_completion;
                      ALTER TABLE activities DROP COLUMN actual_cost;
                      ALTER TABLE activities DROP COLUMN percent_complete;
+                     ALTER TABLE activities DROP COLUMN actual_start;
+                     ALTER TABLE activities DROP COLUMN actual_finish;
                      PRAGMA user_version = 1;",
                 )
                 .expect("downgrade schema");
@@ -1310,6 +1344,8 @@ mod tests {
                     "ALTER TABLE activities DROP COLUMN budget_at_completion;
                      ALTER TABLE activities DROP COLUMN actual_cost;
                      ALTER TABLE activities DROP COLUMN percent_complete;
+                     ALTER TABLE activities DROP COLUMN actual_start;
+                     ALTER TABLE activities DROP COLUMN actual_finish;
                      DROP TABLE baseline_snapshots;
                      DROP TABLE baselines;
                      DROP TABLE activity_resources;

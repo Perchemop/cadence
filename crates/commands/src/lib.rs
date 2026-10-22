@@ -507,6 +507,157 @@ impl Command for SetActivityConstraint {
     }
 }
 
+/// Set the budget at completion of an activity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityBudget {
+    /// Activity to update.
+    pub id: ActivityId,
+    /// Budget in minor currency units, or `None` to leave it unpriced.
+    pub budget_at_completion: Option<i64>,
+}
+
+impl Command for SetActivityBudget {
+    fn description(&self) -> String {
+        match self.budget_at_completion {
+            Some(budget) => format!("set budget of activity {} to {}", self.id, budget),
+            None => format!("clear the budget of activity {}", self.id),
+        }
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.id) else {
+            return Err(format!("activity {} does not exist", self.id));
+        };
+        let previous = std::mem::replace(
+            &mut activity.budget_at_completion,
+            self.budget_at_completion,
+        );
+        Ok(Box::new(SetActivityBudget {
+            id: self.id,
+            budget_at_completion: previous,
+        }))
+    }
+}
+
+/// Record how far an activity has progressed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityProgress {
+    /// Activity to update.
+    pub id: ActivityId,
+    /// Percent complete in basis points (0 to 10000), or `None` if unknown.
+    pub percent_complete: Option<i64>,
+}
+
+impl Command for SetActivityProgress {
+    fn description(&self) -> String {
+        match self.percent_complete {
+            Some(percent) => {
+                format!("set activity {} to {percent} basis points complete", self.id)
+            }
+            None => format!("clear the progress of activity {}", self.id),
+        }
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if let Some(percent) = self.percent_complete {
+            if !(0..=10_000).contains(&percent) {
+                return Err(format!(
+                    "percent complete must be between 0 and 10000 basis points, got {percent}"
+                ));
+            }
+        }
+        let Some(activity) = project.activity_mut(self.id) else {
+            return Err(format!("activity {} does not exist", self.id));
+        };
+        let previous = std::mem::replace(&mut activity.percent_complete, self.percent_complete);
+        Ok(Box::new(SetActivityProgress {
+            id: self.id,
+            percent_complete: previous,
+        }))
+    }
+}
+
+/// Record the actual cost incurred on an activity so far.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityActualCost {
+    /// Activity to update.
+    pub id: ActivityId,
+    /// Actual cost in minor currency units, or `None` if unknown.
+    pub actual_cost: Option<i64>,
+}
+
+impl Command for SetActivityActualCost {
+    fn description(&self) -> String {
+        match self.actual_cost {
+            Some(cost) => format!("set actual cost of activity {} to {cost}", self.id),
+            None => format!("clear the actual cost of activity {}", self.id),
+        }
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.id) else {
+            return Err(format!("activity {} does not exist", self.id));
+        };
+        let previous = std::mem::replace(&mut activity.actual_cost, self.actual_cost);
+        Ok(Box::new(SetActivityActualCost {
+            id: self.id,
+            actual_cost: previous,
+        }))
+    }
+}
+
+/// Record the dates an activity actually started and finished.
+///
+/// Actual dates are recorded progress facts. They are not scheduling
+/// constraints: the engine still computes dates from logic, calendars and
+/// constraints, and the variance views compare the plan against reality.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityActualDates {
+    /// Activity to update.
+    pub id: ActivityId,
+    /// Date work actually started, or `None` if it has not started.
+    pub actual_start: Option<Date>,
+    /// Date work actually finished, or `None` if it has not finished.
+    pub actual_finish: Option<Date>,
+}
+
+impl Command for SetActivityActualDates {
+    fn description(&self) -> String {
+        format!(
+            "set actual dates of activity {} to {} – {}",
+            self.id,
+            date_label(self.actual_start),
+            date_label(self.actual_finish),
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if let (Some(start), Some(finish)) = (self.actual_start, self.actual_finish) {
+            if finish < start {
+                return Err(format!(
+                    "actual finish {} is before actual start {finish}",
+                    start
+                ));
+            }
+        }
+        let Some(activity) = project.activity_mut(self.id) else {
+            return Err(format!("activity {} does not exist", self.id));
+        };
+        let previous_start = std::mem::replace(&mut activity.actual_start, self.actual_start);
+        let previous_finish = std::mem::replace(&mut activity.actual_finish, self.actual_finish);
+        Ok(Box::new(SetActivityActualDates {
+            id: self.id,
+            actual_start: previous_start,
+            actual_finish: previous_finish,
+        }))
+    }
+}
+
+/// Render an optional date for a command description.
+fn date_label(date: Option<Date>) -> String {
+    date.map_or_else(|| "unknown".to_string(), |date| date.to_string())
+}
+
 /// Add a resource to an activity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddResourceToActivity {
@@ -1388,6 +1539,108 @@ mod tests {
                 .map(|activity| activity.original_duration),
             Some(2)
         );
+    }
+
+    #[test]
+    fn progress_budget_cost_and_actual_dates_undo_and_redo() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 3);
+        let pristine = project.clone();
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityBudget {
+                id: a,
+                budget_at_completion: Some(150_000),
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityProgress {
+                id: a,
+                percent_complete: Some(5000),
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityActualCost {
+                id: a,
+                actual_cost: Some(75_050),
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityActualDates {
+                id: a,
+                actual_start: Some(jan(5)),
+                actual_finish: Some(jan(6)),
+            }),
+        );
+
+        let activity = project.activity(a).expect("activity");
+        assert_eq!(activity.budget_at_completion, Some(150_000));
+        assert_eq!(activity.percent_complete, Some(5000));
+        assert_eq!(activity.actual_cost, Some(75_050));
+        assert_eq!(activity.actual_start, Some(jan(5)));
+        assert_eq!(activity.actual_finish, Some(jan(6)));
+        let updated = project.clone();
+        assert_ne!(pristine, updated);
+
+        for _ in 0..4 {
+            stack.undo(&mut project).expect("undo a progress edit");
+        }
+        assert_eq!(project, pristine);
+
+        for _ in 0..4 {
+            stack.redo(&mut project).expect("redo a progress edit");
+        }
+        assert_eq!(project, updated);
+    }
+
+    #[test]
+    fn progress_outside_basis_point_range_is_rejected() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 3);
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(SetActivityProgress {
+                    id: a,
+                    percent_complete: Some(12_345),
+                }),
+            )
+            .expect_err("out-of-range progress must be rejected");
+        assert!(error.contains("basis points"));
+        // A rejected command must not change the activity.
+        assert_eq!(project.activity(a).unwrap().percent_complete, None);
+    }
+
+    #[test]
+    fn actual_dates_finish_before_start_is_rejected() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 3);
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(SetActivityActualDates {
+                    id: a,
+                    actual_start: Some(jan(6)),
+                    actual_finish: Some(jan(5)),
+                }),
+            )
+            .expect_err("finish before start must be rejected");
+        assert!(error.contains("before"));
+        assert_eq!(project.activity(a).unwrap().actual_start, None);
+        assert_eq!(project.activity(a).unwrap().actual_finish, None);
     }
 
     #[test]

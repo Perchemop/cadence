@@ -663,6 +663,12 @@ pub struct Activity {
     /// Percent complete, stored in basis points (0 to 10000).
     #[serde(default)]
     pub percent_complete: Option<i64>,
+    /// Date work actually started, as recorded by the user.
+    #[serde(default)]
+    pub actual_start: Option<Date>,
+    /// Date work actually finished, as recorded by the user.
+    #[serde(default)]
+    pub actual_finish: Option<Date>,
 }
 
 impl Activity {
@@ -688,6 +694,8 @@ impl Activity {
             budget_at_completion: None,
             actual_cost: None,
             percent_complete: None,
+            actual_start: None,
+            actual_finish: None,
         }
     }
 
