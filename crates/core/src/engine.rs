@@ -56,8 +56,8 @@ use time::{Date, Duration};
 
 use crate::calendar_set::CalendarId;
 use crate::model::{
-    ActivityBaselineSnapshot, ActivityId, Baseline, Calendar, CalendarError, Constraint,
-    EvmMetrics, LinkType, Project, RelationshipId, ResourceId,
+    ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, CalendarError,
+    Constraint, EvmMetrics, LinkType, Project, RelationshipId, ResourceId,
 };
 use crate::wbs::WbsId;
 
@@ -267,33 +267,68 @@ pub fn resource_histogram(project: &Project, schedule: &Schedule) -> ResourceHis
     histogram
 }
 
-/// Compute earned value metrics for the whole project against a baseline.
+/// Capture a baseline snapshot of a computed schedule.
 ///
-/// Aggregates per-activity [`EvmMetrics`] using [`Baseline`] snapshots as the
-/// planned-value reference. When no baseline is supplied, planned value is
-/// derived from the activity's own budget-at-completion.
-pub fn evm_metrics(
+/// The baseline records, for every scheduled activity, the duration and the
+/// planned start and finish. Activities that are not part of the schedule are
+/// skipped, so a baseline always describes work that the engine could place
+/// on the calendar.
+pub fn capture_baseline(
     project: &Project,
     schedule: &Schedule,
+    id: BaselineId,
+    name: impl Into<String>,
+    created_at: Date,
+) -> Baseline {
+    let snapshots = schedule
+        .activities
+        .iter()
+        .map(|result| ActivityBaselineSnapshot {
+            activity_id: result.id,
+            baseline_duration: project
+                .activity(result.id)
+                .map(|activity| activity.original_duration)
+                .unwrap_or_default(),
+            baseline_start: Some(result.scheduled_start),
+            baseline_finish: Some(result.scheduled_finish),
+        })
+        .collect();
+    Baseline::from_snapshots(id, name, created_at, snapshots)
+}
+
+/// Compute earned value metrics for the whole project against a baseline.
+///
+/// `status_date` is the "data date": the day progress is measured as of.
+/// Planned value comes from the baseline schedule, so the baseline must have
+/// been captured before the work it describes. Without a baseline the planned
+/// value is zero and the schedule performance index is undefined.
+pub fn evm_metrics(
+    project: &Project,
     baseline: Option<&Baseline>,
+    status_date: Date,
 ) -> EvmMetrics {
     let mut total_bac = 0i64;
     let mut total_pv = 0i64;
     let mut total_ev = 0i64;
     let mut total_ac = 0i64;
 
-    // Index baseline snapshots by activity id for quick lookup.
-    let snapshots: Option<std::collections::HashMap<ActivityId, &ActivityBaselineSnapshot>> =
-        baseline.map(|b| b.snapshots.iter().map(|s| (s.activity_id, s)).collect());
-
-    for result in &schedule.activities {
-        let Some(activity) = project.activity(result.id) else {
-            continue;
+    for activity in &project.activities {
+        let snapshot = baseline.and_then(|candidate| {
+            candidate
+                .snapshots
+                .iter()
+                .find(|snapshot| snapshot.activity_id == activity.id)
+        });
+        let planned_fraction = match snapshot {
+            Some(snapshot) => {
+                let calendar = project
+                    .resolve_calendar(activity.calendar)
+                    .unwrap_or(&project.calendar);
+                planned_percent(snapshot, status_date, calendar)
+            }
+            None => 0,
         };
-        let snapshot = snapshots
-            .as_ref()
-            .and_then(|map| map.get(&result.id).copied());
-        let metrics = EvmMetrics::for_activity(activity, snapshot);
+        let metrics = EvmMetrics::for_activity(activity, planned_fraction);
         total_bac += metrics.budget_at_completion;
         total_pv += metrics.planned_value;
         total_ev += metrics.earned_value;
@@ -323,6 +358,32 @@ pub fn evm_metrics(
         cost_performance_index: cpi,
         schedule_performance_index: spi,
     }
+}
+
+/// Share of an activity's baseline that is scheduled as complete at the status
+/// date, expressed in basis points (0 to 10000).
+///
+/// Work is counted in whole working days of the activity's calendar, starting
+/// at the baseline start. A zero-length activity (a milestone) counts as fully
+/// planned once the status date reaches its baseline start.
+fn planned_percent(
+    snapshot: &ActivityBaselineSnapshot,
+    status_date: Date,
+    calendar: &Calendar,
+) -> i64 {
+    let Some(start) = snapshot.baseline_start else {
+        return 0;
+    };
+    if snapshot.baseline_duration == 0 {
+        return if status_date >= start { 10_000 } else { 0 };
+    }
+    let duration = i64::from(snapshot.baseline_duration);
+    let elapsed = match status_date.next_day() {
+        Ok(next) => calendar.working_days_between(start, next),
+        Err(_) => calendar.working_days_between(start, status_date),
+    };
+    let elapsed = elapsed.clamp(0, duration);
+    elapsed * 10_000 / duration
 }
 
 /// Schedule a project with the Critical Path Method.
@@ -1518,5 +1579,121 @@ mod tests {
         assert!(histogram.assignments_on(jan(5)).is_some());
         assert!(histogram.assignments_on(jan(6)).is_some());
         assert!(histogram.assignments_on(jan(7)).is_none());
+    }
+
+    #[test]
+    fn baseline_capture_records_the_scheduled_dates() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 3);
+        let schedule = schedule(&project).expect("schedule");
+
+        let baseline = capture_baseline(&project, &schedule, BaselineId(1), "Baseline 1", jan(5));
+
+        assert_eq!(baseline.id, BaselineId(1));
+        assert_eq!(baseline.name, "Baseline 1");
+        assert_eq!(baseline.created_at, jan(5));
+        assert_eq!(baseline.snapshots.len(), 1);
+        assert_eq!(baseline.snapshots[0].activity_id, ActivityId(1));
+        assert_eq!(baseline.snapshots[0].baseline_duration, 3);
+        assert_eq!(baseline.snapshots[0].baseline_start, Some(jan(5)));
+        assert_eq!(baseline.snapshots[0].baseline_finish, Some(jan(7)));
+    }
+
+    #[test]
+    fn baseline_capture_skips_activities_that_cannot_be_scheduled() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 1);
+        // A cycle cannot be scheduled, so the whole schedule fails and no
+        // baseline can be captured.
+        add_activity(&mut project, 2, "A2", 1);
+        project.relationships.push(Relationship::new(
+            RelationshipId(1),
+            ActivityId(1),
+            ActivityId(2),
+            LinkType::Fs,
+            0,
+        ));
+        project.relationships.push(Relationship::new(
+            RelationshipId(2),
+            ActivityId(2),
+            ActivityId(1),
+            LinkType::Fs,
+            0,
+        ));
+
+        assert!(schedule(&project).is_err());
+    }
+
+    #[test]
+    fn evm_metrics_prorate_planned_value_by_the_baseline_schedule() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 4);
+        project.activities[0].budget_at_completion = Some(100_00);
+        project.activities[0].actual_cost = Some(60_00);
+        project.activities[0].percent_complete = Some(2_000);
+
+        let schedule = schedule(&project).expect("schedule");
+        let baseline = capture_baseline(&project, &schedule, BaselineId(1), "Baseline 1", jan(5));
+
+        // One of the four baseline working days is complete at the status date.
+        let metrics = evm_metrics(&project, Some(&baseline), jan(5));
+        assert_eq!(metrics.budget_at_completion, 100_00);
+        assert_eq!(metrics.planned_value, 25_00);
+        assert_eq!(metrics.earned_value, 20_00);
+        assert_eq!(metrics.actual_cost, 60_00);
+        assert_eq!(metrics.cost_variance, -40_00);
+        assert_eq!(metrics.schedule_variance, -5_00);
+        let cpi = metrics.cost_performance_index.expect("cost performance index");
+        assert!((cpi - 1.0 / 3.0).abs() < 1e-9, "cpi was {cpi}");
+        let spi = metrics.schedule_performance_index.expect("schedule performance index");
+        assert!((spi - 0.8).abs() < 1e-9, "spi was {spi}");
+    }
+
+    #[test]
+    fn evm_metrics_reach_full_planned_value_when_the_baseline_is_complete() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 2);
+        project.activities[0].budget_at_completion = Some(50_00);
+        project.activities[0].percent_complete = Some(10_000);
+
+        let schedule = schedule(&project).expect("schedule");
+        let baseline = capture_baseline(&project, &schedule, BaselineId(1), "Baseline 1", jan(5));
+
+        let metrics = evm_metrics(&project, Some(&baseline), jan(30));
+        assert_eq!(metrics.planned_value, 50_00);
+        assert_eq!(metrics.earned_value, 50_00);
+        assert_eq!(metrics.schedule_variance, 0);
+        let spi = metrics.schedule_performance_index.expect("schedule performance index");
+        assert!((spi - 1.0).abs() < 1e-9, "spi was {spi}");
+    }
+
+    #[test]
+    fn evm_metrics_without_a_baseline_have_no_planned_value() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 2);
+        project.activities[0].budget_at_completion = Some(50_00);
+        project.activities[0].percent_complete = Some(5_000);
+
+        let metrics = evm_metrics(&project, None, jan(5));
+        assert_eq!(metrics.planned_value, 0);
+        assert_eq!(metrics.earned_value, 25_00);
+        assert_eq!(metrics.schedule_variance, 25_00);
+        assert_eq!(metrics.schedule_performance_index, None);
+    }
+
+    #[test]
+    fn evm_metrics_treat_a_milestone_as_fully_planned_from_its_baseline_start() {
+        let mut project = project();
+        add_activity(&mut project, 1, "Milestone", 0);
+        project.activities[0].budget_at_completion = Some(10_00);
+
+        let schedule = schedule(&project).expect("schedule");
+        let baseline = capture_baseline(&project, &schedule, BaselineId(1), "Baseline 1", jan(5));
+
+        let before = evm_metrics(&project, Some(&baseline), jan(4));
+        assert_eq!(before.planned_value, 0);
+
+        let after = evm_metrics(&project, Some(&baseline), jan(5));
+        assert_eq!(after.planned_value, 10_00);
     }
 }

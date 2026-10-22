@@ -896,33 +896,30 @@ pub struct Baseline {
 }
 
 impl Baseline {
-    /// Create a baseline snapshot from the project's activities.
+    /// Create a baseline from explicit activity snapshots.
     ///
-    /// Captures each activity's duration and cached scheduled dates. Activities
-    /// that have not been scheduled yet capture `None` dates.
-    pub fn capture(
+    /// The snapshots are stored in ascending activity order so that a
+    /// baseline written twice compares equal.
+    pub fn from_snapshots(
         id: BaselineId,
         name: impl Into<String>,
         created_at: Date,
-        project: &Project,
+        mut snapshots: Vec<ActivityBaselineSnapshot>,
     ) -> Self {
-        let mut snapshots: Vec<ActivityBaselineSnapshot> = project
-            .activities
-            .iter()
-            .map(|activity| ActivityBaselineSnapshot {
-                activity_id: activity.id,
-                baseline_duration: activity.original_duration,
-                baseline_start: activity.scheduled_start,
-                baseline_finish: activity.scheduled_finish,
-            })
-            .collect();
-        snapshots.sort_by_key(|s| s.activity_id);
+        snapshots.sort_by_key(|snapshot| snapshot.activity_id);
         Self {
             id,
             name: name.into(),
             created_at,
             snapshots,
         }
+    }
+
+    /// Look up the snapshot recorded for an activity.
+    pub fn snapshot(&self, activity_id: ActivityId) -> Option<&ActivityBaselineSnapshot> {
+        self.snapshots
+            .iter()
+            .find(|snapshot| snapshot.activity_id == activity_id)
     }
 }
 
@@ -948,26 +945,23 @@ pub struct EvmMetrics {
 }
 
 impl EvmMetrics {
-    /// Compute earned value metrics for an activity against a baseline.
+    /// Compute earned value metrics for one activity.
     ///
-    /// The planned value is prorated by the fraction of the baseline duration
-    /// that has elapsed as of the project's scheduled dates; earned value is
-    /// derived from `percent_complete`.
-    pub fn for_activity(activity: &Activity, snapshot: Option<&ActivityBaselineSnapshot>) -> Self {
+    /// `planned_fraction` is the share of the activity that the baseline
+    /// schedules as complete at the status date, expressed in basis points
+    /// (0 to 10000). Earned value comes from the activity's
+    /// `percent_complete`, which uses the same basis-point scale.
+    ///
+    /// Cost and schedule performance indices are `None` when their denominator
+    /// is zero, so an activity with no budget or no planned work does not
+    /// report a misleading ratio.
+    pub fn for_activity(activity: &Activity, planned_fraction: i64) -> Self {
         let bac = activity.budget_at_completion.unwrap_or(0);
         let ac = activity.actual_cost.unwrap_or(0);
         let pct = activity.percent_complete.unwrap_or(0);
-        let ev = bac * pct / 10000;
-
-        let (pv, spi_denominator) = match snapshot {
-            Some(snap) if snap.baseline_duration > 0 => {
-                // Planned value is the activity's full budget when a baseline
-                // exists; the denominator for SPI is the baseline duration.
-                (bac, snap.baseline_duration as i64)
-            }
-            _ => (0, 1),
-        };
-
+        let fraction = planned_fraction.clamp(0, 10_000);
+        let pv = bac * fraction / 10_000;
+        let ev = bac * pct / 10_000;
         let cv = ev - ac;
         let sv = ev - pv;
         let cpi = if ac != 0 {
@@ -975,8 +969,8 @@ impl EvmMetrics {
         } else {
             None
         };
-        let spi = if spi_denominator != 0 {
-            Some(ev as f64 / pv.max(1) as f64)
+        let spi = if pv != 0 {
+            Some(ev as f64 / pv as f64)
         } else {
             None
         };
@@ -1238,5 +1232,90 @@ mod tests {
         assert_eq!(Constraint::from_parts("asap", Some(jan(5))), None);
         assert_eq!(Constraint::from_parts("snet", None), None);
         assert_eq!(Constraint::from_parts("mfo", Some(jan(5))), None);
+    }
+
+    #[test]
+    fn baselines_sort_their_snapshots_by_activity() {
+        let baseline = Baseline::from_snapshots(
+            BaselineId(1),
+            "Baseline 1",
+            jan(5),
+            vec![
+                ActivityBaselineSnapshot {
+                    activity_id: ActivityId(3),
+                    baseline_duration: 1,
+                    baseline_start: Some(jan(7)),
+                    baseline_finish: Some(jan(7)),
+                },
+                ActivityBaselineSnapshot {
+                    activity_id: ActivityId(1),
+                    baseline_duration: 2,
+                    baseline_start: Some(jan(5)),
+                    baseline_finish: Some(jan(6)),
+                },
+            ],
+        );
+
+        assert_eq!(baseline.snapshots.len(), 2);
+        assert_eq!(baseline.snapshots[0].activity_id, ActivityId(1));
+        assert_eq!(baseline.snapshots[1].activity_id, ActivityId(3));
+        assert_eq!(
+            baseline.snapshot(ActivityId(3)).map(|s| s.baseline_duration),
+            Some(1)
+        );
+        assert!(baseline.snapshot(ActivityId(2)).is_none());
+    }
+
+    #[test]
+    fn evm_metrics_derive_variances_from_budget_and_progress() {
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
+        activity.budget_at_completion = Some(1_000);
+        activity.actual_cost = Some(400);
+        activity.percent_complete = Some(2_500);
+
+        // A quarter of the budget is planned and a quarter is earned.
+        let metrics = EvmMetrics::for_activity(&activity, 2_500);
+        assert_eq!(metrics.budget_at_completion, 1_000);
+        assert_eq!(metrics.planned_value, 250);
+        assert_eq!(metrics.earned_value, 250);
+        assert_eq!(metrics.actual_cost, 400);
+        assert_eq!(metrics.cost_variance, -150);
+        assert_eq!(metrics.schedule_variance, 0);
+        let cpi = metrics.cost_performance_index.expect("cost performance index");
+        assert!((cpi - 0.625).abs() < 1e-9, "cpi was {cpi}");
+        let spi = metrics.schedule_performance_index.expect("schedule performance index");
+        assert!((spi - 1.0).abs() < 1e-9, "spi was {spi}");
+    }
+
+    #[test]
+    fn evm_metrics_omit_indices_without_a_denominator() {
+        let activity = Activity::new(ActivityId(1), "A", 4);
+
+        let metrics = EvmMetrics::for_activity(&activity, 0);
+        assert_eq!(metrics.budget_at_completion, 0);
+        assert_eq!(metrics.planned_value, 0);
+        assert_eq!(metrics.earned_value, 0);
+        assert_eq!(metrics.cost_performance_index, None);
+        assert_eq!(metrics.schedule_performance_index, None);
+    }
+
+    #[test]
+    fn evm_metrics_clamp_the_planned_fraction() {
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
+        activity.budget_at_completion = Some(1_000);
+
+        let over = EvmMetrics::for_activity(&activity, 50_000);
+        assert_eq!(over.planned_value, 1_000);
+
+        let under = EvmMetrics::for_activity(&activity, -5_000);
+        assert_eq!(under.planned_value, 0);
+    }
+
+    #[test]
+    fn resources_default_to_labour_and_keep_their_name() {
+        let resource = Resource::new(ResourceId(1), "Crew A");
+        assert_eq!(resource.id, ResourceId(1));
+        assert_eq!(resource.name, "Crew A");
+        assert_eq!(resource.kind, ResourceKind::Labour);
     }
 }

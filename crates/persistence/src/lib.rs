@@ -1,8 +1,8 @@
 //! SQLite project files for Cadence.
 //!
 //! A Cadence project file is an ordinary SQLite database. The schema is
-//! versioned with `PRAGMA user_version`; this build reads and writes version 2
-//! and migrates version 1 files in place.
+//! versioned with `PRAGMA user_version`; this build reads and writes version 3
+//! and migrates version 1 and 2 files in place.
 //!
 //! Saving runs in a single transaction that replaces the previous contents, so
 //! a failed save never corrupts an existing project.
@@ -66,6 +66,9 @@ CREATE TABLE activities (
     calendar_id INTEGER REFERENCES calendars(id),
     constraint_kind TEXT NOT NULL DEFAULT 'asap',
     constraint_date TEXT,
+    budget_at_completion INTEGER,
+    actual_cost INTEGER,
+    percent_complete INTEGER,
     position   INTEGER NOT NULL
 );
 
@@ -183,11 +186,15 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
         1 => {
             // Version 2 adds activity constraints. Existing activities keep
             // the historical behaviour (as soon as possible).
-            // Version 3 adds the resource dictionary. Migrate straight through
-            // to the current schema version.
+            // Version 3 adds the resource dictionary, the activity cost fields
+            // used by earned value management, and baselines. Migrate straight
+            // through to the current schema version.
             connection.execute_batch(
                 "ALTER TABLE activities ADD COLUMN constraint_kind TEXT NOT NULL DEFAULT 'asap';
                  ALTER TABLE activities ADD COLUMN constraint_date TEXT;
+                 ALTER TABLE activities ADD COLUMN budget_at_completion INTEGER;
+                 ALTER TABLE activities ADD COLUMN actual_cost INTEGER;
+                 ALTER TABLE activities ADD COLUMN percent_complete INTEGER;
                  PRAGMA user_version = 2;
                  CREATE TABLE IF NOT EXISTS resources (
                      id      INTEGER PRIMARY KEY,
@@ -218,9 +225,13 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
         }
         2 => {
             // Version 3 adds the resource dictionary and activity-resource
-            // assignments.
+            // assignments, the activity cost fields used by earned value
+            // management, and baselines.
             connection.execute_batch(
-                "CREATE TABLE IF NOT EXISTS resources (
+                "ALTER TABLE activities ADD COLUMN budget_at_completion INTEGER;
+                 ALTER TABLE activities ADD COLUMN actual_cost INTEGER;
+                 ALTER TABLE activities ADD COLUMN percent_complete INTEGER;
+                 CREATE TABLE IF NOT EXISTS resources (
                     id      INTEGER PRIMARY KEY,
                     name    TEXT    NOT NULL UNIQUE COLLATE NOCASE,
                     kind    TEXT    NOT NULL DEFAULT 'labour'
@@ -269,6 +280,14 @@ fn validate(project: &Project) -> Result<()> {
             if project.calendars.named(calendar).is_none() {
                 return Err(PersistenceError::InvalidData(format!(
                     "activity {} references missing calendar {calendar}",
+                    activity.id
+                )));
+            }
+        }
+        for resource in &activity.resources {
+            if !project.resources.iter().any(|known| known.id == *resource) {
+                return Err(PersistenceError::InvalidData(format!(
+                    "activity {} references missing resource {resource}",
                     activity.id
                 )));
             }
@@ -365,8 +384,9 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
         let constraint_date = activity.constraint.date().map(|date| date.to_string());
         transaction.execute(
             "INSERT INTO activities
-                (id, name, duration, wbs_id, calendar_id, constraint_kind, constraint_date, position)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                (id, name, duration, wbs_id, calendar_id, constraint_kind, constraint_date,
+                 budget_at_completion, actual_cost, percent_complete, position)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 to_sql_id(activity.id.0, "activity")?,
                 activity.name,
@@ -381,6 +401,9 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
                     .transpose()?,
                 activity.constraint.code(),
                 constraint_date,
+                activity.budget_at_completion,
+                activity.actual_cost,
+                activity.percent_complete,
                 position as i64,
             ],
         )?;
@@ -622,7 +645,8 @@ fn read_wbs(connection: &Connection) -> Result<WbsTree> {
 fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
     let rows = collect_rows(
         connection,
-        "SELECT id, name, duration, wbs_id, calendar_id, constraint_kind, constraint_date
+        "SELECT id, name, duration, wbs_id, calendar_id, constraint_kind, constraint_date,
+                budget_at_completion, actual_cost, percent_complete
          FROM activities ORDER BY position",
         |row| {
             Ok((
@@ -633,12 +657,15 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
                 row.get::<_, Option<i64>>(4)?,
                 row.get::<_, String>(5)?,
                 row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<i64>>(7)?,
+                row.get::<_, Option<i64>>(8)?,
+                row.get::<_, Option<i64>>(9)?,
             ))
         },
     )?;
 
     let mut activities = Vec::with_capacity(rows.len());
-    for (id, name, duration, wbs, calendar, constraint_code, constraint_date) in rows {
+    for (id, name, duration, wbs, calendar, constraint_code, constraint_date, budget, cost, percent) in rows {
         let duration = u32::try_from(duration).map_err(|_| {
             PersistenceError::InvalidData(format!("activity {id} has invalid duration {duration}"))
         })?;
@@ -659,6 +686,9 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
         activity.calendar = calendar
             .map(|calendar| from_sql_id(calendar, "calendar").map(CalendarId))
             .transpose()?;
+        activity.budget_at_completion = budget;
+        activity.actual_cost = cost;
+        activity.percent_complete = percent;
         activities.push(activity);
     }
     Ok(activities)
@@ -789,22 +819,25 @@ fn read_baseline_snapshots(
                 row.get::<_, i64>(0)?,
                 row.get::<_, i64>(1)?,
                 row.get::<_, i64>(2)?,
-                row.get::<_, Option<String>>(3)?
-                    .map(|s| parse_date(&s))
-                    .transpose()?,
-                row.get::<_, Option<String>>(4)?
-                    .map(|s| parse_date(&s))
-                    .transpose()?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
             ))
         },
     )?;
 
     let mut snapshots = Vec::with_capacity(rows.len());
     for (baseline_id, activity_id, duration, start, finish) in rows {
+        let baseline_duration = u32::try_from(duration).map_err(|_| {
+            PersistenceError::InvalidData(format!(
+                "baseline {baseline_id} has invalid duration {duration}"
+            ))
+        })?;
+        let start = start.as_deref().map(parse_date).transpose()?;
+        let finish = finish.as_deref().map(parse_date).transpose()?;
         snapshots.push((
             from_sql_id(baseline_id, "baseline")?,
             from_sql_id(activity_id, "activity")?,
-            duration as u32,
+            baseline_duration,
             start,
             finish,
         ));
@@ -1004,6 +1037,40 @@ mod tests {
                 -1,
             ),
         ];
+
+        let mut crew = Resource::new(ResourceId(1), "Crew A");
+        crew.kind = ResourceKind::Labour;
+        let mut crane = Resource::new(ResourceId(2), "Crane");
+        crane.kind = ResourceKind::Equipment;
+        project.resources = vec![crew, crane];
+
+        project.activities[0].resources = vec![ResourceId(1)];
+        project.activities[1].resources = vec![ResourceId(1), ResourceId(2)];
+
+        project.activities[0].budget_at_completion = Some(12_500);
+        project.activities[0].actual_cost = Some(11_000);
+        project.activities[0].percent_complete = Some(4_000);
+
+        project.baselines = vec![Baseline {
+            id: BaselineId(1),
+            name: "Baseline 1".to_string(),
+            created_at: date(5),
+            snapshots: vec![
+                ActivityBaselineSnapshot {
+                    activity_id: ActivityId(1),
+                    baseline_duration: 5,
+                    baseline_start: Some(date(5)),
+                    baseline_finish: Some(date(12)),
+                },
+                ActivityBaselineSnapshot {
+                    activity_id: ActivityId(2),
+                    baseline_duration: 2,
+                    baseline_start: Some(date(12)),
+                    baseline_finish: Some(date(13)),
+                },
+            ],
+        }];
+
         project
     }
 
@@ -1017,6 +1084,74 @@ mod tests {
         let loaded = load_project(&path).expect("load project");
 
         assert_eq!(loaded, project);
+    }
+
+    #[test]
+    fn resource_dictionary_and_assignments_round_trip() {
+        let dir = TempDir::new();
+        let path = dir.file("resources.cadence");
+        let project = sample_project();
+
+        save_project(&project, &path).expect("save project");
+        let loaded = load_project(&path).expect("load project");
+
+        assert_eq!(loaded.resources.len(), 2);
+        assert_eq!(loaded.resources[0].id, ResourceId(1));
+        assert_eq!(loaded.resources[0].name, "Crew A");
+        assert_eq!(loaded.resources[0].kind, ResourceKind::Labour);
+        assert_eq!(loaded.resources[1].id, ResourceId(2));
+        assert_eq!(loaded.resources[1].name, "Crane");
+        assert_eq!(loaded.resources[1].kind, ResourceKind::Equipment);
+
+        assert_eq!(loaded.activities[0].resources, vec![ResourceId(1)]);
+        assert_eq!(
+            loaded.activities[1].resources,
+            vec![ResourceId(1), ResourceId(2)]
+        );
+        assert!(loaded.activities[2].resources.is_empty());
+        assert!(loaded.activities[3].resources.is_empty());
+    }
+
+    #[test]
+    fn activity_cost_fields_round_trip() {
+        let dir = TempDir::new();
+        let path = dir.file("costs.cadence");
+        let project = sample_project();
+
+        save_project(&project, &path).expect("save project");
+        let loaded = load_project(&path).expect("load project");
+
+        assert_eq!(loaded.activities[0].budget_at_completion, Some(12_500));
+        assert_eq!(loaded.activities[0].actual_cost, Some(11_000));
+        assert_eq!(loaded.activities[0].percent_complete, Some(4_000));
+        assert_eq!(loaded.activities[1].budget_at_completion, None);
+        assert_eq!(loaded.activities[1].actual_cost, None);
+        assert_eq!(loaded.activities[1].percent_complete, None);
+    }
+
+    #[test]
+    fn baselines_round_trip_with_their_snapshots() {
+        let dir = TempDir::new();
+        let path = dir.file("baselines.cadence");
+        let project = sample_project();
+
+        save_project(&project, &path).expect("save project");
+        let loaded = load_project(&path).expect("load project");
+
+        assert_eq!(loaded.baselines.len(), 1);
+        let baseline = &loaded.baselines[0];
+        assert_eq!(baseline.id, BaselineId(1));
+        assert_eq!(baseline.name, "Baseline 1");
+        assert_eq!(baseline.created_at, date(5));
+        assert_eq!(baseline.snapshots.len(), 2);
+        assert_eq!(baseline.snapshots[0].activity_id, ActivityId(1));
+        assert_eq!(baseline.snapshots[0].baseline_duration, 5);
+        assert_eq!(baseline.snapshots[0].baseline_start, Some(date(5)));
+        assert_eq!(baseline.snapshots[0].baseline_finish, Some(date(12)));
+        assert_eq!(baseline.snapshots[1].activity_id, ActivityId(2));
+        assert_eq!(baseline.snapshots[1].baseline_duration, 2);
+        assert_eq!(baseline.snapshots[1].baseline_start, Some(date(12)));
+        assert_eq!(baseline.snapshots[1].baseline_finish, Some(date(13)));
     }
 
     #[test]
@@ -1084,6 +1219,9 @@ mod tests {
                 .execute_batch(
                     "ALTER TABLE activities DROP COLUMN constraint_kind;
                      ALTER TABLE activities DROP COLUMN constraint_date;
+                     ALTER TABLE activities DROP COLUMN budget_at_completion;
+                     ALTER TABLE activities DROP COLUMN actual_cost;
+                     ALTER TABLE activities DROP COLUMN percent_complete;
                      PRAGMA user_version = 1;",
                 )
                 .expect("downgrade schema");
@@ -1116,6 +1254,69 @@ mod tests {
             project.activities[0].constraint,
             Constraint::AsSoonAsPossible
         );
+
+        {
+            let connection = Connection::open(&path).expect("reopen database");
+            let version: i64 = connection
+                .pragma_query_value(None, "user_version", |row| row.get(0))
+                .expect("read version");
+            assert_eq!(version, SCHEMA_VERSION);
+        }
+
+        save_project(&project, &path).expect("save after migration");
+        assert_eq!(load_project(&path).expect("reload"), project);
+    }
+
+    #[test]
+    fn version_two_files_are_migrated_in_place() {
+        let dir = TempDir::new();
+        let path = dir.file("v2.cadence");
+        {
+            let connection = Connection::open(&path).expect("create database");
+            connection.execute_batch(SCHEMA).expect("create schema");
+            // Turn the current schema into the version 2 shape.
+            connection
+                .execute_batch(
+                    "ALTER TABLE activities DROP COLUMN budget_at_completion;
+                     ALTER TABLE activities DROP COLUMN actual_cost;
+                     ALTER TABLE activities DROP COLUMN percent_complete;
+                     DROP TABLE baseline_snapshots;
+                     DROP TABLE baselines;
+                     DROP TABLE activity_resources;
+                     DROP TABLE resources;
+                     PRAGMA user_version = 2;",
+                )
+                .expect("downgrade schema");
+            connection
+                .execute(
+                    "INSERT INTO project (id, name, start_date, workweek) VALUES (1, ?1, ?2, ?3)",
+                    params!["Legacy", "2026-01-05", 0b001_1111],
+                )
+                .expect("insert project");
+            connection
+                .execute(
+                    "INSERT INTO wbs_nodes (id, name, parent_id, preorder)
+                     VALUES (1, 'Project', NULL, 0)",
+                    [],
+                )
+                .expect("insert root");
+            connection
+                .execute(
+                    "INSERT INTO activities (id, name, duration, wbs_id, calendar_id, position)
+                     VALUES (1, 'Legacy activity', 2, NULL, NULL, 0)",
+                    [],
+                )
+                .expect("insert activity");
+        }
+
+        let project = load_project(&path).expect("load and migrate");
+        assert_eq!(project.name, "Legacy");
+        assert_eq!(project.activities.len(), 1);
+        assert!(project.resources.is_empty());
+        assert!(project.baselines.is_empty());
+        assert_eq!(project.activities[0].budget_at_completion, None);
+        assert_eq!(project.activities[0].actual_cost, None);
+        assert_eq!(project.activities[0].percent_complete, None);
 
         {
             let connection = Connection::open(&path).expect("reopen database");

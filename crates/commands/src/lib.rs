@@ -10,6 +10,7 @@
 //! never need to inspect project state heuristically.
 
 use cadence_core::calendar_set::{CalendarId, NamedCalendar};
+use cadence_core::engine::{capture_baseline, schedule};
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, Project,
     Relationship, RelationshipId, ResourceId,
@@ -593,13 +594,64 @@ impl Command for CaptureBaseline {
     }
 
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let computed = schedule(project).map_err(|error| error.to_string())?;
         let id = project.next_baseline_id();
-        let baseline = Baseline::capture(id, &self.name, self.created_at, project);
+        let baseline = capture_baseline(
+            project,
+            &computed,
+            id,
+            self.name.clone(),
+            self.created_at,
+        );
         project.baselines.push(baseline);
-        Ok(Box::new(CaptureBaseline {
-            name: self.name.clone(),
-            created_at: self.created_at,
+        Ok(Box::new(RemoveBaseline { id }))
+    }
+}
+
+/// Remove a baseline from the project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoveBaseline {
+    /// Baseline to remove.
+    pub id: BaselineId,
+}
+
+impl Command for RemoveBaseline {
+    fn description(&self) -> String {
+        format!("remove baseline {}", self.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(position) = project.baselines.iter().position(|item| item.id == self.id) else {
+            return Err(format!("baseline {} does not exist", self.id));
+        };
+        let baseline = project.baselines.remove(position);
+        Ok(Box::new(RestoreBaseline {
+            baseline,
+            position,
         }))
+    }
+}
+
+/// Put a previously removed baseline back where it was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreBaseline {
+    /// The baseline to restore.
+    pub baseline: Baseline,
+    /// Index the baseline occupied before it was removed.
+    pub position: usize,
+}
+
+impl Command for RestoreBaseline {
+    fn description(&self) -> String {
+        format!("restore baseline {}", self.baseline.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let id = self.baseline.id;
+        let baseline = self.baseline.clone();
+        let position = self.position.min(project.baselines.len());
+        project.baselines.insert(position, baseline);
+        Ok(Box::new(RemoveBaseline { id }))
     }
 }
 
@@ -1470,5 +1522,175 @@ mod tests {
 
         stack.undo(&mut project).expect("undo delete");
         assert_eq!(project.calendars.calendars()[1].id, CalendarId(2));
+    }
+
+    #[test]
+    fn adding_and_removing_a_resource_assignment_is_reversible() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let activity = add_activity(&mut stack, &mut project, 1, "Task", 2);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(AddResourceToActivity {
+                activity_id: activity,
+                resource_id: ResourceId(7),
+            }),
+        );
+        assert_eq!(project.activities[0].resources, vec![ResourceId(7)]);
+
+        stack.undo(&mut project).expect("undo add");
+        assert!(project.activities[0].resources.is_empty());
+
+        stack.redo(&mut project).expect("redo add");
+        assert_eq!(project.activities[0].resources, vec![ResourceId(7)]);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(RemoveResourceFromActivity {
+                activity_id: activity,
+                resource_id: ResourceId(7),
+            }),
+        );
+        assert!(project.activities[0].resources.is_empty());
+
+        stack.undo(&mut project).expect("undo remove");
+        assert_eq!(project.activities[0].resources, vec![ResourceId(7)]);
+    }
+
+    #[test]
+    fn adding_a_resource_twice_is_rejected() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let activity = add_activity(&mut stack, &mut project, 1, "Task", 2);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(AddResourceToActivity {
+                activity_id: activity,
+                resource_id: ResourceId(7),
+            }),
+        );
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(AddResourceToActivity {
+                    activity_id: activity,
+                    resource_id: ResourceId(7),
+                }),
+            )
+            .expect_err("duplicate assignment must be rejected");
+        assert!(error.contains("already has resource"), "{error}");
+        assert_eq!(project.activities[0].resources, vec![ResourceId(7)]);
+    }
+
+    #[test]
+    fn capturing_a_baseline_records_the_scheduled_dates() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        add_activity(&mut stack, &mut project, 1, "Task", 3);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CaptureBaseline {
+                name: "Baseline 1".to_string(),
+                created_at: jan(5),
+            }),
+        );
+
+        assert_eq!(project.baselines.len(), 1);
+        let baseline = &project.baselines[0];
+        assert_eq!(baseline.id, BaselineId(1));
+        assert_eq!(baseline.name, "Baseline 1");
+        assert_eq!(baseline.created_at, jan(5));
+        assert_eq!(baseline.snapshots.len(), 1);
+        let snapshot = &baseline.snapshots[0];
+        assert_eq!(snapshot.activity_id, ActivityId(1));
+        assert_eq!(snapshot.baseline_duration, 3);
+        assert_eq!(snapshot.baseline_start, Some(jan(5)));
+        assert_eq!(snapshot.baseline_finish, Some(jan(7)));
+    }
+
+    #[test]
+    fn capturing_a_baseline_is_reversible() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        add_activity(&mut stack, &mut project, 1, "Task", 3);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CaptureBaseline {
+                name: "Baseline 1".to_string(),
+                created_at: jan(5),
+            }),
+        );
+        let captured = project.baselines[0].clone();
+
+        stack.undo(&mut project).expect("undo capture");
+        assert!(project.baselines.is_empty());
+
+        stack.redo(&mut project).expect("redo capture");
+        assert_eq!(project.baselines, vec![captured.clone()]);
+
+        stack.undo(&mut project).expect("undo capture again");
+        assert!(project.baselines.is_empty());
+
+        stack.redo(&mut project).expect("redo capture again");
+        assert_eq!(project.baselines, vec![captured]);
+    }
+
+    #[test]
+    fn removing_a_baseline_is_reversible_and_keeps_its_position() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        add_activity(&mut stack, &mut project, 1, "Task", 3);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CaptureBaseline {
+                name: "First".to_string(),
+                created_at: jan(5),
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CaptureBaseline {
+                name: "Second".to_string(),
+                created_at: jan(6),
+            }),
+        );
+        assert_eq!(project.baselines.len(), 2);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(RemoveBaseline { id: BaselineId(1) }),
+        );
+        assert_eq!(project.baselines.len(), 1);
+        assert_eq!(project.baselines[0].name, "Second");
+
+        stack.undo(&mut project).expect("undo remove");
+        assert_eq!(project.baselines.len(), 2);
+        assert_eq!(project.baselines[0].name, "First");
+        assert_eq!(project.baselines[1].name, "Second");
+    }
+
+    #[test]
+    fn removing_an_unknown_baseline_is_rejected() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+
+        let error = stack
+            .execute(&mut project, Box::new(RemoveBaseline { id: BaselineId(9) }))
+            .expect_err("missing baseline must be rejected");
+        assert!(error.contains("does not exist"), "{error}");
     }
 }
