@@ -498,7 +498,8 @@ fn read_project(connection: &Connection) -> Result<Project> {
         }
     }
     project.baselines = baselines;
-    for (baseline_id, activity_id, baseline_duration, baseline_start, baseline_finish) in baseline_snapshots
+    for (baseline_id, activity_id, baseline_duration, baseline_start, baseline_finish) in
+        baseline_snapshots
     {
         if let Some(baseline) = project
             .baselines
@@ -722,7 +723,10 @@ fn read_resources(connection: &Connection) -> Result<Vec<Resource>> {
                 )))
             }
         };
-        resources.push(Resource::new(ResourceId(from_sql_id(id, "resource")?), name));
+        resources.push(Resource::new(
+            ResourceId(from_sql_id(id, "resource")?),
+            name,
+        ));
         // Restore the kind field (Resource::new doesn't set it)
         if let Some(resource) = resources.last_mut() {
             resource.kind = kind;
@@ -735,12 +739,7 @@ fn read_activity_resources(connection: &Connection) -> Result<Vec<(ActivityId, R
     let rows = collect_rows(
         connection,
         "SELECT activity_id, resource_id FROM activity_resources ORDER BY activity_id, resource_id",
-        |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, i64>(1)?,
-            ))
-        },
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
     )?;
 
     let mut assignments = Vec::with_capacity(rows.len());

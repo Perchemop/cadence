@@ -240,10 +240,7 @@ pub fn resource_histogram(project: &Project, schedule: &Schedule) -> ResourceHis
 
         let calendar = match activity.calendar {
             None => &project.calendar,
-            Some(id) => project
-                .calendars
-                .calendar(id)
-                .unwrap_or(&project.calendar),
+            Some(id) => project.calendars.calendar(id).unwrap_or(&project.calendar),
         };
 
         let mut day = result.scheduled_start;
@@ -287,12 +284,7 @@ pub fn evm_metrics(
 
     // Index baseline snapshots by activity id for quick lookup.
     let snapshots: Option<std::collections::HashMap<ActivityId, &ActivityBaselineSnapshot>> =
-        baseline.map(|b| {
-            b.snapshots
-                .iter()
-                .map(|s| (s.activity_id, s))
-                .collect()
-        });
+        baseline.map(|b| b.snapshots.iter().map(|s| (s.activity_id, s)).collect());
 
     for result in &schedule.activities {
         let Some(activity) = project.activity(result.id) else {
@@ -1464,9 +1456,13 @@ mod tests {
 
         project.activities[0].resources.push(r1);
         project.activities[1].resources.push(r2);
-        project
-            .relationships
-            .push(Relationship::new(RelationshipId(1), a1, a2, LinkType::Fs, 0));
+        project.relationships.push(Relationship::new(
+            RelationshipId(1),
+            a1,
+            a2,
+            LinkType::Fs,
+            0,
+        ));
 
         let schedule = schedule(&project).expect("schedule");
         let histogram = resource_histogram(&project, &schedule);
@@ -1510,7 +1506,9 @@ mod tests {
         let r = add_resource(&mut project, 1, "R");
 
         project.activities[0].resources.push(r);
-        project.resources.push(Resource::new(ResourceId(2), "Unused"));
+        project
+            .resources
+            .push(Resource::new(ResourceId(2), "Unused"));
 
         let schedule = schedule(&project).expect("schedule");
         let histogram = resource_histogram(&project, &schedule);

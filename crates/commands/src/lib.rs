@@ -507,7 +507,6 @@ impl Command for SetActivityConstraint {
     }
 }
 
-
 /// Add a resource to an activity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddResourceToActivity {
@@ -530,7 +529,10 @@ impl Command for AddResourceToActivity {
             return Err(format!("activity {} does not exist", self.activity_id));
         };
         if activity.resources.contains(&self.resource_id) {
-            return Err(format!("activity {} already has resource {}", self.activity_id, self.resource_id));
+            return Err(format!(
+                "activity {} already has resource {}",
+                self.activity_id, self.resource_id
+            ));
         }
         activity.resources.push(self.resource_id);
         activity.clear_schedule();
@@ -563,7 +565,10 @@ impl Command for RemoveResourceFromActivity {
             return Err(format!("activity {} does not exist", self.activity_id));
         };
         if !activity.resources.contains(&self.resource_id) {
-            return Err(format!("activity {} does not have resource {}", self.activity_id, self.resource_id));
+            return Err(format!(
+                "activity {} does not have resource {}",
+                self.activity_id, self.resource_id
+            ));
         }
         activity.resources.retain(|&id| id != self.resource_id);
         activity.clear_schedule();

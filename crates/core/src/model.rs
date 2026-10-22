@@ -55,7 +55,6 @@ impl std::fmt::Display for RelationshipId {
     }
 }
 
-
 /// Stable identifier for a [`Resource`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -952,10 +951,7 @@ impl EvmMetrics {
     /// The planned value is prorated by the fraction of the baseline duration
     /// that has elapsed as of the project's scheduled dates; earned value is
     /// derived from `percent_complete`.
-    pub fn for_activity(
-        activity: &Activity,
-        snapshot: Option<&ActivityBaselineSnapshot>,
-    ) -> Self {
+    pub fn for_activity(activity: &Activity, snapshot: Option<&ActivityBaselineSnapshot>) -> Self {
         let bac = activity.budget_at_completion.unwrap_or(0);
         let ac = activity.actual_cost.unwrap_or(0);
         let pct = activity.percent_complete.unwrap_or(0);
@@ -974,7 +970,11 @@ impl EvmMetrics {
 
         let cv = ev - ac;
         let sv = ev - pv;
-        let cpi = if ac != 0 { Some(ev as f64 / ac as f64) } else { None };
+        let cpi = if ac != 0 {
+            Some(ev as f64 / ac as f64)
+        } else {
+            None
+        };
         let spi = if spi_denominator != 0 {
             Some(ev as f64 / pv.max(1) as f64)
         } else {
