@@ -18,12 +18,12 @@ requirement lives.
 | R10 | SQLite project-file persistence | `cadence-persistence/src/lib.rs` (versioned schema, transactional save/load) | persistence unit tests (full round-trip, overwrite, missing file, newer schema, dangling references, invalid data) | done |
 | R11 | Constraints (ASAP/ALAP, dates) | `cadence-core/src/model.rs` (`Constraint`), `engine.rs` (constraint-aware passes), `cadence-commands` (`SetActivityConstraint`), persistence schema v2 | engine constraint tests, command undo test, persistence round-trip and v1→v2 migration test | done |
 | R12 | Property-based engine tests | `crates/core/tests/properties.rs` (proptest) | 5 property tests covering calendar invariants, DAG scheduling, ALAP, constraints | done |
-| R13 | Interactive Gantt + activity table | Phase 2 slices | — | todo |
-| R14 | Design system, light/dark, keyboard, a11y | Phase 2/3 slices | QC checklists | todo |
-| R15 | Resources: dictionary, assignments, histograms, leveling | Phase 3 slices | — | todo |
-| R16 | Baselines + variance | Phase 4 slices | — | todo |
-| R17 | Progress updating + EVM | Phase 4 slices | — | todo |
-| R18 | Open interchange (JSON/CSV/XML), printing/PDF | Phase 5 slices | — | todo |
+| R13 | Interactive Gantt + activity table | `cadence-ui-egui` (Gantt view, sortable table, inspector, dependency drag) | Phase-2 QC gate in `docs/qc/phase-2.md` | done |
+| R14 | Design system, light/dark, keyboard, a11y | `cadence-ui-egui` (design tokens, themes) | `docs/qc/phase-2.md`; keyboard and a11y audit still pending | in progress |
+| R15 | Resources: dictionary, assignments, histograms, leveling | `cadence-core/src/model.rs` (`Resource`), `engine.rs` (`resource_histogram`, `resource_conflicts`, `level_resources`), `cadence-commands`, `cadence-persistence` (schema v3), `cadence-ui-egui` Resources view | engine tests in `engine.rs`, command tests in `cadence-commands`, persistence round-trip test, `docs/qc/phase-3.md` | done |
+| R16 | Baselines + variance | `cadence-core/src/model.rs` (`Baseline`), `engine.rs` (`capture_baseline`), `cadence-commands`, `cadence-persistence` | engine, command and persistence tests | done |
+| R17 | Progress updating + EVM | `cadence-core/src/model.rs` (cost/percent fields), `engine.rs` (`evm_metrics`) | EVM unit tests in `engine.rs`; actual-date progress updating not implemented | in progress |
+| R18 | Open interchange (JSON/CSV/XML), printing/PDF | `cadence-interchange` (MSPDI, MPX), CLI `export-xml`/`import-xml`/`export-mpx`/`import-mpx` | round-trip and hand-written-document tests in `interchange::mspdi` and `interchange::mpx`; JSON/CSV and printing pending | in progress |
 
 When a slice lands, this table and `docs/parity.md` are updated in the same
 commit.

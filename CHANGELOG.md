@@ -7,6 +7,24 @@ follows Keep a Changelog; releases use git tags.
 
 ### Added
 
+- `cadence-interchange` crate: Microsoft Project XML (MSPDI) and MPX import
+  and export for activities, durations, constraints, relationships with lag,
+  resources with capacities, assignments and baselines, with an in-crate XML
+  reader (no new dependency)
+- CLI `export-xml`, `import-xml`, `export-mpx` and `import-mpx` commands
+- Resource dictionary with kinds and capacities (units per working day) and
+  resource assignments on activities
+- Resource usage histograms and over-allocation detection per working day
+- Greedy resource leveling that preserves dependencies and constraint bounds
+- Resources view in the UI: dictionary table, editing, assignment toggles,
+  per-day usage against capacity, leveling preview and undoable apply
+- Multiple project baselines with per-activity snapshots and variance data
+- Earned value metrics (PV, EV, AC, SV, CV, SPI, CPI) in minor units and basis
+  points
+- SQLite schema v3: resource capacities, resources, activity assignments,
+  baselines, baseline snapshots and activity cost columns, with v1→v3 and
+  v2→v3 migrations
+- Phase-3 QC gate recorded in `docs/qc/phase-3.md`
 - Cargo workspace: `cadence-core` (domain + CPM engine), `cadence-commands`
   (typed commands, undo/redo), `cadence-persistence`, `cadence-app` (CLI)
 - CPM engine: forward/backward pass, FS/SS/FF/SF with lag/lead, total and

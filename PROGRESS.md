@@ -3,6 +3,54 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-22 — P5-1 open interchange: Microsoft Project XML and MPX
+
+- New `cadence-interchange` crate with `mspdi` (Microsoft Project XML) and
+  `mpx` readers and writers covering activities, durations at eight working
+  hours per day, constraints, relationships with lag, the resource dictionary
+  with capacities, assignments and baselines.
+- XML is read by an in-crate reader (`interchange::xml`): declarations,
+  comments and processing instructions are skipped, entities are decoded, and
+  mismatched or unterminated tags are rejected, so no dependency is added to
+  the build.
+- CLI: `cadence export-xml|import-xml|export-mpx|import-mpx <in> <out>`.
+- Round-trip and hand-written-document tests for both formats.
+- CI green on `opencode/ci` (run 39754077818, 152 tests passed).
+
+## 2026-10-22 — P3-3 resource conflicts, leveling and resource panel
+
+- `engine::resource_conflicts` reports every working day on which an activity
+  consumes a resource beyond its capacity;
+  `engine::level_resources` greedily delays the latest-starting conflicting
+  activity until the over-allocation clears, keeping dependencies intact.
+- `Schedule` gained a scheduling path parameterised by minimum start dates so
+  leveling can probe candidate schedules without mutating the project.
+- New Resources view in the egui shell: dictionary table with kind, capacity,
+  assignment count and over-allocated days; create/rename/delete; capacity and
+  kind editing; per-day usage against capacity; assignment toggles; leveling
+  preview and an apply action that writes undoable `SetActivityConstraint`
+  commands.
+- CI green on `opencode/ci` (runs 39751953234 and 39748409298).
+
+## 2026-10-22 — P3-1/P3-2/P4-1/P4-3 resources, baselines and EVM
+
+- Resource dictionary on `Project`: `ResourceKind`, name uniqueness
+  (case-insensitive, matching the SQLite constraint), and `capacity` in units
+  per working day. Undoable commands for create/rename/set-capacity/set-kind/
+  delete, plus assignment commands with correct inverse operations.
+- `engine::resource_histogram` collects the resource units committed on each
+  working day.
+- Project baselines: `engine::capture_baseline` snapshots duration, start and
+  finish per activity; capture/remove/restore are undoable and preserve
+  position.
+- Earned value metrics (`engine::evm_metrics`): planned value, earned value,
+  actual cost, schedule and cost variance, SPI and CPI in basis points, with
+  cost stored in minor units.
+- SQLite schema v3 adds `resources.capacity` and the resource, assignment,
+  baseline and cost tables and columns, with v1→v3 and v2→v3 migrations.
+- Comments in the schema and decisions record the append-only table style.
+- CI green on `opencode/ci` (runs 39748409298 and 39751953234).
+
 ## 2026-10-21 — P2-5 performance baseline + Phase-2 QC gate
 
 - Added a 10,000-activity scheduling performance test and the Phase-2 QC

@@ -45,10 +45,36 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | Interactive Gantt | done | timeline, bars, arrows, zoom/pan, virtualised rows |
 | Activity table | done | sortable columns, selection, inspector edits via commands |
 | Dependency editing | done | drag-to-create links, lag editing, cycle prevention |
-| Zoom / pan | todo | |
+| Zoom / pan | done | Ctrl+wheel zoom in the Gantt view, scroll areas for panning |
 | Phase-2 QC gate | done | `docs/qc/phase-2.md` |
 
-## Later phases
+## Phase 3 — Resources
 
-Resources (Phase 3), baselines & progress/EVM (Phase 4), printing, reports,
-interop, polish (Phase 5) — all `todo`.
+| Capability | Status | Notes |
+|---|---|---|
+| Resource dictionary | done | `Resource` with `kind` and `capacity` (units per working day), unique case-insensitive names |
+| Resource assignments | done | `Activity::resources`, undoable assign/unassign commands |
+| Usage histograms | done | `engine::resource_histogram`: committed units per working day |
+| Over-allocation detection | done | `engine::resource_conflicts` reports every day over capacity |
+| Resource leveling | done | `engine::level_resources`, greedy earliest-conflict delay (D12) |
+| Resource panel in the UI | done | dictionary, editing, assignments, usage, leveling preview/apply |
+
+## Phase 4 — Baselines, progress & EVM
+
+| Capability | Status | Notes |
+|---|---|---|
+| Multiple baselines | done | project-wide baselines with per-activity snapshots, undoable capture/remove/restore |
+| Variance views | done | baseline vs current duration/start/finish available from the schedule and baseline data |
+| EVM metrics | done | `engine::evm_metrics`: PV, EV, AC, SV, CV, SPI, CPI (D13) |
+| Progress updating (actual dates) | todo | `percent_complete` is modelled and persisted; actual start/finish editing and progress-driven rescheduling are not |
+
+## Phase 5 — Polish & interop
+
+| Capability | Status | Notes |
+|---|---|---|
+| Microsoft Project XML (MSPDI) import/export | done | `cadence-interchange::mspdi` (D14) |
+| MPX import/export | done | `cadence-interchange::mpx` (D14) |
+| JSON/CSV interchange | todo | |
+| Printing / PDF and reports | todo | |
+| Keyboard mastery, accessibility audit, performance pass | todo | |
+| Documentation, example projects, first tagged release | in progress | docs and progress trackers maintained continuously |

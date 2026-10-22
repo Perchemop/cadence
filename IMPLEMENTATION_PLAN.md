@@ -35,19 +35,20 @@ are subdivided into slices below.
 
 ## Phase 3 — Resources
 
-- [ ] P3-1: Resource dictionary + assignments
-- [ ] P3-2: Usage histograms
-- [ ] P3-3: Basic resource leveling
+- [x] P3-1: Resource dictionary + assignments
+- [x] P3-2: Usage histograms
+- [x] P3-3: Basic resource leveling
 
 ## Phase 4 — Baselines & progress
 
-- [ ] P4-1: Multiple baselines + variance views
+- [x] P4-1: Multiple baselines + variance views
 - [ ] P4-2: Progress updating (percent complete, actual dates)
-- [ ] P4-3: EVM metrics (SPI/CPI)
+- [x] P4-3: EVM metrics (SPI/CPI)
 
 ## Phase 5 — Polish & interop
 
-- [ ] P5-1: JSON/CSV interchange export+import, simple XML
+- [x] P5-1: Open interchange export+import (Microsoft Project XML/MSPDI and MPX)
+- [ ] P5-1b: JSON/CSV interchange export+import
 - [ ] P5-2: Printing/PDF and reports
 - [ ] P5-3: Keyboard mastery, accessibility audit, performance pass
 - [ ] P5-4: Documentation, example projects, first tagged release

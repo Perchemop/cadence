@@ -8,9 +8,10 @@ pure and headless; all mutation flows through a typed command layer; the UI
 
 ```
 app (binary)
- ├── ui-egui (Phase 2)      interactive Gantt, tables, inspector
+ ├── ui-egui (Phase 2)      interactive Gantt, tables, inspector, resources
  ├── commands                typed commands, undo/redo  ──► core
- └── persistence            SQLite + JSON/CSV/XML      ──► core
+ ├── persistence            SQLite project files        ──► core
+ └── interchange            MSPDI/MPX import & export  ──► core
 ```
 
 ## Crates
@@ -19,7 +20,8 @@ app (binary)
 |----------------------|----------------|
 | `cadence-core`       | Domain model (Project, WBS, Activity, Relationship, Resource, Calendar, Baseline) and the CPM engine. No I/O, no UI. |
 | `cadence-commands`   | `Command` trait + `CommandStack`. Single mutation path; produces inverse commands for undo/redo. |
-| `cadence-persistence`| SQLite project file format and open interchange (JSON first, CSV/XML later). |
+| `cadence-persistence`| SQLite project file format: versioned schema, transactional save/load, in-place migrations. |
+| `cadence-interchange`| Open interchange: Microsoft Project XML (MSPDI) and MPX readers/writers plus the in-crate XML reader (D14). JSON/CSV later. |
 | `cadence-app`        | Application binary; wires the layers together. |
 
 ## Key principles
@@ -112,14 +114,18 @@ Total float is measured in each activity's working days.
 ## Persistence
 
 `cadence-persistence` stores a project in a native SQLite file (D9). Schema
-version 2 is relational rather than a JSON blob: `project` and
+version 3 is relational rather than a JSON blob: `project` and
 `project_holidays` hold the aggregate settings and default calendar;
 `calendars` and `calendar_holidays` hold named calendars; `wbs_nodes` stores
 the tree with a `preorder` column that preserves sibling order on load;
-`activities` stores durations, constraints, and optional WBS/calendar
-references; and `relationships` stores endpoints, link type, and signed lag.
-Foreign keys are enabled on every connection. Version 1 files are migrated
-in place by adding the constraint columns.
+`activities` stores durations, constraints, optional WBS/calendar references,
+cost and progress fields; `relationships` stores endpoints, link type, and
+signed lag; `resources` stores the dictionary and each resource's capacity;
+`activity_resources` stores assignments; and `baselines` with
+`baseline_snapshots` store captured plans. Foreign keys are enabled on every
+connection. Version 1 files are migrated in place by adding the constraint
+columns, and both version 1 and 2 files are migrated to version 3 by adding
+the resource, assignment, baseline and cost structures.
 
 `save_project` validates the aggregate (dangling WBS, calendar, and
 relationship references are errors), creates the schema when the file is new,
@@ -132,5 +138,18 @@ Cached schedule fields are not persisted: schedules are derived data and are
 recomputed on load. Records are written in project order (and WBS pre-order)
 so round-trips preserve ordering.
 
-Constraints are documented in D10. Resources and baselines remain later-phase
-work, as do the open interchange formats (JSON/CSV/XML).
+Constraints are documented in D10, the resource model in D11, leveling in
+D12, money and percentage representation in D13, and the interchange formats
+in D14. `cadence-interchange` handles open interchange outside the SQLite
+file: Microsoft Project XML (MSPDI) and MPX, both as documented subsets.
+JSON/CSV interchange and printing/PDF remain later-phase work.
+
+## Resources
+
+A `Resource` is a named `kind` (Labour, Equipment, Material) with a `capacity`
+in units per working day. Activities reference resources by id, and each
+assignment consumes one unit per working day for the activity's duration
+(D11). `engine::resource_histogram` turns a schedule into committed units per
+working day, `engine::resource_conflicts` reports every day over capacity, and
+`engine::level_resources` greedily delays the latest-starting conflicting
+activity until the over-allocation clears (D12).
