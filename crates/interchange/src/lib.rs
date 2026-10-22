@@ -15,7 +15,13 @@
 //! and read back. Fields that Cadence does not model (cost rates, calendars,
 //! custom fields, levelling results) are ignored on import and omitted on
 //! export rather than silently invented.
+//!
+//! [`csv`] is the exception to that scope: a CSV table carries one row per
+//! activity, so it exchanges the activity list, its constraints and links, and
+//! its assignments, but not baselines (see the module documentation for the
+//! exact column list).
 
+pub mod csv;
 pub mod mpx;
 pub mod mspdi;
 pub mod xml;
@@ -92,6 +98,26 @@ pub fn parse_date_prefix(value: &str) -> Option<Date> {
 /// Format a calendar date as `YYYY-MM-DD`.
 pub fn format_date(date: Date) -> String {
     date.to_string()
+}
+
+/// Parse a decimal amount into minor currency units.
+pub(crate) fn parse_money(text: &str) -> Option<i64> {
+    let value: f64 = text.parse().ok()?;
+    if !value.is_finite() {
+        return None;
+    }
+    Some((value * 100.0).round() as i64)
+}
+
+/// Format money held in minor units as a decimal amount.
+pub(crate) fn format_money(minor_units: i64) -> String {
+    let value = minor_units as f64 / 100.0;
+    format!("{value:.2}")
+}
+
+/// The date used when a format carries no project start date at all.
+pub(crate) fn default_start_date() -> Date {
+    time::OffsetDateTime::now_utc().date()
 }
 
 #[cfg(test)]

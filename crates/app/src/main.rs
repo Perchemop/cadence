@@ -25,6 +25,8 @@ Usage:
   cadence import-xml <in> <out>  Import Microsoft Project XML into a project file
   cadence export-mpx <in> <out>  Save a project file as MPX
   cadence import-mpx <in> <out>  Import an MPX file into a project file
+  cadence export-csv <in> <out>  Save a project file as a CSV activity table
+  cadence import-csv <in> <out>  Import a CSV activity table into a project file
   cadence --help                 Show this help
 ";
 
@@ -52,6 +54,12 @@ fn main() -> ExitCode {
         [command, input, output] if command == "import-mpx" => {
             import_interchange(input, output, Format::Mpx)
         }
+        [command, input, output] if command == "export-csv" => {
+            export_interchange(input, output, Format::Csv)
+        }
+        [command, input, output] if command == "import-csv" => {
+            import_interchange(input, output, Format::Csv)
+        }
         _ => {
             eprint!("{USAGE}");
             Err("invalid arguments".to_string())
@@ -72,6 +80,7 @@ fn main() -> ExitCode {
 enum Format {
     Mspdi,
     Mpx,
+    Csv,
 }
 
 impl Format {
@@ -79,6 +88,7 @@ impl Format {
         match self {
             Self::Mspdi => "Microsoft Project XML",
             Self::Mpx => "MPX",
+            Self::Csv => "CSV",
         }
     }
 }
@@ -88,6 +98,7 @@ fn export_interchange(input: &str, output: &str, format: Format) -> Result<(), S
     let document = match format {
         Format::Mspdi => cadence_interchange::mspdi::export(&project),
         Format::Mpx => cadence_interchange::mpx::export(&project),
+        Format::Csv => cadence_interchange::csv::export(&project),
     }
     .map_err(|error| error.to_string())?;
     std::fs::write(output, document).map_err(|error| format!("cannot write {output}: {error}"))?;
@@ -105,6 +116,7 @@ fn import_interchange(input: &str, output: &str, format: Format) -> Result<(), S
     let project = match format {
         Format::Mspdi => cadence_interchange::mspdi::import(&document),
         Format::Mpx => cadence_interchange::mpx::import(&document),
+        Format::Csv => cadence_interchange::csv::import(&document),
     }
     .map_err(|error| error.to_string())?;
     cadence_persistence::save_project(&project, output).map_err(|error| error.to_string())?;

@@ -39,7 +39,7 @@ use cadence_core::model::{
 use time::Date;
 
 use crate::xml::{escape, parse_document, Element};
-use crate::{parse_date_prefix, InterchangeError};
+use crate::{format_money, parse_date_prefix, InterchangeError};
 
 /// XML declaration written at the top of every exported document.
 const XML_HEADER: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#;
@@ -571,19 +571,6 @@ fn invalid_duration(value: &str) -> InterchangeError {
         field: "Duration".to_string(),
         value: value.to_string(),
     }
-}
-
-fn parse_money(text: &str) -> Option<i64> {
-    let value: f64 = text.trim().parse().ok()?;
-    if !value.is_finite() {
-        return None;
-    }
-    Some((value * 100.0).round() as i64)
-}
-
-fn format_money(minor_units: i64) -> String {
-    let value = minor_units as f64 / 100.0;
-    format!("{value:.2}")
 }
 
 #[cfg(test)]
