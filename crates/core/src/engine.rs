@@ -267,6 +267,222 @@ pub fn resource_histogram(project: &Project, schedule: &Schedule) -> ResourceHis
     histogram
 }
 
+/// A resource that is committed beyond its capacity on a single day.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResourceConflict {
+    /// Resource that is over-allocated.
+    pub resource_id: ResourceId,
+    /// Day the over-allocation happens on.
+    pub date: Date,
+    /// Units the resource is committed to on that day.
+    pub required: u32,
+    /// Units the resource can supply on that day.
+    pub capacity: u32,
+    /// Activities competing for the resource on that day.
+    pub activities: Vec<ActivityId>,
+}
+
+/// Leveled dates for one activity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeveledActivity {
+    /// Activity identifier.
+    pub id: ActivityId,
+    /// Start date before leveling.
+    pub original_start: Date,
+    /// Finish date before leveling.
+    pub original_finish: Date,
+    /// Start date after leveling.
+    pub start: Date,
+    /// Finish date after leveling.
+    pub finish: Date,
+    /// Working days the activity was delayed by.
+    pub delay: i64,
+}
+
+/// Outcome of a resource leveling pass.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LevelingResult {
+    /// Leveled dates for every activity of the project.
+    pub activities: Vec<LeveledActivity>,
+    /// Resources that are still over-allocated after leveling.
+    ///
+    /// The list is empty when the schedule could be leveled completely.
+    pub conflicts: Vec<ResourceConflict>,
+}
+
+/// Units committed per resource and day, together with the activities that
+/// commit them.
+type ResourceUsage = BTreeMap<(Date, ResourceId), (u32, Vec<ActivityId>)>;
+
+/// Find every day on which a resource is committed beyond its capacity.
+///
+/// Each activity that has scheduled dates and at least one assigned resource
+/// consumes one unit of each of its resources on every working day between its
+/// scheduled start and scheduled finish (inclusive). A resource is
+/// over-allocated on a day when the units it is committed to exceed its
+/// capacity.
+pub fn resource_conflicts(project: &Project, schedule: &Schedule) -> Vec<ResourceConflict> {
+    let mut usage: ResourceUsage = BTreeMap::new();
+
+    for result in &schedule.activities {
+        let Some(activity) = project.activity(result.id) else {
+            continue;
+        };
+        if activity.resources.is_empty() {
+            continue;
+        }
+
+        let calendar = match activity.calendar {
+            None => &project.calendar,
+            Some(id) => project.calendars.calendar(id).unwrap_or(&project.calendar),
+        };
+
+        let mut day = result.scheduled_start;
+        while day <= result.scheduled_finish {
+            if calendar.is_working_day(day) {
+                for &resource_id in &activity.resources {
+                    let entry = usage.entry((day, resource_id)).or_insert((0, Vec::new()));
+                    entry.0 += 1;
+                    if !entry.1.contains(&result.id) {
+                        entry.1.push(result.id);
+                    }
+                }
+            }
+            day = day
+                .checked_add(Duration::days(1))
+                .expect("resource conflict date overflow");
+        }
+    }
+
+    usage
+        .into_iter()
+        .filter_map(|((date, resource_id), (required, activities))| {
+            let capacity = project
+                .resource(resource_id)
+                .map(|resource| resource.capacity)
+                .unwrap_or(1);
+            if required <= capacity {
+                return None;
+            }
+            Some(ResourceConflict {
+                resource_id,
+                date,
+                required,
+                capacity,
+                activities,
+            })
+        })
+        .collect()
+}
+
+/// Level the schedule so that no resource is used beyond its capacity.
+///
+/// Leveling is a greedy process. The earliest over-allocated day is resolved
+/// by moving the activity that starts last on that day to the next working
+/// day; the project is then re-scheduled so that every dependency stays
+/// intact. The pass repeats until no conflict is left or the iteration budget
+/// runs out.
+///
+/// The result reports the leveled dates and every conflict that could not be
+/// resolved. An empty conflict list means the schedule was leveled
+/// completely.
+///
+/// # Errors
+///
+/// Returns [`SchedError`] when the project can no longer be scheduled, for
+/// example because a deadline constraint no longer holds once an activity is
+/// delayed.
+pub fn level_resources(
+    project: &Project,
+    schedule: &Schedule,
+) -> Result<LevelingResult, SchedError> {
+    let mut minimum_starts: HashMap<ActivityId, Date> = HashMap::new();
+    let mut current = schedule.clone();
+    let mut conflicts = resource_conflicts(project, &current);
+    let budget = 64usize.saturating_add(project.activities.len().saturating_mul(32));
+
+    for _ in 0..budget {
+        let Some(conflict) = conflicts.first() else {
+            break;
+        };
+        let Some(victim) = latest_starting_activity(conflict, &current) else {
+            break;
+        };
+        let Some(activity) = project.activity(victim) else {
+            break;
+        };
+        let calendar = match activity.calendar {
+            None => &project.calendar,
+            Some(id) => project.calendars.calendar(id).unwrap_or(&project.calendar),
+        };
+        let next = calendar.next_working_day_after(conflict.date)?;
+        minimum_starts.insert(victim, next);
+        match schedule_with_minimum_starts(project, &minimum_starts) {
+            Ok(updated) => current = updated,
+            // The project cannot be scheduled any more; report what is known.
+            Err(_) => break,
+        }
+        conflicts = resource_conflicts(project, &current);
+    }
+
+    let mut activities = Vec::with_capacity(current.activities.len());
+    for result in &current.activities {
+        let (original_start, original_finish) = match schedule.activity(result.id) {
+            Some(previous) => (previous.scheduled_start, previous.scheduled_finish),
+            None => (result.scheduled_start, result.scheduled_finish),
+        };
+        let delay = match project.activity(result.id) {
+            Some(activity) => {
+                let calendar = match activity.calendar {
+                    None => &project.calendar,
+                    Some(id) => project.calendars.calendar(id).unwrap_or(&project.calendar),
+                };
+                calendar
+                    .working_days_between(original_start, result.scheduled_start)
+                    .max(0)
+            }
+            None => 0,
+        };
+        activities.push(LeveledActivity {
+            id: result.id,
+            original_start,
+            original_finish,
+            start: result.scheduled_start,
+            finish: result.scheduled_finish,
+            delay,
+        });
+    }
+
+    Ok(LevelingResult {
+        activities,
+        conflicts,
+    })
+}
+
+/// Pick the activity that starts last among those competing for a resource on
+/// a conflicting day.
+///
+/// Moving the latest starter keeps the work that is already under way in
+/// place, which is the usual heuristic for resource leveling. Activities that
+/// start at the same time are broken by identifier, so the activity that comes
+/// last in the project order is the one that moves.
+fn latest_starting_activity(
+    conflict: &ResourceConflict,
+    schedule: &Schedule,
+) -> Option<ActivityId> {
+    conflict
+        .activities
+        .iter()
+        .max_by_key(|id| {
+            let start = schedule
+                .activity(**id)
+                .map(|result| result.scheduled_start)
+                .unwrap_or(conflict.date);
+            (start, **id)
+        })
+        .copied()
+}
+
 /// Capture a baseline snapshot of a computed schedule.
 ///
 /// The baseline records, for every scheduled activity, the duration and the
@@ -394,6 +610,19 @@ fn planned_percent(
 /// to missing activities, cycles in the relationship graph, arithmetic
 /// overflow, or an unusable calendar.
 pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
+    schedule_with_minimum_starts(project, &HashMap::new())
+}
+
+/// Schedule a project while forcing activities to start no earlier than a
+/// given date.
+///
+/// The minimum starts behave like a "start no earlier than" constraint that is
+/// never violated: they raise the forward pass and the backward pass is kept
+/// consistent with them.
+fn schedule_with_minimum_starts(
+    project: &Project,
+    minimum_starts: &HashMap<ActivityId, Date>,
+) -> Result<Schedule, SchedError> {
     let calendar = &project.calendar;
     let origin = calendar.next_working_day_on_or_after(project.start_date)?;
     let count = project.activities.len();
@@ -522,6 +751,12 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
             _ => {}
         }
 
+        // Resource leveling may push an activity later than the network
+        // allows; the minimum start wins over every other lower bound.
+        if let Some(&minimum) = minimum_starts.get(&activity.id) {
+            start = start.max(calendar.next_working_day_on_or_after(minimum)?);
+        }
+
         let start = calendar.next_working_day_on_or_after(start)?;
         let finish = finish_from_start(calendar, start, duration)?;
 
@@ -615,6 +850,12 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
                 finish = finish.max(calendar.next_working_day_on_or_after(date)?);
             }
             _ => {}
+        }
+
+        // Keep the late dates consistent with a leveled minimum start.
+        if let Some(&minimum) = minimum_starts.get(&activity.id) {
+            let earliest_start = calendar.next_working_day_on_or_after(minimum)?;
+            finish = finish.max(finish_from_start(calendar, earliest_start, duration)?);
         }
 
         late_finish[activity_index] = finish;
@@ -1582,8 +1823,130 @@ mod tests {
     }
 
     #[test]
-    fn baseline_capture_records_the_scheduled_dates() {
+    fn resource_conflicts_report_every_over_allocated_day() {
         let mut project = project();
+        add_activity(&mut project, 1, "A1", 3);
+        add_activity(&mut project, 2, "A2", 3);
+        project.resources.push(Resource::new(ResourceId(1), "Crew"));
+        project.activities[0].resources = vec![ResourceId(1)];
+        project.activities[1].resources = vec![ResourceId(1)];
+        let schedule = schedule(&project).expect("schedule");
+
+        let conflicts = resource_conflicts(&project, &schedule);
+
+        assert_eq!(conflicts.len(), 3);
+        assert_eq!(conflicts[0].resource_id, ResourceId(1));
+        assert_eq!(conflicts[0].date, jan(5));
+        assert_eq!(conflicts[0].required, 2);
+        assert_eq!(conflicts[0].capacity, 1);
+        assert_eq!(conflicts[0].activities, vec![ActivityId(1), ActivityId(2)]);
+        assert_eq!(conflicts[2].date, jan(7));
+    }
+
+    #[test]
+    fn a_resource_with_spare_capacity_is_not_over_allocated() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 3);
+        add_activity(&mut project, 2, "A2", 3);
+        project
+            .resources
+            .push(Resource::with_capacity(ResourceId(1), "Crew", 2));
+        project.activities[0].resources = vec![ResourceId(1)];
+        project.activities[1].resources = vec![ResourceId(1)];
+        let schedule = schedule(&project).expect("schedule");
+
+        assert!(resource_conflicts(&project, &schedule).is_empty());
+    }
+
+    #[test]
+    fn leveling_delays_the_later_activity_that_over_allocates_a_resource() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 3);
+        add_activity(&mut project, 2, "A2", 3);
+        project.resources.push(Resource::new(ResourceId(1), "Crew"));
+        project.activities[0].resources = vec![ResourceId(1)];
+        project.activities[1].resources = vec![ResourceId(1)];
+        let schedule = schedule(&project).expect("schedule");
+
+        let result = level_resources(&project, &schedule).expect("level");
+
+        assert!(result.conflicts.is_empty());
+        let first = result
+            .activities
+            .iter()
+            .find(|activity| activity.id == ActivityId(1))
+            .expect("A1");
+        let second = result
+            .activities
+            .iter()
+            .find(|activity| activity.id == ActivityId(2))
+            .expect("A2");
+        assert_eq!(first.start, jan(5));
+        assert_eq!(first.delay, 0);
+        assert_eq!(second.original_start, jan(5));
+        assert_eq!(second.start, jan(8));
+        assert_eq!(second.delay, 3);
+        assert_eq!(second.finish, jan(10));
+    }
+
+    #[test]
+    fn leveling_keeps_dependencies_intact() {
+        let mut project = project();
+        let first = add_activity(&mut project, 1, "A1", 3);
+        let second = add_activity(&mut project, 2, "A2", 3);
+        let third = add_activity(&mut project, 3, "A3", 2);
+        add_relationship(&mut project, 1, first, third, LinkType::Fs, 0);
+        project.resources.push(Resource::new(ResourceId(1), "Crew"));
+        for activity in &mut project.activities {
+            activity.resources = vec![ResourceId(1)];
+        }
+        let schedule = schedule(&project).expect("schedule");
+        assert!(!resource_conflicts(&project, &schedule).is_empty());
+
+        let result = level_resources(&project, &schedule).expect("level");
+
+        assert!(result.conflicts.is_empty());
+        let leveled_first = result
+            .activities
+            .iter()
+            .find(|activity| activity.id == first)
+            .expect("A1");
+        let leveled_third = result
+            .activities
+            .iter()
+            .find(|activity| activity.id == third)
+            .expect("A3");
+        assert_eq!(leveled_first.start, jan(5));
+        assert_eq!(leveled_first.finish, jan(7));
+        // The successor still starts after its predecessor finishes.
+        assert!(leveled_third.start > leveled_first.finish);
+    }
+
+    #[test]
+    fn leveling_a_feasible_schedule_changes_nothing() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 3);
+        add_activity(&mut project, 2, "A2", 3);
+        project
+            .resources
+            .push(Resource::with_capacity(ResourceId(1), "Crew", 2));
+        project.activities[0].resources = vec![ResourceId(1)];
+        project.activities[1].resources = vec![ResourceId(1)];
+        let schedule = schedule(&project).expect("schedule");
+
+        let result = level_resources(&project, &schedule).expect("level");
+
+        assert!(result.conflicts.is_empty());
+        assert_eq!(result.activities.len(), 2);
+        for activity in &result.activities {
+            assert_eq!(activity.start, activity.original_start);
+            assert_eq!(activity.finish, activity.original_finish);
+            assert_eq!(activity.delay, 0);
+        }
+    }
+
+    #[test]
+    fn baseline_capture_records_the_scheduled_dates() {        let mut project = project();
         add_activity(&mut project, 1, "A1", 3);
         let schedule = schedule(&project).expect("schedule");
 

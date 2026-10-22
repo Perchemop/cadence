@@ -84,7 +84,8 @@ CREATE TABLE relationships (
 CREATE TABLE IF NOT EXISTS resources (
     id      INTEGER PRIMARY KEY,
     name    TEXT    NOT NULL UNIQUE COLLATE NOCASE,
-    kind    TEXT    NOT NULL DEFAULT 'labour'
+    kind    TEXT    NOT NULL DEFAULT 'labour',
+    capacity INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS activity_resources (
@@ -199,7 +200,8 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                  CREATE TABLE IF NOT EXISTS resources (
                      id      INTEGER PRIMARY KEY,
                      name    TEXT    NOT NULL UNIQUE COLLATE NOCASE,
-                     kind    TEXT    NOT NULL DEFAULT 'labour'
+                     kind    TEXT    NOT NULL DEFAULT 'labour',
+                     capacity INTEGER NOT NULL DEFAULT 1
                  );
                  CREATE TABLE IF NOT EXISTS activity_resources (
                      activity_id   INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
@@ -234,7 +236,8 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                  CREATE TABLE IF NOT EXISTS resources (
                     id      INTEGER PRIMARY KEY,
                     name    TEXT    NOT NULL UNIQUE COLLATE NOCASE,
-                    kind    TEXT    NOT NULL DEFAULT 'labour'
+                    kind    TEXT    NOT NULL DEFAULT 'labour',
+                    capacity INTEGER NOT NULL DEFAULT 1
                 );
                  CREATE TABLE IF NOT EXISTS activity_resources (
                     activity_id   INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
@@ -426,7 +429,7 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
 
     for resource in project.resources.iter() {
         transaction.execute(
-            "INSERT INTO resources (id, name, kind) VALUES (?1, ?2, ?3)",
+            "INSERT INTO resources (id, name, kind, capacity) VALUES (?1, ?2, ?3, ?4)",
             params![
                 to_sql_id(resource.id.0, "resource")?,
                 resource.name,
@@ -435,6 +438,7 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
                     ResourceKind::Equipment => "equipment",
                     ResourceKind::Material => "material",
                 },
+                i64::from(resource.capacity),
             ],
         )?;
     }
@@ -741,18 +745,19 @@ fn read_relationships(connection: &Connection) -> Result<Vec<Relationship>> {
 fn read_resources(connection: &Connection) -> Result<Vec<Resource>> {
     let rows = collect_rows(
         connection,
-        "SELECT id, name, kind FROM resources ORDER BY id",
+        "SELECT id, name, kind, capacity FROM resources ORDER BY id",
         |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
             ))
         },
     )?;
 
     let mut resources = Vec::with_capacity(rows.len());
-    for (id, name, kind) in rows {
+    for (id, name, kind, capacity) in rows {
         let kind = match kind.as_str() {
             "labour" => ResourceKind::Labour,
             "equipment" => ResourceKind::Equipment,
@@ -763,14 +768,15 @@ fn read_resources(connection: &Connection) -> Result<Vec<Resource>> {
                 )))
             }
         };
-        resources.push(Resource::new(
-            ResourceId(from_sql_id(id, "resource")?),
+        let capacity = u32::try_from(capacity).map_err(|_| {
+            PersistenceError::InvalidData(format!("resource {id} has invalid capacity {capacity}"))
+        })?;
+        resources.push(Resource {
+            id: ResourceId(from_sql_id(id, "resource")?),
             name,
-        ));
-        // Restore the kind field (Resource::new doesn't set it)
-        if let Some(resource) = resources.last_mut() {
-            resource.kind = kind;
-        }
+            kind,
+            capacity: capacity.max(1),
+        });
     }
     Ok(resources)
 }
@@ -1062,7 +1068,7 @@ mod tests {
 
         let mut crew = Resource::new(ResourceId(1), "Crew A");
         crew.kind = ResourceKind::Labour;
-        let mut crane = Resource::new(ResourceId(2), "Crane");
+        let mut crane = Resource::with_capacity(ResourceId(2), "Crane", 3);
         crane.kind = ResourceKind::Equipment;
         project.resources = vec![crew, crane];
 
@@ -1121,9 +1127,11 @@ mod tests {
         assert_eq!(loaded.resources[0].id, ResourceId(1));
         assert_eq!(loaded.resources[0].name, "Crew A");
         assert_eq!(loaded.resources[0].kind, ResourceKind::Labour);
+        assert_eq!(loaded.resources[0].capacity, 1);
         assert_eq!(loaded.resources[1].id, ResourceId(2));
         assert_eq!(loaded.resources[1].name, "Crane");
         assert_eq!(loaded.resources[1].kind, ResourceKind::Equipment);
+        assert_eq!(loaded.resources[1].capacity, 3);
 
         assert_eq!(loaded.activities[0].resources, vec![ResourceId(1)]);
         assert_eq!(

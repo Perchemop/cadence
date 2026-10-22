@@ -83,15 +83,43 @@ pub struct Resource {
     /// Resource kind (labour, equipment, material).
     #[serde(default)]
     pub kind: ResourceKind,
+    /// Maximum units the resource can supply on one working day.
+    ///
+    /// Every activity assignment consumes one unit per working day, so a
+    /// capacity of two lets the resource work on two activities at the same
+    /// time while a capacity of one forces them to be serialised.
+    #[serde(default = "default_resource_capacity")]
+    pub capacity: u32,
+}
+
+/// Default resource capacity: one unit per working day.
+const fn default_resource_capacity() -> u32 {
+    1
 }
 
 impl Resource {
     /// Create a resource with the given identifier and name.
+    ///
+    /// The capacity defaults to one unit per working day.
     pub fn new(id: ResourceId, name: impl Into<String>) -> Self {
         Self {
             id,
             name: name.into(),
             kind: ResourceKind::Labour,
+            capacity: default_resource_capacity(),
+        }
+    }
+
+    /// Create a resource with an explicit capacity.
+    ///
+    /// A capacity below one is raised to one, because a resource that can
+    /// supply nothing could never be scheduled.
+    pub fn with_capacity(id: ResourceId, name: impl Into<String>, capacity: u32) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            kind: ResourceKind::Labour,
+            capacity: capacity.max(default_resource_capacity()),
         }
     }
 }
@@ -806,6 +834,28 @@ impl Project {
                 .unwrap_or_default()
                 .saturating_add(1),
         )
+    }
+
+    /// Next unused resource identifier.
+    pub fn next_resource_id(&self) -> ResourceId {
+        ResourceId(
+            self.resources
+                .iter()
+                .map(|resource| resource.id.0)
+                .max()
+                .unwrap_or_default()
+                .saturating_add(1),
+        )
+    }
+
+    /// Look up a resource by identifier.
+    pub fn resource(&self, id: ResourceId) -> Option<&Resource> {
+        self.resources.iter().find(|resource| resource.id == id)
+    }
+
+    /// Look up a resource by identifier for modification.
+    pub fn resource_mut(&mut self, id: ResourceId) -> Option<&mut Resource> {
+        self.resources.iter_mut().find(|resource| resource.id == id)
     }
 
     /// Resolve an optional calendar selection to a calendar value.

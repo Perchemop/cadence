@@ -13,7 +13,7 @@ use cadence_core::calendar_set::{CalendarId, NamedCalendar};
 use cadence_core::engine::{capture_baseline, schedule};
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, Project,
-    Relationship, RelationshipId, ResourceId,
+    Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsNode};
 use time::Date;
@@ -621,6 +621,236 @@ impl Command for RestoreResourceOnActivity {
             resource_id: self.resource_id,
         }))
     }
+}
+
+/// One assignment that was removed together with a resource.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemovedAssignment {
+    /// Activity the resource was assigned to.
+    pub activity_id: ActivityId,
+    /// Index the assignment occupied in the activity's resource list.
+    pub index: usize,
+}
+
+/// Add a resource to the project dictionary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreateResource {
+    /// Identifier of the new resource.
+    pub id: ResourceId,
+    /// Name of the new resource.
+    pub name: String,
+    /// Kind of the new resource.
+    pub kind: ResourceKind,
+    /// Units the resource can supply on one working day.
+    pub capacity: u32,
+}
+
+impl Command for CreateResource {
+    fn description(&self) -> String {
+        format!("create resource '{}'", self.name)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if project.resource(self.id).is_some() {
+            return Err(format!("resource {} already exists", self.id));
+        }
+        let name = self.name.trim().to_string();
+        ensure_resource_name_is_free(project, self.id, &name)?;
+        project.resources.push(Resource {
+            id: self.id,
+            name,
+            kind: self.kind,
+            capacity: self.capacity.max(1),
+        });
+        Ok(Box::new(DeleteResource { id: self.id }))
+    }
+}
+
+/// Remove a resource from the dictionary and from every activity it is
+/// assigned to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeleteResource {
+    /// Resource to remove.
+    pub id: ResourceId,
+}
+
+impl Command for DeleteResource {
+    fn description(&self) -> String {
+        format!("delete resource {}", self.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(position) = project.resources.iter().position(|item| item.id == self.id) else {
+            return Err(format!("resource {} does not exist", self.id));
+        };
+        let resource = project.resources.remove(position);
+
+        // Detach the resource from every activity, remembering where it was so
+        // that undo puts it back exactly where it was.
+        let mut assignments = Vec::new();
+        for activity in &mut project.activities {
+            if let Some(index) = activity.resources.iter().position(|&id| id == self.id) {
+                activity.resources.remove(index);
+                activity.clear_schedule();
+                assignments.push(RemovedAssignment {
+                    activity_id: activity.id,
+                    index,
+                });
+            }
+        }
+
+        Ok(Box::new(RestoreResource {
+            resource,
+            position,
+            assignments,
+        }))
+    }
+}
+
+/// Put a previously deleted resource back into the dictionary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreResource {
+    /// The resource to restore.
+    pub resource: Resource,
+    /// Index the resource occupied in the dictionary.
+    pub position: usize,
+    /// Assignments that were removed together with the resource.
+    pub assignments: Vec<RemovedAssignment>,
+}
+
+impl Command for RestoreResource {
+    fn description(&self) -> String {
+        format!("restore resource {}", self.resource.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let id = self.resource.id;
+        let resource = self.resource.clone();
+        let position = self.position.min(project.resources.len());
+        project.resources.insert(position, resource);
+
+        for assignment in &self.assignments {
+            let Some(activity) = project.activity_mut(assignment.activity_id) else {
+                continue;
+            };
+            if activity.resources.contains(&id) {
+                continue;
+            }
+            let index = assignment.index.min(activity.resources.len());
+            activity.resources.insert(index, id);
+            activity.clear_schedule();
+        }
+
+        Ok(Box::new(DeleteResource { id }))
+    }
+}
+
+/// Rename a resource.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenameResource {
+    /// Resource to rename.
+    pub id: ResourceId,
+    /// New name.
+    pub name: String,
+}
+
+impl Command for RenameResource {
+    fn description(&self) -> String {
+        format!("rename resource {} to '{}'", self.id, self.name)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(resource) = project.resource_mut(self.id) else {
+            return Err(format!("resource {} does not exist", self.id));
+        };
+        let previous = resource.name.clone();
+        let name = self.name.trim().to_string();
+        ensure_resource_name_is_free(project, self.id, &name)?;
+        if let Some(resource) = project.resource_mut(self.id) {
+            resource.name = name;
+        }
+        Ok(Box::new(RenameResource {
+            id: self.id,
+            name: previous,
+        }))
+    }
+}
+
+/// Change the capacity of a resource.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetResourceCapacity {
+    /// Resource to update.
+    pub id: ResourceId,
+    /// New capacity in units per working day.
+    pub capacity: u32,
+}
+
+impl Command for SetResourceCapacity {
+    fn description(&self) -> String {
+        format!("set capacity of resource {} to {}", self.id, self.capacity)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(resource) = project.resource_mut(self.id) else {
+            return Err(format!("resource {} does not exist", self.id));
+        };
+        let previous = resource.capacity;
+        resource.capacity = self.capacity.max(1);
+        Ok(Box::new(SetResourceCapacity {
+            id: self.id,
+            capacity: previous,
+        }))
+    }
+}
+
+/// Change the kind of a resource.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetResourceKind {
+    /// Resource to update.
+    pub id: ResourceId,
+    /// New kind.
+    pub kind: ResourceKind,
+}
+
+impl Command for SetResourceKind {
+    fn description(&self) -> String {
+        format!("set kind of resource {} to {:?}", self.id, self.kind)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(resource) = project.resource_mut(self.id) else {
+            return Err(format!("resource {} does not exist", self.id));
+        };
+        let previous = resource.kind;
+        resource.kind = self.kind;
+        Ok(Box::new(SetResourceKind {
+            id: self.id,
+            kind: previous,
+        }))
+    }
+}
+
+/// Reject a resource name that another resource already uses.
+///
+/// Resource names are compared case-insensitively, matching the project file
+/// format.
+fn ensure_resource_name_is_free(
+    project: &Project,
+    id: ResourceId,
+    name: &str,
+) -> Result<(), String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("resource name must not be empty".to_string());
+    }
+    if project
+        .resources
+        .iter()
+        .any(|resource| resource.id != id && resource.name.eq_ignore_ascii_case(trimmed))
+    {
+        return Err(format!("a resource named '{trimmed}' already exists"));
+    }
+    Ok(())
 }
 
 /// Capture a baseline snapshot of the current schedule.
@@ -1786,5 +2016,208 @@ mod tests {
             .execute(&mut project, Box::new(RemoveBaseline { id: BaselineId(9) }))
             .expect_err("missing baseline must be rejected");
         assert!(error.contains("does not exist"), "{error}");
+    }
+
+    #[test]
+    fn creating_a_resource_is_reversible() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crane".to_string(),
+                kind: ResourceKind::Equipment,
+                capacity: 2,
+            }),
+        );
+        assert_eq!(project.resources.len(), 1);
+        assert_eq!(project.resources[0].name, "Crane");
+        assert_eq!(project.resources[0].kind, ResourceKind::Equipment);
+        assert_eq!(project.resources[0].capacity, 2);
+
+        stack.undo(&mut project).expect("undo create");
+        assert!(project.resources.is_empty());
+
+        stack.redo(&mut project).expect("redo create");
+        assert_eq!(project.resources.len(), 1);
+    }
+
+    #[test]
+    fn creating_a_resource_with_a_duplicate_name_is_rejected() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crane".to_string(),
+                kind: ResourceKind::Equipment,
+                capacity: 1,
+            }),
+        );
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(CreateResource {
+                    id: ResourceId(2),
+                    name: "crane".to_string(),
+                    kind: ResourceKind::Equipment,
+                    capacity: 1,
+                }),
+            )
+            .expect_err("duplicate name must be rejected");
+        assert!(error.contains("already exists"), "{error}");
+        assert_eq!(project.resources.len(), 1);
+    }
+
+    #[test]
+    fn creating_a_resource_without_a_name_is_rejected() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(CreateResource {
+                    id: ResourceId(1),
+                    name: "   ".to_string(),
+                    kind: ResourceKind::Labour,
+                    capacity: 1,
+                }),
+            )
+            .expect_err("empty name must be rejected");
+        assert!(error.contains("must not be empty"), "{error}");
+    }
+
+    #[test]
+    fn deleting_a_resource_detaches_it_from_activities_and_is_reversible() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let activity = add_activity(&mut stack, &mut project, 1, "Task", 2);
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crane".to_string(),
+                kind: ResourceKind::Equipment,
+                capacity: 1,
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(AddResourceToActivity {
+                activity_id: activity,
+                resource_id: ResourceId(1),
+            }),
+        );
+        assert_eq!(project.activities[0].resources, vec![ResourceId(1)]);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(DeleteResource { id: ResourceId(1) }),
+        );
+        assert!(project.resources.is_empty());
+        assert!(project.activities[0].resources.is_empty());
+
+        stack.undo(&mut project).expect("undo delete");
+        assert_eq!(project.resources.len(), 1);
+        assert_eq!(project.resources[0].name, "Crane");
+        assert_eq!(project.activities[0].resources, vec![ResourceId(1)]);
+    }
+
+    #[test]
+    fn renaming_a_resource_is_reversible() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crane".to_string(),
+                kind: ResourceKind::Equipment,
+                capacity: 1,
+            }),
+        );
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(RenameResource {
+                id: ResourceId(1),
+                name: "Tower crane".to_string(),
+            }),
+        );
+        assert_eq!(project.resources[0].name, "Tower crane");
+
+        stack.undo(&mut project).expect("undo rename");
+        assert_eq!(project.resources[0].name, "Crane");
+    }
+
+    #[test]
+    fn changing_resource_capacity_and_kind_is_reversible() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crane".to_string(),
+                kind: ResourceKind::Labour,
+                capacity: 1,
+            }),
+        );
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetResourceCapacity {
+                id: ResourceId(1),
+                capacity: 4,
+            }),
+        );
+        assert_eq!(project.resources[0].capacity, 4);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetResourceKind {
+                id: ResourceId(1),
+                kind: ResourceKind::Equipment,
+            }),
+        );
+        assert_eq!(project.resources[0].kind, ResourceKind::Equipment);
+
+        stack.undo(&mut project).expect("undo kind");
+        assert_eq!(project.resources[0].kind, ResourceKind::Labour);
+
+        stack.undo(&mut project).expect("undo capacity");
+        assert_eq!(project.resources[0].capacity, 1);
+    }
+
+    #[test]
+    fn a_resource_capacity_below_one_is_raised() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crane".to_string(),
+                kind: ResourceKind::Equipment,
+                capacity: 0,
+            }),
+        );
+        assert_eq!(project.resources[0].capacity, 1);
     }
 }
