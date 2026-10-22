@@ -110,7 +110,9 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
     let mut activities = Vec::new();
     for (line, record) in rows.iter().enumerate().skip(1) {
         let text = |index: Option<usize>| -> Option<&str> {
-            index.and_then(|index| record.get(index)).map(|value| value.trim())
+            index
+                .and_then(|index| record.get(index))
+                .map(|value| value.trim())
         };
 
         let id = text(Some(id_column))
