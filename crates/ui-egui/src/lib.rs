@@ -1536,6 +1536,25 @@ fn render_gantt(
                     Color32::from_rgb(0x9B, 0xC1, 0xFF)
                 };
                 painter.rect_filled(bar, 2.0, color);
+
+                // Progress overlay: the completed share of the bar is drawn in
+                // a stronger tone so that recorded progress is visible.
+                if let Some(percent) = activity.percent_complete {
+                    if percent > 0 {
+                        let fraction = percent.clamp(0, 10_000) as f32 / 10_000.0;
+                        let progress = Rect::from_min_max(
+                            bar.min,
+                            Pos2::new(bar.min.x + bar.width() * fraction, bar.max.y),
+                        );
+                        let progress_color = if result.critical {
+                            Color32::from_rgb(0xC0, 0x39, 0x2B)
+                        } else {
+                            Color32::from_rgb(0x2F, 0x6F, 0xED)
+                        };
+                        painter.rect_filled(progress, 2.0, progress_color);
+                    }
+                }
+
                 painter.text(
                     bar.center(),
                     Align2::CENTER_CENTER,
