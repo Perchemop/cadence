@@ -285,7 +285,7 @@ impl CadenceApp {
             );
         }
 
-        if let Ok(percent) = parse_percent(self.progress_buffer.trim()) {
+        if let Some(percent) = parse_percent(self.progress_buffer.trim()) {
             if percent != activity.percent_complete {
                 let _ = self.stack.execute(
                     &mut self.project,
