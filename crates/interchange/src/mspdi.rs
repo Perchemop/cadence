@@ -73,10 +73,11 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
     let start_text = root
         .text_of("StartDate")
         .ok_or_else(|| InterchangeError::MissingField("Project/StartDate".to_string()))?;
-    let start_date = parse_date_prefix(start_text).ok_or_else(|| InterchangeError::InvalidField {
-        field: "Project/StartDate".to_string(),
-        value: start_text.to_string(),
-    })?;
+    let start_date =
+        parse_date_prefix(start_text).ok_or_else(|| InterchangeError::InvalidField {
+            field: "Project/StartDate".to_string(),
+            value: start_text.to_string(),
+        })?;
 
     let mut project = Project::new(name, start_date);
     let mut baselines: BTreeMap<i64, Vec<ActivityBaselineSnapshot>> = BTreeMap::new();
@@ -392,7 +393,11 @@ pub fn export(project: &Project) -> Result<String, InterchangeError> {
         let _ = writeln!(output, "      <UID>{}</UID>", resource.id.0);
         let _ = writeln!(output, "      <ID>{}</ID>", index + 1);
         let _ = writeln!(output, "      <Name>{}</Name>", escape(&resource.name));
-        let _ = writeln!(output, "      <Type>{}</Type>", export_resource_kind(resource.kind));
+        let _ = writeln!(
+            output,
+            "      <Type>{}</Type>",
+            export_resource_kind(resource.kind)
+        );
         let _ = writeln!(
             output,
             "      <MaxUnits>{}</MaxUnits>",
@@ -595,7 +600,9 @@ mod tests {
             lag: 1,
         });
 
-        project.resources.push(Resource::new(ResourceId(1), "Crew A"));
+        project
+            .resources
+            .push(Resource::new(ResourceId(1), "Crew A"));
         let mut crane = Resource::with_capacity(ResourceId(2), "Crane", 2);
         crane.kind = ResourceKind::Equipment;
         project.resources.push(crane);

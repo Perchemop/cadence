@@ -95,11 +95,10 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
     let start_text = project_section
         .property("startdate")
         .ok_or_else(|| InterchangeError::MissingField("project/StartDate".to_string()))?;
-    let start_date =
-        parse_date(start_text).ok_or_else(|| InterchangeError::InvalidField {
-            field: "project/StartDate".to_string(),
-            value: start_text.to_string(),
-        })?;
+    let start_date = parse_date(start_text).ok_or_else(|| InterchangeError::InvalidField {
+        field: "project/StartDate".to_string(),
+        value: start_text.to_string(),
+    })?;
 
     let mut project = Project::new(name, start_date);
 
@@ -175,7 +174,10 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
             else {
                 continue;
             };
-            let resource_name = resources.value(record, "name").unwrap_or_default().to_string();
+            let resource_name = resources
+                .value(record, "name")
+                .unwrap_or_default()
+                .to_string();
             if resource_name.is_empty() {
                 continue;
             }
@@ -198,7 +200,10 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
         }
     }
 
-    if let Some(assignments) = sections.iter().find(|section| section.name == "assignments") {
+    if let Some(assignments) = sections
+        .iter()
+        .find(|section| section.name == "assignments")
+    {
         for record in &assignments.records {
             let task = assignments
                 .value(record, "taskid")
@@ -250,7 +255,11 @@ pub fn export(project: &Project) -> Result<String, InterchangeError> {
     output.push_str("[project]\n");
     let _ = writeln!(output, "Name={}", sanitize(&project.name));
     let _ = writeln!(output, "StartDate={}", format_date(schedule.project_start));
-    let _ = writeln!(output, "FinishDate={}", format_date(schedule.project_finish));
+    let _ = writeln!(
+        output,
+        "FinishDate={}",
+        format_date(schedule.project_finish)
+    );
     output.push('\n');
 
     output.push_str("[tasks]\n");
@@ -357,7 +366,9 @@ fn is_table(name: &str) -> bool {
 }
 
 fn split_fields(line: &str) -> Vec<String> {
-    line.split('\t').map(|field| field.trim().to_string()).collect()
+    line.split('\t')
+        .map(|field| field.trim().to_string())
+        .collect()
 }
 
 fn import_constraint(section: &Section, record: &[String]) -> Result<Constraint, InterchangeError> {
@@ -472,7 +483,9 @@ mod tests {
             lag: -2,
         });
 
-        project.resources.push(Resource::new(ResourceId(1), "Crew A"));
+        project
+            .resources
+            .push(Resource::new(ResourceId(1), "Crew A"));
         let mut crane = Resource::with_capacity(ResourceId(2), "Crane", 2);
         crane.kind = ResourceKind::Equipment;
         project.resources.push(crane);

@@ -90,8 +90,7 @@ fn export_interchange(input: &str, output: &str, format: Format) -> Result<(), S
         Format::Mpx => cadence_interchange::mpx::export(&project),
     }
     .map_err(|error| error.to_string())?;
-    std::fs::write(output, document)
-        .map_err(|error| format!("cannot write {output}: {error}"))?;
+    std::fs::write(output, document).map_err(|error| format!("cannot write {output}: {error}"))?;
     println!(
         "Exported \"{}\" as {} to {output}",
         project.name,
@@ -101,8 +100,8 @@ fn export_interchange(input: &str, output: &str, format: Format) -> Result<(), S
 }
 
 fn import_interchange(input: &str, output: &str, format: Format) -> Result<(), String> {
-    let document = std::fs::read_to_string(input)
-        .map_err(|error| format!("cannot read {input}: {error}"))?;
+    let document =
+        std::fs::read_to_string(input).map_err(|error| format!("cannot read {input}: {error}"))?;
     let project = match format {
         Format::Mspdi => cadence_interchange::mspdi::import(&document),
         Format::Mpx => cadence_interchange::mpx::import(&document),

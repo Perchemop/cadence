@@ -250,7 +250,10 @@ fn decode_entities(text: &str) -> String {
             "quot" => Some('"'),
             "apos" => Some('\''),
             _ => {
-                if let Some(hex) = entity.strip_prefix("#x").or_else(|| entity.strip_prefix("#X")) {
+                if let Some(hex) = entity
+                    .strip_prefix("#x")
+                    .or_else(|| entity.strip_prefix("#X"))
+                {
                     u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
                 } else if let Some(decimal) = entity.strip_prefix('#') {
                     decimal.parse::<u32>().ok().and_then(char::from_u32)
@@ -350,10 +353,7 @@ mod tests {
     #[test]
     fn escaping_round_trips_through_the_reader() {
         let original = "A & B <c> \"d\" 'e'";
-        let document = format!(
-            "<Project><Name>{}</Name></Project>",
-            escape(original)
-        );
+        let document = format!("<Project><Name>{}</Name></Project>", escape(original));
         let parsed = parse_document(&document).expect("parse");
         assert_eq!(parsed.text_of("Name"), Some(original));
     }
