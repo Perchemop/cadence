@@ -665,7 +665,19 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
     )?;
 
     let mut activities = Vec::with_capacity(rows.len());
-    for (id, name, duration, wbs, calendar, constraint_code, constraint_date, budget, cost, percent) in rows {
+    for (
+        id,
+        name,
+        duration,
+        wbs,
+        calendar,
+        constraint_code,
+        constraint_date,
+        budget,
+        cost,
+        percent,
+    ) in rows
+    {
         let duration = u32::try_from(duration).map_err(|_| {
             PersistenceError::InvalidData(format!("activity {id} has invalid duration {duration}"))
         })?;

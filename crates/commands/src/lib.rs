@@ -596,13 +596,7 @@ impl Command for CaptureBaseline {
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
         let computed = schedule(project).map_err(|error| error.to_string())?;
         let id = project.next_baseline_id();
-        let baseline = capture_baseline(
-            project,
-            &computed,
-            id,
-            self.name.clone(),
-            self.created_at,
-        );
+        let baseline = capture_baseline(project, &computed, id, self.name.clone(), self.created_at);
         project.baselines.push(baseline);
         Ok(Box::new(RemoveBaseline { id }))
     }
@@ -625,10 +619,7 @@ impl Command for RemoveBaseline {
             return Err(format!("baseline {} does not exist", self.id));
         };
         let baseline = project.baselines.remove(position);
-        Ok(Box::new(RestoreBaseline {
-            baseline,
-            position,
-        }))
+        Ok(Box::new(RestoreBaseline { baseline, position }))
     }
 }
 

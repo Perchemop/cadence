@@ -1260,7 +1260,9 @@ mod tests {
         assert_eq!(baseline.snapshots[0].activity_id, ActivityId(1));
         assert_eq!(baseline.snapshots[1].activity_id, ActivityId(3));
         assert_eq!(
-            baseline.snapshot(ActivityId(3)).map(|s| s.baseline_duration),
+            baseline
+                .snapshot(ActivityId(3))
+                .map(|s| s.baseline_duration),
             Some(1)
         );
         assert!(baseline.snapshot(ActivityId(2)).is_none());
@@ -1281,9 +1283,13 @@ mod tests {
         assert_eq!(metrics.actual_cost, 400);
         assert_eq!(metrics.cost_variance, -150);
         assert_eq!(metrics.schedule_variance, 0);
-        let cpi = metrics.cost_performance_index.expect("cost performance index");
+        let cpi = metrics
+            .cost_performance_index
+            .expect("cost performance index");
         assert!((cpi - 0.625).abs() < 1e-9, "cpi was {cpi}");
-        let spi = metrics.schedule_performance_index.expect("schedule performance index");
+        let spi = metrics
+            .schedule_performance_index
+            .expect("schedule performance index");
         assert!((spi - 1.0).abs() < 1e-9, "spi was {spi}");
     }
 

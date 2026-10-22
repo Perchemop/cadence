@@ -1643,9 +1643,13 @@ mod tests {
         assert_eq!(metrics.actual_cost, 60_00);
         assert_eq!(metrics.cost_variance, -40_00);
         assert_eq!(metrics.schedule_variance, -5_00);
-        let cpi = metrics.cost_performance_index.expect("cost performance index");
+        let cpi = metrics
+            .cost_performance_index
+            .expect("cost performance index");
         assert!((cpi - 1.0 / 3.0).abs() < 1e-9, "cpi was {cpi}");
-        let spi = metrics.schedule_performance_index.expect("schedule performance index");
+        let spi = metrics
+            .schedule_performance_index
+            .expect("schedule performance index");
         assert!((spi - 0.8).abs() < 1e-9, "spi was {spi}");
     }
 
@@ -1663,7 +1667,9 @@ mod tests {
         assert_eq!(metrics.planned_value, 50_00);
         assert_eq!(metrics.earned_value, 50_00);
         assert_eq!(metrics.schedule_variance, 0);
-        let spi = metrics.schedule_performance_index.expect("schedule performance index");
+        let spi = metrics
+            .schedule_performance_index
+            .expect("schedule performance index");
         assert!((spi - 1.0).abs() < 1e-9, "spi was {spi}");
     }
 
