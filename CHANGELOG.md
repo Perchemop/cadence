@@ -27,6 +27,9 @@ follows Keep a Changelog; releases use git tags.
 - SQLite schema v3: resource capacities, resources, activity assignments,
   baselines, baseline snapshots and activity cost columns, with v1→v3 and
   v2→v3 migrations
+- CSV activity table interchange: one row per activity with constraints,
+  predecessor links, resource assignments, progress and actual dates; CLI
+  `export-csv` / `import-csv`
 - Progress updating: percent complete (basis points), budget at completion,
   actual cost and recorded actual start/finish dates, editable through
   undoable commands and persisted in schema v4 (with v1, v2 and v3

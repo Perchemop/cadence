@@ -3,6 +3,23 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-23 — P5-1b CSV activity table interchange
+
+- `cadence-interchange::csv` exchanges a project as one spreadsheet-friendly
+  table: one row per activity carrying duration, constraint code and date,
+  predecessor links (`1FS+1;2SS-1`), resource names, progress, actual dates,
+  budget and actual cost, and the scheduled dates used to recover the project
+  start on import.
+- RFC 4180 quoting plus backslash-escaped semicolons inside list cells, so
+  names may contain commas, quotes, newlines and semicolons.
+- Resource names missing from the dictionary are created as Labour resources
+  with capacity 1 (CSV has no kind or capacity columns — documented).
+- CLI: `cadence export-csv <in> <out>` and `cadence import-csv <in> <out>`.
+- Tests: round trip, hand-written table, predecessor shorthand parsing,
+  quoting and escape round trips, rejection cases, and a CSV-vs-MSPDI
+  equivalence check on the same project.
+- CI green on `opencode/ci` (run 39844511576, 166 tests passed).
+
 ## 2026-10-22 — P4-2 progress updating
 
 - Activities now record `actual_start`/`actual_finish` alongside the existing

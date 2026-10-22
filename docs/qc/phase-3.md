@@ -30,6 +30,8 @@ progress slices that landed with them, and the Phase-5 interchange slice.
 - [x] Microsoft Project XML (MSPDI) import and export, including resources,
       assignments, baselines and actual dates (P5-1).
 - [x] MPX import and export (P5-1).
+- [x] CSV activity table import and export, with predecessor and resource
+      lists, progress and actual dates (P5-1b).
 - [x] SQLite schema v4 with in-place v1, v2 and v3 migrations (P3-1, P4-2).
 
 ## Engineering
@@ -37,7 +39,8 @@ progress slices that landed with them, and the Phase-5 interchange slice.
 - [x] `cargo fmt --check --all` passes.
 - [x] `cargo clippy --workspace --all-targets -- -D warnings` passes.
 - [x] `cargo test --workspace` passes.
-- [x] CI green on `opencode/ci` (run 39775089237), pending merge to `main`.
+- [x] CI green on `opencode/ci` (run 39844511576, 166 tests passed), pending
+      merge to `main`.
 
 ## Known limitations (carried forward)
 

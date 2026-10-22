@@ -74,7 +74,8 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 |---|---|---|
 | Microsoft Project XML (MSPDI) import/export | done | `cadence-interchange::mspdi` (D14) |
 | MPX import/export | done | `cadence-interchange::mpx` (D14) |
-| JSON/CSV interchange | todo | |
+| CSV activity table import/export | done | `cadence-interchange::csv`: one row per activity with constraints, links, assignments and progress; CLI `export-csv`/`import-csv` |
+| JSON interchange | todo | |
 | Printing / PDF and reports | todo | |
 | Keyboard mastery, accessibility audit, performance pass | todo | |
 | Documentation, example projects, first tagged release | in progress | docs and progress trackers maintained continuously |
