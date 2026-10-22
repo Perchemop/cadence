@@ -1893,7 +1893,7 @@ mod tests {
     fn leveling_keeps_dependencies_intact() {
         let mut project = project();
         let first = add_activity(&mut project, 1, "A1", 3);
-        let second = add_activity(&mut project, 2, "A2", 3);
+        add_activity(&mut project, 2, "A2", 3);
         let third = add_activity(&mut project, 3, "A3", 2);
         add_relationship(&mut project, 1, first, third, LinkType::Fs, 0);
         project.resources.push(Resource::new(ResourceId(1), "Crew"));
