@@ -485,8 +485,7 @@ impl CadenceApp {
             Ok(()) => {
                 self.status_message = None;
                 self.recompute();
-                self.selected_baseline =
-                    self.project.baselines.last().map(|baseline| baseline.id);
+                self.selected_baseline = self.project.baselines.last().map(|baseline| baseline.id);
                 self.baseline_name_buffer.clear();
             }
             Err(error) => self.status_message = Some(error),
@@ -1155,7 +1154,9 @@ fn date_text(date: Option<Date>) -> String {
 ///
 /// A positive value means the current date is later than the baseline.
 fn day_variance(baseline: Option<Date>, current: Option<Date>) -> Option<i64> {
-    Some(i64::from(current?.to_julian_day() - baseline?.to_julian_day()))
+    Some(i64::from(
+        current?.to_julian_day() - baseline?.to_julian_day(),
+    ))
 }
 
 /// Render a signed variance, prefixing positive values with `+`.
