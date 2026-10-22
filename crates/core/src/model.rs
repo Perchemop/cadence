@@ -866,6 +866,12 @@ impl BaselineId {
     }
 }
 
+impl std::fmt::Display for BaselineId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
 /// A snapshot of one activity's planned values at the time a baseline is
 /// captured.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

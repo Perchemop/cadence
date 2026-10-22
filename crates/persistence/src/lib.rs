@@ -521,19 +521,17 @@ fn read_project(connection: &Connection) -> Result<Project> {
         }
     }
     project.baselines = baselines;
-    for (baseline_id, activity_id, baseline_duration, baseline_start, baseline_finish) in
-        baseline_snapshots
-    {
+    for row in baseline_snapshots {
         if let Some(baseline) = project
             .baselines
             .iter_mut()
-            .find(|b| b.id == BaselineId(baseline_id))
+            .find(|candidate| candidate.id == BaselineId(row.baseline_id))
         {
             baseline.snapshots.push(ActivityBaselineSnapshot {
-                activity_id: ActivityId(activity_id),
-                baseline_duration,
-                baseline_start,
-                baseline_finish,
+                activity_id: ActivityId(row.activity_id),
+                baseline_duration: row.duration,
+                baseline_start: row.start,
+                baseline_finish: row.finish,
             });
         }
     }
@@ -819,9 +817,21 @@ fn read_baselines(connection: &Connection) -> Result<Vec<Baseline>> {
     Ok(baselines)
 }
 
-fn read_baseline_snapshots(
-    connection: &Connection,
-) -> Result<Vec<(u64, u64, u32, Option<Date>, Option<Date>)>> {
+/// One baseline snapshot row as stored in the database.
+struct BaselineSnapshotRow {
+    /// Baseline the snapshot belongs to.
+    baseline_id: u64,
+    /// Activity the snapshot describes.
+    activity_id: u64,
+    /// Planned duration in working days.
+    duration: u32,
+    /// Planned start date.
+    start: Option<Date>,
+    /// Planned finish date.
+    finish: Option<Date>,
+}
+
+fn read_baseline_snapshots(connection: &Connection) -> Result<Vec<BaselineSnapshotRow>> {
     let rows = collect_rows(
         connection,
         "SELECT baseline_id, activity_id, baseline_duration, baseline_start, baseline_finish
@@ -839,20 +849,20 @@ fn read_baseline_snapshots(
 
     let mut snapshots = Vec::with_capacity(rows.len());
     for (baseline_id, activity_id, duration, start, finish) in rows {
-        let baseline_duration = u32::try_from(duration).map_err(|_| {
+        let duration = u32::try_from(duration).map_err(|_| {
             PersistenceError::InvalidData(format!(
                 "baseline {baseline_id} has invalid duration {duration}"
             ))
         })?;
         let start = start.as_deref().map(parse_date).transpose()?;
         let finish = finish.as_deref().map(parse_date).transpose()?;
-        snapshots.push((
-            from_sql_id(baseline_id, "baseline")?,
-            from_sql_id(activity_id, "activity")?,
-            baseline_duration,
+        snapshots.push(BaselineSnapshotRow {
+            baseline_id: from_sql_id(baseline_id, "baseline")?,
+            activity_id: from_sql_id(activity_id, "activity")?,
+            duration,
             start,
             finish,
-        ));
+        });
     }
     Ok(snapshots)
 }
