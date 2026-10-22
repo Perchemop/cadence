@@ -19,6 +19,9 @@ follows Keep a Changelog; releases use git tags.
 - Resources view in the UI: dictionary table, editing, assignment toggles,
   per-day usage against capacity, leveling preview and undoable apply
 - Multiple project baselines with per-activity snapshots and variance data
+- Baselines view in the UI: capture/delete baselines, a per-activity variance
+  table against the selected baseline, and an earned-value panel driven by an
+  editable status date
 - Earned value metrics (PV, EV, AC, SV, CV, SPI, CPI) in minor units and basis
   points
 - SQLite schema v3: resource capacities, resources, activity assignments,

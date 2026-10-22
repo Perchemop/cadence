@@ -64,8 +64,8 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | Capability | Status | Notes |
 |---|---|---|
 | Multiple baselines | done | project-wide baselines with per-activity snapshots, undoable capture/remove/restore |
-| Variance views | done | baseline vs current duration/start/finish available from the schedule and baseline data |
-| EVM metrics | done | `engine::evm_metrics`: PV, EV, AC, SV, CV, SPI, CPI (D13) |
+| Variance views | done | Baselines view: per-activity duration/start/finish variance against the selected baseline, coloured by sign |
+| EVM metrics | done | `engine::evm_metrics`: PV, EV, AC, SV, CV, SPI, CPI shown against an editable status date (D13) |
 | Progress updating (actual dates) | todo | `percent_complete` is modelled and persisted; actual start/finish editing and progress-driven rescheduling are not |
 
 ## Phase 5 — Polish & interop

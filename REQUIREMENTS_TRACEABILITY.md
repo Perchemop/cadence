@@ -21,7 +21,7 @@ requirement lives.
 | R13 | Interactive Gantt + activity table | `cadence-ui-egui` (Gantt view, sortable table, inspector, dependency drag) | Phase-2 QC gate in `docs/qc/phase-2.md` | done |
 | R14 | Design system, light/dark, keyboard, a11y | `cadence-ui-egui` (design tokens, themes) | `docs/qc/phase-2.md`; keyboard and a11y audit still pending | in progress |
 | R15 | Resources: dictionary, assignments, histograms, leveling | `cadence-core/src/model.rs` (`Resource`), `engine.rs` (`resource_histogram`, `resource_conflicts`, `level_resources`), `cadence-commands`, `cadence-persistence` (schema v3), `cadence-ui-egui` Resources view | engine tests in `engine.rs`, command tests in `cadence-commands`, persistence round-trip test, `docs/qc/phase-3.md` | done |
-| R16 | Baselines + variance | `cadence-core/src/model.rs` (`Baseline`), `engine.rs` (`capture_baseline`), `cadence-commands`, `cadence-persistence` | engine, command and persistence tests | done |
+| R16 | Baselines + variance | `cadence-core/src/model.rs` (`Baseline`), `engine.rs` (`capture_baseline`), `cadence-commands`, `cadence-persistence`, `cadence-ui-egui` Baselines view | engine, command and persistence tests; variance table and EVM panel in the Baselines view | done |
 | R17 | Progress updating + EVM | `cadence-core/src/model.rs` (cost/percent fields), `engine.rs` (`evm_metrics`) | EVM unit tests in `engine.rs`; actual-date progress updating not implemented | in progress |
 | R18 | Open interchange (JSON/CSV/XML), printing/PDF | `cadence-interchange` (MSPDI, MPX), CLI `export-xml`/`import-xml`/`export-mpx`/`import-mpx` | round-trip and hand-written-document tests in `interchange::mspdi` and `interchange::mpx`; JSON/CSV and printing pending | in progress |
 

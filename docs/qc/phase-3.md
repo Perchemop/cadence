@@ -20,6 +20,9 @@ slices that landed with them, and the Phase-5 interchange slice.
       capture/remove/restore (P4-1).
 - [x] Earned value metrics: PV, EV, AC, SV, CV, SPI and CPI in minor units and
       basis points (P4-3).
+- [x] Baselines view: capture and delete baselines, a per-activity variance
+      table against the selected baseline, and an earned-value panel driven by
+      an editable status date (P4-1, P4-3).
 - [x] Microsoft Project XML (MSPDI) import and export, including resources,
       assignments and baselines (P5-1).
 - [x] MPX import and export (P5-1).
@@ -30,7 +33,8 @@ slices that landed with them, and the Phase-5 interchange slice.
 - [x] `cargo fmt --check --all` passes.
 - [x] `cargo clippy --workspace --all-targets -- -D warnings` passes.
 - [x] `cargo test --workspace` passes (152 tests).
-- [x] CI green on `opencode/ci` (run 39754077818), pending merge to `main`.
+- [x] CI green on `opencode/ci` (run 39764500014, 152 tests passed), pending
+      merge to `main`.
 
 ## Known limitations (carried forward)
 

@@ -3,6 +3,16 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-22 — P4-1/P4-3 baseline variance and earned-value panel
+
+- New Baselines view in the egui shell: capture a baseline from the current
+  schedule (undoable), select or delete one, and read a variance table that
+  pairs every activity's current dates and duration against the selected
+  baseline, colouring delays in red and improvements in green.
+- The same view renders the earned-value metrics against an editable status
+  date, so SPI and CPI are visible without leaving the application.
+- CI green on `opencode/ci` (run 39764500014, 152 tests passed).
+
 ## 2026-10-22 — P5-1 open interchange: Microsoft Project XML and MPX
 
 - New `cadence-interchange` crate with `mspdi` (Microsoft Project XML) and
@@ -32,7 +42,7 @@ green CI (`main` branch).
   commands.
 - CI green on `opencode/ci` (runs 39751953234 and 39748409298).
 
-## 2026-10-22 — P3-1/P3-2/P4-1/P4-3 resources, baselines and EVM
+## 2026-10-22 — P3-1/P3-2 resources, baselines and EVM engine
 
 - Resource dictionary on `Project`: `ResourceKind`, name uniqueness
   (case-insensitive, matching the SQLite constraint), and `capacity` in units
