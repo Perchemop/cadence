@@ -8,15 +8,17 @@
 use std::collections::BTreeMap;
 
 use cadence_commands::{
-    AddResourceToActivity, CommandStack, CreateRelationship, CreateResource, DeleteResource,
-    RemoveResourceFromActivity, RenameActivity, RenameResource, SetActivityConstraint,
-    SetActivityDuration, SetRelationshipLag, SetResourceCapacity, SetResourceKind,
+    AddResourceToActivity, CaptureBaseline, CommandStack, CreateRelationship, CreateResource,
+    DeleteResource, RemoveBaseline, RemoveResourceFromActivity, RenameActivity, RenameResource,
+    SetActivityConstraint, SetActivityDuration, SetRelationshipLag, SetResourceCapacity,
+    SetResourceKind,
 };
 use cadence_core::engine::schedule;
 use cadence_core::engine::Schedule;
-use cadence_core::engine::{level_resources, resource_conflicts, resource_histogram};
+use cadence_core::engine::{evm_metrics, level_resources, resource_conflicts, resource_histogram};
 use cadence_core::model::{
-    Activity, ActivityId, Constraint, LinkType, Project, ResourceId, ResourceKind,
+    Activity, ActivityId, Baseline, BaselineId, Constraint, LinkType, Project, ResourceId,
+    ResourceKind,
 };
 use egui::{
     Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2, Visuals,
@@ -85,6 +87,7 @@ enum ViewMode {
     Table,
     Gantt,
     Resources,
+    Baselines,
 }
 
 const CONSTRAINT_LABELS: [&str; 6] = [
@@ -142,6 +145,9 @@ pub struct CadenceApp {
     resource_kind_index: usize,
     resource_capacity_buffer: String,
     leveling_report: Option<String>,
+    selected_baseline: Option<BaselineId>,
+    baseline_name_buffer: String,
+    status_date_buffer: String,
 }
 
 impl CadenceApp {
@@ -172,6 +178,9 @@ impl CadenceApp {
             resource_kind_index: 0,
             resource_capacity_buffer: "1".to_string(),
             leveling_report: None,
+            selected_baseline: None,
+            baseline_name_buffer: String::new(),
+            status_date_buffer: today().to_string(),
         }
     }
 
@@ -460,6 +469,47 @@ impl CadenceApp {
         self.leveling_report = Some(format!("Applied leveling to {applied} activities"));
     }
 
+    /// Capture the current schedule as a new baseline.
+    fn capture_baseline_now(&mut self) {
+        let typed = self.baseline_name_buffer.trim().to_string();
+        let name = if typed.is_empty() {
+            format!("Baseline {}", self.project.baselines.len() + 1)
+        } else {
+            typed
+        };
+        let command = CaptureBaseline {
+            name,
+            created_at: today(),
+        };
+        match self.stack.execute(&mut self.project, Box::new(command)) {
+            Ok(()) => {
+                self.status_message = None;
+                self.recompute();
+                self.selected_baseline =
+                    self.project.baselines.last().map(|baseline| baseline.id);
+                self.baseline_name_buffer.clear();
+            }
+            Err(error) => self.status_message = Some(error),
+        }
+    }
+
+    /// Remove the selected baseline from the project.
+    fn delete_selected_baseline(&mut self) {
+        let Some(id) = self.selected_baseline else {
+            return;
+        };
+        match self
+            .stack
+            .execute(&mut self.project, Box::new(RemoveBaseline { id }))
+        {
+            Ok(()) => {
+                self.selected_baseline = None;
+                self.status_message = None;
+            }
+            Err(error) => self.status_message = Some(error),
+        }
+    }
+
     fn sorted_activities(&self) -> Vec<Activity> {
         let mut activities = self.project.activities.clone();
         let schedule = self.schedule.as_ref().ok();
@@ -536,6 +586,9 @@ impl eframe::App for CadenceApp {
                 }
                 if ui.button("Resources").clicked() {
                     self.view_mode = ViewMode::Resources;
+                }
+                if ui.button("Baselines").clicked() {
+                    self.view_mode = ViewMode::Baselines;
                 }
                 if ui.button("Undo").clicked() {
                     let _ = self.stack.undo(&mut self.project);
@@ -909,6 +962,161 @@ impl eframe::App for CadenceApp {
                     }
                 });
             }
+            ViewMode::Baselines => {
+                egui::Panel::right("baseline_inspector")
+                    .default_size(300.0)
+                    .show(ui, |ui| {
+                        ui.heading("Baselines");
+                        ui.label("Name for the new baseline");
+                        ui.text_edit_singleline(&mut self.baseline_name_buffer);
+                        if ui.button("Capture baseline").clicked() {
+                            self.capture_baseline_now();
+                        }
+
+                        ui.separator();
+                        let baselines = self.project.baselines.clone();
+                        if baselines.is_empty() {
+                            ui.label("No baselines captured yet.");
+                        }
+                        for baseline in &baselines {
+                            let selected = self.selected_baseline == Some(baseline.id);
+                            let label = format!("{} — {}", baseline.name, baseline.created_at);
+                            if ui.selectable_label(selected, label).clicked() {
+                                self.selected_baseline = Some(baseline.id);
+                            }
+                        }
+                        let has_selection = self.selected_baseline.is_some();
+                        if ui
+                            .add_enabled(has_selection, egui::Button::new("Delete baseline"))
+                            .clicked()
+                        {
+                            self.delete_selected_baseline();
+                        }
+
+                        ui.separator();
+                        ui.heading("Earned value");
+                        ui.label("Status date (YYYY-MM-DD)");
+                        ui.text_edit_singleline(&mut self.status_date_buffer);
+                    });
+
+                let baselines = self.project.baselines.clone();
+                let selected_baseline = self
+                    .selected_baseline
+                    .and_then(|id| baselines.iter().find(|baseline| baseline.id == id).cloned());
+                let status_date = parse_date(self.status_date_buffer.trim());
+                let metrics = status_date.map(|status_date| {
+                    evm_metrics(&self.project, selected_baseline.as_ref(), status_date)
+                });
+                let variance = match (&self.schedule, &selected_baseline) {
+                    (Ok(schedule), Some(baseline)) => {
+                        Some(variance_rows(&self.project, schedule, baseline))
+                    }
+                    _ => None,
+                };
+
+                egui::CentralPanel::default().show(ui, |ui| {
+                    ui.heading("Earned value");
+                    match &metrics {
+                        None => {
+                            ui.colored_label(
+                                egui::Color32::RED,
+                                "Status date must be written as YYYY-MM-DD",
+                            );
+                        }
+                        Some(metrics) => {
+                            Grid::new("evm_rows")
+                                .striped(true)
+                                .spacing([16.0, 4.0])
+                                .show(ui, |ui| {
+                                    for (label, value) in [
+                                        (
+                                            "Budget at completion",
+                                            format_money(metrics.budget_at_completion),
+                                        ),
+                                        ("Planned value", format_money(metrics.planned_value)),
+                                        ("Earned value", format_money(metrics.earned_value)),
+                                        ("Actual cost", format_money(metrics.actual_cost)),
+                                        (
+                                            "Schedule variance",
+                                            format_money(metrics.schedule_variance),
+                                        ),
+                                        ("Cost variance", format_money(metrics.cost_variance)),
+                                        (
+                                            "Schedule performance index",
+                                            format_index(metrics.schedule_performance_index),
+                                        ),
+                                        (
+                                            "Cost performance index",
+                                            format_index(metrics.cost_performance_index),
+                                        ),
+                                    ] {
+                                        ui.label(label);
+                                        ui.label(value);
+                                        ui.end_row();
+                                    }
+                                });
+                        }
+                    }
+
+                    ui.separator();
+                    ui.heading("Variance against the selected baseline");
+                    match &variance {
+                        None => {
+                            ui.label("Capture or select a baseline to compare against.");
+                        }
+                        Some(rows) => {
+                            ui.label(
+                                "Variances are whole calendar days; a positive value is later or longer than planned.",
+                            );
+                            ScrollArea::vertical()
+                                .id_salt("variance_rows")
+                                .show(ui, |ui| {
+                                    Grid::new("variance_grid")
+                                        .striped(true)
+                                        .spacing([12.0, 4.0])
+                                        .show(ui, |ui| {
+                                            for header in [
+                                                "Activity", "Start", "Base start", "ΔStart",
+                                                "Finish", "Base finish", "ΔFinish", "Dur",
+                                                "Base dur", "ΔDur",
+                                            ] {
+                                                ui.label(header);
+                                            }
+                                            ui.end_row();
+
+                                            for row in rows {
+                                                let selected = self.selected == Some(row.activity);
+                                                let name = format!("{}  {}", row.activity, row.name);
+                                                if ui.selectable_label(selected, name).clicked() {
+                                                    self.selected = Some(row.activity);
+                                                }
+                                                ui.label(date_text(row.current_start));
+                                                ui.label(date_text(row.baseline_start));
+                                                ui.colored_label(
+                                                    variance_color(row.start_variance()),
+                                                    variance_text(row.start_variance()),
+                                                );
+                                                ui.label(date_text(row.current_finish));
+                                                ui.label(date_text(row.baseline_finish));
+                                                ui.colored_label(
+                                                    variance_color(row.finish_variance()),
+                                                    variance_text(row.finish_variance()),
+                                                );
+                                                let duration_variance = row.duration_variance();
+                                                ui.label(row.current_duration.to_string());
+                                                ui.label(row.baseline_duration.to_string());
+                                                ui.colored_label(
+                                                    variance_color(Some(duration_variance)),
+                                                    variance_text(Some(duration_variance)),
+                                                );
+                                                ui.end_row();
+                                            }
+                                        });
+                                });
+                        }
+                    }
+                });
+            }
         }
     }
 }
@@ -931,6 +1139,106 @@ fn describe_delay(activity: &cadence_core::engine::LeveledActivity) -> String {
         "activity {} by {} working days ({} to {})",
         activity.id, activity.delay, activity.original_start, activity.start
     )
+}
+
+/// Today, as a date, used as the default baseline capture and status date.
+fn today() -> Date {
+    time::OffsetDateTime::now_utc().date()
+}
+
+/// Render a date for a table cell, using `-` when it is not known.
+fn date_text(date: Option<Date>) -> String {
+    date.map_or_else(|| "-".to_string(), |date| date.to_string())
+}
+
+/// Signed whole-day difference between a baseline date and the current date.
+///
+/// A positive value means the current date is later than the baseline.
+fn day_variance(baseline: Option<Date>, current: Option<Date>) -> Option<i64> {
+    Some(i64::from(current?.to_julian_day() - baseline?.to_julian_day()))
+}
+
+/// Render a signed variance, prefixing positive values with `+`.
+fn variance_text(value: Option<i64>) -> String {
+    match value {
+        None => "-".to_string(),
+        Some(value) if value > 0 => format!("+{value}"),
+        Some(value) => value.to_string(),
+    }
+}
+
+/// Colour a variance: delays and overspends in red, improvements in green.
+fn variance_color(value: Option<i64>) -> Color32 {
+    match value {
+        Some(value) if value > 0 => Color32::from_rgb(0xC0, 0x39, 0x2B),
+        Some(value) if value < 0 => Color32::from_rgb(0x27, 0xAE, 0x60),
+        _ => Color32::GRAY,
+    }
+}
+
+/// Format money held in minor units as a decimal amount.
+fn format_money(minor_units: i64) -> String {
+    let units = minor_units as f64 / 100.0;
+    format!("{units:.2}")
+}
+
+/// Format a performance index, or `n/a` when it is undefined.
+fn format_index(value: Option<f64>) -> String {
+    match value {
+        Some(value) => format!("{value:.3}"),
+        None => "n/a".to_string(),
+    }
+}
+
+/// One row of the baseline variance table.
+struct VarianceRow {
+    activity: ActivityId,
+    name: String,
+    current_duration: u32,
+    baseline_duration: u32,
+    baseline_start: Option<Date>,
+    baseline_finish: Option<Date>,
+    current_start: Option<Date>,
+    current_finish: Option<Date>,
+}
+
+impl VarianceRow {
+    fn duration_variance(&self) -> i64 {
+        i64::from(self.current_duration) - i64::from(self.baseline_duration)
+    }
+
+    fn start_variance(&self) -> Option<i64> {
+        day_variance(self.baseline_start, self.current_start)
+    }
+
+    fn finish_variance(&self) -> Option<i64> {
+        day_variance(self.baseline_finish, self.current_finish)
+    }
+}
+
+/// Build one variance row per activity, pairing the baseline with the schedule.
+fn variance_rows(project: &Project, schedule: &Schedule, baseline: &Baseline) -> Vec<VarianceRow> {
+    project
+        .activities
+        .iter()
+        .map(|activity| {
+            let snapshot = baseline
+                .snapshots
+                .iter()
+                .find(|snapshot| snapshot.activity_id == activity.id);
+            let result = schedule.activity(activity.id);
+            VarianceRow {
+                activity: activity.id,
+                name: activity.name.clone(),
+                current_duration: activity.original_duration,
+                baseline_duration: snapshot.map_or(0, |snapshot| snapshot.baseline_duration),
+                baseline_start: snapshot.and_then(|snapshot| snapshot.baseline_start),
+                baseline_finish: snapshot.and_then(|snapshot| snapshot.baseline_finish),
+                current_start: result.map(|result| result.scheduled_start),
+                current_finish: result.map(|result| result.scheduled_finish),
+            }
+        })
+        .collect()
 }
 
 /// Units of one resource that are committed on each day that uses it.
