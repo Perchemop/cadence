@@ -16,5 +16,6 @@ path = "src/main.rs"
 cadence-core.workspace = true
 cadence-commands.workspace = true
 cadence-persistence.workspace = true
+cadence-interchange.workspace = true
 cadence-ui-egui.workspace = true
 time.workspace = true

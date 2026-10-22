@@ -4,6 +4,7 @@ members = [
     "crates/core",
     "crates/commands",
     "crates/persistence",
+    "crates/interchange",
     "crates/app",
     "crates/ui-egui",
 ]
@@ -20,6 +21,7 @@ repository = "https://github.com/Perchemop/cadence"
 cadence-core = { path = "crates/core" }
 cadence-commands = { path = "crates/commands" }
 cadence-persistence = { path = "crates/persistence" }
+cadence-interchange = { path = "crates/interchange" }
 cadence-ui-egui = { path = "crates/ui-egui" }
 
 time = { version = "0.3", features = ["formatting", "parsing", "serde"] }
