@@ -34,7 +34,7 @@
 use cadence_core::engine::schedule;
 use cadence_core::model::{
     Activity, ActivityId, Constraint, LinkType, Project, Relationship, RelationshipId, Resource,
-    ResourceId, ResourceKind,
+    ResourceId,
 };
 use time::Date;
 
@@ -110,7 +110,7 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
     let mut activities = Vec::new();
     for (line, record) in rows.iter().enumerate().skip(1) {
         let text = |index: Option<usize>| -> Option<&str> {
-            index.and_then(|index| record.get(index)).map(str::trim)
+            index.and_then(|index| record.get(index)).map(|value| value.trim())
         };
 
         let id = text(Some(id_column))
@@ -534,6 +534,7 @@ fn join_escaped(items: &[String], separator: char) -> String {
 mod tests {
     use super::*;
     use crate::mspdi;
+    use cadence_core::model::ResourceKind;
     use time::Month;
 
     fn date(year: i32, month: Month, day: u8) -> Date {

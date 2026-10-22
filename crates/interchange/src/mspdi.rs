@@ -39,7 +39,7 @@ use cadence_core::model::{
 use time::Date;
 
 use crate::xml::{escape, parse_document, Element};
-use crate::{format_money, parse_date_prefix, InterchangeError};
+use crate::{format_money, parse_date_prefix, parse_money, InterchangeError};
 
 /// XML declaration written at the top of every exported document.
 const XML_HEADER: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#;
