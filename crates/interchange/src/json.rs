@@ -807,15 +807,15 @@ fn parse_number(characters: &mut Characters<'_>) -> Result<Value, InterchangeErr
     if token.contains(['.', 'e', 'E']) {
         let value: f64 = token
             .parse()
-            .map_err(|_| malformed(&format!("invalid number \"{token}\"")))?;
+            .map_err(|_| malformed(format!("invalid number \"{token}\"")))?;
         if !value.is_finite() {
-            return Err(malformed(&format!("number \"{token}\" is out of range")));
+            return Err(malformed(format!("number \"{token}\" is out of range")));
         }
         return Ok(Value::Number(Number::Float(value)));
     }
     let value: i64 = token
         .parse()
-        .map_err(|_| malformed(&format!("number \"{token}\" is out of range")))?;
+        .map_err(|_| malformed(format!("number \"{token}\" is out of range")))?;
     Ok(Value::Number(Number::Int(value)))
 }
 
