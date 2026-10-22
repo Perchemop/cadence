@@ -13,8 +13,8 @@ use cadence_commands::{
     SetActivityDuration, SetRelationshipLag, SetResourceCapacity, SetResourceKind,
 };
 use cadence_core::engine::schedule;
-use cadence_core::engine::{level_resources, resource_conflicts, resource_histogram};
 use cadence_core::engine::Schedule;
+use cadence_core::engine::{level_resources, resource_conflicts, resource_histogram};
 use cadence_core::model::{
     Activity, ActivityId, Constraint, LinkType, Project, ResourceId, ResourceKind,
 };
@@ -340,7 +340,10 @@ impl CadenceApp {
         let Some(id) = self.selected_resource else {
             return;
         };
-        match self.stack.execute(&mut self.project, Box::new(DeleteResource { id })) {
+        match self
+            .stack
+            .execute(&mut self.project, Box::new(DeleteResource { id }))
+        {
             Ok(()) => {
                 self.selected_resource = None;
                 self.status_message = None;
@@ -795,17 +798,18 @@ impl eframe::App for CadenceApp {
 
                                 for resource in &resources {
                                     let selected = selected_resource == Some(resource.id);
-                                    if ui
-                                        .selectable_label(selected, &resource.name)
-                                        .clicked()
-                                    {
+                                    if ui.selectable_label(selected, &resource.name).clicked() {
                                         self.select_resource(resource.id);
                                     }
-                                    ui.label(RESOURCE_KIND_LABELS[resource_kind_index(resource.kind)]);
+                                    ui.label(
+                                        RESOURCE_KIND_LABELS[resource_kind_index(resource.kind)],
+                                    );
                                     ui.label(resource.capacity.to_string());
                                     let assigned = activities
                                         .iter()
-                                        .filter(|activity| activity.resources.contains(&resource.id))
+                                        .filter(|activity| {
+                                            activity.resources.contains(&resource.id)
+                                        })
                                         .count();
                                     ui.label(assigned.to_string());
                                     let over = conflicts
@@ -829,7 +833,9 @@ impl eframe::App for CadenceApp {
                         if let Some(id) = selected_resource {
                             let usage = resource_day_usage(&self.project, &schedule, id);
                             if usage.is_empty() {
-                                ui.label("This resource is not assigned to any scheduled activity.");
+                                ui.label(
+                                    "This resource is not assigned to any scheduled activity.",
+                                );
                             } else {
                                 let capacity = self
                                     .project
@@ -848,7 +854,9 @@ impl eframe::App for CadenceApp {
                                                     ui.label(date.to_string());
                                                     if units > capacity {
                                                         ui.colored_label(
-                                                            egui::Color32::from_rgb(0xC0, 0x39, 0x2B),
+                                                            egui::Color32::from_rgb(
+                                                                0xC0, 0x39, 0x2B,
+                                                            ),
                                                             format!("{units} / {capacity}"),
                                                         );
                                                     } else {
@@ -879,10 +887,7 @@ impl eframe::App for CadenceApp {
                                 .show(ui, |ui| {
                                     for activity in &activities {
                                         let assigned = activity.resources.contains(&id);
-                                        if ui
-                                            .selectable_label(assigned, &activity.name)
-                                            .clicked()
-                                        {
+                                        if ui.selectable_label(assigned, &activity.name).clicked() {
                                             self.selected = Some(activity.id);
                                             self.select(activity.id);
                                             self.toggle_assignment(id);
