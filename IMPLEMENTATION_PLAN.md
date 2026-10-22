@@ -47,8 +47,7 @@ are subdivided into slices below.
 
 ## Phase 5 — Polish & interop
 
-- [x] P5-1: Open interchange export+import (Microsoft Project XML/MSPDI, MPX and CSV)
-- [ ] P5-1b: JSON interchange export+import
+- [x] P5-1: Open interchange export+import (Microsoft Project XML/MSPDI, MPX, CSV and JSON)
 - [ ] P5-2: Printing/PDF and reports
 - [ ] P5-3: Keyboard mastery, accessibility audit, performance pass
 - [ ] P5-4: Documentation, example projects, first tagged release

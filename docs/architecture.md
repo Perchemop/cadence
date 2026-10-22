@@ -21,7 +21,7 @@ app (binary)
 | `cadence-core`       | Domain model (Project, WBS, Activity, Relationship, Resource, Calendar, Baseline) and the CPM engine. No I/O, no UI. |
 | `cadence-commands`   | `Command` trait + `CommandStack`. Single mutation path; produces inverse commands for undo/redo. |
 | `cadence-persistence`| SQLite project file format: versioned schema, transactional save/load, in-place migrations. |
-| `cadence-interchange`| Open interchange: Microsoft Project XML (MSPDI), MPX and CSV readers/writers plus the in-crate XML reader (D14). JSON later. |
+| `cadence-interchange`| Open interchange: Microsoft Project XML (MSPDI), MPX, CSV and Cadence JSON readers/writers, with in-crate XML and JSON parsers (D14). |
 | `cadence-app`        | Application binary; wires the layers together. |
 
 ## Key principles
@@ -140,8 +140,8 @@ so round-trips preserve ordering.
 Constraints are documented in D10, the resource model in D11, leveling in
 D12, money and percentage representation in D13, the interchange formats in
 D14, and recorded progress in D15. `cadence-interchange` handles open
-interchange outside the SQLite file: Microsoft Project XML (MSPDI), MPX and
-CSV, each as a documented subset. JSON interchange and printing/PDF remain
+interchange outside the SQLite file: Microsoft Project XML (MSPDI), MPX, CSV
+and Cadence JSON, each as a documented subset. Printing/PDF remains
 later-phase work.
 
 ## Resources

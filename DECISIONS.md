@@ -140,20 +140,31 @@ formats that cannot represent it exactly.
 
 ## D14 — Interchange formats and their documented subsets (2026-10-22)
 
-Cadence talks to the outside world through two open, text-based formats in a
-new `cadence-interchange` crate: **Microsoft Project XML** (MSPDI) and
-**MPX** (Microsoft Project Exchange). Both are implemented as a documented
-subset of the format rather than a full implementation, and the module
+Cadence talks to the outside world through four open, text-based formats in a
+new `cadence-interchange` crate: **Microsoft Project XML** (MSPDI),
+**MPX** (Microsoft Project Exchange), **CSV** and **JSON**. The first two are
+implemented as documented subsets of someone else's format, and the module
 documentation states the mapping field by field. Fields Cadence does not
 model — cost rate tables, custom calendars, outline codes, levelling results —
 are ignored on import and omitted on export instead of being guessed at.
 
-The XML reader is written in-crate (~200 lines) instead of pulling in an XML
-library. The dialect Microsoft Project writes is narrow and regular, and the
-project's offline, dependency-light stance means every added dependency has
-to earn its place; the reader is covered by its own unit tests, including
-mismatched tags, unterminated tags, entity and character-reference decoding,
-and angle brackets inside attribute values.
+CSV trades completeness for spreadsheet-friendliness: one activity per row,
+with links, resources and progress folded into the row, and no baselines.
+JSON is the opposite — Cadence's own schema, versioned in the document
+(`"cadence": 1`), lossless for everything Cadence models and with no unit
+conversions at the boundary. It exists so that a project can leave the
+SQLite file and re-enter it, or be diffed and reviewed as text, without
+touching a proprietary tool.
+
+The XML and JSON readers are written in-crate (~200 lines each) instead of
+pulling in parsing libraries. The dialects both formats need are narrow and
+regular, and the project's offline, dependency-light stance means every added
+dependency has to earn its place; each reader is covered by its own unit
+tests. For XML that includes mismatched tags, unterminated tags, entity and
+character-reference decoding, and angle brackets inside attribute values; for
+JSON it includes escapes, surrogate pairs, trailing garbage, numbers out of
+range, and a nesting limit that keeps hostile input from exhausting the
+stack.
 
 Two conversions are documented and lossy by design:
 

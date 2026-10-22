@@ -3,6 +3,27 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-23 — P5-1c Cadence JSON interchange
+
+- `cadence-interchange::json` reads and writes Cadence's own JSON schema,
+  which is lossless for everything the other interchange formats carry:
+  activities with constraints and progress, relationships with lag, the
+  resource dictionary with kinds and capacities, assignments and baselines.
+- The schema version lives in the document (`"cadence": 1`) and a newer
+  version is rejected with a clear error rather than misread.
+- Scheduled dates are deliberately not written (D9): they are derived data and
+  the engine recomputes them, so JSON export never needs a successful
+  schedule.
+- Written and read by an in-crate recursive-descent parser with a 64-level
+  nesting limit, full escape and surrogate-pair handling, and no JSON
+  dependency in the build (D14).
+- Tests: full round trip, minimal hand-written document with defaults,
+  schema-version and missing-field rejections, parser edge cases (escapes,
+  surrogates, trailing garbage, deep nesting, number forms), string escaping
+  round trip, and a JSON-vs-MSPDI equivalence check.
+- CLI: `cadence export-json <in> <out>` and `cadence import-json <in> <out>`.
+- CI green on `opencode/ci` (run 39859287583, 178 tests passed).
+
 ## 2026-10-23 — P5-1b CSV activity table interchange
 
 - `cadence-interchange::csv` exchanges a project as one spreadsheet-friendly

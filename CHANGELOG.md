@@ -30,6 +30,10 @@ follows Keep a Changelog; releases use git tags.
 - CSV activity table interchange: one row per activity with constraints,
   predecessor links, resource assignments, progress and actual dates; CLI
   `export-csv` / `import-csv`
+- Cadence JSON interchange: a lossless, documented JSON schema for the whole
+  project (activities, constraints, relationships, resources, assignments,
+  baselines and progress), written and read by an in-crate JSON parser; CLI
+  `export-json` / `import-json`
 - Progress updating: percent complete (basis points), budget at completion,
   actual cost and recorded actual start/finish dates, editable through
   undoable commands and persisted in schema v4 (with v1, v2 and v3
