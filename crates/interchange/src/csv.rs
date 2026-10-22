@@ -119,10 +119,7 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
                 field: "ID".to_string(),
                 value: format!("line {}: {:?}", line + 1, text(Some(id_column))),
             })?;
-        if activities
-            .iter()
-            .any(|row: &Row| row.id == ActivityId(id))
-        {
+        if activities.iter().any(|row: &Row| row.id == ActivityId(id)) {
             return Err(InterchangeError::InvalidField {
                 field: "ID".to_string(),
                 value: id.to_string(),
@@ -233,7 +230,9 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
         }
     }
     for (index, name) in names.iter().enumerate() {
-        project.resources.push(Resource::new(ResourceId(index as u64 + 1), name));
+        project
+            .resources
+            .push(Resource::new(ResourceId(index as u64 + 1), name));
     }
     for row in &activities {
         let activity = project
@@ -253,7 +252,10 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
 
     for (index, row) in activities.iter().enumerate() {
         for (predecessor, link_type, lag) in &row.predecessors {
-            if !activities.iter().any(|candidate| candidate.id.0 == *predecessor) {
+            if !activities
+                .iter()
+                .any(|candidate| candidate.id.0 == *predecessor)
+            {
                 return Err(InterchangeError::InvalidField {
                     field: "Predecessors".to_string(),
                     value: format!("activity {} does not exist", predecessor),
@@ -323,8 +325,12 @@ pub fn export(project: &Project) -> Result<String, InterchangeError> {
                 .map(format_money)
                 .unwrap_or_default(),
             activity.actual_cost.map(format_money).unwrap_or_default(),
-            result.map(|result| result.scheduled_start.to_string()).unwrap_or_default(),
-            result.map(|result| result.scheduled_finish.to_string()).unwrap_or_default(),
+            result
+                .map(|result| result.scheduled_start.to_string())
+                .unwrap_or_default(),
+            result
+                .map(|result| result.scheduled_finish.to_string())
+                .unwrap_or_default(),
         ]);
     }
 
@@ -351,9 +357,9 @@ fn import_constraint(
 }
 
 fn require_date(date: Option<Date>) -> Result<Date, InterchangeError> {
-    date.ok_or_else(|| InterchangeError::MissingField(
-        "Constraint date for a dated constraint".to_string(),
-    ))
+    date.ok_or_else(|| {
+        InterchangeError::MissingField("Constraint date for a dated constraint".to_string())
+    })
 }
 
 fn export_constraint(constraint: Constraint) -> (&'static str, Option<Date>) {
@@ -613,7 +619,10 @@ ID,Name,Duration,Constraint,Constraint date,Predecessors,Resources
             project.activities[0].constraint,
             Constraint::StartNoEarlierThan(date(2026, Month::February, 3))
         );
-        assert_eq!(project.activities[1].constraint, Constraint::AsSoonAsPossible);
+        assert_eq!(
+            project.activities[1].constraint,
+            Constraint::AsSoonAsPossible
+        );
 
         assert_eq!(project.resources.len(), 2);
         assert_eq!(project.resources[0].name, "Site crew");
@@ -694,9 +703,7 @@ ID,Name,Duration,Constraint,Constraint date,Predecessors,Resources
         let error = import("ID,Name,Duration,Constraint\n1,A,2,SNET\n").expect_err("no date");
         assert_eq!(
             error,
-            InterchangeError::MissingField(
-                "Constraint date for a dated constraint".to_string()
-            )
+            InterchangeError::MissingField("Constraint date for a dated constraint".to_string())
         );
     }
 
