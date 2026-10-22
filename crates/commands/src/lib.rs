@@ -552,7 +552,10 @@ impl Command for SetActivityProgress {
     fn description(&self) -> String {
         match self.percent_complete {
             Some(percent) => {
-                format!("set activity {} to {percent} basis points complete", self.id)
+                format!(
+                    "set activity {} to {percent} basis points complete",
+                    self.id
+                )
             }
             None => format!("clear the progress of activity {}", self.id),
         }

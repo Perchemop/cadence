@@ -218,10 +218,7 @@ impl CadenceApp {
                 .percent_complete
                 .map(|percent| (percent as f64 / 100.0).to_string())
                 .unwrap_or_default();
-            self.actual_cost_buffer = activity
-                .actual_cost
-                .map(format_money)
-                .unwrap_or_default();
+            self.actual_cost_buffer = activity.actual_cost.map(format_money).unwrap_or_default();
             self.actual_start_buffer = activity
                 .actual_start
                 .map(|date| date.to_string())
