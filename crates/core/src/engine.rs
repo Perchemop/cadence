@@ -1946,7 +1946,8 @@ mod tests {
     }
 
     #[test]
-    fn baseline_capture_records_the_scheduled_dates() {        let mut project = project();
+    fn baseline_capture_records_the_scheduled_dates() {
+        let mut project = project();
         add_activity(&mut project, 1, "A1", 3);
         let schedule = schedule(&project).expect("schedule");
 
