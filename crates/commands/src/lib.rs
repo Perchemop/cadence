@@ -10,7 +10,6 @@
 //! never need to inspect project state heuristically.
 
 use cadence_core::calendar_set::{CalendarId, NamedCalendar};
-use cadence_core::engine::schedule;
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, Project,
     Relationship, RelationshipId, ResourceId,
@@ -594,9 +593,8 @@ impl Command for CaptureBaseline {
     }
 
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
-        let schedule = schedule(project).map_err(|error| error.to_string())?;
         let id = project.next_baseline_id();
-        let baseline = Baseline::capture(id, &self.name, self.created_at, project, &schedule);
+        let baseline = Baseline::capture(id, &self.name, self.created_at, project);
         project.baselines.push(baseline);
         Ok(Box::new(CaptureBaseline {
             name: self.name.clone(),

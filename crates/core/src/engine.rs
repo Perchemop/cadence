@@ -56,8 +56,8 @@ use time::{Date, Duration};
 
 use crate::calendar_set::CalendarId;
 use crate::model::{
-    ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, CalendarError,
-    Constraint, EvmMetrics, LinkType, Project, RelationshipId, ResourceId,
+    ActivityBaselineSnapshot, ActivityId, Baseline, Calendar, CalendarError, Constraint,
+    EvmMetrics, LinkType, Project, RelationshipId, ResourceId,
 };
 use crate::wbs::WbsId;
 
@@ -1500,9 +1500,9 @@ mod tests {
     #[test]
     fn resource_histogram_skips_unscheduled_and_unassigned_activities() {
         let mut project = project();
-        let scheduled = add_activity(&mut project, 1, "Scheduled", 2);
-        let unscheduled = add_activity(&mut project, 2, "Unscheduled", 2);
-        let no_resources = add_activity(&mut project, 3, "No resources", 2);
+        let _scheduled = add_activity(&mut project, 1, "Scheduled", 2);
+        let _unscheduled = add_activity(&mut project, 2, "Unscheduled", 2);
+        let _no_resources = add_activity(&mut project, 3, "No resources", 2);
         let r = add_resource(&mut project, 1, "R");
 
         project.activities[0].resources.push(r);

@@ -896,24 +896,26 @@ pub struct Baseline {
 }
 
 impl Baseline {
-    /// Create a baseline from a schedule and project.
+    /// Create a baseline snapshot from the project's activities.
+    ///
+    /// Captures each activity's duration and cached scheduled dates. Activities
+    /// that have not been scheduled yet capture `None` dates.
     pub fn capture(
         id: BaselineId,
         name: impl Into<String>,
         created_at: Date,
         project: &Project,
-        schedule: &Schedule,
     ) -> Self {
-        let mut snapshots = Vec::with_capacity(schedule.activities.len());
-        for result in &schedule.activities {
-            let activity = project.activity(result.id);
-            snapshots.push(ActivityBaselineSnapshot {
-                activity_id: result.id,
-                baseline_duration: activity.map(|a| a.original_duration).unwrap_or(0),
-                baseline_start: Some(result.scheduled_start),
-                baseline_finish: Some(result.scheduled_finish),
-            });
-        }
+        let mut snapshots: Vec<ActivityBaselineSnapshot> = project
+            .activities
+            .iter()
+            .map(|activity| ActivityBaselineSnapshot {
+                activity_id: activity.id,
+                baseline_duration: activity.original_duration,
+                baseline_start: activity.scheduled_start,
+                baseline_finish: activity.scheduled_finish,
+            })
+            .collect();
         snapshots.sort_by_key(|s| s.activity_id);
         Self {
             id,
