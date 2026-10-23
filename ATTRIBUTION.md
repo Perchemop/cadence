@@ -9,14 +9,26 @@ None yet. All visual design in Cadence is original.
 
 ## Software dependencies
 
-| Crate        | License            | Purpose                          |
-|--------------|--------------------|----------------------------------|
-| `time`       | MIT OR Apache-2.0  | Date and calendar arithmetic     |
-| `serde`      | MIT OR Apache-2.0  | Serialization framework          |
-| `serde_json` | MIT OR Apache-2.0  | JSON interchange                 |
-| `rusqlite`   | MIT                | SQLite project file storage      |
-| `thiserror`  | MIT OR Apache-2.0  | Error handling ergonomics        |
-| `eframe`     | MIT OR Apache-2.0  | GUI shell (planned, Phase 2)     |
-| `egui`       | MIT OR Apache-2.0  | Immediate-mode GUI (planned)     |
+Direct dependencies of the workspace crates:
 
-This list is updated whenever a dependency is added.
+| Crate | License | Used by | Purpose |
+|-------|---------|---------|---------|
+| `time` | MIT OR Apache-2.0 | core, commands, persistence, interchange, ui-egui, app | Date and calendar arithmetic |
+| `serde` | MIT OR Apache-2.0 | core, commands | Serialisation derives on the model |
+| `thiserror` | MIT OR Apache-2.0 | core, persistence | Error types |
+| `rusqlite` (bundled SQLite) | MIT | persistence | SQLite project files |
+| `egui` | MIT OR Apache-2.0 | ui-egui | Immediate-mode GUI |
+| `eframe` | MIT OR Apache-2.0 | ui-egui | Windowing and the egui frame |
+
+Development-only dependencies (tests, property tests):
+
+| Crate | License | Used by | Purpose |
+|-------|---------|---------|---------|
+| `proptest` | MIT OR Apache-2.0 | core, interchange | Property-based tests |
+| `serde_json` | MIT OR Apache-2.0 | core | Serde round-trip tests |
+
+Transitive dependencies are recorded in `Cargo.lock`; `cargo tree` lists them
+for any crate. None of them are required at runtime beyond the GUI stack
+(`egui`/`eframe` and their platform crates) and SQLite.
+
+This list is updated whenever a direct dependency is added.

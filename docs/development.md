@@ -2,45 +2,81 @@
 
 ## Prerequisites
 
-- Rust stable (via [rustup](https://rustup.rs)). Nothing else is required
-  locally.
+- Rust stable (via [rustup](https://rustup.rs)) — needed only if you want
+  `rustfmt`/`rustc` locally. Nothing else is required.
 
 ## Local workflow (keep it light)
 
-This project is developed on a resource-constrained laptop, so **heavy work
-runs on GitHub Actions**, not locally:
+This project is developed on a resource-constrained laptop, so **all heavy work
+runs on GitHub Actions**, never locally. A local build or test run is not an
+allowed step of this workflow, no matter which model or tool is driving it.
 
 1. Edit source files and write tests.
-2. Run `cargo fmt` and, only if fast enough, `cargo check -p <crate>`.
-3. Commit in small, focused units and push to `main`.
-4. Wait for the CI run and read its results.
-5. **Never assume a change is good until the GitHub Actions run is green.**
+2. Verify with the project script, which commits the working tree, pushes it,
+   updates the pull request, waits for CI, and prints the outcome — including
+   the failing job's logs:
 
-Full builds, clippy, the complete test suite, and release builds are performed
-only in CI (`.github/workflows/ci.yml`).
+   ```bash
+   ~/.config/opencode/scripts/ci.sh run "short description of the change"
+   ```
+
+   Related: `ci.sh status` (current checks), `ci.sh logs` (failing logs),
+   `ci.sh diff` (what would be committed).
+3. Read the result, fix what CI reported, and run the script again.
+4. **Never assume a change is good until the CI run is green.** Formatting in
+   particular is checked by CI only: match `rustfmt` output from the
+   `Diff in ...` lines in the log rather than guessing.
+
+Allowed locally: editing and reading files, `git status`/`diff`/`log`/`show`,
+`gh` commands, and the `ci.sh` script itself. Everything else — builds, tests,
+clippy, release packaging, benchmarks — belongs to CI.
+
+## CI (`.github/workflows/ci.yml`)
+
+Two jobs:
+
+- **Verify**, a matrix over `ubuntu-latest`, `windows-latest` and
+  `macos-latest`. The test suite runs on all three; `cargo fmt --check --all`
+  and `cargo clippy --workspace --all-targets -- -D warnings` run on Linux
+  only, because they do not depend on the platform. `fail-fast` is off so one
+  red platform cannot hide another.
+- **Package**, which builds the release binary on Linux and uploads it as the
+  `cadence-linux-x86_64` artefact.
+
+Each job writes a summary to the run page. Dependencies are cached by
+`Swatinem/rust-cache`.
 
 ## Layout
 
-- `crates/core` — domain model + CPM engine (pure, headless)
+- `crates/core` — domain model, CPM engine, resource analysis, reports (pure,
+  headless; no I/O)
 - `crates/commands` — typed command layer, undo/redo
-- `crates/persistence` — SQLite project files + open interchange
-- `crates/app` — application binary
+- `crates/persistence` — SQLite project files (versioned schema, migrations)
+- `crates/interchange` — MSPDI, MPX, CSV and JSON import/export
+- `crates/ui-egui` — egui/eframe application shell (table, Gantt, resources,
+  baselines)
+- `crates/app` — the `cadence` binary (CLI and GUI entry point) and its example
 - `.opencode/agents/` — project-local agent definitions (orchestrator, coder,
-  explorer, reviewer)
+  explorer, reviewer, fixer, tester, docs-writer, ci-runner)
 - `docs/parity.md` — living capability list
+- `docs/usage.md` — commands, formats, keyboard map, reports
 - `docs/qc/` — manual QC checklists per phase
 - Root tracking files: `IMPLEMENTATION_PLAN.md`, `REQUIREMENTS_TRACEABILITY.md`,
-  `DECISIONS.md`, `PROGRESS.md`, `CHANGELOG.md`
+  `DECISIONS.md`, `PROGRESS.md`, `CHANGELOG.md`, `ATTRIBUTION.md`
 
 ## Agent model tiers
 
 Per the guide, the orchestrator plans only; heavy multi-file implementation
 goes to the strongest free coding model; exploration and review use fast free
-tiers. Model IDs in `.opencode/agents/*.md` are defaults and may be adjusted
-to whatever free provider is currently available.
+tiers. Model IDs in `.opencode/agents/*.md` are defaults; the live mapping is
+recorded in `docs/current-model-map.md`.
 
 ## Conventions
 
 - No panics in non-test code; return rich `Result` types.
 - Every mutation goes through the command layer.
 - Tests are written with every change.
+- Money is `i64` minor units, percentages are basis points (D13).
+- Derived schedule data is never persisted; it is recomputed (D9).
+- Dependency-light: a new dependency has to earn its place, which is why the
+  XML and JSON readers live in-tree (D14).

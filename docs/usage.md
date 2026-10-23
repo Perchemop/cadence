@@ -46,10 +46,10 @@ takes the file path; with no arguments `cadence` runs a built-in demo project.
 | Format | Scope | Notes |
 |---|---|---|
 | Project file (SQLite) | Everything, versioned | The native format; migrations in place |
-| MSPDI (XML) | Activities, constraints, links, resources, assignments, baselines | Durations convert at 8 h/day; lag is quantised to days (D14) |
-| MPX | Same scope as MSPDI | Older Microsoft Project Exchange dialect |
-| CSV | One activity per row | Links, resources and progress folded into the row; no baselines |
-| JSON | Everything Cadence models, lossless | Cadence's own schema, versioned in the document |
+| MSPDI (XML) | Activities, constraints, links, resources, assignments, baselines | Durations convert at 8 h/day; lag is quantised to days and progress to whole percents (D14); no WBS or named calendars |
+| MPX | Same scope as MSPDI, minus money and baselines | Older Microsoft Project Exchange dialect |
+| CSV | One activity per row | Links, resources and progress folded into the row; no baselines, WBS, calendars or resource kinds |
+| JSON | Everything Cadence models: WBS tree, named calendars, activities, links, resources, assignments, baselines | Cadence's own schema, versioned in the document, lossless |
 
 Money is stored in minor units and shown as decimal amounts; percentages are
 basis points in the model and percentages everywhere else (D13).

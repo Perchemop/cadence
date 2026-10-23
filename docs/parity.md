@@ -75,7 +75,8 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | Microsoft Project XML (MSPDI) import/export | done | `cadence-interchange::mspdi` (D14) |
 | MPX import/export | done | `cadence-interchange::mpx` (D14) |
 | CSV activity table import/export | done | `cadence-interchange::csv`: one row per activity with constraints, links, assignments and progress; CLI `export-csv`/`import-csv` |
-| JSON interchange | done | `cadence-interchange::json`: Cadence's own schema, lossless for everything the other formats carry; CLI `export-json`/`import-json` |
+| JSON interchange | done | `cadence-interchange::json`: Cadence's own versioned schema and the only format that is lossless — it carries the WBS tree, named calendars and activity membership as well as everything the other formats do; CLI `export-json`/`import-json` |
+| WBS and named calendars in interchange | done for JSON | MSPDI, MPX and CSV cannot express them and import them empty (documented in `interchange::json`) |
 | Printing / PDF and reports | in progress | Markdown reports done (`cadence report` CLI and the GUI **Save report** button); native print/PDF deferred |
 | Keyboard map | in progress | Ctrl+Z/Y undo-redo and Ctrl+1..4 view switching added; full keyboard-only operation audit pending |
 | Accessibility audit | in progress | WCAG AA contrast for theme text verified by tests (`accessibility_tests`); screen-reader (AccessKit) pass pending |

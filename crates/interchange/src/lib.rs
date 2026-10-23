@@ -19,9 +19,11 @@
 //! [`csv`] is the exception to that scope: a CSV table carries one row per
 //! activity, so it exchanges the activity list, its constraints and links, and
 //! its assignments, but not baselines (see the module documentation for the
-//! exact column list). [`json`] is the opposite: it is Cadence's own schema,
-//! so it carries everything the other formats do and converts nothing.
-//! Neither CSV nor JSON carries WBS membership or named calendars yet.
+//! exact column list). [`json`] is the opposite: it is Cadence's own schema, so
+//! it carries everything Cadence models — including the WBS tree, named
+//! calendars and activity membership — and converts nothing. The other three
+//! formats have no way to express the WBS or named calendars and leave them
+//! empty on import.
 
 pub mod csv;
 pub mod json;

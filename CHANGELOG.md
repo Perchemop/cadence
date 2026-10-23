@@ -30,10 +30,11 @@ follows Keep a Changelog; releases use git tags.
 - CSV activity table interchange: one row per activity with constraints,
   predecessor links, resource assignments, progress and actual dates; CLI
   `export-csv` / `import-csv`
-- Cadence JSON interchange: a lossless, documented JSON schema for the whole
-  project (activities, constraints, relationships, resources, assignments,
-  baselines and progress), written and read by an in-crate JSON parser; CLI
-  `export-json` / `import-json`
+- Cadence JSON interchange: a lossless, documented, versioned JSON schema for
+  the whole project (WBS tree, named calendars, activities with membership,
+  constraints, relationships, resources, assignments, baselines and progress),
+  written and read by an in-crate JSON parser; CLI `export-json` /
+  `import-json`
 - Markdown project reports: schedule table, resource usage, earned-value
   metrics and baseline list; `cadence report <file> [out]`
 - Keyboard map in the GUI: Ctrl+Z/Ctrl+Y undo-redo, Ctrl+1..4 view switching

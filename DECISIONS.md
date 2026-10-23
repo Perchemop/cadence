@@ -184,6 +184,14 @@ table, so importing renumbers the dictionary in first-seen order and matches
 assignments by name. Activity identifiers are carried explicitly in the `ID`
 column and in predecessor links, so the activity graph is stable.
 
+JSON is the one format that is genuinely lossless: its schema version 2 carries
+the WBS tree (in preorder, so parents precede children) and named calendars
+with their working weeks and holidays, plus per-activity membership, which
+MSPDI, MPX and CSV have no way to express. The version is part of the document
+and a reader rejects a newer one, so an older build refuses a richer file
+instead of quietly dropping the tree; a version 1 document still loads, with an
+empty WBS and no calendars, because that is all it could have contained.
+
 Two MSPDI constraints have no exact Cadence equivalent: *must start on* is
 read as *start no earlier than* and *must finish on* as *finish no earlier
 than*. Cadence's `Constraint` set has no "must" variant, and inventing one at
@@ -210,6 +218,20 @@ Percent complete is exposed as basis points in the model and as a percentage
 in the UI and interchange formats, because every format that surrounds Cadence
 speaks percentages. The conversion happens at the boundary in both directions
 and rounds to whole basis points.
+
+## D17 — CI verifies every platform; Linux-only CI is retired (2026-10-23)
+
+D5 kept CI on Linux only "for now". The guide requires multi-OS runners when
+practical, and Cadence targets Windows, macOS and Linux, so the verification
+job now runs a matrix over all three and the release binary is packaged on
+Linux and uploaded as an artefact.
+
+Formatting and lints stay on Linux alone: they are operating-system
+independent, and running them three times would only spend runner minutes. The
+test suite — which is where platform differences actually surface: path
+handling, SQLite's bundled build, line endings, integer and float formatting —
+runs on every platform. `fail-fast` is off so one red platform cannot hide
+another's result.
 
 ## D16 — Reports are Markdown; printing stays out of the binary (2026-10-23)
 

@@ -3,6 +3,25 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-23 — JSON schema v2: WBS tree and named calendars
+
+- JSON now carries the two things no other interchange format can express: the
+  WBS tree (written in preorder, so a parent always precedes its children) and
+  named calendars with their Monday-first working weeks and holiday
+  exceptions. Activities gained `wbs` and `calendar` membership.
+- The schema version is bumped to 2 and the reader accepts 1 as well, so an
+  older build refuses a newer document instead of silently dropping the tree,
+  while a version 1 document still loads with an empty WBS and no calendars.
+- Import validates membership: an activity naming a missing WBS node or
+  calendar is rejected with the offending reference, rather than being handed
+  to the project file to reject later.
+- Tests: round trip of tree and calendars, preorder ordering of the export, a
+  version 1 document loading, dangling membership rejected, malformed trees
+  (second root, child before parent) and calendars (empty week, short
+  workweek) rejected, plus a property test over generated trees and calendar
+  weeks. 206 tests in total.
+- CI green on `opencode/ci`.
+
 ## 2026-10-23 — property tests for leveling and interchange, GUI report export
 
 - New property test in `cadence-core`: leveling never moves work earlier, the
