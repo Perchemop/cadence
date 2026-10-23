@@ -2,3 +2,5 @@
 **/*.rs.bk
 *.swp
 .DS_Store
+# guide.md is a local-only operating manual; it must never be committed.
+guide.md
