@@ -13,6 +13,9 @@ use cadence_core::engine::{schedule, Schedule};
 use cadence_core::model::{LinkType, Project};
 use time::{Date, Month};
 
+mod crash_report;
+mod update_check;
+
 const USAGE: &str = "\
 Cadence — construction project scheduling
 
@@ -22,6 +25,7 @@ Usage:
   cadence load <file>            Load a project file and print its schedule
   cadence report <file> [out]    Write a Markdown report (stdout if no file)
   cadence print <file> <out.pdf>  Print a project report to PDF
+  cadence version                Show the version and update-check status
   cadence gui [file]             Open the project in the GUI (demo if no file)
   cadence export-xml <in> <out>  Save a project file as Microsoft Project XML
   cadence import-xml <in> <out>  Import Microsoft Project XML into a project file
@@ -35,6 +39,7 @@ Usage:
 ";
 
 fn main() -> ExitCode {
+    crash_report::install();
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let result = match arguments.as_slice() {
         [] => run_demo(),
@@ -47,6 +52,7 @@ fn main() -> ExitCode {
         [command, path] if command == "report" => print_report(path, None),
         [command, input, output] if command == "report" => print_report(input, Some(output)),
         [command, input, output] if command == "print" => print_report_pdf(input, output),
+        [command] if command == "version" => print_version(),
         [command] if command == "gui" => gui_demo(),
         [command, path] if command == "gui" => gui_file(path),
         [command, input, output] if command == "export-xml" => {
@@ -196,6 +202,22 @@ fn print_report_pdf(path: &str, output: &str) -> Result<(), String> {
 fn pdf_pages(bytes: &[u8]) -> usize {
     let text = String::from_utf8_lossy(bytes);
     text.matches("/Type /Page ").count() + text.matches("/Type /Page\n").count()
+}
+
+/// Print the version and the update-check status.
+fn print_version() -> Result<(), String> {
+    println!("Cadence {}", update_check::current_version());
+    match update_check::check_for_update() {
+        update_check::UpdateStatus::UpToDate => println!("Up to date."),
+        update_check::UpdateStatus::UpdateAvailable(version) => {
+            println!("Update available: {version}");
+        }
+        update_check::UpdateStatus::Stub => println!(
+            "Update checks are not wired up yet (planned for a later release); \
+             no network request was made."
+        ),
+    }
+    Ok(())
 }
 
 /// Today, as the report status date.

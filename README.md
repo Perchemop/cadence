@@ -30,6 +30,16 @@ source of truth for builds and tests:
 - [`docs/development.md`](docs/development.md) documents the workflow,
   conventions and expectations.
 
+## Privacy
+
+Cadence works fully offline and sends nothing anywhere. If it crashes, a
+technical entry (version, operating system, panic message, backtrace) is
+appended to a crash log in your system temporary directory; that file stays on
+your machine and is never uploaded. Update checks make no network requests —
+`cadence version` reports the running version and says so. If crash
+submission or online update checks are added later, they will be opt-in and
+documented here.
+
 ## License
 
 Licensed under either of
