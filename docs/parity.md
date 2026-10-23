@@ -76,6 +76,8 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | MPX import/export | done | `cadence-interchange::mpx` (D14) |
 | CSV activity table import/export | done | `cadence-interchange::csv`: one row per activity with constraints, links, assignments and progress; CLI `export-csv`/`import-csv` |
 | JSON interchange | done | `cadence-interchange::json`: Cadence's own schema, lossless for everything the other formats carry; CLI `export-json`/`import-json` |
-| Printing / PDF and reports | todo | |
-| Keyboard mastery, accessibility audit, performance pass | todo | |
-| Documentation, example projects, first tagged release | in progress | docs and progress trackers maintained continuously |
+| Printing / PDF and reports | in progress | Markdown reports done (`cadence report`, printable via browser); native print/PDF deferred |
+| Keyboard map | in progress | Ctrl+Z/Y undo-redo and Ctrl+1..4 view switching added; full keyboard-only operation audit pending |
+| Accessibility audit | in progress | WCAG AA contrast for theme text verified by tests (`accessibility_tests`); screen-reader (AccessKit) pass pending |
+| Performance pass | in progress | 10k-activity schedule, 10k-day resource analysis and 200-activity leveling all time-budgeted in CI; smooth-interaction profiling pending |
+| Documentation, example projects, first tagged release | in progress | `docs/usage.md` and the `bridge_report` example added; tagging is a release decision |

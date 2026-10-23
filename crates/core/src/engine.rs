@@ -1742,6 +1742,86 @@ mod tests {
         );
     }
 
+    #[test]
+    fn resource_analysis_scales_to_ten_thousand_committed_days() {
+        let mut project = Project::new("Resource performance", jan(5));
+        for index in 0..10_000 {
+            let mut activity =
+                Activity::new(ActivityId(index + 1), format!("A{index}"), 1);
+            // Stagger the activities over the calendar so that the histogram
+            // covers one committed day per activity.
+            activity.constraint = Constraint::StartNoEarlierThan(
+                project
+                    .calendar
+                    .add_working_days(jan(5), i64::from(index))
+                    .expect("working day"),
+            );
+            activity.resources.push(ResourceId(1));
+            project.activities.push(activity);
+        }
+        for index in 0..9_999 {
+            project.relationships.push(Relationship::new(
+                RelationshipId(index + 1),
+                ActivityId(index + 1),
+                ActivityId(index + 2),
+                LinkType::Fs,
+                0,
+            ));
+        }
+        project
+            .resources
+            .push(Resource::with_capacity(ResourceId(1), "Crew", 1));
+
+        let started = Instant::now();
+        let schedule = schedule(&project).expect("large project schedules");
+        let histogram = resource_histogram(&project, &schedule);
+        let conflicts = resource_conflicts(&project, &schedule);
+        let elapsed = started.elapsed();
+
+        // One crew per day: ten thousand committed days, none over capacity.
+        assert_eq!(histogram.entries.len(), 10_000);
+        assert!(conflicts.is_empty());
+        assert!(
+            elapsed.as_millis() < 500,
+            "resource analysis took {} ms",
+            elapsed.as_millis()
+        );
+    }
+
+    #[test]
+    fn leveling_two_hundred_parallel_activities_stays_fast() {
+        let mut project = Project::new("Leveling performance", jan(5));
+        for index in 0..200 {
+            let mut activity =
+                Activity::new(ActivityId(index + 1), format!("A{index}"), 1);
+            activity.resources.push(ResourceId(index % 4 + 1));
+            project.activities.push(activity);
+        }
+        for crew in 1..=4u64 {
+            project
+                .resources
+                .push(Resource::with_capacity(ResourceId(crew), format!("Crew {crew}"), 1));
+        }
+
+        let started = Instant::now();
+        let schedule = schedule(&project).expect("schedules");
+        let leveled = level_resources(&project, &schedule).expect("levels");
+        let elapsed = started.elapsed();
+
+        // Fifty activities per one-unit crew all start on day one, so
+        // leveling has to spread each crew's work over fifty working days.
+        assert!(
+            leveled.conflicts.len() < 200,
+            "{} conflicts remained",
+            leveled.conflicts.len()
+        );
+        assert!(
+            elapsed.as_millis() < 2_000,
+            "leveling took {} ms",
+            elapsed.as_millis()
+        );
+    }
+
     fn add_resource(project: &mut Project, id: u64, name: &str) -> ResourceId {
         let resource_id = ResourceId(id);
         project.resources.push(Resource::new(resource_id, name));

@@ -647,6 +647,51 @@ impl eframe::App for CadenceApp {
             apply_theme(&ctx, self.dark);
         }
 
+        // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y: undo and redo from any view.
+        let undo_requested = ctx.input(|input| {
+            input.key_pressed(egui::Key::Z) && input.modifiers.ctrl && !input.modifiers.shift
+        });
+        let redo_requested = ctx.input(|input| {
+            (input.key_pressed(egui::Key::Y) && input.modifiers.ctrl)
+                || (input.key_pressed(egui::Key::Z)
+                    && input.modifiers.ctrl
+                    && input.modifiers.shift)
+        });
+        if undo_requested {
+            let _ = self.stack.undo(&mut self.project);
+            self.recompute();
+        }
+        if redo_requested {
+            let _ = self.stack.redo(&mut self.project);
+            self.recompute();
+        }
+
+        // Ctrl+1..Ctrl+4: switch views without reaching for the mouse.
+        let (ctrl_held, pressed_view) = ctx.input(|input| {
+            (
+                input.modifiers.ctrl,
+                [
+                    egui::Key::Num1,
+                    egui::Key::Num2,
+                    egui::Key::Num3,
+                    egui::Key::Num4,
+                ]
+                .iter()
+                .position(|key| input.key_pressed(*key))
+                .map(|index| index as u8),
+            )
+        });
+        if ctrl_held {
+            if let Some(index) = pressed_view {
+                self.view_mode = match index {
+                    0 => ViewMode::Table,
+                    1 => ViewMode::Gantt,
+                    2 => ViewMode::Resources,
+                    _ => ViewMode::Baselines,
+                };
+            }
+        }
+
         egui::Panel::top("toolbar").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("Cadence");
@@ -1181,20 +1226,23 @@ impl eframe::App for CadenceApp {
                                                 ui.label(date_text(row.current_start));
                                                 ui.label(date_text(row.baseline_start));
                                                 ui.colored_label(
-                                                    variance_color(row.start_variance()),
+                                                    variance_color(row.start_variance(), self.dark),
                                                     variance_text(row.start_variance()),
                                                 );
                                                 ui.label(date_text(row.current_finish));
                                                 ui.label(date_text(row.baseline_finish));
                                                 ui.colored_label(
-                                                    variance_color(row.finish_variance()),
+                                                    variance_color(row.finish_variance(), self.dark),
                                                     variance_text(row.finish_variance()),
                                                 );
                                                 let duration_variance = row.duration_variance();
                                                 ui.label(row.current_duration.to_string());
                                                 ui.label(row.baseline_duration.to_string());
                                                 ui.colored_label(
-                                                    variance_color(Some(duration_variance)),
+                                                    variance_color(
+                                                        Some(duration_variance),
+                                                        self.dark,
+                                                    ),
                                                     variance_text(Some(duration_variance)),
                                                 );
                                                 ui.end_row();
@@ -1258,10 +1306,15 @@ fn variance_text(value: Option<i64>) -> String {
 }
 
 /// Colour a variance: delays and overspends in red, improvements in green.
-fn variance_color(value: Option<i64>) -> Color32 {
-    match value {
-        Some(value) if value > 0 => Color32::from_rgb(0xC0, 0x39, 0x2B),
-        Some(value) if value < 0 => Color32::from_rgb(0x27, 0xAE, 0x60),
+///
+/// Each theme gets its own pair so that both pass WCAG AA (4.5:1) against the
+/// panel background — verified by the tests at the bottom of this file.
+fn variance_color(value: Option<i64>, dark: bool) -> Color32 {
+    match (value, dark) {
+        (Some(value), true) if value > 0 => Color32::from_rgb(0xE7, 0x4C, 0x3C),
+        (Some(value), true) if value < 0 => Color32::from_rgb(0x2E, 0xCC, 0x71),
+        (Some(value), false) if value > 0 => Color32::from_rgb(0xC0, 0x39, 0x2B),
+        (Some(value), false) if value < 0 => Color32::from_rgb(0x1E, 0x84, 0x49),
         _ => Color32::GRAY,
     }
 }
@@ -1620,4 +1673,86 @@ pub fn run(project: Project) -> Result<(), String> {
         }),
     )
     .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod accessibility_tests {
+    use super::*;
+
+    /// Worst-case panel backgrounds the app renders text on: egui's light
+    /// theme sits on white and its dark theme near black, so any pair that
+    /// passes here passes with room to spare in the real themes.
+    const LIGHT_TEXT_BACKGROUND: Color32 = Color32::WHITE;
+    const DARK_TEXT_BACKGROUND: Color32 = Color32::from_rgb(0x12, 0x12, 0x12);
+
+    fn relative_luminance(color: Color32) -> f64 {
+        fn channel(value: u8) -> f64 {
+            let scaled = f64::from(value) / 255.0;
+            if scaled <= 0.039_28 {
+                scaled / 12.92
+            } else {
+                ((scaled + 0.055) / 1.055).powf(2.4)
+            }
+        }
+        0.212_6 * channel(color.r())
+            + 0.715_2 * channel(color.g())
+            + 0.072_2 * channel(color.b())
+    }
+
+    fn contrast_ratio(a: Color32, b: Color32) -> f64 {
+        let (first, second) = (relative_luminance(a), relative_luminance(b));
+        let (lighter, darker) = if first >= second {
+            (first, second)
+        } else {
+            (second, first)
+        };
+        (lighter + 0.05) / (darker + 0.05)
+    }
+
+    #[test]
+    fn variance_text_meets_wcag_aa_on_both_themes() {
+        let light_red = variance_color(Some(1), false);
+        let light_green = variance_color(Some(-1), false);
+        let dark_red = variance_color(Some(1), true);
+        let dark_green = variance_color(Some(-1), true);
+
+        for (color, name) in [
+            (light_red, "light-theme red"),
+            (light_green, "light-theme green"),
+        ] {
+            let ratio = contrast_ratio(color, LIGHT_TEXT_BACKGROUND);
+            assert!(
+                ratio >= 4.5,
+                "{name} contrast ratio {ratio:.2} is below the WCAG AA body-text minimum of 4.5"
+            );
+        }
+        for (color, name) in [
+            (dark_red, "dark-theme red"),
+            (dark_green, "dark-theme green"),
+        ] {
+            let ratio = contrast_ratio(color, DARK_TEXT_BACKGROUND);
+            assert!(
+                ratio >= 4.5,
+                "{name} contrast ratio {ratio:.2} is below the WCAG AA body-text minimum of 4.5"
+            );
+        }
+    }
+
+    #[test]
+    fn white_text_on_the_selection_accent_is_readable() {
+        // Selected rows and the leveling report draw white text on the accent.
+        let ratio = contrast_ratio(Color32::WHITE, ACCENT);
+        assert!(
+            ratio >= 4.5,
+            "white on accent contrast ratio {ratio:.2} is below 4.5"
+        );
+    }
+
+    #[test]
+    fn the_accent_is_distinguishable_on_both_themes() {
+        // The accent carries selection and highlights rather than body text,
+        // so WCAG 1.4.11's 3:1 non-text minimum applies.
+        assert!(contrast_ratio(ACCENT, LIGHT_TEXT_BACKGROUND) >= 3.0);
+        assert!(contrast_ratio(ACCENT, DARK_TEXT_BACKGROUND) >= 3.0);
+    }
 }

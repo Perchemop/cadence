@@ -20,6 +20,7 @@ Usage:
   cadence                        Run the built-in demo project
   cadence save <file>            Save the demo project to a SQLite project file
   cadence load <file>            Load a project file and print its schedule
+  cadence report <file> [out]    Write a Markdown report (stdout if no file)
   cadence gui [file]             Open the project in the GUI (demo if no file)
   cadence export-xml <in> <out>  Save a project file as Microsoft Project XML
   cadence import-xml <in> <out>  Import Microsoft Project XML into a project file
@@ -42,6 +43,10 @@ fn main() -> ExitCode {
         }
         [command, path] if command == "save" => save_demo(path),
         [command, path] if command == "load" => load_and_print(path),
+        [command, path] if command == "report" => print_report(path, None),
+        [command, input, output] if command == "report" => {
+            print_report(input, Some(output))
+        }
         [command] if command == "gui" => gui_demo(),
         [command, path] if command == "gui" => gui_file(path),
         [command, input, output] if command == "export-xml" => {
@@ -161,6 +166,26 @@ fn load_and_print(path: &str) -> Result<(), String> {
     let schedule = schedule(&project).map_err(|error| error.to_string())?;
     print_schedule(&project, &schedule);
     Ok(())
+}
+
+/// Write a Markdown project report to stdout or to a file.
+fn print_report(path: &str, output: Option<&str>) -> Result<(), String> {
+    let project = cadence_persistence::load_project(path).map_err(|error| error.to_string())?;
+    let report = cadence_core::report::project_report(&project, today());
+    match output {
+        Some(output) => {
+            std::fs::write(output, &report)
+                .map_err(|error| format!("cannot write {output}: {error}"))?;
+            println!("Report written to {output}");
+        }
+        None => print!("{report}"),
+    }
+    Ok(())
+}
+
+/// Today, as the report status date.
+fn today() -> Date {
+    time::OffsetDateTime::now_utc().date()
 }
 
 fn gui_demo() -> Result<(), String> {
