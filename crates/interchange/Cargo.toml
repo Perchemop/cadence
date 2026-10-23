@@ -6,8 +6,11 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Open project interchange formats for Cadence (Microsoft Project XML and MPX)"
+description = "Open project interchange formats for Cadence (Microsoft Project XML, MPX, CSV and JSON)"
 
 [dependencies]
 cadence-core.workspace = true
 time.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

@@ -593,6 +593,7 @@ name = "cadence-interchange"
 version = "0.1.0"
 dependencies = [
  "cadence-core",
+ "proptest",
  "time",
 ]
 

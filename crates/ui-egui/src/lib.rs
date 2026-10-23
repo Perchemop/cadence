@@ -567,6 +567,20 @@ impl CadenceApp {
         }
     }
 
+    /// Write the Markdown report next to the working directory.
+    ///
+    /// There is no file picker (that would pull in a native-dialog
+    /// dependency), so the report lands in the current directory named after
+    /// the project and the path is reported in the status area.
+    fn save_report(&mut self) {
+        let path = format!("{}.report.md", file_stem(&self.project.name));
+        let report = cadence_core::report::project_report(&self.project, today());
+        match std::fs::write(&path, report) {
+            Ok(()) => self.status_message = Some(format!("Report written to {path}")),
+            Err(error) => self.status_message = Some(format!("Cannot write {path}: {error}")),
+        }
+    }
+
     /// Remove the selected baseline from the project.
     fn delete_selected_baseline(&mut self) {
         let Some(id) = self.selected_baseline else {
@@ -708,6 +722,13 @@ impl eframe::App for CadenceApp {
                 }
                 if ui.button("Baselines").clicked() {
                     self.view_mode = ViewMode::Baselines;
+                }
+                if ui
+                    .button("Save report")
+                    .on_hover_text("Write a Markdown report next to the working directory")
+                    .clicked()
+                {
+                    self.save_report();
                 }
                 if ui.button("Undo").clicked() {
                     let _ = self.stack.undo(&mut self.project);
@@ -1282,6 +1303,24 @@ fn today() -> Date {
     time::OffsetDateTime::now_utc().date()
 }
 
+/// Turn a project name into a safe file stem for exported reports.
+fn file_stem(name: &str) -> String {
+    let mut stem = String::new();
+    for character in name.chars() {
+        if character.is_alphanumeric() || matches!(character, '-' | '_') {
+            stem.push(character);
+        } else if !stem.ends_with('-') {
+            stem.push('-');
+        }
+    }
+    let trimmed = stem.trim_matches(['-', '_']).to_string();
+    if trimmed.is_empty() {
+        "cadence-project".to_string()
+    } else {
+        trimmed
+    }
+}
+
 /// Render a date for a table cell, using `-` when it is not known.
 fn date_text(date: Option<Date>) -> String {
     date.map_or_else(|| "-".to_string(), |date| date.to_string())
@@ -1752,5 +1791,28 @@ mod accessibility_tests {
         // so WCAG 1.4.11's 3:1 non-text minimum applies.
         assert!(contrast_ratio(ACCENT, LIGHT_TEXT_BACKGROUND) >= 3.0);
         assert!(contrast_ratio(ACCENT, DARK_TEXT_BACKGROUND) >= 3.0);
+    }
+}
+
+#[cfg(test)]
+mod report_export_tests {
+    use super::*;
+
+    #[test]
+    fn project_names_become_safe_file_stems() {
+        assert_eq!(file_stem("Bridge & Road"), "Bridge-Road");
+        assert_eq!(file_stem("Phase 2 / Phase 3"), "Phase-2-Phase-3");
+        assert_eq!(file_stem("under_score"), "under_score");
+        assert_eq!(file_stem("2026 — Q1"), "2026-Q1");
+        assert_eq!(file_stem("   "), "cadence-project");
+        assert_eq!(file_stem("###"), "cadence-project");
+    }
+
+    #[test]
+    fn the_report_lands_in_a_markdown_file() {
+        let project = Project::new("Export me", Date::from_calendar_date(2026, Month::January, 5).expect("date"));
+        let report = cadence_core::report::project_report(&project, today());
+        assert!(report.starts_with("# Export me"));
+        assert_eq!(file_stem(&project.name), "Export-me");
     }
 }
