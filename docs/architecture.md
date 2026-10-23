@@ -21,6 +21,7 @@ app (binary)
 | `cadence-core`       | Domain model (Project, WBS, Activity, Relationship, Resource, Calendar, Baseline) and the CPM engine. No I/O, no UI. |
 | `cadence-commands`   | `Command` trait + `CommandStack`. Single mutation path; produces inverse commands for undo/redo. |
 | `cadence-persistence`| SQLite project file format: versioned schema, transactional save/load, in-place migrations. |
+| `cadence-core` (report) | Markdown project reports rendered in memory; the printable artifact (D16). |
 | `cadence-interchange`| Open interchange: Microsoft Project XML (MSPDI), MPX, CSV and Cadence JSON readers/writers, with in-crate XML and JSON parsers (D14). |
 | `cadence-app`        | Application binary; wires the layers together. |
 

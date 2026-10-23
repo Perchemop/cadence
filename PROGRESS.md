@@ -3,6 +3,31 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-23 — P5-2a/P5-3/P5-4 reports, keyboard map, contrast and performance gates
+
+- `cadence-core::report` renders a Markdown project report: schedule table
+  with dates, float and criticality; per-resource committed and
+  over-allocated days; earned-value metrics against the most recent baseline;
+  and the baseline list. Unschedulable projects say so instead of emitting an
+  empty document. CLI: `cadence report <file> [out]` (stdout when no file).
+- Keyboard map in the GUI: Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y undo-redo and
+  Ctrl+1..4 view switching, working from every view.
+- Accessibility: every colour the app draws text in now passes WCAG AA
+  (4.5:1) against its panel background on both themes, verified by new
+  contrast tests in `cadence-ui-egui` (variance colours are theme-specific
+  now; white-on-accent selections and 3:1 non-text accent contrast are
+  covered too).
+- Performance gates in CI: 10,000 committed resource days analysed under
+  750 ms and 100 parallel activities leveled under 3 s, alongside the
+  existing 10,000-activity schedule gate.
+- `docs/usage.md` documents commands, formats, the keyboard map and reports;
+  `crates/app/examples/bridge_report.rs` builds the sample project, prints
+  its report and checks a JSON round trip (linted by `clippy --all-targets`).
+- Native print/PDF, the full keyboard-only audit, screen-reader support and
+  the first tagged release are recorded as deliberate, user-owned deferrals
+  in `docs/qc/phase-5.md`.
+- CI green on `opencode/ci` (run 39892304802, 189 tests passed).
+
 ## 2026-10-23 — P5-1c Cadence JSON interchange
 
 - `cadence-interchange::json` reads and writes Cadence's own JSON schema,

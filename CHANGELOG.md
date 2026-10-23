@@ -34,6 +34,13 @@ follows Keep a Changelog; releases use git tags.
   project (activities, constraints, relationships, resources, assignments,
   baselines and progress), written and read by an in-crate JSON parser; CLI
   `export-json` / `import-json`
+- Markdown project reports: schedule table, resource usage, earned-value
+  metrics and baseline list; `cadence report <file> [out]`
+- Keyboard map in the GUI: Ctrl+Z/Ctrl+Y undo-redo, Ctrl+1..4 view switching
+- WCAG AA contrast for theme text, verified by tests on both themes
+- Performance gates: 10k committed resource days and 100-activity leveling
+  time-budgeted in CI
+- `docs/usage.md` user guide and the `bridge_report` example
 - Progress updating: percent complete (basis points), budget at completion,
   actual cost and recorded actual start/finish dates, editable through
   undoable commands and persisted in schema v4 (with v1, v2 and v3

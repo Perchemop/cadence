@@ -201,3 +201,19 @@ Percent complete is exposed as basis points in the model and as a percentage
 in the UI and interchange formats, because every format that surrounds Cadence
 speaks percentages. The conversion happens at the boundary in both directions
 and rounds to whole basis points.
+
+## D16 — Reports are Markdown; printing stays out of the binary (2026-10-23)
+
+Printing is provided by rendering a Markdown report rather than by wiring a
+print pipeline into the GUI. A PDF would need either a print-dialog
+dependency (platform-native, unverifiable in CI) or a PDF writer (a large,
+fiddly format for little gain), while a Markdown report is plain text that
+every editor and browser can print or export to PDF already. The report
+generator lives in `cadence-core::report`: it is pure text generation from
+the model and schedule, so it is unit-testable in CI, reusable from the CLI
+today and from the GUI later, and performs no I/O itself.
+
+The report is honest by construction: it renders whatever the engine can
+schedule and states plainly when it cannot. It never invents dates, and
+derived schedule data is recomputed at generation time rather than read from
+cached fields (D9).
