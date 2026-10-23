@@ -23,14 +23,20 @@ Checklist for the Phase-5 polish and interop slices. Phase-1..4 gates live in
       100 parallel activities leveled under 3 s — all asserted in CI.
 - [x] Documentation and examples (P5-4, partial): `docs/usage.md` command,
       format, keyboard and report reference; `bridge_report` example.
+- [x] Property tests over the new surfaces: leveling invariants on arbitrary
+      projects, and round-trip properties for all four interchange formats
+      within each format's documented scope. These found and closed two real
+      defects (MSPDI percent truncation, undocumented CSV resource
+      renumbering).
+- [x] The GUI writes the Markdown report through a **Save report** button.
 
 ## Engineering
 
 - [x] `cargo fmt --check --all` passes.
 - [x] `cargo clippy --workspace --all-targets -- -D warnings` passes
       (this includes the example, which is an `--all-targets` target).
-- [x] `cargo test --workspace` passes (189 tests).
-- [x] CI green on `opencode/ci` (run 39892304802), pending merge to `main`.
+- [x] `cargo test --workspace` passes (197 tests).
+- [x] CI green on `opencode/ci` (run 39898422581), pending merge to `main`.
 
 ## Deliberately deferred (user decisions, not engineering gaps)
 

@@ -60,7 +60,8 @@ basis points in the model and percentages everywhere else (D13).
 dates, float and criticality; per-resource committed and over-allocated days;
 earned-value metrics against the most recent baseline; and the baseline list.
 Reports are the printable path — open the file in a browser and print or
-export it to PDF there.
+export it to PDF there. The GUI has the same action as **Save report** in the
+toolbar, which writes `<project name>.report.md` to the current directory.
 
 ## Keyboard map (GUI)
 

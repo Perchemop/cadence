@@ -174,6 +174,15 @@ Two conversions are documented and lossy by design:
 * Link lag is written in MSPDI's **tenths of a minute** and converted back to
   whole working days, and MPX lag is written in whole working days. Fractional
   lag does not survive.
+* Percent complete is quantised to **whole percentages** in MSPDI, because its
+  `PercentComplete` is an integer 0–100; anything finer is rounded to the
+  nearest percent rather than truncated. CSV, JSON and the SQLite file keep
+  full basis-point precision.
+
+CSV additionally treats resource **names** as the identity: it has no resource
+table, so importing renumbers the dictionary in first-seen order and matches
+assignments by name. Activity identifiers are carried explicitly in the `ID`
+column and in predecessor links, so the activity graph is stable.
 
 Two MSPDI constraints have no exact Cadence equivalent: *must start on* is
 read as *start no earlier than* and *must finish on* as *finish no earlier

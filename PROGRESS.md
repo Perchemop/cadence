@@ -3,6 +3,28 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-23 — property tests for leveling and interchange, GUI report export
+
+- New property test in `cadence-core`: leveling never moves work earlier, the
+  reported delay matches the calendar distance, and a conflict-free result
+  must be reproducible through ordinary start-no-earlier-than constraints —
+  which is the D12 equivalence claim checked against arbitrary projects.
+- New property suite in `cadence-interchange` (`tests/properties.rs`,
+  proptest as a dev-dependency): arbitrary projects round-trip through all
+  four formats, with each format's documented scope asserted — JSON exactly,
+  MSPDI exactly apart from percent quantisation, CSV and MPX for the plan.
+- The interchange properties found two real defects on their first run:
+  * MSPDI truncated sub-percent progress (149 basis points became 0% instead
+    of 1%); it now rounds to the nearest whole percent, because MSPDI stores
+    an integer `PercentComplete` and cannot hold anything finer.
+  * CSV renumbers the resource dictionary on import, which the properties
+    surfaced as an assignment mismatch; it is now documented as a property of
+    the format (assignments match by name) rather than assumed away.
+- The GUI gained a **Save report** button that writes the Markdown report next
+  to the working directory and reports the path in the status area, so the
+  printable artifact is reachable without the CLI.
+- CI green on `opencode/ci` (run 39898422581, 197 tests passed).
+
 ## 2026-10-23 — P5-2a/P5-3/P5-4 reports, keyboard map, contrast and performance gates
 
 - `cadence-core::report` renders a Markdown project report: schedule table

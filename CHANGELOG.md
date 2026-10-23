@@ -41,6 +41,17 @@ follows Keep a Changelog; releases use git tags.
 - Performance gates: 10k committed resource days and 100-activity leveling
   time-budgeted in CI
 - `docs/usage.md` user guide and the `bridge_report` example
+- Property tests for resource leveling (delays only, delays match the
+  calendar, conflict-free results are reachable through constraints) and for
+  all four interchange formats (arbitrary projects round-trip within each
+  format's documented scope)
+- GUI **Save report** button writing the Markdown report next to the working
+  directory
+
+### Fixed
+
+- MSPDI round-tripped sub-percent progress as zero because `PercentComplete`
+  was truncated; it is now rounded to the nearest whole percent
 - Progress updating: percent complete (basis points), budget at completion,
   actual cost and recorded actual start/finish dates, editable through
   undoable commands and persisted in schema v4 (with v1, v2 and v3
