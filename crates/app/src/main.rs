@@ -21,6 +21,7 @@ Usage:
   cadence save <file>            Save the demo project to a SQLite project file
   cadence load <file>            Load a project file and print its schedule
   cadence report <file> [out]    Write a Markdown report (stdout if no file)
+  cadence print <file> <out.pdf>  Print a project report to PDF
   cadence gui [file]             Open the project in the GUI (demo if no file)
   cadence export-xml <in> <out>  Save a project file as Microsoft Project XML
   cadence import-xml <in> <out>  Import Microsoft Project XML into a project file
@@ -45,6 +46,7 @@ fn main() -> ExitCode {
         [command, path] if command == "load" => load_and_print(path),
         [command, path] if command == "report" => print_report(path, None),
         [command, input, output] if command == "report" => print_report(input, Some(output)),
+        [command, input, output] if command == "print" => print_report_pdf(input, output),
         [command] if command == "gui" => gui_demo(),
         [command, path] if command == "gui" => gui_file(path),
         [command, input, output] if command == "export-xml" => {
@@ -179,6 +181,21 @@ fn print_report(path: &str, output: Option<&str>) -> Result<(), String> {
         None => print!("{report}"),
     }
     Ok(())
+}
+
+/// Print a project report to a PDF file.
+fn print_report_pdf(path: &str, output: &str) -> Result<(), String> {
+    let project = cadence_persistence::load_project(path).map_err(|error| error.to_string())?;
+    let pdf = cadence_core::report::project_report_pdf(&project, today());
+    std::fs::write(output, &pdf).map_err(|error| format!("cannot write {output}: {error}"))?;
+    println!("Printed {} page(s) to {output}", pdf_pages(&pdf));
+    Ok(())
+}
+
+/// Count the pages of a generated document, for the status line.
+fn pdf_pages(bytes: &[u8]) -> usize {
+    let text = String::from_utf8_lossy(bytes);
+    text.matches("/Type /Page ").count() + text.matches("/Type /Page\n").count()
 }
 
 /// Today, as the report status date.

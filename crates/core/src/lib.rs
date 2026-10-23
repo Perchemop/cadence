@@ -8,6 +8,7 @@
 pub mod calendar_set;
 pub mod engine;
 pub mod model;
+pub mod pdf;
 pub mod report;
 pub mod wbs;
 
