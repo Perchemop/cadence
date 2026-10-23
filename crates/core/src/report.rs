@@ -93,10 +93,7 @@ fn schedule_section(project: &Project, computed: &Schedule, report: &mut String)
             activity.original_duration,
             result.scheduled_start,
             result.scheduled_finish,
-            result
-                .total_float
-                .map(|float| float.to_string())
-                .unwrap_or_else(|| "n/a".to_string()),
+            result.total_float.to_string(),
             if result.critical { "yes" } else { "" },
             escape_table(&resources),
         );

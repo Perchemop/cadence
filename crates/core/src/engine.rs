@@ -1752,7 +1752,7 @@ mod tests {
             activity.constraint = Constraint::StartNoEarlierThan(
                 project
                     .calendar
-                    .add_working_days(jan(5), i64::from(index))
+                    .add_working_days(jan(5), index as i64)
                     .expect("working day"),
             );
             activity.resources.push(ResourceId(1));
