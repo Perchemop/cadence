@@ -567,11 +567,32 @@ impl CadenceApp {
         }
     }
 
+    /// Print the project report to a PDF chosen with a native save dialog.
+    ///
+    /// Cancelling the dialog changes nothing.
+    fn print_report_dialog(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("PDF document", &["pdf"])
+            .set_file_name(format!("{}.pdf", file_stem(&self.project.name)))
+            .save_file()
+        else {
+            return;
+        };
+        let pdf = cadence_core::report::project_report_pdf(&self.project, today());
+        match std::fs::write(&path, pdf) {
+            Ok(()) => {
+                self.status_message = Some(format!("Report printed to {}", path.display()));
+            }
+            Err(error) => {
+                self.status_message = Some(format!("Cannot write {}: {error}", path.display()));
+            }
+        }
+    }
+
     /// Write the Markdown report next to the working directory.
     ///
-    /// There is no file picker (that would pull in a native-dialog
-    /// dependency), so the report lands in the current directory named after
-    /// the project and the path is reported in the status area.
+    /// The report itself needs no dialog; "Print report…" is the one that
+    /// opens one, for choosing where a PDF goes.
     fn save_report(&mut self) {
         let path = format!("{}.report.md", file_stem(&self.project.name));
         let report = cadence_core::report::project_report(&self.project, today());
@@ -729,6 +750,13 @@ impl eframe::App for CadenceApp {
                     .clicked()
                 {
                     self.save_report();
+                }
+                if ui
+                    .button("Print report…")
+                    .on_hover_text("Save a print-ready PDF of the report via a file dialog")
+                    .clicked()
+                {
+                    self.print_report_dialog();
                 }
                 if ui.button("Undo").clicked() {
                     let _ = self.stack.undo(&mut self.project);

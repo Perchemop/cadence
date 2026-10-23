@@ -16,6 +16,7 @@ takes the file path; with no arguments `cadence` runs a built-in demo project.
 | `cadence save <file>` | Save the demo project to a project file |
 | `cadence load <file>` | Load a project file and print its schedule |
 | `cadence report <file> [out]` | Write a Markdown report (stdout if no file) |
+| `cadence print <file> <out.pdf>` | Print the report as a PDF |
 | `cadence gui [file]` | Open the project in the GUI (demo if no file) |
 | `cadence export-xml <in> <out>` | Microsoft Project XML (MSPDI) |
 | `cadence import-xml <in> <out>` | Import MSPDI |
@@ -59,9 +60,10 @@ basis points in the model and percentages everywhere else (D13).
 `cadence report <file>` renders a Markdown report: a schedule table with
 dates, float and criticality; per-resource committed and over-allocated days;
 earned-value metrics against the most recent baseline; and the baseline list.
-Reports are the printable path — open the file in a browser and print or
-export it to PDF there. The GUI has the same action as **Save report** in the
-toolbar, which writes `<project name>.report.md` to the current directory.
+`cadence print <file> <out.pdf>` renders the same report as a print-ready PDF
+(heading and body text, wrapped and paginated over A4 pages). In the GUI,
+**Save report** writes the Markdown next to the working directory and
+**Print report…** opens a native save dialog for the PDF.
 
 ## Keyboard map (GUI)
 

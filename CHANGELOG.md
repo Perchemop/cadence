@@ -42,6 +42,9 @@ follows Keep a Changelog; releases use git tags.
 - Performance gates: 10k committed resource days and 100-activity leveling
   time-budgeted in CI
 - `docs/usage.md` user guide and the `bridge_report` example
+- PDF printing: a dependency-free PDF writer (`cadence-core/src/pdf.rs`),
+  `cadence print <file> <out.pdf>`, and a GUI **Print report…** button backed
+  by a native save dialog (`rfd`)
 - Property tests for resource leveling (delays only, delays match the
   calendar, conflict-free results are reachable through constraints) and for
   all four interchange formats (arbitrary projects round-trip within each

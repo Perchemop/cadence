@@ -12,6 +12,11 @@ Checklist for the Phase-5 polish and interop slices. Phase-1..4 gates live in
       criticality; per-resource committed and over-allocated days;
       earned-value metrics against the most recent baseline; baseline list.
       `cadence report <file> [out]`; printable via any browser.
+- [x] PDF printing (P5-2b): dependency-free PDF writer in
+      `cadence-core/src/pdf.rs` (text with wrapping and pagination, image
+      pages, ASCII-hex streams), `cadence print <file> <out.pdf>`, and a GUI
+      **Print report…** button using a native save dialog. Dialog behaviour
+      itself needs interactive verification (below).
 - [x] Keyboard shortcuts (P5-3, partial): Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y
       undo-redo and Ctrl+1..4 view switching from any view.
 - [x] Accessibility (P5-3, partial): WCAG AA (4.5:1) contrast verified by
@@ -41,11 +46,9 @@ Checklist for the Phase-5 polish and interop slices. Phase-1..4 gates live in
 
 ## Deliberately deferred (user decisions, not engineering gaps)
 
-- Native print/PDF from the GUI (P5-2b): egui has no print pipeline and the
-  project's dependency-light stance argues against a PDF writer for a feature
-  browsers already provide. The Markdown report is the printable artifact.
-- Full keyboard-only operation audit and screen-reader (AccessKit) pass
+- Screen-reader audit and full keyboard-only operation
   (P5-3): enabling AccessKit adds its dependency tree and needs interactive
-  verification with a screen reader, which CI cannot do.
+  verification with a screen reader, which CI cannot do. The native save
+  dialog in **Print report…** is likewise interactive-only.
 - First tagged release (P5-4): a release decision — what to include, version
-  number, and merging PR #1 to `main` first.
+  number, and merging PR #1 to `main` first (now done).

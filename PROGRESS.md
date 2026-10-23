@@ -49,6 +49,22 @@ Guide conformance completed in the same pass:
   weeks. 203 tests in total.
 - CI green on `opencode/ci`.
 
+## 2026-10-24 — P5-2b native PDF printing (D16 reversed)
+
+- `cadence-core/src/pdf.rs`: a dependency-free PDF 1.4 writer — text pages in
+  Helvetica (regular/bold) with wrapping and A4 pagination, raw RGB image
+  pages, every stream ASCII-hex encoded so no payload byte can collide with
+  the `endstream` marker.
+- `report::project_report_pdf` renders the report through it; CLI
+  `cadence print <file> <out.pdf>`; GUI **Print report…** opens a native save
+  dialog (`rfd`, the one dependency this slice adds) and writes the PDF.
+- D16's "printing stays out of the binary" half is reversed by maintainer
+  decision; the Markdown report remains the reviewable artifact.
+- Eight PDF unit tests: structure and escaping, xref offsets, page objects,
+  empty-document handling, hex-stream safety, wrapping, image fitting.
+- CI green on `opencode/ci`; dialog behaviour itself is interactive-only and
+  recorded as such in the Phase-5 QC gate.
+
 ## 2026-10-23 — property tests for leveling and interchange, GUI report export
 
 - New property test in `cadence-core`: leveling never moves work earlier, the

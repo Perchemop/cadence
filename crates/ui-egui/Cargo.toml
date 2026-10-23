@@ -14,4 +14,5 @@ cadence-commands.workspace = true
 cadence-persistence.workspace = true
 eframe.workspace = true
 egui.workspace = true
+rfd = "0.15"
 time.workspace = true
