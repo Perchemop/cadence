@@ -189,8 +189,8 @@ impl Pdf {
                     let dictionary = bodies.pop().expect("just pushed");
                     let mut image = dictionary;
                     image.extend_from_slice(b"\nstream\n");
-                    image.extend_from_slice(&hex_payload(rgb));
-                    image.extend_from_slice(b">");
+                    image.extend_from_slice(&hex_bytes(rgb));
+                    image.extend_from_slice(b">\n");
                     bodies.push(image);
                     next_object += 3;
                 }
@@ -373,26 +373,28 @@ fn escape_pdf(text: &str) -> String {
 }
 
 /// Wrap a payload as an ASCII-hex encoded PDF stream, closed for a reader.
+///
+/// The stream data is the hex encoding, the `>` terminator and an EOL — so the
+/// `/Length` is `2 * payload + 2`.
 fn stream(payload: &[u8]) -> Vec<u8> {
     let mut body = format!(
         "<< /Filter /ASCIIHexDecode /Length {} >>\nstream\n",
         payload.len() * 2 + 2
     )
     .into_bytes();
-    body.extend_from_slice(&hex_payload(payload));
+    body.extend_from_slice(&hex_bytes(payload));
     body.extend_from_slice(b">\nendstream");
     body
 }
 
-/// The ASCII-hex encoding of a payload, ending in the `>` terminator.
-fn hex_payload(payload: &[u8]) -> Vec<u8> {
+/// The ASCII-hex encoding of a payload, without the `>` terminator.
+fn hex_bytes(payload: &[u8]) -> Vec<u8> {
     const DIGITS: &[u8; 16] = b"0123456789ABCDEF";
-    let mut hex = Vec::with_capacity(payload.len() * 2 + 1);
+    let mut hex = Vec::with_capacity(payload.len() * 2);
     for byte in payload {
         hex.push(DIGITS[usize::from(byte >> 4)]);
         hex.push(DIGITS[usize::from(byte & 0x0F)]);
     }
-    hex.push(b'>');
     hex
 }
 
@@ -434,7 +436,7 @@ mod tests {
     /// Hex-encode a slice, as the writer does, so tests can search for text the
     /// way a reader would decode it.
     fn hex_of(text: &str) -> String {
-        String::from_utf8(hex_payload(text.as_bytes())).expect("hex is ASCII")
+        String::from_utf8(hex_bytes(text.as_bytes())).expect("hex is ASCII")
     }
 
     #[test]
@@ -508,10 +510,9 @@ mod tests {
         // No byte sequence in the payload can spell "endstream", because the
         // encoding is restricted to hex digits and terminator.
         let payload = b"endstream is a keyword, not data".to_vec();
-        let hex = hex_payload(&payload);
+        let hex = hex_bytes(&payload);
         let as_text = text_of(&hex);
         assert!(!as_text.contains("endstream"));
-        assert!(as_text.ends_with('>'));
     }
 
     #[test]
