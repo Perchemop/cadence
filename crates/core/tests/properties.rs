@@ -374,8 +374,8 @@ proptest! {
             }
         }
 
-        let schedule = schedule(&project).expect("valid DAG schedules");
-        let Ok(leveled) = level_resources(&project, &schedule) else {
+        let computed = schedule(&project).expect("valid DAG schedules");
+        let Ok(leveled) = level_resources(&project, &computed) else {
             // Leveling only fails when the project stops being schedulable,
             // which the generator cannot produce; treat it as a skip.
             return Ok(());

@@ -76,7 +76,7 @@ fn build(shape: &Shape) -> Project {
             activity.percent_complete = Some(percent);
         }
         if let Some(offset) = shape.actual_offsets.get(index).copied().flatten() {
-            if let Ok(start) = origin().checked_add(time::Duration::days(offset)) {
+            if let Some(start) = origin().checked_add(time::Duration::days(offset)) {
                 activity.actual_start = Some(start);
                 activity.actual_finish = Some(
                     start
