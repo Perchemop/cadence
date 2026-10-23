@@ -26,58 +26,71 @@ use time::{Date, Month};
 
 const MAX_ACTIVITIES: usize = 6;
 
+/// Activities as every format must carry them: identity, name, duration and
+/// constraint.
+type ActivityPlan = Vec<(u64, String, u32, Constraint)>;
+
+/// Links as every format must carry them, ordered so that renumbering on
+/// import does not matter.
+type LinkPlan = BTreeSet<(u64, u64, u8, i64)>;
+
 fn origin() -> Date {
     Date::from_calendar_date(2026, Month::January, 5).expect("valid origin")
-}
-
-fn day(offset: i64) -> Date {
-    Date::from_julian_day(origin().to_julian_day() + offset as i32).expect("valid date")
 }
 
 fn link_type(raw: u8) -> LinkType {
     LinkType::ALL[usize::from(raw % 4)]
 }
 
-/// An arbitrary project: activities, acyclic links, resources with kinds and
-/// capacities, assignments, progress, costs and actual dates.
+/// One generated project shape.
 ///
-/// `keep_details` decides whether money, progress and actual dates are set,
-/// which is what separates the full-fidelity round trips from the plan-only
-/// ones.
-fn build(
-    durations: &[u32],
-    raw_links: &[(usize, usize, u8, i64)],
-    kinds: &[u8],
-    capacities: &[u32],
-    masks: &[u8],
-    money: &[Option<i64>],
-    percents: &[Option<i64>],
-    actual_offsets: &[Option<i64>],
-) -> Project {
+/// The generator values are grouped so that the builder takes a single
+/// argument, and the detail vectors are empty for the formats that do not
+/// carry progress, costs or actual dates.
+#[derive(Debug, Default)]
+struct Shape {
+    durations: Vec<u32>,
+    links: Vec<(usize, usize, u8, i64)>,
+    capacities: Vec<u32>,
+    kinds: Vec<u8>,
+    masks: Vec<u8>,
+    money: Vec<Option<i64>>,
+    percents: Vec<Option<i64>>,
+    actual_offsets: Vec<Option<i64>>,
+}
+
+/// Build an arbitrary project: activities, acyclic links, resources with kinds
+/// and capacities, assignments, and (when `money`, `percents` and
+/// `actual_offsets` say so) progress, costs and actual dates.
+fn build(shape: &Shape) -> Project {
     let mut project = Project::new("Round trip", origin());
 
-    for (index, duration) in durations.iter().enumerate() {
+    for (index, duration) in shape.durations.iter().enumerate() {
         let mut activity =
             Activity::new(ActivityId(index as u64 + 1), format!("A{index}"), *duration);
-        if let Some(budget) = money.get(index).copied().flatten() {
+        if let Some(budget) = shape.money.get(index).copied().flatten() {
             activity.budget_at_completion = Some(budget);
             activity.actual_cost = Some(budget / 2);
         }
-        if let Some(percent) = percents.get(index).copied().flatten() {
+        if let Some(percent) = shape.percents.get(index).copied().flatten() {
             activity.percent_complete = Some(percent);
         }
-        if let Some(offset) = actual_offsets.get(index).copied().flatten() {
-            if let Some(start) = origin().checked_add(time::Duration::days(offset)) {
+        if let Some(offset) = shape.actual_offsets.get(index).copied().flatten() {
+            if let Ok(start) = origin().checked_add(time::Duration::days(offset)) {
                 activity.actual_start = Some(start);
-                activity.actual_finish = Some(day(offset + i64::from(*duration)));
+                activity.actual_finish = Some(
+                    start
+                        .checked_add(time::Duration::days(i64::from(*duration)))
+                        .unwrap_or(start),
+                );
             }
         }
         project.activities.push(activity);
     }
 
     let mut next_relationship = 1u64;
-    for &(left, right, kind, lag) in raw_links {
-        if left >= durations.len() || right >= durations.len() || left == right {
+    for &(left, right, kind, lag) in &shape.links {
+        if left >= shape.durations.len() || right >= shape.durations.len() || left == right {
             continue;
         }
         let (predecessor, successor) = if left < right {
@@ -95,8 +108,8 @@ fn build(
         next_relationship += 1;
     }
 
-    for (index, capacity) in capacities.iter().enumerate() {
-        let kind = match kinds.get(index).copied().unwrap_or(0) % 3 {
+    for (index, capacity) in shape.capacities.iter().enumerate() {
+        let kind = match shape.kinds.get(index).copied().unwrap_or(0) % 3 {
             0 => ResourceKind::Labour,
             1 => ResourceKind::Equipment,
             _ => ResourceKind::Material,
@@ -107,9 +120,11 @@ fn build(
         project.resources.push(resource);
     }
 
+    // Assignments only ever reference resources that exist, because the
+    // formats are free to drop dangling identifiers (CSV does).
     for (index, activity) in project.activities.iter_mut().enumerate() {
-        let mask = masks.get(index).copied().unwrap_or(0);
-        for bit in 0..capacities.len() {
+        let mask = shape.masks.get(index).copied().unwrap_or(0);
+        for bit in 0..shape.capacities.len() {
             if mask & (1 << bit) != 0 {
                 activity.resources.push(ResourceId(bit as u64 + 1));
             }
@@ -120,12 +135,7 @@ fn build(
 }
 
 /// The plan half of a project: what every format promises to preserve.
-fn plan(
-    project: &Project,
-) -> (
-    Vec<(u64, String, u32, Constraint)>,
-    BTreeSet<(u64, u64, u8, i64)>,
-) {
+fn plan(project: &Project) -> (ActivityPlan, LinkPlan) {
     let activities = project
         .activities
         .iter()
@@ -190,7 +200,7 @@ proptest! {
     #[test]
     fn json_round_trips_the_whole_project(
         durations in prop::collection::vec(0u32..6, 1..MAX_ACTIVITIES),
-        raw_links in prop::collection::vec(
+        links in prop::collection::vec(
             (0usize..MAX_ACTIVITIES, 0usize..MAX_ACTIVITIES, 0u8..4, -2i64..3),
             0..10,
         ),
@@ -201,7 +211,17 @@ proptest! {
         percents in prop::collection::vec(prop::option::of(0i64..10_001), 1..MAX_ACTIVITIES),
         actual_offsets in prop::collection::vec(prop::option::of(0i64..30), 1..MAX_ACTIVITIES),
     ) {
-        let project = build(&durations, &raw_links, &kinds, &capacities, &masks, &money, &percents, &actual_offsets);
+        let shape = Shape {
+            durations,
+            links,
+            capacities,
+            kinds,
+            masks,
+            money,
+            percents,
+            actual_offsets,
+        };
+        let project = build(&shape);
 
         let text = json::export(&project);
         let loaded = json::import(&text).expect("the exported JSON re-imports");
@@ -218,7 +238,7 @@ proptest! {
     #[test]
     fn mspdi_round_trips_activities_resources_and_assignments(
         durations in prop::collection::vec(0u32..6, 1..MAX_ACTIVITIES),
-        raw_links in prop::collection::vec(
+        links in prop::collection::vec(
             (0usize..MAX_ACTIVITIES, 0usize..MAX_ACTIVITIES, 0u8..4, -2i64..3),
             0..10,
         ),
@@ -229,7 +249,17 @@ proptest! {
         percents in prop::collection::vec(prop::option::of(0i64..10_001), 1..MAX_ACTIVITIES),
         actual_offsets in prop::collection::vec(prop::option::of(0i64..30), 1..MAX_ACTIVITIES),
     ) {
-        let project = build(&durations, &raw_links, &kinds, &capacities, &masks, &money, &percents, &actual_offsets);
+        let shape = Shape {
+            durations,
+            links,
+            capacities,
+            kinds,
+            masks,
+            money,
+            percents,
+            actual_offsets,
+        };
+        let project = build(&shape);
 
         let text = mspdi::export(&project).expect("export");
         let loaded = mspdi::import(&text).expect("the exported XML re-imports");
@@ -238,10 +268,7 @@ proptest! {
         prop_assert_eq!(loaded.start_date, project.start_date);
         prop_assert_eq!(&loaded.activities, &project.activities);
         prop_assert_eq!(&loaded.resources, &project.resources);
-        prop_assert_eq!(assignment_names(&loaded), assignment_names(&project));
-        let (_, expected_links) = plan(&project);
-        let (_, actual_links) = plan(&loaded);
-        prop_assert_eq!(actual_links, expected_links);
+        assert_plan_survived(&project, &loaded);
     }
 
     /// CSV carries the plan, costs and progress in one row per activity, but
@@ -249,7 +276,7 @@ proptest! {
     #[test]
     fn csv_round_trips_the_plan_progress_and_costs(
         durations in prop::collection::vec(0u32..6, 1..MAX_ACTIVITIES),
-        raw_links in prop::collection::vec(
+        links in prop::collection::vec(
             (0usize..MAX_ACTIVITIES, 0usize..MAX_ACTIVITIES, 0u8..4, -2i64..3),
             0..10,
         ),
@@ -259,7 +286,17 @@ proptest! {
         percents in prop::collection::vec(prop::option::of(0i64..10_001), 1..MAX_ACTIVITIES),
         actual_offsets in prop::collection::vec(prop::option::of(0i64..30), 1..MAX_ACTIVITIES),
     ) {
-        let project = build(&durations, &raw_links, &[0], &capacities, &masks, &money, &percents, &actual_offsets);
+        let shape = Shape {
+            durations,
+            links,
+            capacities,
+            kinds: Vec::new(),
+            masks,
+            money,
+            percents,
+            actual_offsets,
+        };
+        let project = build(&shape);
 
         let text = csv::export(&project).expect("export");
         let loaded = csv::import(&text).expect("the exported CSV re-imports");
@@ -272,7 +309,7 @@ proptest! {
     #[test]
     fn mpx_round_trips_the_plan_and_resources(
         durations in prop::collection::vec(0u32..6, 1..MAX_ACTIVITIES),
-        raw_links in prop::collection::vec(
+        links in prop::collection::vec(
             (0usize..MAX_ACTIVITIES, 0usize..MAX_ACTIVITIES, 0u8..4, -2i64..3),
             0..10,
         ),
@@ -280,12 +317,20 @@ proptest! {
         kinds in prop::collection::vec(0u8..6, 0..4),
         masks in prop::collection::vec(0u8..16, 1..MAX_ACTIVITIES),
     ) {
-        let project = build(&durations, &raw_links, &kinds, &capacities, &masks, &[], &[], &[]);
+        let shape = Shape {
+            durations,
+            links,
+            capacities,
+            kinds,
+            masks,
+            ..Shape::default()
+        };
+        let project = build(&shape);
 
         let text = mpx::export(&project).expect("export");
         let loaded = mpx::import(&text).expect("the exported MPX re-imports");
 
-        assert_plan_survived(&project, &loaded);
         prop_assert_eq!(&loaded.resources, &project.resources);
+        assert_plan_survived(&project, &loaded);
     }
 }
