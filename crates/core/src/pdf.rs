@@ -113,7 +113,7 @@ impl Pdf {
 
     /// Append a page showing a raw RGB image.
     pub fn image_page(&mut self, width: u32, height: u32, rgb: Vec<u8>) -> &mut Self {
-        self.pages.push(Page::Image { width, rgb });
+        self.pages.push(Page::Image { width, height, rgb });
         self
     }
 
