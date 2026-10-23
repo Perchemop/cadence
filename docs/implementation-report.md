@@ -103,20 +103,21 @@ above are recorded per slice in `PROGRESS.md`.
 
 These are decided, recorded in `DECISIONS.md`, and not defects:
 
-- **Native print/PDF** (P5-2b) — the Markdown report is the printable artifact
-  and browsers print it (D16); adding a print dialog or a PDF writer is a
-  preference, not a gap.
 - **Progress-driven rescheduling** — recorded actual dates are facts and never
   feed the scheduling inputs, so variance stays meaningful (D15).
 - **Per-assignment resource units and cost rates** — each assignment consumes
   exactly one unit per working day (D11).
 - **Screen-reader audit and full keyboard-only operation** (P5-3) — requires a
   human with assistive technology; enabling AccessKit would add a dependency
-  tree and is a decision for the maintainer.
+  tree and is a decision for the maintainer. The **Print report…** save
+  dialog is likewise interactive-only.
 - **Sub-percent progress in MSPDI, fractional lag, non-8-hour days** —
   documented format-level quantisation (D14).
 - **MPX and CSV carry no WBS or named calendars** — those dialects cannot
   express them; JSON can, and does (schema 2).
+- **PDF printing scope** — the report prints as text pages; printing the
+  Gantt view as an image page is supported by the writer (image pages) but
+  not yet wired to a UI action.
 
 ## Next steps (human decisions)
 

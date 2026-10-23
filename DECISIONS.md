@@ -233,16 +233,41 @@ handling, SQLite's bundled build, line endings, integer and float formatting —
 runs on every platform. `fail-fast` is off so one red platform cannot hide
 another's result.
 
-## D16 — Reports are Markdown; printing stays out of the binary (2026-10-23)
+## D16 — Reports are Markdown; PDF printing is in (reversed 2026-10-23)
 
-Printing is provided by rendering a Markdown report rather than by wiring a
-print pipeline into the GUI. A PDF would need either a print-dialog
-dependency (platform-native, unverifiable in CI) or a PDF writer (a large,
-fiddly format for little gain), while a Markdown report is plain text that
-every editor and browser can print or export to PDF already. The report
-generator lives in `cadence-core::report`: it is pure text generation from
-the model and schedule, so it is unit-testable in CI, reusable from the CLI
-today and from the GUI later, and performs no I/O itself.
+Printing started as a Markdown-only path: render a report, open it in a
+browser, print from there. The reasoning was that a print pipeline means a
+dependency. That was later reversed by maintainer decision after the report
+existed and was in daily use: what was missing was not a print pipeline but a
+*file format*, and a PDF can be produced dependency-free.
+
+The adopted design (reversing the "printing stays out of the binary" half of
+this decision, keeping the rest):
+
+* `cadence-core/src/pdf.rs` writes PDF 1.4 in-tree — text pages in Helvetica
+  (regular and bold), raw RGB image pages for screenshots, ASCII-hex streams
+  so no payload byte can collide with the `endstream` marker, A4 pagination
+  with wrapping. No compression, no embedded fonts, no interactive features.
+* `report::project_report_pdf` renders the report through it; the CLI exposes
+  `cadence print <file> <out.pdf>`.
+* The GUI's **Print report…** button uses `rfd` for a native save dialog —
+  the one dependency this decision now accepts, chosen because egui has no
+  print API and a save dialog is the platform-correct way to pick a
+  destination. Dialog behaviour itself is interactive-only (see the Phase-5
+  QC gate).
+
+The original reasoning about Markdown remaining the reviewable, diffable
+report still holds: PDF is the *print* artifact, Markdown is the *working*
+one.
+
+*Original decision (2026-10-23):* Printing is provided by rendering a Markdown
+report rather than by wiring a print pipeline into the GUI. A PDF would need
+either a print-dialog dependency (platform-native, unverifiable in CI) or a
+PDF writer (a large, fiddly format for little gain), while a Markdown report
+is plain text that every editor and browser can print or export to PDF
+already. The report generator lives in `cadence-core::report`: it is pure text
+generation from the model and schedule, so it is unit-testable in CI, reusable
+from the CLI today and from the GUI later, and performs no I/O itself.
 
 The report is honest by construction: it renders whatever the engine can
 schedule and states plainly when it cannot. It never invents dates, and
