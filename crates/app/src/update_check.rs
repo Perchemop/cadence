@@ -12,7 +12,13 @@ pub fn current_version() -> &'static str {
 }
 
 /// The result of an update check.
+///
+/// The full API shape is fixed now so wiring the GitHub Releases API in v0.2.0
+/// cannot change what callers handle; the stub only ever returns
+/// [`UpdateStatus::Stub`], which is why the other variants are allowed dead
+/// code until then.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum UpdateStatus {
     /// The running version is the latest known.
     UpToDate,
