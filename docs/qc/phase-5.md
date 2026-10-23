@@ -18,9 +18,10 @@ Checklist for the Phase-5 polish and interop slices. Phase-1..4 gates live in
       tests for every colour the app draws text in, on both themes
       (`accessibility_tests` in `cadence-ui-egui`), including white-on-accent
       for selections and 3:1 non-text contrast for the accent itself.
-- [x] Performance gates (P5-3, partial): 10,000-activity schedule under 500 ms
-      (existing), 10,000 committed resource days analysed under 750 ms, and
-      100 parallel activities leveled under 3 s — all asserted in CI.
+- [x] Performance gates (P5-3, partial): 10,000-activity schedule under 1 s,
+      10,000 committed resource days analysed under 2 s, and 100 parallel
+      activities leveled under 3 s — all asserted in CI on every platform.
+      Budgets catch algorithmic regressions, not runner speed.
 - [x] Documentation and examples (P5-4, partial): `docs/usage.md` command,
       format, keyboard and report reference; `bridge_report` example.
 - [x] Property tests over the new surfaces: leveling invariants on arbitrary

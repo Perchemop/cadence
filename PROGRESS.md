@@ -3,6 +3,33 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-23 — merged to `main`; guide conformance verified from a clean checkout
+
+PR #1 (`opencode/ci` → `main`, 59 commits, merge `01223602`) is merged. CI on
+`main` — run `39927047788` — is green: 203 tests on Linux, Windows and macOS,
+`cargo fmt --check --all` and `cargo clippy --workspace --all-targets -- -D
+warnings` on Linux, and the `cadence-linux-x86_64` release artefact. Every
+"Done" entry above is therefore verified on `main`, not only on the pull
+request branch.
+
+Guide conformance completed in the same pass:
+
+- CI now runs a matrix over ubuntu, windows and macos tests with the release
+  binary packaged and uploaded as an artefact (D17 supersedes the Linux-only
+  CI recorded in D5); formatting and lints stay on Linux alone because they are
+  platform-independent.
+- `ATTRIBUTION.md` now distinguishes direct from dev-only dependencies, adds
+  `proptest`, and no longer marks `egui`/`eframe` as planned.
+- `docs/development.md` documents the `ci.sh` verification workflow, the
+  multi-OS CI, and the current crate layout including `cadence-interchange`.
+- Tracked files scanned for credentials (private keys, cloud and service
+  tokens, inline secrets): no matches; credentials live outside the repository.
+- `guide.md` is not tracked by git and never leaves the local machine.
+- `docs/implementation-report.md` records the evidence-based completion report
+  the guide asks for at the end of the agreed scope: what was implemented, the
+  verification evidence with run IDs, the guide quality gates, and the decided
+  limitations.
+
 ## 2026-10-23 — JSON schema v2: WBS tree and named calendars
 
 - JSON now carries the two things no other interchange format can express: the
