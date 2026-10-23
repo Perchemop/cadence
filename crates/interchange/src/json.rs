@@ -192,7 +192,10 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
             if imported.wbs.node(wbs).is_none() {
                 return Err(missing_reference(
                     "activity/wbs",
-                    format!("activity {} references missing WBS node {}", activity.id, wbs.0),
+                    format!(
+                        "activity {} references missing WBS node {}",
+                        activity.id, wbs.0
+                    ),
                 ));
             }
         }
@@ -642,7 +645,10 @@ fn activity_json(activity: &Activity) -> Value {
                     .collect(),
             ),
         ),
-        ("wbs".to_string(), identifier_json(activity.wbs.map(|wbs| wbs.0))),
+        (
+            "wbs".to_string(),
+            identifier_json(activity.wbs.map(|wbs| wbs.0)),
+        ),
         (
             "calendar".to_string(),
             identifier_json(activity.calendar.map(|calendar| calendar.0)),
@@ -1370,7 +1376,10 @@ mod tests {
         let loaded = import(&text).expect("import");
 
         assert_eq!(wbs_shape(&loaded.wbs), wbs_shape(&project.wbs));
-        assert_eq!(loaded.wbs.node(loaded.wbs.root()).expect("root").name, "Bridge & Road");
+        assert_eq!(
+            loaded.wbs.node(loaded.wbs.root()).expect("root").name,
+            "Bridge & Road"
+        );
         assert_eq!(loaded.calendars.calendars(), project.calendars.calendars());
         assert_eq!(loaded.activities, project.activities);
     }
@@ -1382,7 +1391,9 @@ mod tests {
 
         let text = export(&project);
         let design = text.find("\"name\": \"Design\"").expect("design");
-        let construction = text.find("\"name\": \"Construction\"").expect("construction");
+        let construction = text
+            .find("\"name\": \"Construction\"")
+            .expect("construction");
         let foundations = text.find("\"name\": \"Foundations\"").expect("foundations");
         // A parent always precedes its children, and the root comes first.
         let root = text.find("\"name\": \"Bridge & Road\"").expect("root");
