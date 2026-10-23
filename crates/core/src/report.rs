@@ -222,9 +222,7 @@ fn index(value: Option<f64>) -> String {
 
 /// Prevent cell text with pipes or line breaks from breaking the table.
 fn escape_table(value: &str) -> String {
-    value
-        .replace('|', "\\|")
-        .replace(['\n', '\r'], " ")
+    value.replace('|', "\\|").replace(['\n', '\r'], " ")
 }
 
 #[cfg(test)]
