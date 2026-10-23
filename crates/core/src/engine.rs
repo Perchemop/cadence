@@ -1786,7 +1786,8 @@ mod tests {
             elapsed.as_millis() < 750,
             "resource analysis took {} ms",
             elapsed.as_millis()
-        );    }
+        );
+    }
 
     #[test]
     fn leveling_one_hundred_parallel_activities_stays_fast() {
