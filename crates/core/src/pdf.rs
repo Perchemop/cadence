@@ -113,11 +113,7 @@ impl Pdf {
 
     /// Append a page showing a raw RGB image.
     pub fn image_page(&mut self, width: u32, height: u32, rgb: Vec<u8>) -> &mut Self {
-        self.pages.push(Page::Image {
-            width,
-            height,
-            rgb,
-        });
+        self.pages.push(Page::Image { width, rgb });
         self
     }
 
@@ -220,8 +216,7 @@ impl Pdf {
 
         bodies[1] = format!(
             "<< /Type /Pages /Kids [{}] /Count {} >>",
-            kids
-                .iter()
+            kids.iter()
                 .map(|id| format!("{id} 0 R"))
                 .collect::<Vec<_>>()
                 .join(" "),
@@ -436,6 +431,12 @@ mod tests {
         String::from_utf8_lossy(bytes).to_string()
     }
 
+    /// Hex-encode a slice, as the writer does, so tests can search for text the
+    /// way a reader would decode it.
+    fn hex_of(text: &str) -> String {
+        String::from_utf8(hex_payload(text.as_bytes())).expect("hex is ASCII")
+    }
+
     #[test]
     fn a_text_document_is_a_valid_pdf() {
         let mut pdf = Pdf::new();
@@ -452,9 +453,11 @@ mod tests {
         assert!(text.contains("/Type /Catalog"));
         assert!(text.contains("/Type /Pages"));
         assert!(text.contains("/BaseFont /Helvetica"));
-        // The text reached the stream, escaped.
-        assert!(text.contains("Survey"));
-        assert!(text.contains("Excavate \\\\ with \\(parens\\)"));
+        // Streams are ASCII-hex encoded, so the text appears in the document
+        // only after decoding: that is what a reader does, and it must find the
+        // words escaped as PDF literal strings.
+        assert!(text.contains(&hex_of("Survey")));
+        assert!(text.contains(&hex_of("Excavate \\ with (parens)")));
         // A cross-reference table and trailer close the file.
         assert!(text.contains("xref\n0 7"));
         assert!(text.contains("/Root 1 0 R"));
@@ -471,9 +474,7 @@ mod tests {
         let marker = "startxref\n";
         let start = text.find(marker).expect("startxref") + marker.len();
         let end = text[start..].find('\n').expect("end of offset line");
-        let offset: usize = text[start..start + end]
-            .parse()
-            .expect("numeric offset");
+        let offset: usize = text[start..start + end].parse().expect("numeric offset");
 
         assert_eq!(&bytes[offset..offset + 4], b"xref");
     }
@@ -515,9 +516,14 @@ mod tests {
 
     #[test]
     fn long_lines_are_wrapped_to_the_page_width() {
-        let line = TextLine::body("participate in the leveling of the resource schedule ".repeat(12));
+        let line =
+            TextLine::body("participate in the leveling of the resource schedule ".repeat(12));
         let segments = wrap(&line, A4_PORTRAIT.0 - 2.0 * MARGIN);
-        assert!(segments.len() > 1, "expected wrapping, got {} segments", segments.len());
+        assert!(
+            segments.len() > 1,
+            "expected wrapping, got {} segments",
+            segments.len()
+        );
         for segment in &segments {
             assert!(segment.width() <= A4_PORTRAIT.0 - 2.0 * MARGIN + 0.1);
         }
@@ -528,9 +534,8 @@ mod tests {
         let content = image_content(1600, 1000, 9);
         assert!(content.contains("/Im0 9 0 R Do"));
         let usable = A4_LANDSCAPE.0 - 2.0 * MARGIN;
-        let expected_width = (usable / 1600.0).min(
-            (A4_LANDSCAPE.1 - 2.0 * MARGIN) / 1000.0,
-        ) * 1600.0;
+        let expected_width =
+            (usable / 1600.0).min((A4_LANDSCAPE.1 - 2.0 * MARGIN) / 1000.0) * 1600.0;
         assert!(content.contains(&format!("{expected_width:.2} 0 0 ")));
     }
 
