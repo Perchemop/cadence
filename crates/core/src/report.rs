@@ -14,6 +14,9 @@
 //! * **Earned value** — metrics against the most recent baseline at a status
 //!   date; only written when a baseline exists.
 //! * **Baselines** — name, capture date and snapshot count.
+//!
+//! [`project_report_pdf`] renders the same report as a print-ready PDF, so a
+//! report can be printed without any tool but a browser or a PDF reader.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -22,6 +25,7 @@ use time::Date;
 
 use crate::engine::{evm_metrics, resource_conflicts, resource_histogram, schedule, Schedule};
 use crate::model::{Project, ResourceId};
+use crate::pdf::{paginate, Pdf, TextLine};
 
 /// Generate a Markdown report for `project` as of `status_date`.
 ///
@@ -58,6 +62,44 @@ pub fn project_report(project: &Project, status_date: Date) -> String {
     baselines_section(project, &mut report);
 
     report
+}
+
+/// Render the report as a print-ready PDF.
+///
+/// The Markdown is the source: headings become bold text at heading sizes,
+/// quoted lines become body text, and everything else keeps the body size.
+/// Long lines wrap and the result paginates over as many A4 pages as it needs,
+/// so a hundred-activity project prints as a hundred-activity document instead
+/// of one very tall page.
+#[must_use]
+pub fn project_report_pdf(project: &Project, status_date: Date) -> Vec<u8> {
+    let markdown = project_report(project, status_date);
+    let mut pdf = Pdf::new();
+    for page in paginate(&pdf_lines(&markdown)) {
+        pdf.text_page(page);
+    }
+    pdf.to_bytes()
+}
+
+/// Turn report Markdown into PDF text lines, keeping its structure.
+fn pdf_lines(markdown: &str) -> Vec<TextLine> {
+    let mut lines = Vec::new();
+    for raw in markdown.lines() {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(title) = trimmed.strip_prefix("# ") {
+            lines.push(TextLine::heading(title, 18.0));
+        } else if let Some(heading) = trimmed.strip_prefix("## ") {
+            lines.push(TextLine::heading(heading, 13.0));
+        } else if let Some(quoted) = trimmed.strip_prefix('>') {
+            lines.push(TextLine::body(quoted.trim()));
+        } else {
+            lines.push(TextLine::body(trimmed));
+        }
+    }
+    lines
 }
 
 fn schedule_section(project: &Project, computed: &Schedule, report: &mut String) {
