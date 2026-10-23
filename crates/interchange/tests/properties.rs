@@ -57,7 +57,8 @@ fn build(
     let mut project = Project::new("Round trip", origin());
 
     for (index, duration) in durations.iter().enumerate() {
-        let mut activity = Activity::new(ActivityId(index as u64 + 1), format!("A{index}"), *duration);
+        let mut activity =
+            Activity::new(ActivityId(index as u64 + 1), format!("A{index}"), *duration);
         if let Some(budget) = money.get(index).copied().flatten() {
             activity.budget_at_completion = Some(budget);
             activity.actual_cost = Some(budget / 2);
@@ -100,11 +101,8 @@ fn build(
             1 => ResourceKind::Equipment,
             _ => ResourceKind::Material,
         };
-        let mut resource = Resource::with_capacity(
-            ResourceId(index as u64 + 1),
-            format!("R{index}"),
-            *capacity,
-        );
+        let mut resource =
+            Resource::with_capacity(ResourceId(index as u64 + 1), format!("R{index}"), *capacity);
         resource.kind = kind;
         project.resources.push(resource);
     }
@@ -122,7 +120,12 @@ fn build(
 }
 
 /// The plan half of a project: what every format promises to preserve.
-fn plan(project: &Project) -> (Vec<(u64, String, u32, Constraint)>, BTreeSet<(u64, u64, u8, i64)>) {
+fn plan(
+    project: &Project,
+) -> (
+    Vec<(u64, String, u32, Constraint)>,
+    BTreeSet<(u64, u64, u8, i64)>,
+) {
     let activities = project
         .activities
         .iter()

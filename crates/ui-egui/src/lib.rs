@@ -1810,7 +1810,10 @@ mod report_export_tests {
 
     #[test]
     fn the_report_lands_in_a_markdown_file() {
-        let project = Project::new("Export me", Date::from_calendar_date(2026, Month::January, 5).expect("date"));
+        let project = Project::new(
+            "Export me",
+            Date::from_calendar_date(2026, Month::January, 5).expect("date"),
+        );
         let report = cadence_core::report::project_report(&project, today());
         assert!(report.starts_with("# Export me"));
         assert_eq!(file_stem(&project.name), "Export-me");
