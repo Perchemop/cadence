@@ -31,3 +31,24 @@ pub enum UpdateStatus {
 pub fn check_for_update() -> UpdateStatus {
     UpdateStatus::Stub
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_stub_reports_the_version_and_makes_no_request() {
+        assert!(!current_version().is_empty());
+        assert_eq!(check_for_update(), UpdateStatus::Stub);
+    }
+
+    #[test]
+    fn an_available_update_carries_the_new_version() {
+        // The variant is the v0.2.0 API shape; the stub never produces it, but
+        // the shape is fixed here so wiring the Releases API later cannot
+        // change what callers must handle.
+        let status = UpdateStatus::UpdateAvailable("v0.2.0");
+        assert!(matches!(status, UpdateStatus::UpdateAvailable(version) if version == "v0.2.0"));
+        assert_ne!(status, UpdateStatus::Stub);
+    }
+}
