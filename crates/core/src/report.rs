@@ -93,7 +93,7 @@ fn schedule_section(project: &Project, computed: &Schedule, report: &mut String)
             activity.original_duration,
             result.scheduled_start,
             result.scheduled_finish,
-            result.total_float.to_string(),
+            result.total_float,
             if result.critical { "yes" } else { "" },
             escape_table(&resources),
         );
@@ -224,8 +224,7 @@ fn index(value: Option<f64>) -> String {
 fn escape_table(value: &str) -> String {
     value
         .replace('|', "\\|")
-        .replace('\n', " ")
-        .replace('\r', " ")
+        .replace(['\n', '\r'], " ")
 }
 
 #[cfg(test)]
