@@ -203,10 +203,7 @@ fn assert_progress_and_costs_survived(original: &Project, loaded: &Project) {
         assert_eq!(actual.name, expected.name);
         assert_eq!(actual.original_duration, expected.original_duration);
         assert_eq!(actual.percent_complete, expected.percent_complete);
-        assert_eq!(
-            actual.budget_at_completion,
-            expected.budget_at_completion
-        );
+        assert_eq!(actual.budget_at_completion, expected.budget_at_completion);
         assert_eq!(actual.actual_cost, expected.actual_cost);
         assert_eq!(actual.actual_start, expected.actual_start);
         assert_eq!(actual.actual_finish, expected.actual_finish);
