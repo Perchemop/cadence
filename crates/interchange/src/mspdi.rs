@@ -22,6 +22,9 @@
 //! Durations are converted at eight working hours per day, matching the
 //! default Microsoft Project calendar. Link lag is written in tenths of a
 //! minute, which is the unit MSPDI uses, and converted to whole working days.
+//! Percent complete is written as a whole percentage because that is what
+//! MSPDI's `PercentComplete` holds, so sub-percent precision is rounded away
+//! (149 basis points become 1%, 150 become 2%).
 //!
 //! Two MSPDI constraints have no exact Cadence equivalent: *must start on* is
 //! read as *start no earlier than* and *must finish on* as *finish no earlier
@@ -307,7 +310,7 @@ pub fn export(project: &Project) -> Result<String, InterchangeError> {
             let _ = writeln!(
                 output,
                 "      <PercentComplete>{}</PercentComplete>",
-                (percent / 100).clamp(0, 100)
+                round_to_whole_percent(percent)
             );
         }
         if let Some(cost) = activity.budget_at_completion {
@@ -514,6 +517,12 @@ fn export_resource_kind(kind: ResourceKind) -> i64 {
         ResourceKind::Labour => 1,
         ResourceKind::Equipment => 2,
     }
+}
+
+/// MSPDI stores percent complete as a whole percentage, so basis points are
+/// rounded to the nearest one (149 → 1%, 150 → 2%).
+fn round_to_whole_percent(basis_points: i64) -> i64 {
+    (basis_points.saturating_add(50) / 100).clamp(0, 100)
 }
 
 fn format_datetime(date: Date, time: &str) -> String {
@@ -816,6 +825,29 @@ mod tests {
         assert_eq!(parse_duration("P2D").expect("two"), 2);
         assert_eq!(parse_duration("P1DT4H0M0S").expect("one and a half"), 2);
         assert!(parse_duration("not a duration").is_err());
+    }
+
+    #[test]
+    fn percent_complete_is_quantised_to_whole_percents() {
+        // MSPDI's PercentComplete is an integer 0-100, so anything finer is
+        // rounded to the nearest percent rather than truncated.
+        assert_eq!(round_to_whole_percent(0), 0);
+        assert_eq!(round_to_whole_percent(49), 0);
+        assert_eq!(round_to_whole_percent(50), 1);
+        assert_eq!(round_to_whole_percent(149), 1);
+        assert_eq!(round_to_whole_percent(150), 2);
+        assert_eq!(round_to_whole_percent(5_000), 50);
+        assert_eq!(round_to_whole_percent(10_000), 100);
+
+        let mut project = Project::new("Percent", date(2026, Month::January, 5));
+        let mut activity = Activity::new(ActivityId(1), "Half a percent", 1);
+        activity.percent_complete = Some(150);
+        project.activities.push(activity);
+
+        let document = export(&project).expect("export");
+        assert!(document.contains("<PercentComplete>2</PercentComplete>"));
+        let loaded = import(&document).expect("import");
+        assert_eq!(loaded.activities[0].percent_complete, Some(200));
     }
 
     #[test]

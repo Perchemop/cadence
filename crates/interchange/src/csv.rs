@@ -18,7 +18,10 @@
 //!   finish-to-start with no lag.
 //! * `Resources` holds semicolon-separated names. Names that do not exist yet
 //!   are created as Labour resources with capacity 1, because CSV carries no
-//!   kind or capacity columns.
+//!   kind or capacity columns. Resource *identifiers* are therefore not
+//!   preserved: a round trip matches assignments by name and renumbers the
+//!   dictionary in first-seen order. Activity identifiers, by contrast, are
+//!   carried in the `ID` column and in the `Predecessors` links.
 //! * `Percent complete` is a percentage (0–100); `Budget at completion` and
 //!   `Actual cost` are decimal amounts. `Actual start` and `Actual finish`
 //!   are `YYYY-MM-DD`.

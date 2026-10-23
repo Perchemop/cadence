@@ -193,6 +193,31 @@ fn assert_plan_survived(original: &Project, loaded: &Project) {
     assert_eq!(assignment_names(loaded), assignment_names(original));
 }
 
+/// Everything CSV and MSPDI promise about progress and money, with resource
+/// identifiers normalised: CSV renumbers the dictionary (assignments are
+/// matched by name), so raw assignment vectors must not be compared.
+fn assert_progress_and_costs_survived(original: &Project, loaded: &Project) {
+    assert_eq!(loaded.activities.len(), original.activities.len());
+    for (expected, actual) in original.activities.iter().zip(&loaded.activities) {
+        assert_eq!(actual.id, expected.id);
+        assert_eq!(actual.name, expected.name);
+        assert_eq!(actual.original_duration, expected.original_duration);
+        assert_eq!(actual.percent_complete, expected.percent_complete);
+        assert_eq!(
+            actual.budget_at_completion,
+            expected.budget_at_completion
+        );
+        assert_eq!(actual.actual_cost, expected.actual_cost);
+        assert_eq!(actual.actual_start, expected.actual_start);
+        assert_eq!(actual.actual_finish, expected.actual_finish);
+    }
+}
+
+/// Percent complete rounded to the whole percentage MSPDI can store.
+fn whole_percent(basis_points: Option<i64>) -> Option<i64> {
+    basis_points.map(|value| (value + 50) / 100 * 100)
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(32))]
 
@@ -266,7 +291,14 @@ proptest! {
 
         prop_assert_eq!(&loaded.name, &project.name);
         prop_assert_eq!(loaded.start_date, project.start_date);
-        prop_assert_eq!(&loaded.activities, &project.activities);
+        // MSPDI stores percent complete as a whole percentage, so compare
+        // against the quantised value rather than the exact basis points.
+        prop_assert_eq!(loaded.activities.len(), project.activities.len());
+        for (expected, actual) in project.activities.iter().zip(&loaded.activities) {
+            let mut quantised = expected.clone();
+            quantised.percent_complete = whole_percent(expected.percent_complete);
+            prop_assert_eq!(actual, &quantised);
+        }
         prop_assert_eq!(&loaded.resources, &project.resources);
         assert_plan_survived(&project, &loaded);
     }
@@ -301,7 +333,7 @@ proptest! {
         let text = csv::export(&project).expect("export");
         let loaded = csv::import(&text).expect("the exported CSV re-imports");
 
-        prop_assert_eq!(&loaded.activities, &project.activities);
+        assert_progress_and_costs_survived(&project, &loaded);
         assert_plan_survived(&project, &loaded);
     }
 
