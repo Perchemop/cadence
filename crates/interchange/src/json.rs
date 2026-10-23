@@ -1622,8 +1622,11 @@ mod tests {
     fn the_writer_produces_indented_output() {
         let project = Project::new("Demo", date(2026, Month::January, 5));
         let text = export(&project);
-        assert!(text.starts_with("{\n  \"cadence\": 1,\n  \"project\": {"));
+        assert!(text.starts_with("{\n  \"cadence\": 2,\n  \"project\": {"));
         assert!(text.contains("\"activities\": []"));
         assert!(text.contains("\"resources\": []"));
+        assert!(text.contains("\"calendars\": []"));
+        // Even an untouched project has its WBS root.
+        assert!(text.contains("\"wbs\": ["));
     }
 }
