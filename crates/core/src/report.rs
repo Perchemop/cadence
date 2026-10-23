@@ -282,10 +282,13 @@ mod tests {
 
         assert!(report.starts_with("# Bridge & Road"));
         assert!(report.contains("## Schedule (2026-01-05 to 2026-01-12)"));
-        assert!(report.contains("| 1 | Survey \\| works | 2 | 2026-01-05 | 2026-01-06 | 0 | yes |"));
+        // The survey has one day of float: the excavate cannot start before
+        // 2026-01-08, leaving 2026-01-07 free.
+        assert!(report.contains("| 1 | Survey \\| works | 2 | 2026-01-05 | 2026-01-06 | 1 | yes |"));
         assert!(report.contains("| 2 | Excavate | 3 | 2026-01-08 | 2026-01-12 | 0 | yes |"));
-        // The pour is independent of the critical chain, so it has float.
-        assert!(!report.contains("| 3 | Pour | 2 | 2026-01-05 | 2026-01-06 | 0 | yes |"));
+        // The pour is independent of the critical chain, so it has float and
+        // is not critical.
+        assert!(report.contains("| 3 | Pour | 2 | 2026-01-05 | 2026-01-06 | 4 |  | Crew A |"));
     }
 
     #[test]

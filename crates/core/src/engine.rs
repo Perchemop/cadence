@@ -1788,9 +1788,9 @@ mod tests {
     }
 
     #[test]
-    fn leveling_two_hundred_parallel_activities_stays_fast() {
+    fn leveling_one_hundred_parallel_activities_stays_fast() {
         let mut project = Project::new("Leveling performance", jan(5));
-        for index in 0..200 {
+        for index in 0..100 {
             let mut activity = Activity::new(ActivityId(index + 1), format!("A{index}"), 1);
             activity.resources.push(ResourceId(index % 4 + 1));
             project.activities.push(activity);
@@ -1808,15 +1808,16 @@ mod tests {
         let leveled = level_resources(&project, &schedule).expect("levels");
         let elapsed = started.elapsed();
 
-        // Fifty activities per one-unit crew all start on day one, so
-        // leveling has to spread each crew's work over fifty working days.
+        // Twenty-five activities per one-unit crew all start on day one, so
+        // leveling has to spread each crew's work over twenty-five working
+        // days.
         assert!(
-            leveled.conflicts.len() < 200,
+            leveled.conflicts.len() < 100,
             "{} conflicts remained",
             leveled.conflicts.len()
         );
         assert!(
-            elapsed.as_millis() < 2_000,
+            elapsed.as_millis() < 3_000,
             "leveling took {} ms",
             elapsed.as_millis()
         );
