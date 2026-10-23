@@ -2,21 +2,39 @@
 //!
 //! JSON is Cadence's own open interchange schema: unlike MSPDI, MPX and CSV it
 //! is not modelled on another application's dialect, so it can carry exactly
-//! what Cadence models — the project settings, the activity list with
-//! constraints and progress, relationships with lag, the resource dictionary
-//! with capacities, assignments and baselines — without lossy unit
-//! conversions. WBS membership and named calendars are not exchanged yet; the
-//! reader ignores unknown members so the schema can grow without breaking old
-//! files.
+//! what Cadence models — the project settings, the WBS tree, named calendars,
+//! the activity list with constraints, progress and calendar/WBS membership,
+//! relationships with lag, the resource dictionary with capacities,
+//! assignments and baselines — without lossy unit conversions. It is the only
+//! interchange format that is complete in this sense; the others deliberately
+//! carry subsets.
+//!
+//! Schema version **2** added `wbs`, `calendars` and the per-activity `wbs`
+//! and `calendar` members. Version 1 documents still load, with an empty WBS
+//! (just its root) and no named calendars, because version 1 had no way to
+//! express them; the version is checked so an older build refuses a newer
+//! document instead of silently dropping the tree. Unknown members are
+//! ignored, so the schema can keep growing.
 //!
 //! The document looks like this (`cadence` is the schema version):
 //!
 //! ```json
 //! {
-//!   "cadence": 1,
+//!   "cadence": 2,
 //!   "project": {
 //!     "name": "Bridge & Road",
 //!     "start_date": "2026-01-05",
+//!     "wbs": [
+//!       {"id": 1, "name": "Bridge & Road", "parent": null},
+//!       {"id": 2, "name": "Design", "parent": 1}
+//!     ],
+//!     "calendars": [
+//!       {
+//!         "id": 1, "name": "Six day",
+//!         "workweek": [true, true, true, true, true, true, false],
+//!         "holidays": ["2026-01-01"]
+//!       }
+//!     ],
 //!     "activities": [
 //!       {
 //!         "id": 1, "name": "Survey", "duration": 2,
@@ -24,7 +42,7 @@
 //!         "percent_complete": 50.0,
 //!         "budget_at_completion": 1500.00, "actual_cost": 750.50,
 //!         "actual_start": "2026-01-05", "actual_finish": "2026-01-06",
-//!         "resources": [1]
+//!         "wbs": 2, "calendar": 1, "resources": [1]
 //!       }
 //!     ],
 //!     "relationships": [
@@ -46,6 +64,8 @@
 //! }
 //! ```
 //!
+//! `wbs` is written in preorder (the root first, so every parent precedes its
+//! children), and `workweek` is seven Monday-first booleans.
 //! Constraint codes are the same `ASAP`/`ALAP`/`SNET`/`SNLT`/`FNET`/`FNLT`
 //! set used by MPX and CSV, link types are `FS`/`SS`/`FF`/`SF`, money is a
 //! decimal amount converted at the boundary, and `percent_complete` is a
@@ -60,16 +80,21 @@ use std::fmt::Write as _;
 use std::iter::Peekable;
 use std::str::Chars;
 
+use cadence_core::calendar_set::{CalendarId, CalendarSet, NamedCalendar};
 use cadence_core::model::{
-    Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Constraint, LinkType,
-    Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
+    Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
+    LinkType, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
 };
+use cadence_core::wbs::{WbsId, WbsTree};
 use time::Date;
 
 use crate::{default_start_date, format_date, parse_date, InterchangeError};
 
 /// The schema version this build reads and writes.
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
+
+/// The oldest schema version this build still reads.
+const OLDEST_SCHEMA_VERSION: i64 = 1;
 
 /// Maximum nesting depth accepted by the reader.
 const MAX_DEPTH: usize = 64;
@@ -94,7 +119,7 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
         .get("cadence")
         .and_then(Value::as_i64)
         .ok_or_else(|| InterchangeError::MissingField("cadence".to_string()))?;
-    if version != SCHEMA_VERSION {
+    if !(OLDEST_SCHEMA_VERSION..=SCHEMA_VERSION).contains(&version) {
         return Err(InterchangeError::Unsupported(format!(
             "Cadence JSON schema version {version}, which this build does not read"
         )));
@@ -119,6 +144,8 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
     })?;
 
     let mut imported = Project::new(name, start_date);
+    imported.wbs = import_wbs(project.get("wbs"))?;
+    imported.calendars = import_calendars(project.get("calendars"))?;
 
     if let Some(activities) = project.get("activities").and_then(Value::as_array) {
         for activity in activities {
@@ -157,7 +184,158 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
         }
     }
 
+    // Membership is validated here rather than left for the project file to
+    // reject later, so an import either produces a usable project or explains
+    // exactly what is wrong with the document.
+    for activity in &imported.activities {
+        if let Some(wbs) = activity.wbs {
+            if imported.wbs.node(wbs).is_none() {
+                return Err(missing_reference(
+                    "activity/wbs",
+                    format!("activity {} references missing WBS node {}", activity.id, wbs.0),
+                ));
+            }
+        }
+        if let Some(calendar) = activity.calendar {
+            if imported.calendars.named(calendar).is_none() {
+                return Err(missing_reference(
+                    "activity/calendar",
+                    format!(
+                        "activity {} references missing calendar {}",
+                        activity.id, calendar.0
+                    ),
+                ));
+            }
+        }
+    }
+
     Ok(imported)
+}
+
+fn missing_reference(field: &str, message: String) -> InterchangeError {
+    InterchangeError::InvalidField {
+        field: field.to_string(),
+        value: message,
+    }
+}
+
+/// Read the WBS tree. Nodes are written in preorder, so a parent always
+/// precedes its children and the root comes first.
+fn import_wbs(value: Option<&Value>) -> Result<WbsTree, InterchangeError> {
+    let mut tree = WbsTree::new();
+    let Some(nodes) = value.and_then(Value::as_array) else {
+        return Ok(tree);
+    };
+
+    let mut root_seen = false;
+    for node in nodes {
+        let id = WbsId(require_u64(node, "id", "wbs node")?);
+        let name = node
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("WBS node")
+            .to_string();
+
+        match node.get("parent").and_then(Value::as_u64) {
+            None => {
+                if root_seen {
+                    return Err(missing_reference(
+                        "wbs/parent",
+                        format!("WBS node {id} is a second root"),
+                    ));
+                }
+                if id != tree.root() {
+                    return Err(missing_reference(
+                        "wbs/id",
+                        format!("the WBS root must have id {}, found {id}", tree.root().0),
+                    ));
+                }
+                tree.rename(id, name)
+                    .map_err(|error| missing_reference("wbs/name", error.to_string()))?;
+                root_seen = true;
+            }
+            Some(parent) => {
+                if !root_seen {
+                    return Err(missing_reference(
+                        "wbs",
+                        "the root must be the first WBS node".to_string(),
+                    ));
+                }
+                tree.add(id, name, WbsId(parent))
+                    .map_err(|error| missing_reference("wbs", error.to_string()))?;
+            }
+        }
+    }
+
+    Ok(tree)
+}
+
+/// Read the named calendars, each with its Monday-first working week and its
+/// holiday exceptions.
+fn import_calendars(value: Option<&Value>) -> Result<CalendarSet, InterchangeError> {
+    let mut set = CalendarSet::new();
+    let Some(calendars) = value.and_then(Value::as_array) else {
+        return Ok(set);
+    };
+
+    for entry in calendars {
+        let id = CalendarId(require_u64(entry, "id", "calendar")?);
+        let name = entry
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("Calendar")
+            .to_string();
+
+        let weekdays = entry
+            .get("workweek")
+            .and_then(Value::as_array)
+            .filter(|days| days.len() == 7)
+            .ok_or_else(|| {
+                missing_reference(
+                    "calendar/workweek",
+                    format!("calendar {id} needs seven Monday-first booleans"),
+                )
+            })?;
+        let mut workweek = [false; 7];
+        for (index, working) in weekdays.iter().enumerate() {
+            workweek[index] = match working {
+                Value::Bool(working) => *working,
+                _ => {
+                    return Err(missing_reference(
+                        "calendar/workweek",
+                        format!("calendar {id} has a non-boolean weekday"),
+                    ))
+                }
+            };
+        }
+        let mut calendar = Calendar::new(workweek)
+            .map_err(|error| missing_reference("calendar/workweek", error.to_string()))?;
+
+        if let Some(days) = entry.get("holidays").and_then(Value::as_array) {
+            let mut holidays = Vec::with_capacity(days.len());
+            for day in days {
+                let text = day.as_str().ok_or_else(|| {
+                    missing_reference(
+                        "calendar/holidays",
+                        format!("calendar {id} has a non-string holiday"),
+                    )
+                })?;
+                let date = parse_date(text).ok_or_else(|| {
+                    missing_reference(
+                        "calendar/holidays",
+                        format!("calendar {id} has an invalid holiday \"{text}\""),
+                    )
+                })?;
+                holidays.push(date);
+            }
+            calendar = calendar.with_holidays(holidays);
+        }
+
+        set.add(id, name, calendar)
+            .map_err(|error| missing_reference("calendar", error.to_string()))?;
+    }
+
+    Ok(set)
 }
 
 /// Export a project as Cadence JSON.
@@ -178,6 +356,27 @@ pub fn export(project: &Project) -> String {
                 (
                     "start_date".to_string(),
                     Value::String(project.start_date.to_string()),
+                ),
+                (
+                    "wbs".to_string(),
+                    Value::Array(
+                        preorder_nodes(&project.wbs)
+                            .into_iter()
+                            .filter_map(|id| project.wbs.node(id))
+                            .map(wbs_node_json)
+                            .collect(),
+                    ),
+                ),
+                (
+                    "calendars".to_string(),
+                    Value::Array(
+                        project
+                            .calendars
+                            .calendars()
+                            .iter()
+                            .map(calendar_json)
+                            .collect(),
+                    ),
                 ),
                 (
                     "activities".to_string(),
@@ -239,6 +438,11 @@ fn import_activity(value: &Value) -> Result<Activity, InterchangeError> {
     activity.actual_cost = value.get("actual_cost").and_then(money_from_json);
     activity.actual_start = value.get("actual_start").and_then(date_from_json);
     activity.actual_finish = value.get("actual_finish").and_then(date_from_json);
+    activity.wbs = value.get("wbs").and_then(Value::as_u64).map(WbsId);
+    activity.calendar = value
+        .get("calendar")
+        .and_then(Value::as_u64)
+        .map(CalendarId);
     if let Some(resources) = value.get("resources").and_then(Value::as_array) {
         for resource in resources {
             let resource_id =
@@ -438,7 +642,81 @@ fn activity_json(activity: &Activity) -> Value {
                     .collect(),
             ),
         ),
+        ("wbs".to_string(), identifier_json(activity.wbs.map(|wbs| wbs.0))),
+        (
+            "calendar".to_string(),
+            identifier_json(activity.calendar.map(|calendar| calendar.0)),
+        ),
     ])
+}
+
+/// WBS node ids in preorder: the root first, then each subtree.
+fn preorder_nodes(tree: &WbsTree) -> Vec<WbsId> {
+    let mut ordered = Vec::with_capacity(tree.nodes().len());
+    let mut stack = vec![tree.root()];
+    while let Some(id) = stack.pop() {
+        let Some(node) = tree.node(id) else {
+            continue;
+        };
+        ordered.push(id);
+        for child in node.children.iter().rev() {
+            stack.push(*child);
+        }
+    }
+    ordered
+}
+
+fn wbs_node_json(node: &cadence_core::wbs::WbsNode) -> Value {
+    Value::Object(vec![
+        (
+            "id".to_string(),
+            Value::Number(Number::Int(node.id.0 as i64)),
+        ),
+        ("name".to_string(), Value::String(node.name.clone())),
+        (
+            "parent".to_string(),
+            identifier_json(node.parent.map(|parent| parent.0)),
+        ),
+    ])
+}
+
+fn calendar_json(named: &NamedCalendar) -> Value {
+    Value::Object(vec![
+        (
+            "id".to_string(),
+            Value::Number(Number::Int(named.id.0 as i64)),
+        ),
+        ("name".to_string(), Value::String(named.name.clone())),
+        (
+            "workweek".to_string(),
+            Value::Array(
+                named
+                    .calendar
+                    .working_weekdays()
+                    .into_iter()
+                    .map(Value::Bool)
+                    .collect(),
+            ),
+        ),
+        (
+            "holidays".to_string(),
+            Value::Array(
+                named
+                    .calendar
+                    .holidays()
+                    .iter()
+                    .map(|date| Value::String(format_date(*date)))
+                    .collect(),
+            ),
+        ),
+    ])
+}
+
+fn identifier_json(value: Option<u64>) -> Value {
+    match value {
+        Some(value) => Value::Number(Number::Int(value as i64)),
+        None => Value::Null,
+    }
 }
 
 fn relationship_json(relationship: &Relationship) -> Value {
@@ -931,6 +1209,42 @@ mod tests {
         Date::from_calendar_date(year, month, day).expect("valid date")
     }
 
+    /// A tree compared by structure rather than by insertion order: `WbsTree`
+    /// keeps nodes in the order they were added, and import adds them in
+    /// preorder.
+    fn wbs_shape(tree: &WbsTree) -> Vec<(u64, String, Option<u64>, Vec<u64>)> {
+        fn walk(tree: &WbsTree, id: WbsId, shape: &mut Vec<(u64, String, Option<u64>, Vec<u64>)>) {
+            let Some(node) = tree.node(id) else {
+                return;
+            };
+            shape.push((
+                node.id.0,
+                node.name.clone(),
+                node.parent.map(|parent| parent.0),
+                node.children.iter().map(|child| child.0).collect(),
+            ));
+            for child in &node.children {
+                walk(tree, *child, shape);
+            }
+        }
+        let mut shape = Vec::new();
+        walk(tree, tree.root(), &mut shape);
+        shape
+    }
+
+    fn tree_with_branches() -> WbsTree {
+        let mut tree = WbsTree::new();
+        tree.rename(tree.root(), "Bridge & Road")
+            .expect("rename root");
+        tree.add(WbsId(2), "Design", tree.root())
+            .expect("first child");
+        tree.add(WbsId(3), "Construction", tree.root())
+            .expect("second child");
+        tree.add(WbsId(4), "Foundations", WbsId(3))
+            .expect("grandchild");
+        tree
+    }
+
     fn sample() -> Project {
         let start = date(2026, Month::January, 5);
         let mut project = Project::new("Bridge & Road", start);
@@ -1032,6 +1346,141 @@ mod tests {
         assert_eq!(project.activities[1].original_duration, 0);
         assert!(project.relationships.is_empty());
         assert!(project.resources.is_empty());
+    }
+
+    #[test]
+    fn the_work_breakdown_and_calendars_round_trip() {
+        let mut project = sample();
+        project.wbs = tree_with_branches();
+
+        let six_day = Calendar::new([true, true, true, true, true, true, false])
+            .expect("six-day week")
+            .with_holiday(date(2026, Month::January, 1))
+            .with_holiday(date(2026, Month::December, 25));
+        project
+            .calendars
+            .add(CalendarId(1), "Six day", six_day)
+            .expect("calendar");
+
+        project.activities[0].wbs = Some(WbsId(2));
+        project.activities[1].wbs = Some(WbsId(4));
+        project.activities[1].calendar = Some(CalendarId(1));
+
+        let text = export(&project);
+        let loaded = import(&text).expect("import");
+
+        assert_eq!(wbs_shape(&loaded.wbs), wbs_shape(&project.wbs));
+        assert_eq!(loaded.wbs.node(loaded.wbs.root()).expect("root").name, "Bridge & Road");
+        assert_eq!(loaded.calendars.calendars(), project.calendars.calendars());
+        assert_eq!(loaded.activities, project.activities);
+    }
+
+    #[test]
+    fn the_exported_wbs_is_written_in_preorder() {
+        let mut project = sample();
+        project.wbs = tree_with_branches();
+
+        let text = export(&project);
+        let design = text.find("\"name\": \"Design\"").expect("design");
+        let construction = text.find("\"name\": \"Construction\"").expect("construction");
+        let foundations = text.find("\"name\": \"Foundations\"").expect("foundations");
+        // A parent always precedes its children, and the root comes first.
+        let root = text.find("\"name\": \"Bridge & Road\"").expect("root");
+        assert!(root < design && design < construction && construction < foundations);
+    }
+
+    #[test]
+    fn a_version_one_document_still_loads_without_wbs_or_calendars() {
+        let text = r#"{
+            "cadence": 1,
+            "project": {
+                "name": "Old",
+                "start_date": "2026-02-02",
+                "activities": [{"id": 1, "name": "A", "duration": 1}]
+            }
+        }"#;
+        let project = import(text).expect("import version 1");
+
+        assert_eq!(project.activities.len(), 1);
+        assert_eq!(project.activities[0].wbs, None);
+        assert_eq!(project.activities[0].calendar, None);
+        // Only the root exists, and there are no named calendars.
+        assert_eq!(project.wbs.nodes().len(), 1);
+        assert!(project.calendars.is_empty());
+    }
+
+    #[test]
+    fn dangling_membership_is_rejected() {
+        let text = r#"{
+            "cadence": 2,
+            "project": {
+                "start_date": "2026-01-05",
+                "activities": [{"id": 1, "name": "A", "duration": 1, "calendar": 7}]
+            }
+        }"#;
+        let error = import(text).expect_err("missing calendar");
+        assert!(matches!(error, InterchangeError::InvalidField { .. }));
+
+        let text = r#"{
+            "cadence": 2,
+            "project": {
+                "start_date": "2026-01-05",
+                "activities": [{"id": 1, "name": "A", "duration": 1, "wbs": 9}]
+            }
+        }"#;
+        let error = import(text).expect_err("missing WBS node");
+        assert!(matches!(error, InterchangeError::InvalidField { .. }));
+    }
+
+    #[test]
+    fn a_malformed_work_breakdown_is_rejected() {
+        // A second root.
+        let text = r#"{
+            "cadence": 2,
+            "project": {
+                "start_date": "2026-01-05",
+                "wbs": [
+                    {"id": 1, "name": "Root", "parent": null},
+                    {"id": 2, "name": "Another", "parent": null}
+                ]
+            }
+        }"#;
+        assert!(import(text).is_err());
+
+        // A child before its parent.
+        let text = r#"{
+            "cadence": 2,
+            "project": {
+                "start_date": "2026-01-05",
+                "wbs": [{"id": 2, "name": "Child", "parent": 1}]
+            }
+        }"#;
+        assert!(import(text).is_err());
+
+        // A weekday pattern with no working days.
+        let text = r#"{
+            "cadence": 2,
+            "project": {
+                "start_date": "2026-01-05",
+                "calendars": [
+                    {
+                        "id": 1, "name": "Never",
+                        "workweek": [false, false, false, false, false, false, false]
+                    }
+                ]
+            }
+        }"#;
+        assert!(import(text).is_err());
+
+        // A workweek that is not seven booleans.
+        let text = r#"{
+            "cadence": 2,
+            "project": {
+                "start_date": "2026-01-05",
+                "calendars": [{"id": 1, "name": "Short", "workweek": [true, false]}]
+            }
+        }"#;
+        assert!(import(text).is_err());
     }
 
     #[test]

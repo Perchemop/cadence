@@ -16,10 +16,12 @@
 
 use std::collections::BTreeSet;
 
+use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::model::{
-    Activity, ActivityId, Constraint, LinkType, Project, Relationship, RelationshipId, Resource,
-    ResourceId, ResourceKind,
+    Activity, ActivityId, Calendar, Constraint, LinkType, Project, Relationship, RelationshipId,
+    Resource, ResourceId, ResourceKind,
 };
+use cadence_core::wbs::{WbsId, WbsTree};
 use cadence_interchange::{csv, json, mpx, mspdi};
 use proptest::prelude::*;
 use time::{Date, Month};
@@ -215,6 +217,28 @@ fn whole_percent(basis_points: Option<i64>) -> Option<i64> {
     basis_points.map(|value| (value + 50) / 100 * 100)
 }
 
+/// A WBS tree compared by structure: import rebuilds nodes in preorder while a
+/// hand-built tree keeps insertion order, and both describe the same tree.
+fn wbs_shape(tree: &WbsTree) -> Vec<(u64, String, Option<u64>, Vec<u64>)> {
+    fn walk(tree: &WbsTree, id: WbsId, shape: &mut Vec<(u64, String, Option<u64>, Vec<u64>)>) {
+        let Some(node) = tree.node(id) else {
+            return;
+        };
+        shape.push((
+            node.id.0,
+            node.name.clone(),
+            node.parent.map(|parent| parent.0),
+            node.children.iter().map(|child| child.0).collect(),
+        ));
+        for child in &node.children {
+            walk(tree, *child, shape);
+        }
+    }
+    let mut shape = Vec::new();
+    walk(tree, tree.root(), &mut shape);
+    shape
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(32))]
 
@@ -361,5 +385,83 @@ proptest! {
 
         prop_assert_eq!(&loaded.resources, &project.resources);
         assert_plan_survived(&project, &loaded);
+    }
+
+    /// JSON is the only interchange format that carries the WBS tree and named
+    /// calendars, so those must survive exactly, sibling order included.
+    #[test]
+    fn json_round_trips_the_work_breakdown_and_calendars(
+        durations in prop::collection::vec(1u32..4, 1..MAX_ACTIVITIES),
+        child_parents in prop::collection::vec(0u8..4, 0..4),
+        node_choices in prop::collection::vec(prop::option::of(0u8..5), 1..MAX_ACTIVITIES),
+        workweeks in prop::collection::vec(1u8..127, 0..3),
+        calendar_choices in prop::collection::vec(prop::option::of(0u8..3), 1..MAX_ACTIVITIES),
+        holiday_count in 0usize..3,
+    ) {
+        let mut project = Project::new("Work breakdown", origin());
+
+        // A tree: the root plus one node per generated parent choice. Parents
+        // are always already created, so the tree is acyclic by construction.
+        let mut tree = WbsTree::new();
+        let mut created = vec![tree.root()];
+        for (index, parent_choice) in child_parents.iter().enumerate() {
+            let parent = created[usize::from(*parent_choice) % created.len()];
+            let id = WbsId(index as u64 + 2);
+            tree.add(id, format!("W{index}"), parent).expect("valid node");
+            created.push(id);
+        }
+
+        // Named calendars, each with its own working week and holidays.
+        let mut calendars = CalendarSet::new();
+        for (index, mask) in workweeks.iter().enumerate() {
+            let workweek = [
+                true,
+                mask & 0b1 != 0,
+                mask & 0b10 != 0,
+                mask & 0b100 != 0,
+                mask & 0b1000 != 0,
+                mask & 0b10000 != 0,
+                mask & 0b100000 != 0,
+            ];
+            let mut holidays = Vec::new();
+            for offset in 0..holiday_count {
+                let days = index as i64 + offset as i64 + 1;
+                if let Some(date) = origin().checked_add(time::Duration::days(days)) {
+                    holidays.push(date);
+                }
+            }
+            let calendar = Calendar::new(workweek)
+                .expect("Monday always works")
+                .with_holidays(holidays);
+            calendars
+                .add(CalendarId(index as u64 + 1), format!("C{index}"), calendar)
+                .expect("distinct calendar");
+        }
+
+        for (index, duration) in durations.iter().enumerate() {
+            let mut activity =
+                Activity::new(ActivityId(index as u64 + 1), format!("A{index}"), *duration);
+            activity.wbs = node_choices
+                .get(index)
+                .copied()
+                .flatten()
+                .map(|choice| created[usize::from(choice) % created.len()]);
+            activity.calendar = match calendar_choices.get(index).copied().flatten() {
+                Some(choice) if !workweeks.is_empty() => {
+                    Some(CalendarId(u64::from(choice) % workweeks.len() as u64 + 1))
+                }
+                _ => None,
+            };
+            project.activities.push(activity);
+        }
+
+        project.wbs = tree;
+        project.calendars = calendars;
+
+        let loaded = json::import(&json::export(&project)).expect("round trip");
+
+        prop_assert_eq!(wbs_shape(&loaded.wbs), wbs_shape(&project.wbs));
+        prop_assert_eq!(loaded.calendars.calendars(), project.calendars.calendars());
+        prop_assert_eq!(&loaded.activities, &project.activities);
     }
 }
