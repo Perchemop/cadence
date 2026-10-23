@@ -1,0 +1,84 @@
+name: Release
+
+# Publishes a GitHub Release for a semver tag (v*.*.*): builds the release
+# binary on all three platforms, attaches it with SHA-256 checksums, and uses
+# GitHub's generated notes (PR titles) as the release body.
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artefact: cadence-linux-x86_64
+            binary: cadence
+          - os: windows-latest
+            artefact: cadence-windows-x86_64
+            binary: cadence.exe
+          - os: macos-latest
+            artefact: cadence-macos-aarch64
+            binary: cadence
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build the release binary
+        run: cargo build --release -p cadence-app
+
+      - name: Stage the artefact
+        shell: bash
+        run: |
+          mkdir -p "stage/${{ matrix.artefact }}"
+          cp "target/release/${{ matrix.binary }}" \
+             "stage/${{ matrix.artefact }}/${{ matrix.artefact }}"
+
+      - name: Upload the artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artefact }}
+          path: stage/${{ matrix.artefact }}/*
+          if-no-files-found: error
+
+  release:
+    name: Publish the release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artefacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artefacts
+
+      - name: Create checksums
+        shell: bash
+        run: |
+          cd artefacts
+          find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+
+      - name: Publish the GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          gh release create "$TAG" \
+            --title "Cadence $TAG" \
+            --generate-notes \
+            artefacts/*/*
