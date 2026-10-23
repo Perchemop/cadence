@@ -19,7 +19,7 @@ green CI (`main` branch).
   version 1 document loading, dangling membership rejected, malformed trees
   (second root, child before parent) and calendars (empty week, short
   workweek) rejected, plus a property test over generated trees and calendar
-  weeks. 206 tests in total.
+  weeks. 203 tests in total.
 - CI green on `opencode/ci`.
 
 ## 2026-10-23 — property tests for leveling and interchange, GUI report export
