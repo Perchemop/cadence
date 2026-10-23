@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -11,8 +12,14 @@ env:
 
 jobs:
   verify:
-    name: Format, lint & test
-    runs-on: ubuntu-latest
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Report every platform's result rather than stopping at the first
+      # failure, so one red runner never hides another.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -24,21 +31,62 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
+      # Formatting and lints do not depend on the operating system, so they run
+      # once on Linux; the test suite itself runs on every platform.
       - name: Check formatting
+        if: runner.os == 'Linux'
         run: cargo fmt --check --all
 
       - name: Clippy
+        if: runner.os == 'Linux'
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Tests
         run: cargo test --workspace
 
+      # bash is present on every runner; PowerShell is the Windows default and
+      # does not understand this redirection.
       - name: Job summary
         if: always()
+        shell: bash
         run: |
           {
-            echo "## Cadence CI"
-            echo "- fmt: \`cargo fmt --check --all\`"
-            echo "- clippy: \`-D warnings\`"
+            echo "## Cadence CI (${{ matrix.os }})"
+            echo "- fmt: \`cargo fmt --check --all\` (Linux only)"
+            echo "- clippy: \`cargo clippy --workspace --all-targets -- -D warnings\` (Linux only)"
             echo "- tests: \`cargo test --workspace\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  package:
+    name: Package (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      # Release packaging is heavy work, so it belongs here rather than on a
+      # development machine.
+      - name: Build the release binary
+        run: cargo build --release -p cadence-app
+
+      - name: Upload the binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: cadence-linux-x86_64
+          path: target/release/cadence
+          if-no-files-found: error
+
+      - name: Job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Cadence package"
+            echo "- \`cargo build --release -p cadence-app\`"
+            echo "- artefact: \`cadence-linux-x86_64\`"
           } >> "$GITHUB_STEP_SUMMARY"

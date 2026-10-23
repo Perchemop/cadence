@@ -10,10 +10,13 @@
 //! never need to inspect project state heuristically.
 
 use cadence_core::calendar_set::{CalendarId, NamedCalendar};
+use cadence_core::engine::{capture_baseline, schedule};
 use cadence_core::model::{
-    Activity, ActivityId, Calendar, Constraint, LinkType, Project, Relationship, RelationshipId,
+    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, Project,
+    Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsNode};
+use time::Date;
 
 /// A reversible mutation of a [`Project`].
 pub trait Command {
@@ -504,6 +507,573 @@ impl Command for SetActivityConstraint {
     }
 }
 
+/// Set the budget at completion of an activity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityBudget {
+    /// Activity to update.
+    pub id: ActivityId,
+    /// Budget in minor currency units, or `None` to leave it unpriced.
+    pub budget_at_completion: Option<i64>,
+}
+
+impl Command for SetActivityBudget {
+    fn description(&self) -> String {
+        match self.budget_at_completion {
+            Some(budget) => format!("set budget of activity {} to {}", self.id, budget),
+            None => format!("clear the budget of activity {}", self.id),
+        }
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.id) else {
+            return Err(format!("activity {} does not exist", self.id));
+        };
+        let previous = std::mem::replace(
+            &mut activity.budget_at_completion,
+            self.budget_at_completion,
+        );
+        Ok(Box::new(SetActivityBudget {
+            id: self.id,
+            budget_at_completion: previous,
+        }))
+    }
+}
+
+/// Record how far an activity has progressed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityProgress {
+    /// Activity to update.
+    pub id: ActivityId,
+    /// Percent complete in basis points (0 to 10000), or `None` if unknown.
+    pub percent_complete: Option<i64>,
+}
+
+impl Command for SetActivityProgress {
+    fn description(&self) -> String {
+        match self.percent_complete {
+            Some(percent) => {
+                format!(
+                    "set activity {} to {percent} basis points complete",
+                    self.id
+                )
+            }
+            None => format!("clear the progress of activity {}", self.id),
+        }
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if let Some(percent) = self.percent_complete {
+            if !(0..=10_000).contains(&percent) {
+                return Err(format!(
+                    "percent complete must be between 0 and 10000 basis points, got {percent}"
+                ));
+            }
+        }
+        let Some(activity) = project.activity_mut(self.id) else {
+            return Err(format!("activity {} does not exist", self.id));
+        };
+        let previous = std::mem::replace(&mut activity.percent_complete, self.percent_complete);
+        Ok(Box::new(SetActivityProgress {
+            id: self.id,
+            percent_complete: previous,
+        }))
+    }
+}
+
+/// Record the actual cost incurred on an activity so far.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityActualCost {
+    /// Activity to update.
+    pub id: ActivityId,
+    /// Actual cost in minor currency units, or `None` if unknown.
+    pub actual_cost: Option<i64>,
+}
+
+impl Command for SetActivityActualCost {
+    fn description(&self) -> String {
+        match self.actual_cost {
+            Some(cost) => format!("set actual cost of activity {} to {cost}", self.id),
+            None => format!("clear the actual cost of activity {}", self.id),
+        }
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.id) else {
+            return Err(format!("activity {} does not exist", self.id));
+        };
+        let previous = std::mem::replace(&mut activity.actual_cost, self.actual_cost);
+        Ok(Box::new(SetActivityActualCost {
+            id: self.id,
+            actual_cost: previous,
+        }))
+    }
+}
+
+/// Record the dates an activity actually started and finished.
+///
+/// Actual dates are recorded progress facts. They are not scheduling
+/// constraints: the engine still computes dates from logic, calendars and
+/// constraints, and the variance views compare the plan against reality.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityActualDates {
+    /// Activity to update.
+    pub id: ActivityId,
+    /// Date work actually started, or `None` if it has not started.
+    pub actual_start: Option<Date>,
+    /// Date work actually finished, or `None` if it has not finished.
+    pub actual_finish: Option<Date>,
+}
+
+impl Command for SetActivityActualDates {
+    fn description(&self) -> String {
+        format!(
+            "set actual dates of activity {} to {} – {}",
+            self.id,
+            date_label(self.actual_start),
+            date_label(self.actual_finish),
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if let (Some(start), Some(finish)) = (self.actual_start, self.actual_finish) {
+            if finish < start {
+                return Err(format!(
+                    "actual finish {} is before actual start {finish}",
+                    start
+                ));
+            }
+        }
+        let Some(activity) = project.activity_mut(self.id) else {
+            return Err(format!("activity {} does not exist", self.id));
+        };
+        let previous_start = std::mem::replace(&mut activity.actual_start, self.actual_start);
+        let previous_finish = std::mem::replace(&mut activity.actual_finish, self.actual_finish);
+        Ok(Box::new(SetActivityActualDates {
+            id: self.id,
+            actual_start: previous_start,
+            actual_finish: previous_finish,
+        }))
+    }
+}
+
+/// Render an optional date for a command description.
+fn date_label(date: Option<Date>) -> String {
+    date.map_or_else(|| "unknown".to_string(), |date| date.to_string())
+}
+
+/// Add a resource to an activity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddResourceToActivity {
+    /// Activity to which the resource is added.
+    pub activity_id: ActivityId,
+    /// Resource to add.
+    pub resource_id: ResourceId,
+}
+
+impl Command for AddResourceToActivity {
+    fn description(&self) -> String {
+        format!(
+            "add resource {} to activity {}",
+            self.resource_id, self.activity_id
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.activity_id) else {
+            return Err(format!("activity {} does not exist", self.activity_id));
+        };
+        if activity.resources.contains(&self.resource_id) {
+            return Err(format!(
+                "activity {} already has resource {}",
+                self.activity_id, self.resource_id
+            ));
+        }
+        activity.resources.push(self.resource_id);
+        activity.clear_schedule();
+        Ok(Box::new(RemoveResourceFromActivity {
+            activity_id: self.activity_id,
+            resource_id: self.resource_id,
+        }))
+    }
+}
+
+/// Remove a resource from an activity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoveResourceFromActivity {
+    /// Activity from which the resource is removed.
+    pub activity_id: ActivityId,
+    /// Resource to remove.
+    pub resource_id: ResourceId,
+}
+
+impl Command for RemoveResourceFromActivity {
+    fn description(&self) -> String {
+        format!(
+            "remove resource {} from activity {}",
+            self.resource_id, self.activity_id
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.activity_id) else {
+            return Err(format!("activity {} does not exist", self.activity_id));
+        };
+        let Some(index) = activity
+            .resources
+            .iter()
+            .position(|&id| id == self.resource_id)
+        else {
+            return Err(format!(
+                "activity {} does not have resource {}",
+                self.activity_id, self.resource_id
+            ));
+        };
+        activity.resources.remove(index);
+        activity.clear_schedule();
+        Ok(Box::new(RestoreResourceOnActivity {
+            activity_id: self.activity_id,
+            resource_id: self.resource_id,
+            index,
+        }))
+    }
+}
+
+/// Put a previously removed resource assignment back where it was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreResourceOnActivity {
+    /// Activity the resource belongs to.
+    pub activity_id: ActivityId,
+    /// Resource to restore.
+    pub resource_id: ResourceId,
+    /// Index the assignment occupied before it was removed.
+    pub index: usize,
+}
+
+impl Command for RestoreResourceOnActivity {
+    fn description(&self) -> String {
+        format!(
+            "restore resource {} on activity {}",
+            self.resource_id, self.activity_id
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.activity_id) else {
+            return Err(format!("activity {} does not exist", self.activity_id));
+        };
+        if activity.resources.contains(&self.resource_id) {
+            return Err(format!(
+                "activity {} already has resource {}",
+                self.activity_id, self.resource_id
+            ));
+        }
+        let index = self.index.min(activity.resources.len());
+        activity.resources.insert(index, self.resource_id);
+        activity.clear_schedule();
+        Ok(Box::new(RemoveResourceFromActivity {
+            activity_id: self.activity_id,
+            resource_id: self.resource_id,
+        }))
+    }
+}
+
+/// One assignment that was removed together with a resource.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemovedAssignment {
+    /// Activity the resource was assigned to.
+    pub activity_id: ActivityId,
+    /// Index the assignment occupied in the activity's resource list.
+    pub index: usize,
+}
+
+/// Add a resource to the project dictionary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreateResource {
+    /// Identifier of the new resource.
+    pub id: ResourceId,
+    /// Name of the new resource.
+    pub name: String,
+    /// Kind of the new resource.
+    pub kind: ResourceKind,
+    /// Units the resource can supply on one working day.
+    pub capacity: u32,
+}
+
+impl Command for CreateResource {
+    fn description(&self) -> String {
+        format!("create resource '{}'", self.name)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if project.resource(self.id).is_some() {
+            return Err(format!("resource {} already exists", self.id));
+        }
+        let name = self.name.trim().to_string();
+        ensure_resource_name_is_free(project, self.id, &name)?;
+        project.resources.push(Resource {
+            id: self.id,
+            name,
+            kind: self.kind,
+            capacity: self.capacity.max(1),
+        });
+        Ok(Box::new(DeleteResource { id: self.id }))
+    }
+}
+
+/// Remove a resource from the dictionary and from every activity it is
+/// assigned to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeleteResource {
+    /// Resource to remove.
+    pub id: ResourceId,
+}
+
+impl Command for DeleteResource {
+    fn description(&self) -> String {
+        format!("delete resource {}", self.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(position) = project.resources.iter().position(|item| item.id == self.id) else {
+            return Err(format!("resource {} does not exist", self.id));
+        };
+        let resource = project.resources.remove(position);
+
+        // Detach the resource from every activity, remembering where it was so
+        // that undo puts it back exactly where it was.
+        let mut assignments = Vec::new();
+        for activity in &mut project.activities {
+            if let Some(index) = activity.resources.iter().position(|&id| id == self.id) {
+                activity.resources.remove(index);
+                activity.clear_schedule();
+                assignments.push(RemovedAssignment {
+                    activity_id: activity.id,
+                    index,
+                });
+            }
+        }
+
+        Ok(Box::new(RestoreResource {
+            resource,
+            position,
+            assignments,
+        }))
+    }
+}
+
+/// Put a previously deleted resource back into the dictionary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreResource {
+    /// The resource to restore.
+    pub resource: Resource,
+    /// Index the resource occupied in the dictionary.
+    pub position: usize,
+    /// Assignments that were removed together with the resource.
+    pub assignments: Vec<RemovedAssignment>,
+}
+
+impl Command for RestoreResource {
+    fn description(&self) -> String {
+        format!("restore resource {}", self.resource.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let id = self.resource.id;
+        let resource = self.resource.clone();
+        let position = self.position.min(project.resources.len());
+        project.resources.insert(position, resource);
+
+        for assignment in &self.assignments {
+            let Some(activity) = project.activity_mut(assignment.activity_id) else {
+                continue;
+            };
+            if activity.resources.contains(&id) {
+                continue;
+            }
+            let index = assignment.index.min(activity.resources.len());
+            activity.resources.insert(index, id);
+            activity.clear_schedule();
+        }
+
+        Ok(Box::new(DeleteResource { id }))
+    }
+}
+
+/// Rename a resource.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenameResource {
+    /// Resource to rename.
+    pub id: ResourceId,
+    /// New name.
+    pub name: String,
+}
+
+impl Command for RenameResource {
+    fn description(&self) -> String {
+        format!("rename resource {} to '{}'", self.id, self.name)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(resource) = project.resource_mut(self.id) else {
+            return Err(format!("resource {} does not exist", self.id));
+        };
+        let previous = resource.name.clone();
+        let name = self.name.trim().to_string();
+        ensure_resource_name_is_free(project, self.id, &name)?;
+        if let Some(resource) = project.resource_mut(self.id) {
+            resource.name = name;
+        }
+        Ok(Box::new(RenameResource {
+            id: self.id,
+            name: previous,
+        }))
+    }
+}
+
+/// Change the capacity of a resource.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetResourceCapacity {
+    /// Resource to update.
+    pub id: ResourceId,
+    /// New capacity in units per working day.
+    pub capacity: u32,
+}
+
+impl Command for SetResourceCapacity {
+    fn description(&self) -> String {
+        format!("set capacity of resource {} to {}", self.id, self.capacity)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(resource) = project.resource_mut(self.id) else {
+            return Err(format!("resource {} does not exist", self.id));
+        };
+        let previous = resource.capacity;
+        resource.capacity = self.capacity.max(1);
+        Ok(Box::new(SetResourceCapacity {
+            id: self.id,
+            capacity: previous,
+        }))
+    }
+}
+
+/// Change the kind of a resource.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetResourceKind {
+    /// Resource to update.
+    pub id: ResourceId,
+    /// New kind.
+    pub kind: ResourceKind,
+}
+
+impl Command for SetResourceKind {
+    fn description(&self) -> String {
+        format!("set kind of resource {} to {:?}", self.id, self.kind)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(resource) = project.resource_mut(self.id) else {
+            return Err(format!("resource {} does not exist", self.id));
+        };
+        let previous = resource.kind;
+        resource.kind = self.kind;
+        Ok(Box::new(SetResourceKind {
+            id: self.id,
+            kind: previous,
+        }))
+    }
+}
+
+/// Reject a resource name that another resource already uses.
+///
+/// Resource names are compared case-insensitively, matching the project file
+/// format.
+fn ensure_resource_name_is_free(
+    project: &Project,
+    id: ResourceId,
+    name: &str,
+) -> Result<(), String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("resource name must not be empty".to_string());
+    }
+    if project
+        .resources
+        .iter()
+        .any(|resource| resource.id != id && resource.name.eq_ignore_ascii_case(trimmed))
+    {
+        return Err(format!("a resource named '{trimmed}' already exists"));
+    }
+    Ok(())
+}
+
+/// Capture a baseline snapshot of the current schedule.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaptureBaseline {
+    /// Name of the baseline (e.g. "Baseline 1", "Board-approved").
+    pub name: String,
+    /// Date the baseline is captured as of.
+    pub created_at: Date,
+}
+
+impl Command for CaptureBaseline {
+    fn description(&self) -> String {
+        format!("capture baseline '{}'", self.name)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let computed = schedule(project).map_err(|error| error.to_string())?;
+        let id = project.next_baseline_id();
+        let baseline = capture_baseline(project, &computed, id, self.name.clone(), self.created_at);
+        project.baselines.push(baseline);
+        Ok(Box::new(RemoveBaseline { id }))
+    }
+}
+
+/// Remove a baseline from the project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoveBaseline {
+    /// Baseline to remove.
+    pub id: BaselineId,
+}
+
+impl Command for RemoveBaseline {
+    fn description(&self) -> String {
+        format!("remove baseline {}", self.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(position) = project.baselines.iter().position(|item| item.id == self.id) else {
+            return Err(format!("baseline {} does not exist", self.id));
+        };
+        let baseline = project.baselines.remove(position);
+        Ok(Box::new(RestoreBaseline { baseline, position }))
+    }
+}
+
+/// Put a previously removed baseline back where it was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreBaseline {
+    /// The baseline to restore.
+    pub baseline: Baseline,
+    /// Index the baseline occupied before it was removed.
+    pub position: usize,
+}
+
+impl Command for RestoreBaseline {
+    fn description(&self) -> String {
+        format!("restore baseline {}", self.baseline.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let id = self.baseline.id;
+        let baseline = self.baseline.clone();
+        let position = self.position.min(project.baselines.len());
+        project.baselines.insert(position, baseline);
+        Ok(Box::new(RemoveBaseline { id }))
+    }
+}
+
 /// Rename an activity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenameActivity {
@@ -975,6 +1545,108 @@ mod tests {
     }
 
     #[test]
+    fn progress_budget_cost_and_actual_dates_undo_and_redo() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 3);
+        let pristine = project.clone();
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityBudget {
+                id: a,
+                budget_at_completion: Some(150_000),
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityProgress {
+                id: a,
+                percent_complete: Some(5000),
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityActualCost {
+                id: a,
+                actual_cost: Some(75_050),
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityActualDates {
+                id: a,
+                actual_start: Some(jan(5)),
+                actual_finish: Some(jan(6)),
+            }),
+        );
+
+        let activity = project.activity(a).expect("activity");
+        assert_eq!(activity.budget_at_completion, Some(150_000));
+        assert_eq!(activity.percent_complete, Some(5000));
+        assert_eq!(activity.actual_cost, Some(75_050));
+        assert_eq!(activity.actual_start, Some(jan(5)));
+        assert_eq!(activity.actual_finish, Some(jan(6)));
+        let updated = project.clone();
+        assert_ne!(pristine, updated);
+
+        for _ in 0..4 {
+            stack.undo(&mut project).expect("undo a progress edit");
+        }
+        assert_eq!(project, pristine);
+
+        for _ in 0..4 {
+            stack.redo(&mut project).expect("redo a progress edit");
+        }
+        assert_eq!(project, updated);
+    }
+
+    #[test]
+    fn progress_outside_basis_point_range_is_rejected() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 3);
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(SetActivityProgress {
+                    id: a,
+                    percent_complete: Some(12_345),
+                }),
+            )
+            .expect_err("out-of-range progress must be rejected");
+        assert!(error.contains("basis points"));
+        // A rejected command must not change the activity.
+        assert_eq!(project.activity(a).unwrap().percent_complete, None);
+    }
+
+    #[test]
+    fn actual_dates_finish_before_start_is_rejected() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 3);
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(SetActivityActualDates {
+                    id: a,
+                    actual_start: Some(jan(6)),
+                    actual_finish: Some(jan(5)),
+                }),
+            )
+            .expect_err("finish before start must be rejected");
+        assert!(error.contains("before"));
+        assert_eq!(project.activity(a).unwrap().actual_start, None);
+        assert_eq!(project.activity(a).unwrap().actual_finish, None);
+    }
+
+    #[test]
     fn undo_restores_prior_state_after_an_edit() {
         let mut project = project();
         let mut stack = CommandStack::new();
@@ -1371,5 +2043,437 @@ mod tests {
 
         stack.undo(&mut project).expect("undo delete");
         assert_eq!(project.calendars.calendars()[1].id, CalendarId(2));
+    }
+
+    #[test]
+    fn adding_and_removing_a_resource_assignment_is_reversible() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let activity = add_activity(&mut stack, &mut project, 1, "Task", 2);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(AddResourceToActivity {
+                activity_id: activity,
+                resource_id: ResourceId(7),
+            }),
+        );
+        assert_eq!(project.activities[0].resources, vec![ResourceId(7)]);
+
+        stack.undo(&mut project).expect("undo add");
+        assert!(project.activities[0].resources.is_empty());
+
+        stack.redo(&mut project).expect("redo add");
+        assert_eq!(project.activities[0].resources, vec![ResourceId(7)]);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(RemoveResourceFromActivity {
+                activity_id: activity,
+                resource_id: ResourceId(7),
+            }),
+        );
+        assert!(project.activities[0].resources.is_empty());
+
+        stack.undo(&mut project).expect("undo remove");
+        assert_eq!(project.activities[0].resources, vec![ResourceId(7)]);
+    }
+
+    #[test]
+    fn removing_a_resource_assignment_keeps_the_order_of_the_others() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let activity = add_activity(&mut stack, &mut project, 1, "Task", 2);
+
+        for resource in [7, 8, 9] {
+            execute(
+                &mut stack,
+                &mut project,
+                Box::new(AddResourceToActivity {
+                    activity_id: activity,
+                    resource_id: ResourceId(resource),
+                }),
+            );
+        }
+        assert_eq!(
+            project.activities[0].resources,
+            vec![ResourceId(7), ResourceId(8), ResourceId(9)]
+        );
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(RemoveResourceFromActivity {
+                activity_id: activity,
+                resource_id: ResourceId(8),
+            }),
+        );
+        assert_eq!(
+            project.activities[0].resources,
+            vec![ResourceId(7), ResourceId(9)]
+        );
+
+        stack.undo(&mut project).expect("undo remove");
+        assert_eq!(
+            project.activities[0].resources,
+            vec![ResourceId(7), ResourceId(8), ResourceId(9)]
+        );
+    }
+
+    #[test]
+    fn removing_a_resource_that_is_not_assigned_is_rejected() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let activity = add_activity(&mut stack, &mut project, 1, "Task", 2);
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(RemoveResourceFromActivity {
+                    activity_id: activity,
+                    resource_id: ResourceId(7),
+                }),
+            )
+            .expect_err("missing assignment must be rejected");
+        assert!(error.contains("does not have resource"), "{error}");
+    }
+
+    #[test]
+    fn adding_a_resource_twice_is_rejected() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let activity = add_activity(&mut stack, &mut project, 1, "Task", 2);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(AddResourceToActivity {
+                activity_id: activity,
+                resource_id: ResourceId(7),
+            }),
+        );
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(AddResourceToActivity {
+                    activity_id: activity,
+                    resource_id: ResourceId(7),
+                }),
+            )
+            .expect_err("duplicate assignment must be rejected");
+        assert!(error.contains("already has resource"), "{error}");
+        assert_eq!(project.activities[0].resources, vec![ResourceId(7)]);
+    }
+
+    #[test]
+    fn capturing_a_baseline_records_the_scheduled_dates() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        add_activity(&mut stack, &mut project, 1, "Task", 3);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CaptureBaseline {
+                name: "Baseline 1".to_string(),
+                created_at: jan(5),
+            }),
+        );
+
+        assert_eq!(project.baselines.len(), 1);
+        let baseline = &project.baselines[0];
+        assert_eq!(baseline.id, BaselineId(1));
+        assert_eq!(baseline.name, "Baseline 1");
+        assert_eq!(baseline.created_at, jan(5));
+        assert_eq!(baseline.snapshots.len(), 1);
+        let snapshot = &baseline.snapshots[0];
+        assert_eq!(snapshot.activity_id, ActivityId(1));
+        assert_eq!(snapshot.baseline_duration, 3);
+        assert_eq!(snapshot.baseline_start, Some(jan(5)));
+        assert_eq!(snapshot.baseline_finish, Some(jan(7)));
+    }
+
+    #[test]
+    fn capturing_a_baseline_is_reversible() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        add_activity(&mut stack, &mut project, 1, "Task", 3);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CaptureBaseline {
+                name: "Baseline 1".to_string(),
+                created_at: jan(5),
+            }),
+        );
+        let captured = project.baselines[0].clone();
+
+        stack.undo(&mut project).expect("undo capture");
+        assert!(project.baselines.is_empty());
+
+        stack.redo(&mut project).expect("redo capture");
+        assert_eq!(project.baselines, vec![captured.clone()]);
+
+        stack.undo(&mut project).expect("undo capture again");
+        assert!(project.baselines.is_empty());
+
+        stack.redo(&mut project).expect("redo capture again");
+        assert_eq!(project.baselines, vec![captured]);
+    }
+
+    #[test]
+    fn removing_a_baseline_is_reversible_and_keeps_its_position() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        add_activity(&mut stack, &mut project, 1, "Task", 3);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CaptureBaseline {
+                name: "First".to_string(),
+                created_at: jan(5),
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CaptureBaseline {
+                name: "Second".to_string(),
+                created_at: jan(6),
+            }),
+        );
+        assert_eq!(project.baselines.len(), 2);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(RemoveBaseline { id: BaselineId(1) }),
+        );
+        assert_eq!(project.baselines.len(), 1);
+        assert_eq!(project.baselines[0].name, "Second");
+
+        stack.undo(&mut project).expect("undo remove");
+        assert_eq!(project.baselines.len(), 2);
+        assert_eq!(project.baselines[0].name, "First");
+        assert_eq!(project.baselines[1].name, "Second");
+    }
+
+    #[test]
+    fn removing_an_unknown_baseline_is_rejected() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+
+        let error = stack
+            .execute(&mut project, Box::new(RemoveBaseline { id: BaselineId(9) }))
+            .expect_err("missing baseline must be rejected");
+        assert!(error.contains("does not exist"), "{error}");
+    }
+
+    #[test]
+    fn creating_a_resource_is_reversible() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crane".to_string(),
+                kind: ResourceKind::Equipment,
+                capacity: 2,
+            }),
+        );
+        assert_eq!(project.resources.len(), 1);
+        assert_eq!(project.resources[0].name, "Crane");
+        assert_eq!(project.resources[0].kind, ResourceKind::Equipment);
+        assert_eq!(project.resources[0].capacity, 2);
+
+        stack.undo(&mut project).expect("undo create");
+        assert!(project.resources.is_empty());
+
+        stack.redo(&mut project).expect("redo create");
+        assert_eq!(project.resources.len(), 1);
+    }
+
+    #[test]
+    fn creating_a_resource_with_a_duplicate_name_is_rejected() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crane".to_string(),
+                kind: ResourceKind::Equipment,
+                capacity: 1,
+            }),
+        );
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(CreateResource {
+                    id: ResourceId(2),
+                    name: "crane".to_string(),
+                    kind: ResourceKind::Equipment,
+                    capacity: 1,
+                }),
+            )
+            .expect_err("duplicate name must be rejected");
+        assert!(error.contains("already exists"), "{error}");
+        assert_eq!(project.resources.len(), 1);
+    }
+
+    #[test]
+    fn creating_a_resource_without_a_name_is_rejected() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(CreateResource {
+                    id: ResourceId(1),
+                    name: "   ".to_string(),
+                    kind: ResourceKind::Labour,
+                    capacity: 1,
+                }),
+            )
+            .expect_err("empty name must be rejected");
+        assert!(error.contains("must not be empty"), "{error}");
+    }
+
+    #[test]
+    fn deleting_a_resource_detaches_it_from_activities_and_is_reversible() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let activity = add_activity(&mut stack, &mut project, 1, "Task", 2);
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crane".to_string(),
+                kind: ResourceKind::Equipment,
+                capacity: 1,
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(AddResourceToActivity {
+                activity_id: activity,
+                resource_id: ResourceId(1),
+            }),
+        );
+        assert_eq!(project.activities[0].resources, vec![ResourceId(1)]);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(DeleteResource { id: ResourceId(1) }),
+        );
+        assert!(project.resources.is_empty());
+        assert!(project.activities[0].resources.is_empty());
+
+        stack.undo(&mut project).expect("undo delete");
+        assert_eq!(project.resources.len(), 1);
+        assert_eq!(project.resources[0].name, "Crane");
+        assert_eq!(project.activities[0].resources, vec![ResourceId(1)]);
+    }
+
+    #[test]
+    fn renaming_a_resource_is_reversible() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crane".to_string(),
+                kind: ResourceKind::Equipment,
+                capacity: 1,
+            }),
+        );
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(RenameResource {
+                id: ResourceId(1),
+                name: "Tower crane".to_string(),
+            }),
+        );
+        assert_eq!(project.resources[0].name, "Tower crane");
+
+        stack.undo(&mut project).expect("undo rename");
+        assert_eq!(project.resources[0].name, "Crane");
+    }
+
+    #[test]
+    fn changing_resource_capacity_and_kind_is_reversible() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crane".to_string(),
+                kind: ResourceKind::Labour,
+                capacity: 1,
+            }),
+        );
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetResourceCapacity {
+                id: ResourceId(1),
+                capacity: 4,
+            }),
+        );
+        assert_eq!(project.resources[0].capacity, 4);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetResourceKind {
+                id: ResourceId(1),
+                kind: ResourceKind::Equipment,
+            }),
+        );
+        assert_eq!(project.resources[0].kind, ResourceKind::Equipment);
+
+        stack.undo(&mut project).expect("undo kind");
+        assert_eq!(project.resources[0].kind, ResourceKind::Labour);
+
+        stack.undo(&mut project).expect("undo capacity");
+        assert_eq!(project.resources[0].capacity, 1);
+    }
+
+    #[test]
+    fn a_resource_capacity_below_one_is_raised() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crane".to_string(),
+                kind: ResourceKind::Equipment,
+                capacity: 0,
+            }),
+        );
+        assert_eq!(project.resources[0].capacity, 1);
     }
 }

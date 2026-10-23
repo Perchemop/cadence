@@ -10,9 +10,10 @@ metrics — completely offline, with no telemetry and open file formats.
 
 ## Status
 
-Early development. See [`docs/parity.md`](docs/parity.md) for the living
-capability list and [`docs/architecture.md`](docs/architecture.md) for the
-design.
+Early development. See [`docs/usage.md`](docs/usage.md) for commands, file
+formats and the keyboard map, [`docs/parity.md`](docs/parity.md) for the
+living capability list, and [`docs/architecture.md`](docs/architecture.md)
+for the design.
 
 ## License
 

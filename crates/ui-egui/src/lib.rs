@@ -5,13 +5,22 @@
 //! source of truth; this crate only displays its results and routes edits
 //! through the command layer.
 
+use std::collections::BTreeMap;
+
 use cadence_commands::{
-    CommandStack, CreateRelationship, RenameActivity, SetActivityConstraint, SetActivityDuration,
-    SetRelationshipLag,
+    AddResourceToActivity, CaptureBaseline, CommandStack, CreateRelationship, CreateResource,
+    DeleteResource, RemoveBaseline, RemoveResourceFromActivity, RenameActivity, RenameResource,
+    SetActivityActualCost, SetActivityActualDates, SetActivityBudget, SetActivityConstraint,
+    SetActivityDuration, SetActivityProgress, SetRelationshipLag, SetResourceCapacity,
+    SetResourceKind,
 };
 use cadence_core::engine::schedule;
 use cadence_core::engine::Schedule;
-use cadence_core::model::{Activity, ActivityId, Constraint, LinkType, Project};
+use cadence_core::engine::{evm_metrics, level_resources, resource_conflicts, resource_histogram};
+use cadence_core::model::{
+    Activity, ActivityId, Baseline, BaselineId, Constraint, LinkType, Project, ResourceId,
+    ResourceKind,
+};
 use egui::{
     Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2, Visuals,
 };
@@ -78,6 +87,8 @@ enum SortKey {
 enum ViewMode {
     Table,
     Gantt,
+    Resources,
+    Baselines,
 }
 
 const CONSTRAINT_LABELS: [&str; 6] = [
@@ -88,6 +99,27 @@ const CONSTRAINT_LABELS: [&str; 6] = [
     "Finish no earlier than",
     "Finish no later than",
 ];
+
+/// Labels for the resource kinds, in the order of [`ResourceKind`].
+const RESOURCE_KIND_LABELS: [&str; 3] = ["Labour", "Equipment", "Material"];
+
+/// Convert a resource kind into its index in [`RESOURCE_KIND_LABELS`].
+fn resource_kind_index(kind: ResourceKind) -> usize {
+    match kind {
+        ResourceKind::Labour => 0,
+        ResourceKind::Equipment => 1,
+        ResourceKind::Material => 2,
+    }
+}
+
+/// Convert a resource kind index back into a [`ResourceKind`].
+fn resource_kind_from_index(index: usize) -> ResourceKind {
+    match index {
+        1 => ResourceKind::Equipment,
+        2 => ResourceKind::Material,
+        _ => ResourceKind::Labour,
+    }
+}
 
 /// The Cadence application state.
 pub struct CadenceApp {
@@ -109,6 +141,19 @@ pub struct CadenceApp {
     duration_buffer: String,
     constraint_kind: usize,
     constraint_date_buffer: String,
+    progress_buffer: String,
+    actual_cost_buffer: String,
+    actual_start_buffer: String,
+    actual_finish_buffer: String,
+    budget_buffer: String,
+    selected_resource: Option<ResourceId>,
+    resource_name_buffer: String,
+    resource_kind_index: usize,
+    resource_capacity_buffer: String,
+    leveling_report: Option<String>,
+    selected_baseline: Option<BaselineId>,
+    baseline_name_buffer: String,
+    status_date_buffer: String,
 }
 
 impl CadenceApp {
@@ -134,6 +179,19 @@ impl CadenceApp {
             duration_buffer: String::new(),
             constraint_kind: 0,
             constraint_date_buffer: String::new(),
+            progress_buffer: String::new(),
+            actual_cost_buffer: String::new(),
+            actual_start_buffer: String::new(),
+            actual_finish_buffer: String::new(),
+            budget_buffer: String::new(),
+            selected_resource: None,
+            resource_name_buffer: String::new(),
+            resource_kind_index: 0,
+            resource_capacity_buffer: "1".to_string(),
+            leveling_report: None,
+            selected_baseline: None,
+            baseline_name_buffer: String::new(),
+            status_date_buffer: today().to_string(),
         }
     }
 
@@ -156,6 +214,23 @@ impl CadenceApp {
             };
             self.constraint_kind = kind;
             self.constraint_date_buffer = date.map(|d| d.to_string()).unwrap_or_default();
+            self.progress_buffer = activity
+                .percent_complete
+                .map(|percent| (percent as f64 / 100.0).to_string())
+                .unwrap_or_default();
+            self.actual_cost_buffer = activity.actual_cost.map(format_money).unwrap_or_default();
+            self.actual_start_buffer = activity
+                .actual_start
+                .map(|date| date.to_string())
+                .unwrap_or_default();
+            self.actual_finish_buffer = activity
+                .actual_finish
+                .map(|date| date.to_string())
+                .unwrap_or_default();
+            self.budget_buffer = activity
+                .budget_at_completion
+                .map(format_money)
+                .unwrap_or_default();
         }
     }
 
@@ -210,8 +285,317 @@ impl CadenceApp {
             );
         }
 
+        if let Some(percent) = parse_percent(self.progress_buffer.trim()) {
+            if percent != activity.percent_complete {
+                let _ = self.stack.execute(
+                    &mut self.project,
+                    Box::new(SetActivityProgress {
+                        id,
+                        percent_complete: percent,
+                    }),
+                );
+            }
+        }
+
+        let budget = parse_money(self.budget_buffer.trim());
+        if budget != activity.budget_at_completion {
+            let _ = self.stack.execute(
+                &mut self.project,
+                Box::new(SetActivityBudget {
+                    id,
+                    budget_at_completion: budget,
+                }),
+            );
+        }
+
+        let cost = parse_money(self.actual_cost_buffer.trim());
+        if cost != activity.actual_cost {
+            let _ = self.stack.execute(
+                &mut self.project,
+                Box::new(SetActivityActualCost {
+                    id,
+                    actual_cost: cost,
+                }),
+            );
+        }
+
+        let actual_start = parse_date(self.actual_start_buffer.trim());
+        let actual_finish = parse_date(self.actual_finish_buffer.trim());
+        if actual_start != activity.actual_start || actual_finish != activity.actual_finish {
+            let _ = self.stack.execute(
+                &mut self.project,
+                Box::new(SetActivityActualDates {
+                    id,
+                    actual_start,
+                    actual_finish,
+                }),
+            );
+        }
+
         self.recompute();
         self.select(id);
+    }
+
+    /// Load the resource editor buffers for the given resource.
+    fn select_resource(&mut self, id: ResourceId) {
+        self.selected_resource = Some(id);
+        if let Some(resource) = self.project.resource(id) {
+            self.resource_name_buffer = resource.name.clone();
+            self.resource_capacity_buffer = resource.capacity.to_string();
+            self.resource_kind_index = resource_kind_index(resource.kind);
+        }
+    }
+
+    /// Apply the resource editor buffers through the command stack.
+    fn apply_resource_edits(&mut self) {
+        let Some(id) = self.selected_resource else {
+            return;
+        };
+        let Some(resource) = self.project.resource(id).cloned() else {
+            return;
+        };
+
+        let name = self.resource_name_buffer.trim().to_string();
+        if !name.is_empty() && name != resource.name {
+            if let Err(error) = self
+                .stack
+                .execute(&mut self.project, Box::new(RenameResource { id, name }))
+            {
+                self.status_message = Some(error);
+            }
+        }
+
+        if let Ok(capacity) = self.resource_capacity_buffer.trim().parse::<u32>() {
+            if capacity != resource.capacity {
+                if let Err(error) = self.stack.execute(
+                    &mut self.project,
+                    Box::new(SetResourceCapacity { id, capacity }),
+                ) {
+                    self.status_message = Some(error);
+                }
+            }
+        }
+
+        let kind = resource_kind_from_index(self.resource_kind_index);
+        if kind != resource.kind {
+            if let Err(error) = self
+                .stack
+                .execute(&mut self.project, Box::new(SetResourceKind { id, kind }))
+            {
+                self.status_message = Some(error);
+            }
+        }
+
+        self.recompute();
+        self.select_resource(id);
+    }
+
+    /// Add a new resource to the dictionary.
+    fn create_resource(&mut self) {
+        let name = self.resource_name_buffer.trim().to_string();
+        if name.is_empty() {
+            self.status_message = Some("Resource name must not be empty".to_string());
+            return;
+        }
+        let id = self.project.next_resource_id();
+        let command = CreateResource {
+            id,
+            name,
+            kind: resource_kind_from_index(self.resource_kind_index),
+            capacity: self
+                .resource_capacity_buffer
+                .trim()
+                .parse::<u32>()
+                .unwrap_or(1)
+                .max(1),
+        };
+        match self.stack.execute(&mut self.project, Box::new(command)) {
+            Ok(()) => {
+                self.status_message = None;
+                self.recompute();
+                self.select_resource(id);
+            }
+            Err(error) => self.status_message = Some(error),
+        }
+    }
+
+    /// Remove the selected resource from the dictionary.
+    fn delete_selected_resource(&mut self) {
+        let Some(id) = self.selected_resource else {
+            return;
+        };
+        match self
+            .stack
+            .execute(&mut self.project, Box::new(DeleteResource { id }))
+        {
+            Ok(()) => {
+                self.selected_resource = None;
+                self.status_message = None;
+                self.recompute();
+            }
+            Err(error) => self.status_message = Some(error),
+        }
+    }
+
+    /// Assign the given resource to the selected activity, or remove it.
+    fn toggle_assignment(&mut self, resource_id: ResourceId) {
+        let Some(activity_id) = self.selected else {
+            self.status_message = Some("Select an activity first".to_string());
+            return;
+        };
+        let assigned = self
+            .project
+            .activity(activity_id)
+            .map(|activity| activity.resources.contains(&resource_id))
+            .unwrap_or(false);
+
+        let outcome = if assigned {
+            self.stack.execute(
+                &mut self.project,
+                Box::new(RemoveResourceFromActivity {
+                    activity_id,
+                    resource_id,
+                }),
+            )
+        } else {
+            self.stack.execute(
+                &mut self.project,
+                Box::new(AddResourceToActivity {
+                    activity_id,
+                    resource_id,
+                }),
+            )
+        };
+
+        match outcome {
+            Ok(()) => {
+                self.status_message = None;
+                self.recompute();
+            }
+            Err(error) => self.status_message = Some(error),
+        }
+    }
+
+    /// Compute the leveled schedule and report what it would change.
+    fn preview_leveling(&mut self) {
+        let Some(schedule) = self.schedule.clone().ok() else {
+            self.leveling_report = Some("The project cannot be scheduled".to_string());
+            return;
+        };
+        match level_resources(&self.project, &schedule) {
+            Ok(result) => {
+                let delayed: Vec<&cadence_core::engine::LeveledActivity> = result
+                    .activities
+                    .iter()
+                    .filter(|activity| activity.delay > 0)
+                    .collect();
+                if !result.conflicts.is_empty() {
+                    self.leveling_report = Some(format!(
+                        "{} over-allocated days remain after leveling",
+                        result.conflicts.len()
+                    ));
+                } else if delayed.is_empty() {
+                    self.leveling_report =
+                        Some("The schedule is already free of over-allocation".to_string());
+                } else {
+                    self.leveling_report = Some(format!(
+                        "Leveling delays {} activities, for example {}",
+                        delayed.len(),
+                        describe_delay(delayed[0])
+                    ));
+                }
+            }
+            Err(error) => self.leveling_report = Some(format!("Leveling failed: {error}")),
+        }
+    }
+
+    /// Apply the leveled dates as start-no-earlier-than constraints.
+    fn apply_leveling(&mut self) {
+        let Some(schedule) = self.schedule.clone().ok() else {
+            self.status_message = Some("The project cannot be scheduled".to_string());
+            return;
+        };
+        let Ok(result) = level_resources(&self.project, &schedule) else {
+            self.status_message = Some("The project cannot be leveled".to_string());
+            return;
+        };
+
+        let mut applied = 0usize;
+        for activity in &result.activities {
+            if activity.delay <= 0 {
+                continue;
+            }
+            let constraint = Constraint::StartNoEarlierThan(activity.start);
+            if self
+                .stack
+                .execute(
+                    &mut self.project,
+                    Box::new(SetActivityConstraint {
+                        id: activity.id,
+                        constraint,
+                    }),
+                )
+                .is_ok()
+            {
+                applied += 1;
+            }
+        }
+        self.recompute();
+        self.leveling_report = Some(format!("Applied leveling to {applied} activities"));
+    }
+
+    /// Capture the current schedule as a new baseline.
+    fn capture_baseline_now(&mut self) {
+        let typed = self.baseline_name_buffer.trim().to_string();
+        let name = if typed.is_empty() {
+            format!("Baseline {}", self.project.baselines.len() + 1)
+        } else {
+            typed
+        };
+        let command = CaptureBaseline {
+            name,
+            created_at: today(),
+        };
+        match self.stack.execute(&mut self.project, Box::new(command)) {
+            Ok(()) => {
+                self.status_message = None;
+                self.recompute();
+                self.selected_baseline = self.project.baselines.last().map(|baseline| baseline.id);
+                self.baseline_name_buffer.clear();
+            }
+            Err(error) => self.status_message = Some(error),
+        }
+    }
+
+    /// Write the Markdown report next to the working directory.
+    ///
+    /// There is no file picker (that would pull in a native-dialog
+    /// dependency), so the report lands in the current directory named after
+    /// the project and the path is reported in the status area.
+    fn save_report(&mut self) {
+        let path = format!("{}.report.md", file_stem(&self.project.name));
+        let report = cadence_core::report::project_report(&self.project, today());
+        match std::fs::write(&path, report) {
+            Ok(()) => self.status_message = Some(format!("Report written to {path}")),
+            Err(error) => self.status_message = Some(format!("Cannot write {path}: {error}")),
+        }
+    }
+
+    /// Remove the selected baseline from the project.
+    fn delete_selected_baseline(&mut self) {
+        let Some(id) = self.selected_baseline else {
+            return;
+        };
+        match self
+            .stack
+            .execute(&mut self.project, Box::new(RemoveBaseline { id }))
+        {
+            Ok(()) => {
+                self.selected_baseline = None;
+                self.status_message = None;
+            }
+            Err(error) => self.status_message = Some(error),
+        }
     }
 
     fn sorted_activities(&self) -> Vec<Activity> {
@@ -277,6 +661,51 @@ impl eframe::App for CadenceApp {
             apply_theme(&ctx, self.dark);
         }
 
+        // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y: undo and redo from any view.
+        let undo_requested = ctx.input(|input| {
+            input.key_pressed(egui::Key::Z) && input.modifiers.ctrl && !input.modifiers.shift
+        });
+        let redo_requested = ctx.input(|input| {
+            (input.key_pressed(egui::Key::Y) && input.modifiers.ctrl)
+                || (input.key_pressed(egui::Key::Z)
+                    && input.modifiers.ctrl
+                    && input.modifiers.shift)
+        });
+        if undo_requested {
+            let _ = self.stack.undo(&mut self.project);
+            self.recompute();
+        }
+        if redo_requested {
+            let _ = self.stack.redo(&mut self.project);
+            self.recompute();
+        }
+
+        // Ctrl+1..Ctrl+4: switch views without reaching for the mouse.
+        let (ctrl_held, pressed_view) = ctx.input(|input| {
+            (
+                input.modifiers.ctrl,
+                [
+                    egui::Key::Num1,
+                    egui::Key::Num2,
+                    egui::Key::Num3,
+                    egui::Key::Num4,
+                ]
+                .iter()
+                .position(|key| input.key_pressed(*key))
+                .map(|index| index as u8),
+            )
+        });
+        if ctrl_held {
+            if let Some(index) = pressed_view {
+                self.view_mode = match index {
+                    0 => ViewMode::Table,
+                    1 => ViewMode::Gantt,
+                    2 => ViewMode::Resources,
+                    _ => ViewMode::Baselines,
+                };
+            }
+        }
+
         egui::Panel::top("toolbar").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("Cadence");
@@ -287,6 +716,19 @@ impl eframe::App for CadenceApp {
                 }
                 if ui.button("Gantt").clicked() {
                     self.view_mode = ViewMode::Gantt;
+                }
+                if ui.button("Resources").clicked() {
+                    self.view_mode = ViewMode::Resources;
+                }
+                if ui.button("Baselines").clicked() {
+                    self.view_mode = ViewMode::Baselines;
+                }
+                if ui
+                    .button("Save report")
+                    .on_hover_text("Write a Markdown report next to the working directory")
+                    .clicked()
+                {
+                    self.save_report();
                 }
                 if ui.button("Undo").clicked() {
                     let _ = self.stack.undo(&mut self.project);
@@ -336,6 +778,20 @@ impl eframe::App for CadenceApp {
                                 ui.label("Constraint date (YYYY-MM-DD)");
                                 ui.text_edit_singleline(&mut self.constraint_date_buffer);
                             }
+
+                            ui.separator();
+                            ui.heading("Progress");
+                            ui.label("Percent complete");
+                            ui.text_edit_singleline(&mut self.progress_buffer);
+                            ui.label("Budget at completion");
+                            ui.text_edit_singleline(&mut self.budget_buffer);
+                            ui.label("Actual cost");
+                            ui.text_edit_singleline(&mut self.actual_cost_buffer);
+                            ui.label("Actual start (YYYY-MM-DD)");
+                            ui.text_edit_singleline(&mut self.actual_start_buffer);
+                            ui.label("Actual finish (YYYY-MM-DD)");
+                            ui.text_edit_singleline(&mut self.actual_finish_buffer);
+
                             if ui.button("Apply").clicked() {
                                 self.apply_edits();
                             }
@@ -470,6 +926,354 @@ impl eframe::App for CadenceApp {
                     );
                 });
             }
+            ViewMode::Resources => {
+                egui::Panel::right("resource_inspector")
+                    .default_size(300.0)
+                    .show(ui, |ui| {
+                        ui.heading("Resource");
+                        ui.label("Name");
+                        ui.text_edit_singleline(&mut self.resource_name_buffer);
+                        ui.label("Kind");
+                        ComboBox::from_id_salt("resource_kind")
+                            .selected_text(RESOURCE_KIND_LABELS[self.resource_kind_index])
+                            .show_ui(ui, |ui| {
+                                for (index, label) in RESOURCE_KIND_LABELS.iter().enumerate() {
+                                    ui.selectable_value(
+                                        &mut self.resource_kind_index,
+                                        index,
+                                        *label,
+                                    );
+                                }
+                            });
+                        ui.label("Capacity (units per working day)");
+                        ui.text_edit_singleline(&mut self.resource_capacity_buffer);
+
+                        if ui.button("Add resource").clicked() {
+                            self.create_resource();
+                        }
+                        if self.selected_resource.is_some() {
+                            if ui.button("Apply changes").clicked() {
+                                self.apply_resource_edits();
+                            }
+                            if ui.button("Delete resource").clicked() {
+                                self.delete_selected_resource();
+                            }
+                        }
+
+                        ui.separator();
+                        ui.heading("Leveling");
+                        if ui.button("Preview leveling").clicked() {
+                            self.preview_leveling();
+                        }
+                        if ui.button("Apply leveled dates").clicked() {
+                            self.apply_leveling();
+                        }
+                        if let Some(report) = &self.leveling_report {
+                            ui.label(report);
+                        }
+                    });
+
+                let schedule = self.schedule.clone();
+                let conflicts = schedule
+                    .as_ref()
+                    .ok()
+                    .map(|schedule| resource_conflicts(&self.project, schedule))
+                    .unwrap_or_default();
+                let resources = self.project.resources.clone();
+                let activities = self.sorted_activities();
+                let selected_resource = self.selected_resource;
+
+                egui::CentralPanel::default().show(ui, |ui| match schedule {
+                    Err(error) => {
+                        ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
+                    }
+                    Ok(schedule) => {
+                        ui.heading("Resource dictionary");
+                        if resources.is_empty() {
+                            ui.label("No resources yet. Add one in the panel on the right.");
+                        }
+                        Grid::new("resource_rows")
+                            .striped(true)
+                            .spacing([12.0, 4.0])
+                            .show(ui, |ui| {
+                                ui.label("Name");
+                                ui.label("Kind");
+                                ui.label("Capacity");
+                                ui.label("Assigned");
+                                ui.label("Over-allocated days");
+                                ui.end_row();
+
+                                for resource in &resources {
+                                    let selected = selected_resource == Some(resource.id);
+                                    if ui.selectable_label(selected, &resource.name).clicked() {
+                                        self.select_resource(resource.id);
+                                    }
+                                    ui.label(
+                                        RESOURCE_KIND_LABELS[resource_kind_index(resource.kind)],
+                                    );
+                                    ui.label(resource.capacity.to_string());
+                                    let assigned = activities
+                                        .iter()
+                                        .filter(|activity| {
+                                            activity.resources.contains(&resource.id)
+                                        })
+                                        .count();
+                                    ui.label(assigned.to_string());
+                                    let over = conflicts
+                                        .iter()
+                                        .filter(|conflict| conflict.resource_id == resource.id)
+                                        .count();
+                                    if over == 0 {
+                                        ui.label("0");
+                                    } else {
+                                        ui.colored_label(
+                                            egui::Color32::from_rgb(0xC0, 0x39, 0x2B),
+                                            over.to_string(),
+                                        );
+                                    }
+                                    ui.end_row();
+                                }
+                            });
+
+                        ui.separator();
+                        ui.heading("Usage");
+                        if let Some(id) = selected_resource {
+                            let usage = resource_day_usage(&self.project, &schedule, id);
+                            if usage.is_empty() {
+                                ui.label(
+                                    "This resource is not assigned to any scheduled activity.",
+                                );
+                            } else {
+                                let capacity = self
+                                    .project
+                                    .resource(id)
+                                    .map(|resource| resource.capacity)
+                                    .unwrap_or(1);
+                                ScrollArea::vertical()
+                                    .id_salt("resource_usage")
+                                    .max_height(160.0)
+                                    .show(ui, |ui| {
+                                        Grid::new("resource_usage_rows")
+                                            .striped(true)
+                                            .spacing([12.0, 4.0])
+                                            .show(ui, |ui| {
+                                                for (date, units) in usage {
+                                                    ui.label(date.to_string());
+                                                    if units > capacity {
+                                                        ui.colored_label(
+                                                            egui::Color32::from_rgb(
+                                                                0xC0, 0x39, 0x2B,
+                                                            ),
+                                                            format!("{units} / {capacity}"),
+                                                        );
+                                                    } else {
+                                                        ui.label(format!("{units} / {capacity}"));
+                                                    }
+                                                    ui.end_row();
+                                                }
+                                            });
+                                    });
+                            }
+                        } else {
+                            ui.label("Select a resource to see its daily usage.");
+                        }
+
+                        ui.separator();
+                        ui.heading("Assignments");
+                        if let Some(id) = selected_resource {
+                            ui.label(format!(
+                                "Toggle '{}' on an activity to assign or remove it.",
+                                self.project
+                                    .resource(id)
+                                    .map(|resource| resource.name.clone())
+                                    .unwrap_or_default()
+                            ));
+                            Grid::new("assignment_rows")
+                                .striped(true)
+                                .spacing([12.0, 4.0])
+                                .show(ui, |ui| {
+                                    for activity in &activities {
+                                        let assigned = activity.resources.contains(&id);
+                                        if ui.selectable_label(assigned, &activity.name).clicked() {
+                                            self.selected = Some(activity.id);
+                                            self.select(activity.id);
+                                            self.toggle_assignment(id);
+                                        }
+                                        ui.label(activity.original_duration.to_string());
+                                        if let Some(result) = schedule.activity(activity.id) {
+                                            ui.label(result.scheduled_start.to_string());
+                                            ui.label(result.scheduled_finish.to_string());
+                                        } else {
+                                            ui.label("-");
+                                            ui.label("-");
+                                        }
+                                        ui.end_row();
+                                    }
+                                });
+                        } else {
+                            ui.label("Select a resource to assign it to activities.");
+                        }
+                    }
+                });
+            }
+            ViewMode::Baselines => {
+                egui::Panel::right("baseline_inspector")
+                    .default_size(300.0)
+                    .show(ui, |ui| {
+                        ui.heading("Baselines");
+                        ui.label("Name for the new baseline");
+                        ui.text_edit_singleline(&mut self.baseline_name_buffer);
+                        if ui.button("Capture baseline").clicked() {
+                            self.capture_baseline_now();
+                        }
+
+                        ui.separator();
+                        let baselines = self.project.baselines.clone();
+                        if baselines.is_empty() {
+                            ui.label("No baselines captured yet.");
+                        }
+                        for baseline in &baselines {
+                            let selected = self.selected_baseline == Some(baseline.id);
+                            let label = format!("{} — {}", baseline.name, baseline.created_at);
+                            if ui.selectable_label(selected, label).clicked() {
+                                self.selected_baseline = Some(baseline.id);
+                            }
+                        }
+                        let has_selection = self.selected_baseline.is_some();
+                        if ui
+                            .add_enabled(has_selection, egui::Button::new("Delete baseline"))
+                            .clicked()
+                        {
+                            self.delete_selected_baseline();
+                        }
+
+                        ui.separator();
+                        ui.heading("Earned value");
+                        ui.label("Status date (YYYY-MM-DD)");
+                        ui.text_edit_singleline(&mut self.status_date_buffer);
+                    });
+
+                let baselines = self.project.baselines.clone();
+                let selected_baseline = self
+                    .selected_baseline
+                    .and_then(|id| baselines.iter().find(|baseline| baseline.id == id).cloned());
+                let status_date = parse_date(self.status_date_buffer.trim());
+                let metrics = status_date.map(|status_date| {
+                    evm_metrics(&self.project, selected_baseline.as_ref(), status_date)
+                });
+                let variance = match (&self.schedule, &selected_baseline) {
+                    (Ok(schedule), Some(baseline)) => {
+                        Some(variance_rows(&self.project, schedule, baseline))
+                    }
+                    _ => None,
+                };
+
+                egui::CentralPanel::default().show(ui, |ui| {
+                    ui.heading("Earned value");
+                    match &metrics {
+                        None => {
+                            ui.colored_label(
+                                egui::Color32::RED,
+                                "Status date must be written as YYYY-MM-DD",
+                            );
+                        }
+                        Some(metrics) => {
+                            Grid::new("evm_rows")
+                                .striped(true)
+                                .spacing([16.0, 4.0])
+                                .show(ui, |ui| {
+                                    for (label, value) in [
+                                        (
+                                            "Budget at completion",
+                                            format_money(metrics.budget_at_completion),
+                                        ),
+                                        ("Planned value", format_money(metrics.planned_value)),
+                                        ("Earned value", format_money(metrics.earned_value)),
+                                        ("Actual cost", format_money(metrics.actual_cost)),
+                                        (
+                                            "Schedule variance",
+                                            format_money(metrics.schedule_variance),
+                                        ),
+                                        ("Cost variance", format_money(metrics.cost_variance)),
+                                        (
+                                            "Schedule performance index",
+                                            format_index(metrics.schedule_performance_index),
+                                        ),
+                                        (
+                                            "Cost performance index",
+                                            format_index(metrics.cost_performance_index),
+                                        ),
+                                    ] {
+                                        ui.label(label);
+                                        ui.label(value);
+                                        ui.end_row();
+                                    }
+                                });
+                        }
+                    }
+
+                    ui.separator();
+                    ui.heading("Variance against the selected baseline");
+                    match &variance {
+                        None => {
+                            ui.label("Capture or select a baseline to compare against.");
+                        }
+                        Some(rows) => {
+                            ui.label(
+                                "Variances are whole calendar days; a positive value is later or longer than planned.",
+                            );
+                            ScrollArea::vertical()
+                                .id_salt("variance_rows")
+                                .show(ui, |ui| {
+                                    Grid::new("variance_grid")
+                                        .striped(true)
+                                        .spacing([12.0, 4.0])
+                                        .show(ui, |ui| {
+                                            for header in [
+                                                "Activity", "Start", "Base start", "ΔStart",
+                                                "Finish", "Base finish", "ΔFinish", "Dur",
+                                                "Base dur", "ΔDur",
+                                            ] {
+                                                ui.label(header);
+                                            }
+                                            ui.end_row();
+
+                                            for row in rows {
+                                                let selected = self.selected == Some(row.activity);
+                                                let name = format!("{}  {}", row.activity, row.name);
+                                                if ui.selectable_label(selected, name).clicked() {
+                                                    self.selected = Some(row.activity);
+                                                }
+                                                ui.label(date_text(row.current_start));
+                                                ui.label(date_text(row.baseline_start));
+                                                ui.colored_label(
+                                                    variance_color(row.start_variance(), self.dark),
+                                                    variance_text(row.start_variance()),
+                                                );
+                                                ui.label(date_text(row.current_finish));
+                                                ui.label(date_text(row.baseline_finish));
+                                                ui.colored_label(
+                                                    variance_color(row.finish_variance(), self.dark),
+                                                    variance_text(row.finish_variance()),
+                                                );
+                                                let duration_variance = row.duration_variance();
+                                                ui.label(row.current_duration.to_string());
+                                                ui.label(row.baseline_duration.to_string());
+                                                ui.colored_label(
+                                                    variance_color(
+                                                        Some(duration_variance),
+                                                        self.dark,
+                                                    ),
+                                                    variance_text(Some(duration_variance)),
+                                                );
+                                                ui.end_row();
+                                            }
+                                        });
+                                });
+                        }
+                    }
+                });
+            }
         }
     }
 }
@@ -484,6 +1288,184 @@ fn parse_date(value: &str) -> Option<Date> {
     }
     let month = Month::try_from(month).ok()?;
     Date::from_calendar_date(year, month, day).ok()
+}
+
+/// Describe how one activity is delayed by resource leveling.
+fn describe_delay(activity: &cadence_core::engine::LeveledActivity) -> String {
+    format!(
+        "activity {} by {} working days ({} to {})",
+        activity.id, activity.delay, activity.original_start, activity.start
+    )
+}
+
+/// Today, as a date, used as the default baseline capture and status date.
+fn today() -> Date {
+    time::OffsetDateTime::now_utc().date()
+}
+
+/// Turn a project name into a safe file stem for exported reports.
+fn file_stem(name: &str) -> String {
+    let mut stem = String::new();
+    for character in name.chars() {
+        if character.is_alphanumeric() || matches!(character, '-' | '_') {
+            stem.push(character);
+        } else if !stem.ends_with('-') {
+            stem.push('-');
+        }
+    }
+    let trimmed = stem.trim_matches(['-', '_']).to_string();
+    if trimmed.is_empty() {
+        "cadence-project".to_string()
+    } else {
+        trimmed
+    }
+}
+
+/// Render a date for a table cell, using `-` when it is not known.
+fn date_text(date: Option<Date>) -> String {
+    date.map_or_else(|| "-".to_string(), |date| date.to_string())
+}
+
+/// Signed whole-day difference between a baseline date and the current date.
+///
+/// A positive value means the current date is later than the baseline.
+fn day_variance(baseline: Option<Date>, current: Option<Date>) -> Option<i64> {
+    Some(i64::from(
+        current?.to_julian_day() - baseline?.to_julian_day(),
+    ))
+}
+
+/// Render a signed variance, prefixing positive values with `+`.
+fn variance_text(value: Option<i64>) -> String {
+    match value {
+        None => "-".to_string(),
+        Some(value) if value > 0 => format!("+{value}"),
+        Some(value) => value.to_string(),
+    }
+}
+
+/// Colour a variance: delays and overspends in red, improvements in green.
+///
+/// Each theme gets its own pair so that both pass WCAG AA (4.5:1) against the
+/// panel background — verified by the tests at the bottom of this file.
+fn variance_color(value: Option<i64>, dark: bool) -> Color32 {
+    match (value, dark) {
+        (Some(value), true) if value > 0 => Color32::from_rgb(0xE7, 0x4C, 0x3C),
+        (Some(value), true) if value < 0 => Color32::from_rgb(0x2E, 0xCC, 0x71),
+        (Some(value), false) if value > 0 => Color32::from_rgb(0xC0, 0x39, 0x2B),
+        (Some(value), false) if value < 0 => Color32::from_rgb(0x1E, 0x84, 0x49),
+        _ => Color32::GRAY,
+    }
+}
+
+/// Format money held in minor units as a decimal amount.
+fn format_money(minor_units: i64) -> String {
+    let units = minor_units as f64 / 100.0;
+    format!("{units:.2}")
+}
+
+/// Parse a decimal amount into minor currency units.
+///
+/// An empty string means "not recorded", so it yields `None` rather than 0.
+fn parse_money(text: &str) -> Option<i64> {
+    let value: f64 = text.parse().ok()?;
+    if !value.is_finite() {
+        return None;
+    }
+    Some((value * 100.0).round() as i64)
+}
+
+/// Parse a percentage into basis points (0 to 10000).
+///
+/// An empty string means "not recorded".
+fn parse_percent(text: &str) -> Option<Option<i64>> {
+    if text.is_empty() {
+        return Some(None);
+    }
+    let value: f64 = text.parse().ok()?;
+    if !value.is_finite() || !(0.0..=100.0).contains(&value) {
+        return None;
+    }
+    Some(Some((value * 100.0).round() as i64))
+}
+
+/// Format a performance index, or `n/a` when it is undefined.
+fn format_index(value: Option<f64>) -> String {
+    match value {
+        Some(value) => format!("{value:.3}"),
+        None => "n/a".to_string(),
+    }
+}
+
+/// One row of the baseline variance table.
+struct VarianceRow {
+    activity: ActivityId,
+    name: String,
+    current_duration: u32,
+    baseline_duration: u32,
+    baseline_start: Option<Date>,
+    baseline_finish: Option<Date>,
+    current_start: Option<Date>,
+    current_finish: Option<Date>,
+}
+
+impl VarianceRow {
+    fn duration_variance(&self) -> i64 {
+        i64::from(self.current_duration) - i64::from(self.baseline_duration)
+    }
+
+    fn start_variance(&self) -> Option<i64> {
+        day_variance(self.baseline_start, self.current_start)
+    }
+
+    fn finish_variance(&self) -> Option<i64> {
+        day_variance(self.baseline_finish, self.current_finish)
+    }
+}
+
+/// Build one variance row per activity, pairing the baseline with the schedule.
+fn variance_rows(project: &Project, schedule: &Schedule, baseline: &Baseline) -> Vec<VarianceRow> {
+    project
+        .activities
+        .iter()
+        .map(|activity| {
+            let snapshot = baseline
+                .snapshots
+                .iter()
+                .find(|snapshot| snapshot.activity_id == activity.id);
+            let result = schedule.activity(activity.id);
+            VarianceRow {
+                activity: activity.id,
+                name: activity.name.clone(),
+                current_duration: activity.original_duration,
+                baseline_duration: snapshot.map_or(0, |snapshot| snapshot.baseline_duration),
+                baseline_start: snapshot.and_then(|snapshot| snapshot.baseline_start),
+                baseline_finish: snapshot.and_then(|snapshot| snapshot.baseline_finish),
+                current_start: result.map(|result| result.scheduled_start),
+                current_finish: result.map(|result| result.scheduled_finish),
+            }
+        })
+        .collect()
+}
+
+/// Units of one resource that are committed on each day that uses it.
+fn resource_day_usage(
+    project: &Project,
+    schedule: &Schedule,
+    resource_id: ResourceId,
+) -> BTreeMap<Date, u32> {
+    let histogram = resource_histogram(project, schedule);
+    let mut usage = BTreeMap::new();
+    for (date, assignments) in &histogram.entries {
+        let units = assignments
+            .iter()
+            .filter(|assignment| assignment.resource_id == resource_id)
+            .count() as u32;
+        if units > 0 {
+            usage.insert(*date, units);
+        }
+    }
+    usage
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -646,6 +1628,25 @@ fn render_gantt(
                     Color32::from_rgb(0x9B, 0xC1, 0xFF)
                 };
                 painter.rect_filled(bar, 2.0, color);
+
+                // Progress overlay: the completed share of the bar is drawn in
+                // a stronger tone so that recorded progress is visible.
+                if let Some(percent) = activity.percent_complete {
+                    if percent > 0 {
+                        let fraction = percent.clamp(0, 10_000) as f32 / 10_000.0;
+                        let progress = Rect::from_min_max(
+                            bar.min,
+                            Pos2::new(bar.min.x + bar.width() * fraction, bar.max.y),
+                        );
+                        let progress_color = if result.critical {
+                            Color32::from_rgb(0xC0, 0x39, 0x2B)
+                        } else {
+                            Color32::from_rgb(0x2F, 0x6F, 0xED)
+                        };
+                        painter.rect_filled(progress, 2.0, progress_color);
+                    }
+                }
+
                 painter.text(
                     bar.center(),
                     Align2::CENTER_CENTER,
@@ -711,4 +1712,110 @@ pub fn run(project: Project) -> Result<(), String> {
         }),
     )
     .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod accessibility_tests {
+    use super::*;
+
+    /// Worst-case panel backgrounds the app renders text on: egui's light
+    /// theme sits on white and its dark theme near black, so any pair that
+    /// passes here passes with room to spare in the real themes.
+    const LIGHT_TEXT_BACKGROUND: Color32 = Color32::WHITE;
+    const DARK_TEXT_BACKGROUND: Color32 = Color32::from_rgb(0x12, 0x12, 0x12);
+
+    fn relative_luminance(color: Color32) -> f64 {
+        fn channel(value: u8) -> f64 {
+            let scaled = f64::from(value) / 255.0;
+            if scaled <= 0.039_28 {
+                scaled / 12.92
+            } else {
+                ((scaled + 0.055) / 1.055).powf(2.4)
+            }
+        }
+        0.212_6 * channel(color.r()) + 0.715_2 * channel(color.g()) + 0.072_2 * channel(color.b())
+    }
+
+    fn contrast_ratio(a: Color32, b: Color32) -> f64 {
+        let (first, second) = (relative_luminance(a), relative_luminance(b));
+        let (lighter, darker) = if first >= second {
+            (first, second)
+        } else {
+            (second, first)
+        };
+        (lighter + 0.05) / (darker + 0.05)
+    }
+
+    #[test]
+    fn variance_text_meets_wcag_aa_on_both_themes() {
+        let light_red = variance_color(Some(1), false);
+        let light_green = variance_color(Some(-1), false);
+        let dark_red = variance_color(Some(1), true);
+        let dark_green = variance_color(Some(-1), true);
+
+        for (color, name) in [
+            (light_red, "light-theme red"),
+            (light_green, "light-theme green"),
+        ] {
+            let ratio = contrast_ratio(color, LIGHT_TEXT_BACKGROUND);
+            assert!(
+                ratio >= 4.5,
+                "{name} contrast ratio {ratio:.2} is below the WCAG AA body-text minimum of 4.5"
+            );
+        }
+        for (color, name) in [
+            (dark_red, "dark-theme red"),
+            (dark_green, "dark-theme green"),
+        ] {
+            let ratio = contrast_ratio(color, DARK_TEXT_BACKGROUND);
+            assert!(
+                ratio >= 4.5,
+                "{name} contrast ratio {ratio:.2} is below the WCAG AA body-text minimum of 4.5"
+            );
+        }
+    }
+
+    #[test]
+    fn white_text_on_the_selection_accent_is_readable() {
+        // Selected rows and the leveling report draw white text on the accent.
+        let ratio = contrast_ratio(Color32::WHITE, ACCENT);
+        assert!(
+            ratio >= 4.5,
+            "white on accent contrast ratio {ratio:.2} is below 4.5"
+        );
+    }
+
+    #[test]
+    fn the_accent_is_distinguishable_on_both_themes() {
+        // The accent carries selection and highlights rather than body text,
+        // so WCAG 1.4.11's 3:1 non-text minimum applies.
+        assert!(contrast_ratio(ACCENT, LIGHT_TEXT_BACKGROUND) >= 3.0);
+        assert!(contrast_ratio(ACCENT, DARK_TEXT_BACKGROUND) >= 3.0);
+    }
+}
+
+#[cfg(test)]
+mod report_export_tests {
+    use super::*;
+
+    #[test]
+    fn project_names_become_safe_file_stems() {
+        assert_eq!(file_stem("Bridge & Road"), "Bridge-Road");
+        assert_eq!(file_stem("Phase 2 / Phase 3"), "Phase-2-Phase-3");
+        assert_eq!(file_stem("under_score"), "under_score");
+        assert_eq!(file_stem("2026 — Q1"), "2026-Q1");
+        assert_eq!(file_stem("   "), "cadence-project");
+        assert_eq!(file_stem("###"), "cadence-project");
+    }
+
+    #[test]
+    fn the_report_lands_in_a_markdown_file() {
+        let project = Project::new(
+            "Export me",
+            Date::from_calendar_date(2026, Month::January, 5).expect("date"),
+        );
+        let report = cadence_core::report::project_report(&project, today());
+        assert!(report.starts_with("# Export me"));
+        assert_eq!(file_stem(&project.name), "Export-me");
+    }
 }

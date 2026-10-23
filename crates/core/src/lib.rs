@@ -2,11 +2,13 @@
 //!
 //! This crate is pure, dependency-light domain logic. It must remain usable
 //! headlessly from tests, the CLI, and (later) the GUI without any UI or I/O
-//! dependencies.
+//! dependencies. The one presentation guest is [`report`], which renders a
+//! project to Markdown text in memory and performs no I/O of its own.
 
 pub mod calendar_set;
 pub mod engine;
 pub mod model;
+pub mod report;
 pub mod wbs;
 
 pub use calendar_set::{CalendarId, CalendarSet, CalendarSetError, NamedCalendar};

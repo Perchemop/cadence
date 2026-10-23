@@ -17,11 +17,20 @@ const USAGE: &str = "\
 Cadence — construction project scheduling
 
 Usage:
-  cadence               Run the built-in demo project
-  cadence save <file>   Save the demo project to a SQLite project file
-  cadence load <file>   Load a project file and print its schedule
-  cadence gui [file]    Open the project in the GUI (demo if no file)
-  cadence --help        Show this help
+  cadence                        Run the built-in demo project
+  cadence save <file>            Save the demo project to a SQLite project file
+  cadence load <file>            Load a project file and print its schedule
+  cadence report <file> [out]    Write a Markdown report (stdout if no file)
+  cadence gui [file]             Open the project in the GUI (demo if no file)
+  cadence export-xml <in> <out>  Save a project file as Microsoft Project XML
+  cadence import-xml <in> <out>  Import Microsoft Project XML into a project file
+  cadence export-mpx <in> <out>  Save a project file as MPX
+  cadence import-mpx <in> <out>  Import an MPX file into a project file
+  cadence export-csv <in> <out>  Save a project file as a CSV activity table
+  cadence import-csv <in> <out>  Import a CSV activity table into a project file
+  cadence export-json <in> <out> Save a project file as Cadence JSON
+  cadence import-json <in> <out> Import Cadence JSON into a project file
+  cadence --help                 Show this help
 ";
 
 fn main() -> ExitCode {
@@ -34,8 +43,34 @@ fn main() -> ExitCode {
         }
         [command, path] if command == "save" => save_demo(path),
         [command, path] if command == "load" => load_and_print(path),
+        [command, path] if command == "report" => print_report(path, None),
+        [command, input, output] if command == "report" => print_report(input, Some(output)),
         [command] if command == "gui" => gui_demo(),
         [command, path] if command == "gui" => gui_file(path),
+        [command, input, output] if command == "export-xml" => {
+            export_interchange(input, output, Format::Mspdi)
+        }
+        [command, input, output] if command == "import-xml" => {
+            import_interchange(input, output, Format::Mspdi)
+        }
+        [command, input, output] if command == "export-mpx" => {
+            export_interchange(input, output, Format::Mpx)
+        }
+        [command, input, output] if command == "import-mpx" => {
+            import_interchange(input, output, Format::Mpx)
+        }
+        [command, input, output] if command == "export-csv" => {
+            export_interchange(input, output, Format::Csv)
+        }
+        [command, input, output] if command == "import-csv" => {
+            import_interchange(input, output, Format::Csv)
+        }
+        [command, input, output] if command == "export-json" => {
+            export_interchange(input, output, Format::Json)
+        }
+        [command, input, output] if command == "import-json" => {
+            import_interchange(input, output, Format::Json)
+        }
         _ => {
             eprint!("{USAGE}");
             Err("invalid arguments".to_string())
@@ -49,6 +84,65 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Open interchange format selected on the command line.
+#[derive(Debug, Clone, Copy)]
+enum Format {
+    Mspdi,
+    Mpx,
+    Csv,
+    Json,
+}
+
+impl Format {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Mspdi => "Microsoft Project XML",
+            Self::Mpx => "MPX",
+            Self::Csv => "CSV",
+            Self::Json => "JSON",
+        }
+    }
+}
+
+fn export_interchange(input: &str, output: &str, format: Format) -> Result<(), String> {
+    let project = cadence_persistence::load_project(input).map_err(|error| error.to_string())?;
+    let document = match format {
+        Format::Mspdi => cadence_interchange::mspdi::export(&project),
+        Format::Mpx => cadence_interchange::mpx::export(&project),
+        Format::Csv => cadence_interchange::csv::export(&project),
+        Format::Json => Ok(cadence_interchange::json::export(&project)),
+    }
+    .map_err(|error| error.to_string())?;
+    std::fs::write(output, document).map_err(|error| format!("cannot write {output}: {error}"))?;
+    println!(
+        "Exported \"{}\" as {} to {output}",
+        project.name,
+        format.label()
+    );
+    Ok(())
+}
+
+fn import_interchange(input: &str, output: &str, format: Format) -> Result<(), String> {
+    let document =
+        std::fs::read_to_string(input).map_err(|error| format!("cannot read {input}: {error}"))?;
+    let project = match format {
+        Format::Mspdi => cadence_interchange::mspdi::import(&document),
+        Format::Mpx => cadence_interchange::mpx::import(&document),
+        Format::Csv => cadence_interchange::csv::import(&document),
+        Format::Json => cadence_interchange::json::import(&document),
+    }
+    .map_err(|error| error.to_string())?;
+    cadence_persistence::save_project(&project, output).map_err(|error| error.to_string())?;
+    println!(
+        "Imported \"{}\" from {} ({} activities, {} resources) into {output}",
+        project.name,
+        format.label(),
+        project.activities.len(),
+        project.resources.len()
+    );
+    Ok(())
 }
 
 fn run_demo() -> Result<(), String> {
@@ -70,6 +164,26 @@ fn load_and_print(path: &str) -> Result<(), String> {
     let schedule = schedule(&project).map_err(|error| error.to_string())?;
     print_schedule(&project, &schedule);
     Ok(())
+}
+
+/// Write a Markdown project report to stdout or to a file.
+fn print_report(path: &str, output: Option<&str>) -> Result<(), String> {
+    let project = cadence_persistence::load_project(path).map_err(|error| error.to_string())?;
+    let report = cadence_core::report::project_report(&project, today());
+    match output {
+        Some(output) => {
+            std::fs::write(output, &report)
+                .map_err(|error| format!("cannot write {output}: {error}"))?;
+            println!("Report written to {output}");
+        }
+        None => print!("{report}"),
+    }
+    Ok(())
+}
+
+/// Today, as the report status date.
+fn today() -> Date {
+    time::OffsetDateTime::now_utc().date()
 }
 
 fn gui_demo() -> Result<(), String> {

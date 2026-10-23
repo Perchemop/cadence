@@ -48,15 +48,16 @@
 //! successor's scheduled date would otherwise be violated; precedence always
 //! wins over the ALAP preference.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use time::Date;
+use time::{Date, Duration};
 
 use crate::calendar_set::CalendarId;
 use crate::model::{
-    ActivityId, Calendar, CalendarError, Constraint, LinkType, Project, RelationshipId,
+    ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, CalendarError,
+    Constraint, EvmMetrics, LinkType, Project, RelationshipId, ResourceId,
 };
 use crate::wbs::WbsId;
 
@@ -186,6 +187,421 @@ impl Schedule {
     }
 }
 
+/// A single resource unit assigned to an activity on a given day.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResourceAssignment {
+    /// Resource identifier.
+    pub resource_id: ResourceId,
+    /// Activity identifier using the resource.
+    pub activity_id: ActivityId,
+}
+
+/// Resource histogram: for each working day in the project window, the set of
+/// (resource, activity) pairs actively consuming that resource.
+///
+/// Each activity with assigned resources contributes one entry per resource for
+/// every working day between its scheduled start and scheduled finish
+/// (inclusive). Activities with no scheduled dates or no resources contribute
+/// nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ResourceHistogram {
+    /// Working days to resource assignments active on that day, in chronological
+    /// order.
+    pub entries: BTreeMap<Date, Vec<ResourceAssignment>>,
+}
+
+impl ResourceHistogram {
+    /// Number of distinct working days with at least one resource active.
+    pub fn days_with_usage(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Resources active on a given date, in insertion order.
+    pub fn assignments_on(&self, date: Date) -> Option<&Vec<ResourceAssignment>> {
+        self.entries.get(&date)
+    }
+}
+
+/// Build a resource histogram from a schedule and project.
+///
+/// For every activity that has scheduled dates and at least one assigned
+/// resource, emit an entry for each working day between its scheduled start and
+/// scheduled finish (inclusive) under the activity's own calendar.
+pub fn resource_histogram(project: &Project, schedule: &Schedule) -> ResourceHistogram {
+    let mut histogram = ResourceHistogram::default();
+
+    for result in &schedule.activities {
+        let Some(activity) = project.activity(result.id) else {
+            continue;
+        };
+        if activity.resources.is_empty() {
+            continue;
+        }
+
+        let calendar = match activity.calendar {
+            None => &project.calendar,
+            Some(id) => project.calendars.calendar(id).unwrap_or(&project.calendar),
+        };
+
+        let mut day = result.scheduled_start;
+        let finish = result.scheduled_finish;
+        while day <= finish {
+            if calendar.is_working_day(day) {
+                for &resource_id in &activity.resources {
+                    histogram
+                        .entries
+                        .entry(day)
+                        .or_default()
+                        .push(ResourceAssignment {
+                            resource_id,
+                            activity_id: result.id,
+                        });
+                }
+            }
+            day = day
+                .checked_add(Duration::days(1))
+                .expect("resource histogram date overflow");
+        }
+    }
+
+    histogram
+}
+
+/// A resource that is committed beyond its capacity on a single day.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResourceConflict {
+    /// Resource that is over-allocated.
+    pub resource_id: ResourceId,
+    /// Day the over-allocation happens on.
+    pub date: Date,
+    /// Units the resource is committed to on that day.
+    pub required: u32,
+    /// Units the resource can supply on that day.
+    pub capacity: u32,
+    /// Activities competing for the resource on that day.
+    pub activities: Vec<ActivityId>,
+}
+
+/// Leveled dates for one activity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeveledActivity {
+    /// Activity identifier.
+    pub id: ActivityId,
+    /// Start date before leveling.
+    pub original_start: Date,
+    /// Finish date before leveling.
+    pub original_finish: Date,
+    /// Start date after leveling.
+    pub start: Date,
+    /// Finish date after leveling.
+    pub finish: Date,
+    /// Working days the activity was delayed by.
+    pub delay: i64,
+}
+
+/// Outcome of a resource leveling pass.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LevelingResult {
+    /// Leveled dates for every activity of the project.
+    pub activities: Vec<LeveledActivity>,
+    /// Resources that are still over-allocated after leveling.
+    ///
+    /// The list is empty when the schedule could be leveled completely.
+    pub conflicts: Vec<ResourceConflict>,
+}
+
+/// Units committed per resource and day, together with the activities that
+/// commit them.
+type ResourceUsage = BTreeMap<(Date, ResourceId), (u32, Vec<ActivityId>)>;
+
+/// Find every day on which a resource is committed beyond its capacity.
+///
+/// Each activity that has scheduled dates and at least one assigned resource
+/// consumes one unit of each of its resources on every working day between its
+/// scheduled start and scheduled finish (inclusive). A resource is
+/// over-allocated on a day when the units it is committed to exceed its
+/// capacity.
+pub fn resource_conflicts(project: &Project, schedule: &Schedule) -> Vec<ResourceConflict> {
+    let mut usage: ResourceUsage = BTreeMap::new();
+
+    for result in &schedule.activities {
+        let Some(activity) = project.activity(result.id) else {
+            continue;
+        };
+        if activity.resources.is_empty() {
+            continue;
+        }
+
+        let calendar = match activity.calendar {
+            None => &project.calendar,
+            Some(id) => project.calendars.calendar(id).unwrap_or(&project.calendar),
+        };
+
+        let mut day = result.scheduled_start;
+        while day <= result.scheduled_finish {
+            if calendar.is_working_day(day) {
+                for &resource_id in &activity.resources {
+                    let entry = usage.entry((day, resource_id)).or_insert((0, Vec::new()));
+                    entry.0 += 1;
+                    if !entry.1.contains(&result.id) {
+                        entry.1.push(result.id);
+                    }
+                }
+            }
+            day = day
+                .checked_add(Duration::days(1))
+                .expect("resource conflict date overflow");
+        }
+    }
+
+    usage
+        .into_iter()
+        .filter_map(|((date, resource_id), (required, activities))| {
+            let capacity = project
+                .resource(resource_id)
+                .map(|resource| resource.capacity)
+                .unwrap_or(1);
+            if required <= capacity {
+                return None;
+            }
+            Some(ResourceConflict {
+                resource_id,
+                date,
+                required,
+                capacity,
+                activities,
+            })
+        })
+        .collect()
+}
+
+/// Level the schedule so that no resource is used beyond its capacity.
+///
+/// Leveling is a greedy process. The earliest over-allocated day is resolved
+/// by moving the activity that starts last on that day to the next working
+/// day; the project is then re-scheduled so that every dependency stays
+/// intact. The pass repeats until no conflict is left or the iteration budget
+/// runs out.
+///
+/// The result reports the leveled dates and every conflict that could not be
+/// resolved. An empty conflict list means the schedule was leveled
+/// completely.
+///
+/// # Errors
+///
+/// Returns [`SchedError`] when the project can no longer be scheduled, for
+/// example because a deadline constraint no longer holds once an activity is
+/// delayed.
+pub fn level_resources(
+    project: &Project,
+    schedule: &Schedule,
+) -> Result<LevelingResult, SchedError> {
+    let mut minimum_starts: HashMap<ActivityId, Date> = HashMap::new();
+    let mut current = schedule.clone();
+    let mut conflicts = resource_conflicts(project, &current);
+    let budget = 64usize.saturating_add(project.activities.len().saturating_mul(32));
+
+    for _ in 0..budget {
+        let Some(conflict) = conflicts.first() else {
+            break;
+        };
+        let Some(victim) = latest_starting_activity(conflict, &current) else {
+            break;
+        };
+        let Some(activity) = project.activity(victim) else {
+            break;
+        };
+        let calendar = match activity.calendar {
+            None => &project.calendar,
+            Some(id) => project.calendars.calendar(id).unwrap_or(&project.calendar),
+        };
+        let next = calendar.next_working_day_after(conflict.date)?;
+        minimum_starts.insert(victim, next);
+        match schedule_with_minimum_starts(project, &minimum_starts) {
+            Ok(updated) => current = updated,
+            // The project cannot be scheduled any more; report what is known.
+            Err(_) => break,
+        }
+        conflicts = resource_conflicts(project, &current);
+    }
+
+    let mut activities = Vec::with_capacity(current.activities.len());
+    for result in &current.activities {
+        let (original_start, original_finish) = match schedule.activity(result.id) {
+            Some(previous) => (previous.scheduled_start, previous.scheduled_finish),
+            None => (result.scheduled_start, result.scheduled_finish),
+        };
+        let delay = match project.activity(result.id) {
+            Some(activity) => {
+                let calendar = match activity.calendar {
+                    None => &project.calendar,
+                    Some(id) => project.calendars.calendar(id).unwrap_or(&project.calendar),
+                };
+                calendar
+                    .working_days_between(original_start, result.scheduled_start)
+                    .max(0)
+            }
+            None => 0,
+        };
+        activities.push(LeveledActivity {
+            id: result.id,
+            original_start,
+            original_finish,
+            start: result.scheduled_start,
+            finish: result.scheduled_finish,
+            delay,
+        });
+    }
+
+    Ok(LevelingResult {
+        activities,
+        conflicts,
+    })
+}
+
+/// Pick the activity that starts last among those competing for a resource on
+/// a conflicting day.
+///
+/// Moving the latest starter keeps the work that is already under way in
+/// place, which is the usual heuristic for resource leveling. Activities that
+/// start at the same time are broken by identifier, so the activity that comes
+/// last in the project order is the one that moves.
+fn latest_starting_activity(
+    conflict: &ResourceConflict,
+    schedule: &Schedule,
+) -> Option<ActivityId> {
+    conflict
+        .activities
+        .iter()
+        .max_by_key(|id| {
+            let start = schedule
+                .activity(**id)
+                .map(|result| result.scheduled_start)
+                .unwrap_or(conflict.date);
+            (start, **id)
+        })
+        .copied()
+}
+
+/// Capture a baseline snapshot of a computed schedule.
+///
+/// The baseline records, for every scheduled activity, the duration and the
+/// planned start and finish. Activities that are not part of the schedule are
+/// skipped, so a baseline always describes work that the engine could place
+/// on the calendar.
+pub fn capture_baseline(
+    project: &Project,
+    schedule: &Schedule,
+    id: BaselineId,
+    name: impl Into<String>,
+    created_at: Date,
+) -> Baseline {
+    let snapshots = schedule
+        .activities
+        .iter()
+        .map(|result| ActivityBaselineSnapshot {
+            activity_id: result.id,
+            baseline_duration: project
+                .activity(result.id)
+                .map(|activity| activity.original_duration)
+                .unwrap_or_default(),
+            baseline_start: Some(result.scheduled_start),
+            baseline_finish: Some(result.scheduled_finish),
+        })
+        .collect();
+    Baseline::from_snapshots(id, name, created_at, snapshots)
+}
+
+/// Compute earned value metrics for the whole project against a baseline.
+///
+/// `status_date` is the "data date": the day progress is measured as of.
+/// Planned value comes from the baseline schedule, so the baseline must have
+/// been captured before the work it describes. Without a baseline the planned
+/// value is zero and the schedule performance index is undefined.
+pub fn evm_metrics(
+    project: &Project,
+    baseline: Option<&Baseline>,
+    status_date: Date,
+) -> EvmMetrics {
+    let mut total_bac = 0i64;
+    let mut total_pv = 0i64;
+    let mut total_ev = 0i64;
+    let mut total_ac = 0i64;
+
+    for activity in &project.activities {
+        let snapshot = baseline.and_then(|candidate| {
+            candidate
+                .snapshots
+                .iter()
+                .find(|snapshot| snapshot.activity_id == activity.id)
+        });
+        let planned_fraction = match snapshot {
+            Some(snapshot) => {
+                let calendar = project
+                    .resolve_calendar(activity.calendar)
+                    .unwrap_or(&project.calendar);
+                planned_percent(snapshot, status_date, calendar)
+            }
+            None => 0,
+        };
+        let metrics = EvmMetrics::for_activity(activity, planned_fraction);
+        total_bac += metrics.budget_at_completion;
+        total_pv += metrics.planned_value;
+        total_ev += metrics.earned_value;
+        total_ac += metrics.actual_cost;
+    }
+
+    let cv = total_ev - total_ac;
+    let sv = total_ev - total_pv;
+    let cpi = if total_ac != 0 {
+        Some(total_ev as f64 / total_ac as f64)
+    } else {
+        None
+    };
+    let spi = if total_pv != 0 {
+        Some(total_ev as f64 / total_pv as f64)
+    } else {
+        None
+    };
+
+    EvmMetrics {
+        budget_at_completion: total_bac,
+        planned_value: total_pv,
+        earned_value: total_ev,
+        actual_cost: total_ac,
+        cost_variance: cv,
+        schedule_variance: sv,
+        cost_performance_index: cpi,
+        schedule_performance_index: spi,
+    }
+}
+
+/// Share of an activity's baseline that is scheduled as complete at the status
+/// date, expressed in basis points (0 to 10000).
+///
+/// Work is counted in whole working days of the activity's calendar, starting
+/// at the baseline start. A zero-length activity (a milestone) counts as fully
+/// planned once the status date reaches its baseline start.
+fn planned_percent(
+    snapshot: &ActivityBaselineSnapshot,
+    status_date: Date,
+    calendar: &Calendar,
+) -> i64 {
+    let Some(start) = snapshot.baseline_start else {
+        return 0;
+    };
+    if snapshot.baseline_duration == 0 {
+        return if status_date >= start { 10_000 } else { 0 };
+    }
+    let duration = i64::from(snapshot.baseline_duration);
+    let elapsed = match status_date.next_day() {
+        Some(next) => calendar.working_days_between(start, next),
+        None => calendar.working_days_between(start, status_date),
+    };
+    let elapsed = elapsed.clamp(0, duration);
+    elapsed * 10_000 / duration
+}
+
 /// Schedule a project with the Critical Path Method.
 ///
 /// # Errors
@@ -194,6 +610,19 @@ impl Schedule {
 /// to missing activities, cycles in the relationship graph, arithmetic
 /// overflow, or an unusable calendar.
 pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
+    schedule_with_minimum_starts(project, &HashMap::new())
+}
+
+/// Schedule a project while forcing activities to start no earlier than a
+/// given date.
+///
+/// The minimum starts behave like a "start no earlier than" constraint that is
+/// never violated: they raise the forward pass and the backward pass is kept
+/// consistent with them.
+fn schedule_with_minimum_starts(
+    project: &Project,
+    minimum_starts: &HashMap<ActivityId, Date>,
+) -> Result<Schedule, SchedError> {
     let calendar = &project.calendar;
     let origin = calendar.next_working_day_on_or_after(project.start_date)?;
     let count = project.activities.len();
@@ -322,6 +751,12 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
             _ => {}
         }
 
+        // Resource leveling may push an activity later than the network
+        // allows; the minimum start wins over every other lower bound.
+        if let Some(&minimum) = minimum_starts.get(&activity.id) {
+            start = start.max(calendar.next_working_day_on_or_after(minimum)?);
+        }
+
         let start = calendar.next_working_day_on_or_after(start)?;
         let finish = finish_from_start(calendar, start, duration)?;
 
@@ -415,6 +850,12 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
                 finish = finish.max(calendar.next_working_day_on_or_after(date)?);
             }
             _ => {}
+        }
+
+        // Keep the late dates consistent with a leveled minimum start.
+        if let Some(&minimum) = minimum_starts.get(&activity.id) {
+            let earliest_start = calendar.next_working_day_on_or_after(minimum)?;
+            finish = finish.max(finish_from_start(calendar, earliest_start, duration)?);
         }
 
         late_finish[activity_index] = finish;
@@ -686,7 +1127,7 @@ fn lag_plus_one(lag: i64) -> Result<i64, SchedError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Activity, Constraint, LinkType, Relationship};
+    use crate::model::{Activity, Constraint, LinkType, Relationship, Resource};
     use std::time::Instant;
     use time::Month;
 
@@ -1299,5 +1740,414 @@ mod tests {
             "scheduling 10,000 activities took {} ms",
             elapsed.as_millis()
         );
+    }
+
+    #[test]
+    fn resource_analysis_scales_to_ten_thousand_committed_days() {
+        let mut project = Project::new("Resource performance", jan(5));
+        for index in 0..10_000 {
+            let mut activity = Activity::new(ActivityId(index + 1), format!("A{index}"), 1);
+            // Stagger the activities over the calendar so that the histogram
+            // covers one committed day per activity.
+            activity.constraint = Constraint::StartNoEarlierThan(
+                project
+                    .calendar
+                    .add_working_days(jan(5), index as i64)
+                    .expect("working day"),
+            );
+            activity.resources.push(ResourceId(1));
+            project.activities.push(activity);
+        }
+        for index in 0..9_999 {
+            project.relationships.push(Relationship::new(
+                RelationshipId(index + 1),
+                ActivityId(index + 1),
+                ActivityId(index + 2),
+                LinkType::Fs,
+                0,
+            ));
+        }
+        project
+            .resources
+            .push(Resource::with_capacity(ResourceId(1), "Crew", 1));
+
+        // The fixture (ten thousand constraint dates) is built before the
+        // clock starts: the gate measures scheduling and analysis, not setup.
+        let started = Instant::now();
+        let schedule = schedule(&project).expect("large project schedules");
+        let histogram = resource_histogram(&project, &schedule);
+        let conflicts = resource_conflicts(&project, &schedule);
+        let elapsed = started.elapsed();
+
+        // One crew per day: ten thousand committed days, none over capacity.
+        assert_eq!(histogram.entries.len(), 10_000);
+        assert!(conflicts.is_empty());
+        assert!(
+            elapsed.as_millis() < 750,
+            "resource analysis took {} ms",
+            elapsed.as_millis()
+        );
+    }
+
+    #[test]
+    fn leveling_one_hundred_parallel_activities_stays_fast() {
+        let mut project = Project::new("Leveling performance", jan(5));
+        for index in 0..100 {
+            let mut activity = Activity::new(ActivityId(index + 1), format!("A{index}"), 1);
+            activity.resources.push(ResourceId(index % 4 + 1));
+            project.activities.push(activity);
+        }
+        for crew in 1..=4u64 {
+            project.resources.push(Resource::with_capacity(
+                ResourceId(crew),
+                format!("Crew {crew}"),
+                1,
+            ));
+        }
+
+        let started = Instant::now();
+        let schedule = schedule(&project).expect("schedules");
+        let leveled = level_resources(&project, &schedule).expect("levels");
+        let elapsed = started.elapsed();
+
+        // Twenty-five activities per one-unit crew all start on day one, so
+        // leveling has to spread each crew's work over twenty-five working
+        // days.
+        assert!(
+            leveled.conflicts.len() < 100,
+            "{} conflicts remained",
+            leveled.conflicts.len()
+        );
+        assert!(
+            elapsed.as_millis() < 3_000,
+            "leveling took {} ms",
+            elapsed.as_millis()
+        );
+    }
+
+    fn add_resource(project: &mut Project, id: u64, name: &str) -> ResourceId {
+        let resource_id = ResourceId(id);
+        project.resources.push(Resource::new(resource_id, name));
+        resource_id
+    }
+
+    #[test]
+    fn resource_histogram_counts_assigned_days() {
+        let mut project = project();
+        let a1 = add_activity(&mut project, 1, "A1", 2);
+        let a2 = add_activity(&mut project, 2, "A2", 1);
+        let r1 = add_resource(&mut project, 1, "Resource one");
+        let r2 = add_resource(&mut project, 2, "Resource two");
+
+        project.activities[0].resources.push(r1);
+        project.activities[1].resources.push(r2);
+        project.relationships.push(Relationship::new(
+            RelationshipId(1),
+            a1,
+            a2,
+            LinkType::Fs,
+            0,
+        ));
+
+        let schedule = schedule(&project).expect("schedule");
+        let histogram = resource_histogram(&project, &schedule);
+
+        assert_eq!(histogram.days_with_usage(), 3);
+
+        let jan5 = jan(5);
+        let jan6 = jan(6);
+        let jan7 = jan(7);
+
+        assert_eq!(
+            histogram.assignments_on(jan5),
+            Some(&vec![ResourceAssignment {
+                resource_id: r1,
+                activity_id: a1,
+            }])
+        );
+        assert_eq!(
+            histogram.assignments_on(jan6),
+            Some(&vec![ResourceAssignment {
+                resource_id: r1,
+                activity_id: a1,
+            }])
+        );
+        assert_eq!(
+            histogram.assignments_on(jan7),
+            Some(&vec![ResourceAssignment {
+                resource_id: r2,
+                activity_id: a2,
+            }])
+        );
+        assert!(histogram.assignments_on(jan(4)).is_none());
+    }
+
+    #[test]
+    fn resource_histogram_skips_unscheduled_and_unassigned_activities() {
+        let mut project = project();
+        let _scheduled = add_activity(&mut project, 1, "Scheduled", 2);
+        let _unscheduled = add_activity(&mut project, 2, "Unscheduled", 2);
+        let _no_resources = add_activity(&mut project, 3, "No resources", 2);
+        let r = add_resource(&mut project, 1, "R");
+
+        project.activities[0].resources.push(r);
+        project
+            .resources
+            .push(Resource::new(ResourceId(2), "Unused"));
+
+        let schedule = schedule(&project).expect("schedule");
+        let histogram = resource_histogram(&project, &schedule);
+
+        // Only activity 1 has resources and scheduled dates.
+        assert_eq!(histogram.days_with_usage(), 2);
+        assert!(histogram.assignments_on(jan(5)).is_some());
+        assert!(histogram.assignments_on(jan(6)).is_some());
+        assert!(histogram.assignments_on(jan(7)).is_none());
+    }
+
+    #[test]
+    fn resource_conflicts_report_every_over_allocated_day() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 3);
+        add_activity(&mut project, 2, "A2", 3);
+        project.resources.push(Resource::new(ResourceId(1), "Crew"));
+        project.activities[0].resources = vec![ResourceId(1)];
+        project.activities[1].resources = vec![ResourceId(1)];
+        let schedule = schedule(&project).expect("schedule");
+
+        let conflicts = resource_conflicts(&project, &schedule);
+
+        assert_eq!(conflicts.len(), 3);
+        assert_eq!(conflicts[0].resource_id, ResourceId(1));
+        assert_eq!(conflicts[0].date, jan(5));
+        assert_eq!(conflicts[0].required, 2);
+        assert_eq!(conflicts[0].capacity, 1);
+        assert_eq!(conflicts[0].activities, vec![ActivityId(1), ActivityId(2)]);
+        assert_eq!(conflicts[2].date, jan(7));
+    }
+
+    #[test]
+    fn a_resource_with_spare_capacity_is_not_over_allocated() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 3);
+        add_activity(&mut project, 2, "A2", 3);
+        project
+            .resources
+            .push(Resource::with_capacity(ResourceId(1), "Crew", 2));
+        project.activities[0].resources = vec![ResourceId(1)];
+        project.activities[1].resources = vec![ResourceId(1)];
+        let schedule = schedule(&project).expect("schedule");
+
+        assert!(resource_conflicts(&project, &schedule).is_empty());
+    }
+
+    #[test]
+    fn leveling_delays_the_later_activity_that_over_allocates_a_resource() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 3);
+        add_activity(&mut project, 2, "A2", 3);
+        project.resources.push(Resource::new(ResourceId(1), "Crew"));
+        project.activities[0].resources = vec![ResourceId(1)];
+        project.activities[1].resources = vec![ResourceId(1)];
+        let schedule = schedule(&project).expect("schedule");
+
+        let result = level_resources(&project, &schedule).expect("level");
+
+        assert!(result.conflicts.is_empty());
+        let first = result
+            .activities
+            .iter()
+            .find(|activity| activity.id == ActivityId(1))
+            .expect("A1");
+        let second = result
+            .activities
+            .iter()
+            .find(|activity| activity.id == ActivityId(2))
+            .expect("A2");
+        assert_eq!(first.start, jan(5));
+        assert_eq!(first.delay, 0);
+        assert_eq!(second.original_start, jan(5));
+        assert_eq!(second.start, jan(8));
+        assert_eq!(second.delay, 3);
+        // The three working days after the delay are Thu 8, Fri 9 and Mon 12.
+        assert_eq!(second.finish, jan(12));
+    }
+
+    #[test]
+    fn leveling_keeps_dependencies_intact() {
+        let mut project = project();
+        let first = add_activity(&mut project, 1, "A1", 3);
+        add_activity(&mut project, 2, "A2", 3);
+        let third = add_activity(&mut project, 3, "A3", 2);
+        add_relationship(&mut project, 1, first, third, LinkType::Fs, 0);
+        project.resources.push(Resource::new(ResourceId(1), "Crew"));
+        for activity in &mut project.activities {
+            activity.resources = vec![ResourceId(1)];
+        }
+        let schedule = schedule(&project).expect("schedule");
+        assert!(!resource_conflicts(&project, &schedule).is_empty());
+
+        let result = level_resources(&project, &schedule).expect("level");
+
+        assert!(result.conflicts.is_empty());
+        let leveled_first = result
+            .activities
+            .iter()
+            .find(|activity| activity.id == first)
+            .expect("A1");
+        let leveled_third = result
+            .activities
+            .iter()
+            .find(|activity| activity.id == third)
+            .expect("A3");
+        assert_eq!(leveled_first.start, jan(5));
+        assert_eq!(leveled_first.finish, jan(7));
+        // The successor still starts after its predecessor finishes.
+        assert!(leveled_third.start > leveled_first.finish);
+    }
+
+    #[test]
+    fn leveling_a_feasible_schedule_changes_nothing() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 3);
+        add_activity(&mut project, 2, "A2", 3);
+        project
+            .resources
+            .push(Resource::with_capacity(ResourceId(1), "Crew", 2));
+        project.activities[0].resources = vec![ResourceId(1)];
+        project.activities[1].resources = vec![ResourceId(1)];
+        let schedule = schedule(&project).expect("schedule");
+
+        let result = level_resources(&project, &schedule).expect("level");
+
+        assert!(result.conflicts.is_empty());
+        assert_eq!(result.activities.len(), 2);
+        for activity in &result.activities {
+            assert_eq!(activity.start, activity.original_start);
+            assert_eq!(activity.finish, activity.original_finish);
+            assert_eq!(activity.delay, 0);
+        }
+    }
+
+    #[test]
+    fn baseline_capture_records_the_scheduled_dates() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 3);
+        let schedule = schedule(&project).expect("schedule");
+
+        let baseline = capture_baseline(&project, &schedule, BaselineId(1), "Baseline 1", jan(5));
+
+        assert_eq!(baseline.id, BaselineId(1));
+        assert_eq!(baseline.name, "Baseline 1");
+        assert_eq!(baseline.created_at, jan(5));
+        assert_eq!(baseline.snapshots.len(), 1);
+        assert_eq!(baseline.snapshots[0].activity_id, ActivityId(1));
+        assert_eq!(baseline.snapshots[0].baseline_duration, 3);
+        assert_eq!(baseline.snapshots[0].baseline_start, Some(jan(5)));
+        assert_eq!(baseline.snapshots[0].baseline_finish, Some(jan(7)));
+    }
+
+    #[test]
+    fn baseline_capture_skips_activities_that_cannot_be_scheduled() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 1);
+        // A cycle cannot be scheduled, so the whole schedule fails and no
+        // baseline can be captured.
+        add_activity(&mut project, 2, "A2", 1);
+        project.relationships.push(Relationship::new(
+            RelationshipId(1),
+            ActivityId(1),
+            ActivityId(2),
+            LinkType::Fs,
+            0,
+        ));
+        project.relationships.push(Relationship::new(
+            RelationshipId(2),
+            ActivityId(2),
+            ActivityId(1),
+            LinkType::Fs,
+            0,
+        ));
+
+        assert!(schedule(&project).is_err());
+    }
+
+    #[test]
+    fn evm_metrics_prorate_planned_value_by_the_baseline_schedule() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 4);
+        project.activities[0].budget_at_completion = Some(10_000);
+        project.activities[0].actual_cost = Some(6_000);
+        project.activities[0].percent_complete = Some(2_000);
+
+        let schedule = schedule(&project).expect("schedule");
+        let baseline = capture_baseline(&project, &schedule, BaselineId(1), "Baseline 1", jan(5));
+
+        // One of the four baseline working days is complete at the status date.
+        let metrics = evm_metrics(&project, Some(&baseline), jan(5));
+        assert_eq!(metrics.budget_at_completion, 10_000);
+        assert_eq!(metrics.planned_value, 2_500);
+        assert_eq!(metrics.earned_value, 2_000);
+        assert_eq!(metrics.actual_cost, 6_000);
+        assert_eq!(metrics.cost_variance, -4_000);
+        assert_eq!(metrics.schedule_variance, -500);
+        let cpi = metrics
+            .cost_performance_index
+            .expect("cost performance index");
+        assert!((cpi - 1.0 / 3.0).abs() < 1e-9, "cpi was {cpi}");
+        let spi = metrics
+            .schedule_performance_index
+            .expect("schedule performance index");
+        assert!((spi - 0.8).abs() < 1e-9, "spi was {spi}");
+    }
+
+    #[test]
+    fn evm_metrics_reach_full_planned_value_when_the_baseline_is_complete() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 2);
+        project.activities[0].budget_at_completion = Some(5_000);
+        project.activities[0].percent_complete = Some(10_000);
+
+        let schedule = schedule(&project).expect("schedule");
+        let baseline = capture_baseline(&project, &schedule, BaselineId(1), "Baseline 1", jan(5));
+
+        let metrics = evm_metrics(&project, Some(&baseline), jan(30));
+        assert_eq!(metrics.planned_value, 5_000);
+        assert_eq!(metrics.earned_value, 5_000);
+        assert_eq!(metrics.schedule_variance, 0);
+        let spi = metrics
+            .schedule_performance_index
+            .expect("schedule performance index");
+        assert!((spi - 1.0).abs() < 1e-9, "spi was {spi}");
+    }
+
+    #[test]
+    fn evm_metrics_without_a_baseline_have_no_planned_value() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A1", 2);
+        project.activities[0].budget_at_completion = Some(5_000);
+        project.activities[0].percent_complete = Some(5_000);
+
+        let metrics = evm_metrics(&project, None, jan(5));
+        assert_eq!(metrics.planned_value, 0);
+        assert_eq!(metrics.earned_value, 2_500);
+        assert_eq!(metrics.schedule_variance, 2_500);
+        assert_eq!(metrics.schedule_performance_index, None);
+    }
+
+    #[test]
+    fn evm_metrics_treat_a_milestone_as_fully_planned_from_its_baseline_start() {
+        let mut project = project();
+        add_activity(&mut project, 1, "Milestone", 0);
+        project.activities[0].budget_at_completion = Some(1_000);
+
+        let schedule = schedule(&project).expect("schedule");
+        let baseline = capture_baseline(&project, &schedule, BaselineId(1), "Baseline 1", jan(5));
+
+        let before = evm_metrics(&project, Some(&baseline), jan(4));
+        assert_eq!(before.planned_value, 0);
+
+        let after = evm_metrics(&project, Some(&baseline), jan(5));
+        assert_eq!(after.planned_value, 1_000);
     }
 }

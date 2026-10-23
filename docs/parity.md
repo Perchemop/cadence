@@ -45,10 +45,40 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | Interactive Gantt | done | timeline, bars, arrows, zoom/pan, virtualised rows |
 | Activity table | done | sortable columns, selection, inspector edits via commands |
 | Dependency editing | done | drag-to-create links, lag editing, cycle prevention |
-| Zoom / pan | todo | |
+| Zoom / pan | done | Ctrl+wheel zoom in the Gantt view, scroll areas for panning |
 | Phase-2 QC gate | done | `docs/qc/phase-2.md` |
 
-## Later phases
+## Phase 3 — Resources
 
-Resources (Phase 3), baselines & progress/EVM (Phase 4), printing, reports,
-interop, polish (Phase 5) — all `todo`.
+| Capability | Status | Notes |
+|---|---|---|
+| Resource dictionary | done | `Resource` with `kind` and `capacity` (units per working day), unique case-insensitive names |
+| Resource assignments | done | `Activity::resources`, undoable assign/unassign commands |
+| Usage histograms | done | `engine::resource_histogram`: committed units per working day |
+| Over-allocation detection | done | `engine::resource_conflicts` reports every day over capacity |
+| Resource leveling | done | `engine::level_resources`, greedy earliest-conflict delay (D12) |
+| Resource panel in the UI | done | dictionary, editing, assignments, usage, leveling preview/apply |
+
+## Phase 4 — Baselines, progress & EVM
+
+| Capability | Status | Notes |
+|---|---|---|
+| Multiple baselines | done | project-wide baselines with per-activity snapshots, undoable capture/remove/restore |
+| Variance views | done | Baselines view: per-activity duration/start/finish variance against the selected baseline, coloured by sign |
+| EVM metrics | done | `engine::evm_metrics`: PV, EV, AC, SV, CV, SPI, CPI shown against an editable status date (D13) |
+| Progress updating (percent complete, actual dates) | done | inspector edits via undoable commands; Gantt bars show a progress overlay; schema v4 records actual dates |
+
+## Phase 5 — Polish & interop
+
+| Capability | Status | Notes |
+|---|---|---|
+| Microsoft Project XML (MSPDI) import/export | done | `cadence-interchange::mspdi` (D14) |
+| MPX import/export | done | `cadence-interchange::mpx` (D14) |
+| CSV activity table import/export | done | `cadence-interchange::csv`: one row per activity with constraints, links, assignments and progress; CLI `export-csv`/`import-csv` |
+| JSON interchange | done | `cadence-interchange::json`: Cadence's own versioned schema and the only format that is lossless — it carries the WBS tree, named calendars and activity membership as well as everything the other formats do; CLI `export-json`/`import-json` |
+| WBS and named calendars in interchange | done for JSON | MSPDI, MPX and CSV cannot express them and import them empty (documented in `interchange::json`) |
+| Printing / PDF and reports | in progress | Markdown reports done (`cadence report` CLI and the GUI **Save report** button); native print/PDF deferred |
+| Keyboard map | in progress | Ctrl+Z/Y undo-redo and Ctrl+1..4 view switching added; full keyboard-only operation audit pending |
+| Accessibility audit | in progress | WCAG AA contrast for theme text verified by tests (`accessibility_tests`); screen-reader (AccessKit) pass pending |
+| Performance pass | in progress | 10k-activity schedule, 10k-day resource analysis and 200-activity leveling all time-budgeted in CI; smooth-interaction profiling pending |
+| Documentation, example projects, first tagged release | in progress | `docs/usage.md` and the `bridge_report` example added; tagging is a release decision |

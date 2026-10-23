@@ -5,9 +5,10 @@
 //! landing on the activity's own working calendar and every relationship
 //! remaining satisfied after the forward and ALAP passes.
 
-use cadence_core::engine::{schedule, SchedError};
+use cadence_core::engine::{level_resources, resource_conflicts, schedule, SchedError};
 use cadence_core::model::{
     Activity, ActivityId, Calendar, Constraint, LinkType, Project, Relationship, RelationshipId,
+    Resource, ResourceId,
 };
 use cadence_core::CalendarId;
 use proptest::prelude::*;
@@ -343,6 +344,83 @@ proptest! {
             Err(other) => {
                 prop_assert!(false, "unexpected scheduling error: {other:?}");
             }
+        }
+    }
+
+    #[test]
+    fn leveling_only_delays_work_and_lands_on_a_feasible_schedule(
+        durations in prop::collection::vec(1u32..6, 1..MAX_ACTIVITIES),
+        raw_links in prop::collection::vec(
+            (0usize..MAX_ACTIVITIES, 0usize..MAX_ACTIVITIES, 0u8..4, 0i64..3),
+            0..12,
+        ),
+        masks in prop::collection::vec(0u8..8, 1..MAX_ACTIVITIES),
+        capacities in prop::collection::vec(1u32..4, 1..3),
+    ) {
+        let (mut project, _links) = build(&durations, &raw_links);
+        for (index, capacity) in capacities.iter().enumerate() {
+            project.resources.push(Resource::with_capacity(
+                ResourceId(index as u64 + 1),
+                format!("R{index}"),
+                *capacity,
+            ));
+        }
+        for (index, activity) in project.activities.iter_mut().enumerate() {
+            let mask = masks.get(index).copied().unwrap_or(0);
+            for bit in 0..capacities.len() {
+                if mask & (1 << bit) != 0 {
+                    activity.resources.push(ResourceId(bit as u64 + 1));
+                }
+            }
+        }
+
+        let computed = schedule(&project).expect("valid DAG schedules");
+        let Ok(leveled) = level_resources(&project, &computed) else {
+            // Leveling only fails when the project stops being schedulable,
+            // which the generator cannot produce; treat it as a skip.
+            return Ok(());
+        };
+
+        for activity in &leveled.activities {
+            prop_assert!(
+                activity.start >= activity.original_start,
+                "leveling moved activity {} earlier: {} -> {}",
+                activity.id,
+                activity.original_start,
+                activity.start
+            );
+            prop_assert!(activity.finish >= activity.original_finish);
+            prop_assert_eq!(
+                activity.delay,
+                project
+                    .calendar
+                    .working_days_between(activity.original_start, activity.start)
+                    .max(0)
+            );
+        }
+
+        if !leveled.conflicts.is_empty() {
+            // The iteration budget ran out; the remaining conflicts are
+            // reported rather than hidden, which is all that is promised.
+            return Ok(());
+        }
+
+        // A leveled schedule with no conflicts left must be achievable through
+        // ordinary start-no-earlier-than constraints, and the reschedule must
+        // reproduce exactly the dates leveling reported (D12).
+        let mut applied = project.clone();
+        for activity in &leveled.activities {
+            applied
+                .activity_mut(activity.id)
+                .expect("activity")
+                .constraint = Constraint::StartNoEarlierThan(activity.start);
+        }
+        let rescheduled = schedule(&applied).expect("the leveled project schedules");
+        prop_assert!(resource_conflicts(&applied, &rescheduled).is_empty());
+        for activity in &leveled.activities {
+            let item = rescheduled.activity(activity.id).expect("scheduled activity");
+            prop_assert_eq!(item.scheduled_start, activity.start);
+            prop_assert_eq!(item.scheduled_finish, activity.finish);
         }
     }
 
