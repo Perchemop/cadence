@@ -44,8 +44,11 @@ jobs:
       - name: Tests
         run: cargo test --workspace
 
+      # bash is present on every runner; PowerShell is the Windows default and
+      # does not understand this redirection.
       - name: Job summary
         if: always()
+        shell: bash
         run: |
           {
             echo "## Cadence CI (${{ matrix.os }})"
@@ -80,6 +83,7 @@ jobs:
 
       - name: Job summary
         if: always()
+        shell: bash
         run: |
           {
             echo "## Cadence package"
