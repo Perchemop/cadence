@@ -459,7 +459,7 @@ mod tests {
         // only after decoding: that is what a reader does, and it must find the
         // words escaped as PDF literal strings.
         assert!(text.contains(&hex_of("Survey")));
-        assert!(text.contains(&hex_of("Excavate \\ with (parens)")));
+        assert!(text.contains(&hex_of(&escape_pdf("Excavate \\ with (parens)"))));
         // A cross-reference table and trailer close the file.
         assert!(text.contains("xref\n0 7"));
         assert!(text.contains("/Root 1 0 R"));
