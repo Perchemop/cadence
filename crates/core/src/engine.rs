@@ -1746,8 +1746,7 @@ mod tests {
     fn resource_analysis_scales_to_ten_thousand_committed_days() {
         let mut project = Project::new("Resource performance", jan(5));
         for index in 0..10_000 {
-            let mut activity =
-                Activity::new(ActivityId(index + 1), format!("A{index}"), 1);
+            let mut activity = Activity::new(ActivityId(index + 1), format!("A{index}"), 1);
             // Stagger the activities over the calendar so that the histogram
             // covers one committed day per activity.
             activity.constraint = Constraint::StartNoEarlierThan(
@@ -1792,15 +1791,16 @@ mod tests {
     fn leveling_two_hundred_parallel_activities_stays_fast() {
         let mut project = Project::new("Leveling performance", jan(5));
         for index in 0..200 {
-            let mut activity =
-                Activity::new(ActivityId(index + 1), format!("A{index}"), 1);
+            let mut activity = Activity::new(ActivityId(index + 1), format!("A{index}"), 1);
             activity.resources.push(ResourceId(index % 4 + 1));
             project.activities.push(activity);
         }
         for crew in 1..=4u64 {
-            project
-                .resources
-                .push(Resource::with_capacity(ResourceId(crew), format!("Crew {crew}"), 1));
+            project.resources.push(Resource::with_capacity(
+                ResourceId(crew),
+                format!("Crew {crew}"),
+                1,
+            ));
         }
 
         let started = Instant::now();

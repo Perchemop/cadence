@@ -44,9 +44,7 @@ fn main() -> ExitCode {
         [command, path] if command == "save" => save_demo(path),
         [command, path] if command == "load" => load_and_print(path),
         [command, path] if command == "report" => print_report(path, None),
-        [command, input, output] if command == "report" => {
-            print_report(input, Some(output))
-        }
+        [command, input, output] if command == "report" => print_report(input, Some(output)),
         [command] if command == "gui" => gui_demo(),
         [command, path] if command == "gui" => gui_file(path),
         [command, input, output] if command == "export-xml" => {

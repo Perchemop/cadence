@@ -1694,9 +1694,7 @@ mod accessibility_tests {
                 ((scaled + 0.055) / 1.055).powf(2.4)
             }
         }
-        0.212_6 * channel(color.r())
-            + 0.715_2 * channel(color.g())
-            + 0.072_2 * channel(color.b())
+        0.212_6 * channel(color.r()) + 0.715_2 * channel(color.g()) + 0.072_2 * channel(color.b())
     }
 
     fn contrast_ratio(a: Color32, b: Color32) -> f64 {

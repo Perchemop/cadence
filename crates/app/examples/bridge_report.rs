@@ -25,10 +25,12 @@ fn main() {
 
     // The same project survives a JSON round trip.
     let json = cadence_interchange::json::export(&project);
-    let reloaded =
-        cadence_interchange::json::import(&json).expect("the exported JSON re-imports");
+    let reloaded = cadence_interchange::json::import(&json).expect("the exported JSON re-imports");
     assert_eq!(reloaded.activities.len(), project.activities.len());
-    println!("JSON round trip: {} activities preserved", reloaded.activities.len());
+    println!(
+        "JSON round trip: {} activities preserved",
+        reloaded.activities.len()
+    );
 }
 
 /// A small, fully scheduled bridge project with resources and a baseline.
@@ -78,13 +80,7 @@ fn bridge_project() -> Project {
     project.activities[2].resources = vec![ResourceId(2)];
 
     let computed = schedule(&project).expect("the sample project schedules");
-    let baseline = capture_baseline(
-        &project,
-        &computed,
-        BaselineId(1),
-        "Board-approved",
-        start,
-    );
+    let baseline = capture_baseline(&project, &computed, BaselineId(1), "Board-approved", start);
     project.baselines.push(Baseline::from_snapshots(
         baseline.id,
         baseline.name,

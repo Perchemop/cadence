@@ -20,7 +20,7 @@ use std::fmt::Write as _;
 
 use time::Date;
 
-use crate::engine::{Schedule, evm_metrics, resource_conflicts, resource_histogram, schedule};
+use crate::engine::{evm_metrics, resource_conflicts, resource_histogram, schedule, Schedule};
 use crate::model::{Project, ResourceId};
 
 /// Generate a Markdown report for `project` as of `status_date`.
@@ -165,11 +165,7 @@ fn earned_value_section(project: &Project, status_date: Date, report: &mut Strin
         "| Planned value | {} |",
         money(metrics.planned_value)
     );
-    let _ = writeln!(
-        report,
-        "| Earned value | {} |",
-        money(metrics.earned_value)
-    );
+    let _ = writeln!(report, "| Earned value | {} |", money(metrics.earned_value));
     let _ = writeln!(report, "| Actual cost | {} |", money(metrics.actual_cost));
     let _ = writeln!(
         report,
@@ -229,7 +225,10 @@ fn index(value: Option<f64>) -> String {
 
 /// Prevent cell text with pipes or line breaks from breaking the table.
 fn escape_table(value: &str) -> String {
-    value.replace('|', "\\|").replace('\n', " ").replace('\r', " ")
+    value
+        .replace('|', "\\|")
+        .replace('\n', " ")
+        .replace('\r', " ")
 }
 
 #[cfg(test)]
@@ -237,8 +236,8 @@ mod tests {
     use super::*;
     use crate::engine::capture_baseline;
     use crate::model::{
-        Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Constraint,
-        LinkType, Relationship, RelationshipId, Resource, ResourceId,
+        Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Constraint, LinkType,
+        Relationship, RelationshipId, Resource, ResourceId,
     };
     use time::Month;
 
@@ -272,7 +271,9 @@ mod tests {
             0,
         ));
 
-        project.resources.push(Resource::new(ResourceId(1), "Crew A"));
+        project
+            .resources
+            .push(Resource::new(ResourceId(1), "Crew A"));
         project.activities[0].resources = vec![ResourceId(1)];
         project.activities[1].resources = vec![ResourceId(1)];
         project.activities[2].resources = vec![ResourceId(1)];
