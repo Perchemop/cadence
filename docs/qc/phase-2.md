@@ -11,7 +11,9 @@ Checklist for the Phase-2 Gantt and table slices.
       virtualisation (P2-3).
 - [x] Drag-to-create dependencies and lag editing with cycle prevention
       (P2-4).
-- [x] Performance baseline: 10,000-activity chain schedules in under 500 ms
+- [x] Performance baseline: 10,000-activity chain schedules in under 1 s
+      (the budget catches algorithmic regressions, not runner speed; CI runs
+      it on three platforms)
       (P2-5).
 
 ## Engineering

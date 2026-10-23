@@ -1735,8 +1735,11 @@ mod tests {
         let elapsed = started.elapsed();
 
         assert_eq!(schedule.activities.len(), 10_000);
+        // As with the resource-analysis gate below: the budget catches an
+        // algorithmic regression, not runner speed, so it sits well above the
+        // slowest of the three CI platforms.
         assert!(
-            elapsed.as_millis() < 500,
+            elapsed.as_millis() < 1_000,
             "scheduling 10,000 activities took {} ms",
             elapsed.as_millis()
         );
@@ -1782,8 +1785,11 @@ mod tests {
         // One crew per day: ten thousand committed days, none over capacity.
         assert_eq!(histogram.entries.len(), 10_000);
         assert!(conflicts.is_empty());
+        // The budget guards against an algorithmic regression, not against
+        // runner speed: CI runs this on three platforms with noticeably
+        // different timings, so it is set well above the slowest.
         assert!(
-            elapsed.as_millis() < 750,
+            elapsed.as_millis() < 2_000,
             "resource analysis took {} ms",
             elapsed.as_millis()
         );

@@ -72,9 +72,12 @@ What those 203 tests include:
   refused.
 - **Accessibility tests**: WCAG AA (4.5:1) contrast for every colour the app
   draws text in, on both themes, plus white-on-accent selections.
-- **Performance gates**: 10,000-activity schedule under 500 ms, 10,000
-  committed resource days analysed under 750 ms, 100 parallel activities
-  leveled under 3 s.
+- **Performance gates**: 10,000-activity schedule under 1 s, 10,000 committed
+  resource days analysed under 2 s, 100 parallel activities leveled under 3 s.
+  The budgets are set well above the slowest of the three CI runners — they
+  exist to catch an algorithmic regression, not to measure hardware, which is
+  what the first multi-OS run demonstrated: macOS ran the resource analysis in
+  852 ms against a 750 ms budget while Linux ran the same code far quicker.
 - **Report tests**: exact table rows, resource usage, earned-value sections,
   and an unschedulable project reported honestly instead of silently.
 
