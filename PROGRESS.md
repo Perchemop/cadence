@@ -3,6 +3,82 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-24 — project health: open-source readiness (D18, D19)
+
+The program was complete; the *project* was not. Reviewed against GitHub's
+opensource.guide collection, which covers running a project other people can
+use and join, rather than producing software. The gaps were: no code of
+conduct, security policy, accessibility statement, vision or governance; a
+README and contributing guide written for someone who already knew the project;
+no issue templates; no static analysis, dependency-licence check or SBOM; and no
+protected branch.
+
+Done in this slice:
+
+- Six required documents written for this project (nothing copied from a
+  third-party template): `CODE_OF_CONDUCT.md`, `SECURITY.md` (private
+  reporting + threat model + incident response), `ACCESSIBILITY.md`,
+  `VISION.md`, `GOVERNANCE.md`, `CONTRIBUTORS.md`.
+- `README.md` rewritten stranger-first with a runnable example and a
+  documentation index; `CONTRIBUTING.md` extended with environment setup, the
+  exact local test commands, review expectations and the contribution paths.
+  It states explicitly that the no-local-builds rule is a constraint of the
+  maintainer's machine, not a rule for contributors.
+- Issue forms (bug, feature, accessibility) and a contact-links page; pull
+  request template extended with an accessibility checklist and a
+  dependency/secret line.
+- `Security` workflow: secret scanning over the full history, `cargo deny`
+  licence/advisory/ban/source checks from `deny.toml`, dependency review on
+  pull requests, CodeQL static analysis of the Rust sources and the workflow
+  files, and a CycloneDX SBOM per run (the release workflow attaches one to
+  each release).
+- Dependabot for cargo and GitHub Actions; all workflow actions pinned to
+  commit SHAs; default branch protected with required status checks.
+- `ATTRIBUTION.md` extended to licence classes, non-code assets, build-tooling
+  and model terms, and the SBOM location.
+- Keyboard completeness: `Ctrl+5` for the Calendars view, so all five views
+  have a shortcut (merged as `96bc03a`, run `40051603252`).
+
+Found while doing this: the committed `Cargo.lock` never picked up `rfd`, the
+dependency the PDF print path added, because cargo is not run on the
+maintainer's machine. CI stayed green only because cargo rewrites the lock in
+the runner's workspace — so builds were not reproducible from the repository
+and the licence check could not see the new dependency. Recorded as D19;
+`.github/workflows/lockfile.yml` regenerates the lockfile in CI for the
+maintainer to commit, and a freshness check (`cargo metadata --locked`) is
+switched on with the refreshed lockfile.
+
+Resolved in the same pull request. The security workflow's first runs found
+five more real things, each answered by fixing the repository rather than
+relaxing the check (D20):
+
+- Four unmaintained-crate advisories fire on the GUI stack (`ttf-parser`, and
+  `zvariant`, `zbus_names`, `zvariant_derive`, merged into `zbus` 6 upstream).
+  None is a vulnerability, none is a direct dependency, and none has a safe
+  upgrade until `winit`/`eframe`, `accesskit` and `ashpd` migrate. Each ID is
+  an explicit, dated ignore in `deny.toml` with the reason and the re-check
+  trigger.
+- A yanked `clipboard-win 5.4.1` pin: the remedy is the regeneration, not an
+  ignore. The lockfile workflow now runs on every pull request and re-resolves
+  that package explicitly.
+- `epaint_default_fonts` embeds Ubuntu and Noto Emoji glyphs under the Ubuntu
+  Font Licence 1.0 and OFL-1.1 — permissive, OSI-approved font licences. Both
+  are allow-listed in `deny.toml` for that purpose, and the fonts are now
+  recorded in `ATTRIBUTION.md`, which had wrongly said the project carried no
+  third-party non-code assets.
+- The wildcard-dependency ban flagged the internal workspace dependencies,
+  which were path-only. The fix is an explicit `version` on each
+  `[workspace.dependencies]` entry — good hygiene, and it keeps the crates
+  publishable — rather than relaxing the ban.
+
+The refreshed `Cargo.lock` is committed in the same change, with the freshness
+check on.
+
+Not decided here (maintainer-side, listed in `VISION.md` and `ROADMAP.md`):
+name/trademark check, canonical home URL and handles, employer/IP policy, a
+second admin with MFA, real-machine testing of the Windows and macOS binaries,
+and the human-gated research notes.
+
 ## 2026-10-23 — merged to `main`; guide conformance verified from a clean checkout
 
 PR #1 (`opencode/ci` → `main`, 59 commits, merge `01223602`) is merged. CI on

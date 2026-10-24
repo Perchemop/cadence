@@ -1,0 +1,118 @@
+name: Security
+
+# The security half of CI, kept separate from the build/test workflow so its
+# result is readable on its own and can be required independently.
+#
+#   * secret scanning over the full history (a secret in an old commit is still
+#     a leaked secret)
+#   * dependency licence, advisory, ban and source checks
+#   * dependency review on every pull request
+#   * static analysis (CodeQL) for the Rust sources and the workflow files
+#   * a CycloneDX bill of materials for the dependency set
+#
+# Actions are pinned to commit SHAs: a moved tag cannot silently change what
+# runs in this repository. dtolnay/rust-toolchain is the one exception, because
+# it reads its own ref name to pick the toolchain.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+  schedule:
+    # A weekly pass re-checks the dependency set against newly published
+    # advisories, not just against what was known when the code landed.
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: Secret scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Full history: a secret committed and later deleted is still leaked.
+          fetch-depth: 0
+      - name: Scan the history for secrets
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependencies:
+    name: Dependency licences and advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Check licences, advisories, bans and sources
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
+        with:
+          command: check
+          arguments: --all-features
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Review the dependency changes in this pull request
+        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
+        with:
+          fail-on-severity: moderate
+          comment-summary-in-pr: on-failure
+
+  sast:
+    name: Static analysis (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: rust
+            build-mode: none
+          - language: actions
+            build-mode: none
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - name: Install Rust (required by the Rust extractor)
+        if: matrix.language == 'rust'
+        uses: dtolnay/rust-toolchain@stable
+      - name: Analyse
+        uses: github/codeql-action/analyze@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
+        with:
+          category: /language:${{ matrix.language }}
+
+  sbom:
+    name: Bill of materials
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Generate a CycloneDX SBOM for the dependency set
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: cadence-sbom.cdx.json
+          artifact-name: cadence-sbom-cyclonedx
+          upload-artifact: true
+          upload-release-assets: false

@@ -34,5 +34,9 @@
 | # | Question | Status |
 |---|---|---|
 | Q1 | Native file format versioning / forward-compat strategy? | Decided (D9): relational SQLite, `PRAGMA user_version`; newer versions rejected |
-| Q2 | Should v1 include activity codes / custom fields? | Open — revisit during Phase 2 table design |
-| Q3 | PDF printing approach (pure-Rust layout vs. system print)? | Open — Phase 5 decision |
+| Q2 | Should v1 include activity codes / custom fields? | Open — revisit during a later table-design slice |
+| Q3 | PDF printing approach (pure-Rust layout vs. system print)? | Decided (D16): a dependency-free PDF writer plus a native save dialog (`rfd`) for the GUI |
+| Q4 | Name conflict: "Cadence" is also a large EDA vendor and appears in other software. Has the name been checked against the WIPO Global Brand Database and package registries, and is the registry/domain handle reserved? | **Open — human.** A later takedown or rename is expensive; see `VISION.md` N1/N2 |
+| Q5 | Employer / IP policy: has the maintainer's employment agreement been checked for rights over work related to the employer's business or made with company resources (third-party material, trade secrets, patents, trademarks, data collection, AI-model terms, SBOM obligations)? | **Open — human.** It decides whether the work can be licensed and published as it stands; see `VISION.md` N3 |
+| Q6 | Admin continuity: is there a second trusted admin, and is MFA enabled on every account with write access? | **Open — human** (`VISION.md` N4/N5); the governance model assumes one maintainer today |
+| Q7 | Should the project adopt a DCO (`Signed-off-by`) or a CLA? | Decided for now: neither — the dual licence plus GitHub's inbound=outbound terms is the agreement (`CONTRIBUTING.md`); revisit only if a lawyer or a dual-licensed offering requires it |

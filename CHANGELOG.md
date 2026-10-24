@@ -37,7 +37,8 @@ follows Keep a Changelog; releases use git tags.
   `import-json`
 - Markdown project reports: schedule table, resource usage, earned-value
   metrics and baseline list; `cadence report <file> [out]`
-- Keyboard map in the GUI: Ctrl+Z/Ctrl+Y undo-redo, Ctrl+1..4 view switching
+- Keyboard map in the GUI: Ctrl+Z/Ctrl+Y undo-redo, Ctrl+1..5 view switching
+  (Table, Gantt, Resources, Baselines, Calendars)
 - WCAG AA contrast for theme text, verified by tests on both themes
 - Performance gates: 10k committed resource days and 100-activity leveling
   time-budgeted in CI
@@ -58,6 +59,44 @@ follows Keep a Changelog; releases use git tags.
   format's documented scope)
 - GUI **Save report** button writing the Markdown report next to the working
   directory
+
+Project health (opensource.guide review — see D18 and
+[`docs/qc/project-health.md`](docs/qc/project-health.md)):
+
+- `CODE_OF_CONDUCT.md`, `SECURITY.md` (private reporting, threat model,
+  incident response), `ACCESSIBILITY.md` (target standard, limitations,
+  dedicated report path), `VISION.md` (goals, non-goals, open questions),
+  `GOVERNANCE.md` (roles, decision rule, commit access, metrics, boundaries)
+  and `CONTRIBUTORS.md`
+- `README.md` and `CONTRIBUTING.md` rewritten for a first-time reader: install
+  and run, exact local test commands, review expectations, contribution paths,
+  and the private channels for security and conduct reports
+- Issue forms for bug, feature and accessibility reports, with a contact-links
+  page; pull request template extended with an accessibility checklist for UI
+  changes and a dependency-licence/secret-scanning line
+- `Security` workflow: secret scanning over the full history, dependency
+  licence/advisory/ban/source checks driven by `deny.toml`, dependency review
+  on pull requests, CodeQL static analysis of the Rust sources and the workflow
+  files, and a CycloneDX SBOM per run; the release workflow attaches an SBOM to
+  each release
+- Dependabot for cargo and GitHub Actions (grouped, labelled); every workflow
+  action pinned to a commit SHA
+- Lockfile workflow that regenerates `Cargo.lock` on a runner and uploads it
+  (it runs on every pull request), because cargo is never run on the
+  maintainer's machine; a freshness check fails any build whose lockfile lags
+  the manifests (D19)
+- `Cargo.lock` refreshed from that workflow, clearing a yanked `clipboard-win`
+  pin that cargo could never have moved locally
+- The four unmaintained-crate advisories from the GUI stack recorded as
+  explicit, dated ignores in `deny.toml` (D20), and the fonts the GUI stack
+  embeds (Ubuntu, Noto Emoji) recorded with their licences in
+  `ATTRIBUTION.md` and allow-listed in the licence check
+- Workspace-internal dependencies carry explicit versions, so the
+  wildcard-dependency ban is satisfied by the manifest rather than relaxed
+- `ATTRIBUTION.md` extended with the accepted licence classes, non-code asset
+  policy, the terms of the tooling and models used to build the project, and
+  the SBOM location
+- Protected default branch with required status checks
 
 ### Fixed
 

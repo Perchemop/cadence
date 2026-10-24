@@ -1,0 +1,79 @@
+name: Bug report
+description: Something in Cadence behaves incorrectly — wrong schedule, wrong number, crash, or a file that will not open.
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The single most useful thing you can include is a
+        **file or command that reproduces the problem** — Cadence is offline and
+        deterministic, so a reproduction usually makes the fix obvious.
+
+        **Do not report security vulnerabilities here.** Use the private path in
+        [SECURITY.md](../SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Cadence version
+      description: Output of `cadence version`, or the release tag you downloaded.
+      placeholder: "cadence 0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Windows 11 23H2 / macOS 14.5 / Ubuntu 24.04"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, including the exact message or the wrong value.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+      description: If this is a scheduling result, say what dates/values you expected and why.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps, starting from a fresh launch or a fresh project.
+      placeholder: |
+        1. Open `example.sqlite`
+        2. Press Ctrl+2 for the Gantt view
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: artefacts
+    attributes:
+      label: Files, commands, or screenshots
+      description: Attach a minimal project file, an exported MSPDI/Markdown report, or the CLI command used. Remove anything private first.
+    validations:
+      required: false
+  - type: textarea
+    id: crash-log
+    attributes:
+      label: Crash log (only if Cadence closed unexpectedly)
+      description: Cadence writes a technical crash log to the system temporary directory. Paste the relevant lines; nothing is uploaded automatically.
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: This is not a security vulnerability (I will use the private path in SECURITY.md if it is).
+          required: true
+        - label: This is not an accessibility problem (there is a dedicated template for that).
+          required: false

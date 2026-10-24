@@ -1,0 +1,83 @@
+name: Accessibility report
+description: Something in Cadence is unusable or hard to use with a keyboard, screen reader, or other assistive technology.
+title: "[a11y] "
+labels: ["accessibility", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Accessibility reports are treated as correctness reports, not opinions:
+        if a feature cannot be used, it is defective. This template asks for
+        different context from a normal bug — please use it rather than the bug
+        template. See [ACCESSIBILITY.md](../ACCESSIBILITY.md) for the project's
+        target standard and known limitations.
+  - type: input
+    id: version
+    attributes:
+      label: Cadence version
+      placeholder: "cadence 0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and assistive technology
+      description: Include the AT name and version, plus any OS accessibility settings in use.
+      placeholder: "Windows 11, NVDA 2024.4, 200% display scaling, high-contrast theme"
+    validations:
+      required: true
+  - type: dropdown
+    id: modality
+    attributes:
+      label: How are you interacting with Cadence?
+      options:
+        - Keyboard only
+        - Screen reader
+        - Screen magnifier / zoom
+        - High contrast / forced colours
+        - Reduced motion
+        - Voice control
+        - Other assistive technology
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How much does this block you?
+      options:
+        - "Critical — this task cannot be completed at all"
+        - "High — a key task is very difficult or error-prone"
+        - "Medium — there is a workaround but it is costly"
+        - "Low — friction, or a small improvement"
+    validations:
+      required: true
+  - type: textarea
+    id: task
+    attributes:
+      label: What were you trying to do
+      placeholder: "Set an activity's duration without touching the mouse"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What happened, and what should have happened
+      description: Include exact key presses, whether a focus indicator was visible, and any announcement (or silence) from the screen reader.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I am willing to be contacted for follow-up questions (recommended — accessibility fixes are much better with you involved).
+          required: false

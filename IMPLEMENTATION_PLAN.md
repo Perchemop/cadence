@@ -49,6 +49,31 @@ are subdivided into slices below.
 
 - [x] P5-1: Open interchange export+import (Microsoft Project XML/MSPDI, MPX, CSV and JSON)
 - [x] P5-2a: Markdown project reports (schedule, resources, EVM, baselines)
-- [ ] P5-2b: Native print/PDF from the GUI
-- [ ] P5-3: Keyboard mastery, accessibility audit, performance pass
-- [ ] P5-4: Documentation, example projects, first tagged release
+- [x] P5-2b: Printing and PDF (dependency-free writer, CLI `cadence print`, GUI
+      **Print report…** with a native save dialog)
+- [ ] P5-3: Keyboard mastery, accessibility audit, performance pass — the
+      keyboard map (`Ctrl+1`–`Ctrl+5`, undo/redo), WCAG AA contrast checks and
+      the performance gates are done; the screen-reader/keyboard-only audit is
+      the outstanding part
+- [x] P5-4: Documentation, example projects, first tagged release (`v0.1.0`)
+
+## Phase 6 — Project health
+
+Not product work: the review against GitHub's opensource.guide, which found the
+program complete but the project not ready to be used and joined by anyone else.
+Decisions in D18 and D19, evidence in `docs/qc/project-health.md`.
+
+- [x] P6-1: Required documents (code of conduct, security policy with a threat
+      model and incident response, accessibility statement, vision, governance,
+      contributors) and a README/CONTRIBUTING written for a stranger
+- [x] P6-2: Contribution surface (issue forms, pull request checklist with an
+      accessibility section, contribution labels, stale-issue housekeeping)
+- [x] P6-3: Security pipeline (secret scanning, dependency licence and advisory
+      checks, dependency review, CodeQL static analysis, SBOM per run and per
+      release, Dependabot, pinned action SHAs, protected default branch)
+- [x] P6-4: Refresh `Cargo.lock` from the CI lockfile workflow and switch on the
+      freshness check (D19); unmaintained-crate advisories recorded, yanked pin
+      cleared, font licences allowed and attributed (D20)
+- [ ] P6-5: Maintainer-side items recorded in `VISION.md`: name/trademark check,
+      canonical home URL and handles, employer/IP question, second admin and
+      MFA, real-machine testing of the Windows and macOS binaries

@@ -26,6 +26,7 @@ the failover plugin, so the structure never depends on which model is running.
 | tester | `opencode/deepseek-v4.1-flash-free#high` | high-volume test writing |
 | docs-writer | `opencode/big-pickle` | low-stakes documentation edits |
 | ci-runner | `opencode/beam-free#high` | short, mechanical GitHub interaction |
+| designer (UI/UX) | `opencode/nemotron-3.5-super-vl-free#high` | vision-capable; design + performance review |
 
 ## Fallback assignment (when OpenCode free is exhausted)
 

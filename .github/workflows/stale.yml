@@ -1,0 +1,48 @@
+name: Stale
+
+# Housekeeping so that the issue queue stays honest: an issue nobody has picked
+# up in four months is marked stale, and closed a month later if nothing
+# happens. A stalled queue is more discouraging for a contributor than a clear
+# "no", and closing with a reason leaves the door open (see GOVERNANCE.md).
+#
+# Deliberate exceptions: anything labelled `security` or `accessibility` is
+# never staled (those are correctness reports with a time-sensitive impact),
+# nor are `pinned`, `good first issue` or `help wanted` (those are invitations
+# to contribute). Pull requests are never staled here — they are either
+# reviewed or closed explicitly.
+
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    name: Mark and close stale issues
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@5bef64f19d7facfb25b37b414482c7164d639639 # v9
+        with:
+          days-before-issue-stale: 120
+          days-before-issue-close: 30
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          stale-issue-label: stale
+          exempt-issue-labels: security,accessibility,pinned,good first issue,help wanted
+          stale-issue-message: >
+            This issue has had no activity for four months, so it is being
+            marked stale. Nothing is wrong with it: there is one maintainer
+            working a few hours a week. If you still want it, a comment is
+            enough to keep it open; if you would like to work on it, say so and
+            the label will be removed.
+          close-issue-message: >
+            Closing this after another month of inactivity. This is not a
+            judgement of the request — Cadence keeps a deliberately narrow
+            scope (see VISION.md), and the maintainer's time is limited. If
+            nothing here says the idea is out of scope, reopen or refile it and
+            it will be considered again.
