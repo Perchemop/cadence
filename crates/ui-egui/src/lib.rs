@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 
 use cadence_commands::{
     AddResourceToActivity, CaptureBaseline, CommandStack, CreateCalendar, CreateRelationship,
-    CreateResource, DeleteResource, RemoveBaseline, RemoveResourceFromActivity, RenameActivity,
-    RenameCalendar, RenameResource, SetActivityActualCost, SetActivityActualDates,
+    CreateResource, DeleteCalendar, DeleteResource, RemoveBaseline, RemoveResourceFromActivity,
+    RenameActivity, RenameCalendar, RenameResource, SetActivityActualCost, SetActivityActualDates,
     SetActivityBudget, SetActivityCalendar, SetActivityConstraint, SetActivityDuration,
     SetActivityProgress, SetCalendarDefinition, SetRelationshipLag, SetResourceCapacity,
     SetResourceKind,
