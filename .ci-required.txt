@@ -1,0 +1,20 @@
+# Authoritative check names for the CI verification script.
+#
+# Without this file the script cannot tell "every check that exists has passed"
+# from "only one check has been registered so far", and it has reported a false
+# success because of exactly that race. Each name below must match the check as
+# GitHub reports it. Checks that are not listed are still reported by the
+# script but do not decide the verdict.
+#
+# Build and test (ci.yml)
+Verify (ubuntu-latest)
+Verify (windows-latest)
+Verify (macos-latest)
+Package (Linux)
+# Security (security.yml)
+Secret scanning
+Dependency licences and advisories
+Dependency review
+Static analysis (rust)
+Static analysis (actions)
+Bill of materials

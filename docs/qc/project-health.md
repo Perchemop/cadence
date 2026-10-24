@@ -48,6 +48,13 @@ scheduling engine, so the engine-side gates remain in
       bounded change per pull request.
 - [x] A written path to maintainership, and the areas that can be owned
       independently.
+- [x] Stale-issue housekeeping: issues are marked stale after four months and
+      closed a month later, with `security`, `accessibility`, `pinned`,
+      `good first issue` and `help wanted` exempt; pull requests are never
+      staled.
+- [x] `.ci-required.txt` names the checks that decide a verification run's
+      verdict, so a run cannot report success while part of CI is still
+      running.
 
 ## Security pipeline
 

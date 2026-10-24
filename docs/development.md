@@ -71,7 +71,19 @@ Kept separate from the build workflow so its result is readable on its own:
 `.github/dependabot.yml` opens grouped weekly update pull requests for cargo and
 for GitHub Actions, and every action in every workflow is pinned to a commit
 SHA — except `dtolnay/rust-toolchain`, which reads its own ref name to select
-the toolchain.
+the toolchain. The pinned majors currently predate the Node 24 runner image and
+produce a deprecation warning while GitHub forces them onto the newer runtime;
+the major-version bumps are Dependabot's job, and each one arrives as a normal
+CI-verified change rather than being applied by hand.
+
+`.github/workflows/stale.yml` marks issues stale after four months and closes
+them a month later, exempting `security`, `accessibility`, `pinned`,
+`good first issue` and `help wanted`. Pull requests are never staled.
+
+`.ci-required.txt` lists the check names that decide whether a `ci.sh` run is
+a success. Without it the script cannot distinguish "every check that exists
+has passed" from "only one check has registered yet", and it reported a false
+success once while the security workflow was still running.
 
 ## Lockfile workflow (`.github/workflows/lockfile.yml`)
 
