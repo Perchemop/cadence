@@ -38,7 +38,8 @@ clippy with warnings denied, release binary packaged for all three.
 ### v0.1.x — polish the first release
 
 - [ ] Fix anything the first release surfaces (bug reports via GitHub Issues).
-- [ ] Windows and macOS release binaries proven on real machines.
+- [ ] Windows, macOS and Linux aarch64 release binaries proven on real
+      machines.
 
 ### v0.1.1 — open-source readiness (project health)
 

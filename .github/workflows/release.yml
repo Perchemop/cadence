@@ -22,6 +22,12 @@ jobs:
           - os: ubuntu-latest
             artefact: cadence-linux-x86_64
             binary: cadence
+          # Linux on ARM64: the maintainer's machine is aarch64, and the
+          # first release shipped no ARM Linux binary, so it could not run
+          # there at all. Verified on every change by the matching CI job.
+          - os: ubuntu-24.04-arm
+            artefact: cadence-linux-aarch64
+            binary: cadence
           - os: windows-latest
             artefact: cadence-windows-x86_64
             binary: cadence.exe

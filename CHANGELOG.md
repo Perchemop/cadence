@@ -93,6 +93,9 @@ Project health (opensource.guide review — see D18 and
   `ATTRIBUTION.md` and allow-listed in the licence check
 - Workspace-internal dependencies carry explicit versions, so the
   wildcard-dependency ban is satisfied by the manifest rather than relaxed
+- Linux is built and tested on ARM64 (aarch64) as well as x86-64, in CI and in
+  every release: the first release shipped no ARM Linux binary, and the
+  maintainer's machine is aarch64
 - `ATTRIBUTION.md` extended with the accepted licence classes, non-code asset
   policy, the terms of the tooling and models used to build the project, and
   the SBOM location

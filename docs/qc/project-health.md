@@ -72,8 +72,9 @@ scheduling engine, so the engine-side gates remain in
       toolchain.
 - [x] Protected default branch with required status checks, so a CI result is
       meaningful. Configured on `main`: the required checks are the ones
-      listed in `.ci-required.txt` (build and package on three platforms, the
-      six security checks, and lockfile freshness); branches must be up to
+      listed in `.ci-required.txt` (build and package on four platforms —
+      Linux x86-64, Linux ARM64, Windows, macOS — the six security checks,
+      and lockfile freshness); branches must be up to
       date; force pushes and branch deletion disabled; the maintainer account
       is exempt from the checks so a broken pipeline cannot lock the project
       out (see `GOVERNANCE.md`).
@@ -109,7 +110,8 @@ These need the maintainer, and are listed in `VISION.md` so they stay visible:
       handles/domain.
 - [ ] Employer/IP policy check recorded in `docs/assumptions-and-questions.md`.
 - [ ] A second admin with MFA.
-- [ ] Real-machine testing of the Windows and macOS release binaries.
+- [ ] Real-machine testing of the Windows, macOS and Linux aarch64 release
+      binaries.
 - [ ] The human-gated research notes in `docs/research/`.
 
 ## Evidence
