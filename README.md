@@ -45,8 +45,8 @@ without Cadence installed:
 | ID | Activity | Days | Start | Finish | Float | Critical | Resources |
 ```
 
-Prebuilt binaries for Linux, Windows and macOS are attached to each
-[release](https://github.com/Perchemop/cadence/releases), with SHA-256
+Prebuilt binaries for Linux (x86-64 and ARM64), Windows and macOS are attached
+to each [release](https://github.com/Perchemop/cadence/releases), with SHA-256
 checksums and a CycloneDX bill of materials.
 
 ## Where to get help, and where things are

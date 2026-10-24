@@ -19,7 +19,11 @@ jobs:
       # failure, so one red runner never hides another.
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Linux runs twice: x86-64 and ARM64. The maintainer's machine is
+        # aarch64, and the first release shipped no ARM Linux binary at all,
+        # so the ARM path is built and tested on every change rather than
+        # being discovered broken at release time.
+        os: [ubuntu-latest, windows-latest, macos-latest, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 

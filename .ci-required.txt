@@ -10,6 +10,7 @@
 Verify (ubuntu-latest)
 Verify (windows-latest)
 Verify (macos-latest)
+Verify (ubuntu-24.04-arm)
 Package (Linux)
 # Security (security.yml)
 Secret scanning
