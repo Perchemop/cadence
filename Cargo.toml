@@ -18,11 +18,16 @@ authors = ["Cadence contributors"]
 repository = "https://github.com/Perchemop/cadence"
 
 [workspace.dependencies]
-cadence-core = { path = "crates/core" }
-cadence-commands = { path = "crates/commands" }
-cadence-persistence = { path = "crates/persistence" }
-cadence-interchange = { path = "crates/interchange" }
-cadence-ui-egui = { path = "crates/ui-egui" }
+# The internal crates carry an explicit version even though `path` wins inside
+# the workspace: a path-only requirement is a wildcard requirement, and the
+# security workflow's ban on wildcard dependencies fails the build on one
+# (D20 in DECISIONS.md). The explicit version also keeps the crates
+# publishable as-is.
+cadence-core = { path = "crates/core", version = "0.1.0" }
+cadence-commands = { path = "crates/commands", version = "0.1.0" }
+cadence-persistence = { path = "crates/persistence", version = "0.1.0" }
+cadence-interchange = { path = "crates/interchange", version = "0.1.0" }
+cadence-ui-egui = { path = "crates/ui-egui", version = "0.1.0" }
 
 time = { version = "0.3", features = ["formatting", "parsing", "serde"] }
 serde = { version = "1", features = ["derive"] }

@@ -17,8 +17,27 @@ targets = [
 version = 2
 yanked = "deny"
 ignore = [
-    # Empty on purpose: every ignored advisory must be added with a comment
-    # naming the reason and the date, so ignoring one is a visible decision.
+    # Not a blanket permission: every entry below names the reason and the
+    # date it was accepted, and none of them concerns an exploitable
+    # vulnerability. They are all "unmaintained crate" notices for
+    # dependencies we do not import directly and cannot upgrade separately
+    # from the GUI stack that pulls them in.
+
+    # ttf-parser (RUSTSEC-2026-0192), via owned_ttf_parser -> ab_glyph ->
+    # sctk-adwaita -> winit -> eframe. No safe upgrade exists until the
+    # winit/egui stack moves to its maintained replacement (skrifa).
+    # Accepted 2026-10-24; re-check on the next egui/winit major bump.
+    "RUSTSEC-2026-0192",
+
+    # zvariant, zbus_names and zvariant_derive (RUSTSEC-2026-0370, -0371 and
+    # -0372), via accesskit_unix / atspi (screen-reader support) and
+    # ashpd -> rfd (the save dialog). The three crates were merged into
+    # zbus 6 and are no longer released standalone; accesskit and ashpd still
+    # use zbus 5, so no safe upgrade exists. Accepted 2026-10-24; re-check
+    # when accesskit or ashpd migrate to zbus 6.
+    "RUSTSEC-2026-0370",
+    "RUSTSEC-2026-0371",
+    "RUSTSEC-2026-0372",
 ]
 
 [licenses]
@@ -45,6 +64,13 @@ allow = [
     "0BSD",
     "CC-BY-4.0",
     "CDLA-Permissive-2.0",
+    # Font licences for the glyphs the GUI stack embeds (epaint's default
+    # fonts: Ubuntu under the Ubuntu Font Licence, Noto Emoji under OFL).
+    # Both are permissive, OSI-approved, FSF-listed font licences covering an
+    # asset, not the code it ships with; the assets themselves are recorded in
+    # ATTRIBUTION.md.
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
 ]
 
 [[licenses.clarify]]

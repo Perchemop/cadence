@@ -87,13 +87,14 @@ success once while the security workflow was still running.
 
 ## Lockfile workflow (`.github/workflows/lockfile.yml`)
 
-`Cargo.lock` cannot be regenerated locally, so this dispatch-only workflow
-resolves the dependency graph on a runner and uploads the resulting
-`Cargo.lock` as an artefact. Download it and commit it like any other change —
-the file is deliberately not committed from inside the workflow, so a lockfile
-change is always reviewed and CI-verified. The same workflow carries the
-freshness check that fails a build whose lockfile no longer matches the
-manifests (D19).
+`Cargo.lock` cannot be regenerated locally, so this workflow resolves the
+dependency graph on a runner — on every pull request, or on demand — and
+uploads the resulting `Cargo.lock` as an artefact. Download it and commit it
+like any other change; the file is deliberately not committed from inside the
+workflow, so a lockfile change is always reviewed and CI-verified. The workflow
+also carries the freshness check that fails a build whose lockfile no longer
+matches the manifests; it is switched on together with the refreshed lockfile
+(D19).
 
 ## Layout
 

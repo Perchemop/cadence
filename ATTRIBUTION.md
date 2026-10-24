@@ -24,12 +24,22 @@ fails CI rather than being discovered later. Nothing in this project is
 
 ## Fonts, icons, and artwork
 
-None. All visual design in Cadence is original — original shapes drawn with the
-GUI toolkit's own primitives, original colour choices, and the toolkit's
-default bundled font. No commercial product's icons, fonts, string tables or
-trade dress have been copied, and none will be. If a non-code asset is ever
-added, it is listed here with its licence (icons, fonts and images carry their
-own licence, which is not the code licence).
+All visual design in Cadence is original — original shapes drawn with the GUI
+toolkit's own primitives and original colour choices. No commercial product's
+icons, string tables or trade dress have been copied, and none will be.
+
+Fonts are the GUI toolkit's bundled defaults: the `epaint_default_fonts` crate
+(embedded by `eframe`) ships third-party font assets, and they carry their own
+licences, which are separate from the code licence:
+
+| Asset | Licence | Source |
+|---|---|---|
+| Ubuntu (default proportional font) | Ubuntu Font Licence 1.0 | embedded by `epaint_default_fonts` |
+| Noto Emoji | SIL Open Font License 1.1 | embedded by `epaint_default_fonts` |
+
+Both are permissive, OSI-approved font licences, allow-listed in `deny.toml`
+for exactly this purpose and checked by the security workflow. Any further
+non-code asset is listed here with its licence before it ships.
 
 ## Software dependencies
 
