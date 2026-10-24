@@ -75,6 +75,7 @@ earned-value metrics against the most recent baseline; and the baseline list.
 | Ctrl+2 | Gantt |
 | Ctrl+3 | Resources |
 | Ctrl+4 | Baselines |
+| Ctrl+5 | Calendars |
 | Ctrl+D | Toggle light/dark theme |
 
 ## Views

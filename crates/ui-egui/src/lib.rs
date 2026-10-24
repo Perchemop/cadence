@@ -837,7 +837,7 @@ impl eframe::App for CadenceApp {
             self.recompute();
         }
 
-        // Ctrl+1..Ctrl+4: switch views without reaching for the mouse.
+        // Ctrl+1..Ctrl+5: switch views without reaching for the mouse.
         let (ctrl_held, pressed_view) = ctx.input(|input| {
             (
                 input.modifiers.ctrl,
@@ -846,6 +846,7 @@ impl eframe::App for CadenceApp {
                     egui::Key::Num2,
                     egui::Key::Num3,
                     egui::Key::Num4,
+                    egui::Key::Num5,
                 ]
                 .iter()
                 .position(|key| input.key_pressed(*key))
@@ -858,7 +859,8 @@ impl eframe::App for CadenceApp {
                     0 => ViewMode::Table,
                     1 => ViewMode::Gantt,
                     2 => ViewMode::Resources,
-                    _ => ViewMode::Baselines,
+                    3 => ViewMode::Baselines,
+                    _ => ViewMode::Calendars,
                 };
             }
         }
