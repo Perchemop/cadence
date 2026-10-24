@@ -45,6 +45,10 @@ follows Keep a Changelog; releases use git tags.
 - PDF printing: a dependency-free PDF writer (`cadence-core/src/pdf.rs`),
   `cadence print <file> <out.pdf>`, and a GUI **Print report…** button backed
   by a native save dialog (`rfd`)
+- v0.1.0 release: tag, GitHub Release with binaries for Linux/Windows/macOS
+  and SHA-256 checksums; crash-report and update-check stubs; ROADMAP.md,
+  pull-request template, release workflow, brand and research documents,
+  CONTRIBUTING.md
 - Property tests for resource leveling (delays only, delays match the
   calendar, conflict-free results are reachable through constraints) and for
   all four interchange formats (arbitrary projects round-trip within each
