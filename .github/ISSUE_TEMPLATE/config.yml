@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability (private)
+    url: https://github.com/Perchemop/cadence/security/advisories/new
+    about: Do not open a public issue for a security problem. Report it privately and see SECURITY.md for what is in scope.
+  - name: Read the contributing guide first
+    url: https://github.com/Perchemop/cadence/blob/main/CONTRIBUTING.md
+    about: Setup, test commands, expectations, and the clean-room rules that apply to every contribution.
+  - name: Check the vision and non-goals
+    url: https://github.com/Perchemop/cadence/blob/main/VISION.md
+    about: What Cadence is for, and what it deliberately does not do — this is where most "no" answers come from.
+  - name: Accessibility statement and known limitations
+    url: https://github.com/Perchemop/cadence/blob/main/ACCESSIBILITY.md
+    about: Target standard, current limitations, and the dedicated accessibility report template.

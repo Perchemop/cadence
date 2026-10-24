@@ -1,0 +1,66 @@
+# cargo-deny configuration: dependency licences, advisories, banned crates and
+# source allow-listing. Checked in the security workflow (`.github/workflows/security.yml`).
+#
+# The licence list deliberately mirrors the dependency classes documented in
+# ATTRIBUTION.md: permissive licences only, plus the weak-copyleft licences that
+# are acceptable when isolated (none are used today, but MPL-2.0 appears inside
+# the GUI stack, so it is allowed explicitly rather than by accident).
+
+[graph]
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "x86_64-pc-windows-msvc" },
+    { triple = "aarch64-apple-darwin" },
+]
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+    # Empty on purpose: every ignored advisory must be added with a comment
+    # naming the reason and the date, so ignoring one is a visible decision.
+]
+
+[licenses]
+version = 2
+# Confidence threshold for licence detection; 0.8 avoids failing on files that
+# merely mention a licence in passing.
+confidence-threshold = 0.8
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "BSL-1.0",
+    "MPL-2.0",
+    "OpenSSL",
+    "Unlicense",
+    "MIT-0",
+    "0BSD",
+    "CC-BY-4.0",
+    "CDLA-Permissive-2.0",
+    "Zlib-acknowledgement",
+]
+
+[[licenses.clarify]]
+# The bundled SQLite amalgamation reports its own public-domain dedication.
+name = "libsqlite3-sys"
+expression = "Unlicense"
+license-files = []
+
+[bans]
+# A duplicate version of a crate is usually harmless but worth seeing; a
+# wildcard version requirement is never acceptable in this repository.
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

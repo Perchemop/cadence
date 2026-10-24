@@ -29,13 +29,13 @@ jobs:
             artefact: cadence-macos-aarch64
             binary: cadence
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
       - name: Build the release binary
         run: cargo build --release -p cadence-app
@@ -48,7 +48,7 @@ jobs:
              "stage/${{ matrix.artefact }}/${{ matrix.artefact }}"
 
       - name: Upload the artefact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.artefact }}
           path: stage/${{ matrix.artefact }}/*
@@ -59,10 +59,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Download all artefacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artefacts
 
@@ -86,3 +86,24 @@ jobs:
             --title "Cadence $TAG" \
             --generate-notes \
             artefacts/upload/*
+
+  sbom:
+    name: Attach the bill of materials
+    runs-on: ubuntu-latest
+    needs: release
+    # Runs after the release exists, so the SBOM is attached to it rather than
+    # racing the release creation. Every release carries a CycloneDX SBOM of
+    # its dependency set, alongside the binaries and their checksums.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Generate and attach the CycloneDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: cadence-sbom.cdx.json
+          artifact-name: cadence-sbom-cyclonedx
+          upload-artifact: true
+          upload-release-assets: true

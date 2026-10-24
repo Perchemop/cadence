@@ -40,6 +40,48 @@ clippy with warnings denied, release binary packaged for all three.
 - [ ] Fix anything the first release surfaces (bug reports via GitHub Issues).
 - [ ] Windows and macOS release binaries proven on real machines.
 
+### v0.1.1 — open-source readiness (project health)
+
+A review of the project against GitHub's opensource.guide found that the
+*program* was complete but the *project* was not: missing community and security
+documents, no issue templates, no static analysis, no dependency-licence or SBOM
+step, and no written governance. This milestone closes that gap. None of it
+touches the scheduling engine. See D18 for the decisions and
+[`docs/qc/project-health.md`](docs/qc/project-health.md) for the evidence.
+
+- [x] Required documents: `CODE_OF_CONDUCT.md`, `SECURITY.md` (with a threat
+      model and an incident-response plan), `ACCESSIBILITY.md`, `VISION.md`,
+      `GOVERNANCE.md`, `CONTRIBUTORS.md`.
+- [x] `README.md` and `CONTRIBUTING.md` rewritten for a stranger: what it is,
+      why it is useful, how to start, how to run the tests, what review expects,
+      and where to get help.
+- [x] Issue forms (bug, feature, accessibility) and a pull request template with
+      an accessibility checklist for UI changes.
+- [x] Security workflow: secret scanning over the full history, dependency
+      licence/advisory/ban/source checks (`deny.toml`), dependency review on
+      pull requests, CodeQL static analysis (Rust and the workflows), and a
+      CycloneDX SBOM per run and per release.
+- [x] Dependabot for cargo and GitHub Actions; every action pinned to a commit
+      SHA.
+- [x] Protected default branch with required status checks.
+- [x] `ATTRIBUTION.md` extended to non-code assets, accepted licence classes,
+      and the terms of the tooling and models used to build the project.
+- [ ] `Cargo.lock` refreshed by the CI lockfile workflow, and the freshness
+      check switched on (D19) — the lock lags the manifests today because cargo
+      is never run on the maintainer's machine.
+- [ ] Maintainer-side items recorded in [`VISION.md`](VISION.md) and awaiting
+      the human: name/trademark check, canonical home URL and handles,
+      employer/IP question, second admin and MFA.
+
+### Human-gated (recorded, not decided)
+
+- [ ] Name conflict check and trademark search for "Cadence"; reserve the
+      canonical handles/domain (`VISION.md` N1, N2).
+- [ ] Employer/IP policy check recorded in
+      `docs/assumptions-and-questions.md` (`VISION.md` N3).
+- [ ] A second admin with MFA, for continuity and least privilege
+      (`VISION.md` N4, N5).
+
 ### v0.2.0 — suite infrastructure
 
 - [ ] Crash reporting: GitHub Issue creation with user consent, UI preview

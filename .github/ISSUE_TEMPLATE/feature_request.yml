@@ -1,0 +1,59 @@
+name: Feature request
+description: Propose a capability, or support for a file format or workflow Cadence does not handle yet.
+title: "[feature] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cadence has a deliberately narrow scope — see [VISION.md](../VISION.md)
+        for the goals and the non-goals. Requests that fit the goals are much
+        easier to accept, and a clear "no" is a normal outcome (see
+        [GOVERNANCE.md](../GOVERNANCE.md)).
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem you are trying to solve
+      description: Describe the project or workflow, not the feature. What are you unable to do today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like Cadence to do
+      description: If you have a specific design in mind, describe it. If not, that is fine.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have tried
+      description: Other tools, exports, or workarounds — and why they fall short.
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Scheduling engine (CPM, constraints, calendars)
+        - Activity table / Gantt view
+        - Resources and leveling
+        - Baselines and earned value
+        - File formats and interchange (SQLite, MSPDI, MPX)
+        - Reports and printing
+        - Command-line interface
+        - Accessibility
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I read VISION.md and this request is not on the non-goals list.
+          required: true
+        - label: I searched existing issues and this is not a duplicate.
+          required: true

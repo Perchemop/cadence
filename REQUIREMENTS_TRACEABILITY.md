@@ -25,5 +25,11 @@ requirement lives.
 | R17 | Progress updating + EVM | `cadence-core/src/model.rs` (cost/percent/actual-date fields), `engine.rs` (`evm_metrics`), `cadence-commands` (`SetActivityProgress`, `SetActivityActualCost`, `SetActivityBudget`, `SetActivityActualDates`), `cadence-persistence` (schema v4), `cadence-ui-egui` (inspector progress section, Gantt progress overlay) | command tests (undo/redo, range and date validation), persistence round-trip and v3→v4 migration tests, EVM unit tests | done |
 | R18 | Open interchange (JSON/CSV/XML), printing/PDF | `cadence-interchange` (MSPDI, MPX, CSV, JSON), CLI `export-xml`/`import-xml`/`export-mpx`/`import-mpx`/`export-csv`/`import-csv`/`export-json`/`import-json`; Markdown and PDF reports in `cadence-core/src/report.rs` + `cadence-core/src/pdf.rs`, CLI `cadence report`/`cadence print`, GUI **Save report**/**Print report…** | round-trip and hand-written-document tests in all four format modules, CSV-vs-MSPDI and JSON-vs-MSPDI equivalence tests, report and PDF-writer unit tests | done |
 
+| R19 | Open-source project documents (conduct, security, accessibility, vision, governance, contributors) | root: `CODE_OF_CONDUCT.md`, `SECURITY.md`, `ACCESSIBILITY.md`, `VISION.md`, `GOVERNANCE.md`, `CONTRIBUTORS.md` | reviewed in `docs/qc/project-health.md` | done |
+| R20 | Contribution surface: issue forms, pull request checklist, labels | `.github/ISSUE_TEMPLATE/`, `.github/PULL_REQUEST_TEMPLATE.md` | template files + workflow runs | done |
+| R21 | Security in CI: secret scanning, dependency licence/advisory checks, dependency review, SAST, SBOM | `.github/workflows/security.yml`, `.github/workflows/release.yml`, `deny.toml`, `.github/dependabot.yml` | security workflow runs on `main` and on the pull request | done |
+| R22 | Protected default branch with required status checks | repository settings | state recorded in `docs/qc/project-health.md` | done |
+| R23 | Reproducible dependency graph: current `Cargo.lock`, regenerated in CI | `Cargo.lock`, `.github/workflows/lockfile.yml` | lockfile workflow run + freshness check | in progress (D19) |
+
 When a slice lands, this table and `docs/parity.md` are updated in the same
 commit.

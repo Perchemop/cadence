@@ -1,0 +1,46 @@
+# Dependency updates, checked against the GitHub Advisory Database.
+#
+# A dependency update is a normal CI-verified change: Dependabot opens a pull
+# request, the CI and security workflows verify it, and it is merged like any
+# other change. Updates are grouped so the queue stays reviewable rather than
+# becoming a stream of one-line pull requests.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - security
+    commit-message:
+      prefix: "deps"
+    groups:
+      cargo-patch:
+        applies-to: version-updates
+        update-types:
+          - patch
+      cargo-minor:
+        applies-to: version-updates
+        update-types:
+          - minor
+    # Major bumps are deliberate decisions, so they arrive ungrouped and one at
+    # a time rather than as part of a batch.
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "ci"

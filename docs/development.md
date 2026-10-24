@@ -48,6 +48,41 @@ Two jobs:
 Each job writes a summary to the run page. Dependencies are cached by
 `Swatinem/rust-cache`.
 
+This file describes the **maintainer's** machine, where no build may run.
+Contributors are not restricted this way: the commands to build and test
+locally are in [`CONTRIBUTING.md`](../CONTRIBUTING.md#running-the-tests), and
+running them before opening a pull request is expected.
+
+## Security workflow (`.github/workflows/security.yml`)
+
+Kept separate from the build workflow so its result is readable on its own:
+
+- **Secret scanning** with `gitleaks` over the full history (a secret in an
+  older commit is still a leaked secret).
+- **Dependency licences, advisories, bans and sources** with `cargo deny`,
+  configured by `deny.toml`. A disallowed licence fails the build.
+- **Dependency review** on pull requests, failing at moderate severity.
+- **Static analysis** with CodeQL: `rust` (build mode `none`, so no full
+  compile is needed) and `actions`, which analyses the workflow files
+  themselves.
+- **SBOM**: a CycloneDX bill of materials per run, and one attached to each
+  release by `.github/workflows/release.yml`.
+
+`.github/dependabot.yml` opens grouped weekly update pull requests for cargo and
+for GitHub Actions, and every action in every workflow is pinned to a commit
+SHA — except `dtolnay/rust-toolchain`, which reads its own ref name to select
+the toolchain.
+
+## Lockfile workflow (`.github/workflows/lockfile.yml`)
+
+`Cargo.lock` cannot be regenerated locally, so this dispatch-only workflow
+resolves the dependency graph on a runner and uploads the resulting
+`Cargo.lock` as an artefact. Download it and commit it like any other change —
+the file is deliberately not committed from inside the workflow, so a lockfile
+change is always reviewed and CI-verified. The same workflow carries the
+freshness check that fails a build whose lockfile no longer matches the
+manifests (D19).
+
 ## Layout
 
 - `crates/core` — domain model, CPM engine, resource analysis, reports (pure,
@@ -56,10 +91,10 @@ Each job writes a summary to the run page. Dependencies are cached by
 - `crates/persistence` — SQLite project files (versioned schema, migrations)
 - `crates/interchange` — MSPDI, MPX, CSV and JSON import/export
 - `crates/ui-egui` — egui/eframe application shell (table, Gantt, resources,
-  baselines)
+  baselines, calendars)
 - `crates/app` — the `cadence` binary (CLI and GUI entry point) and its example
 - `.opencode/agents/` — project-local agent definitions (orchestrator, coder,
-  explorer, reviewer, fixer, tester, docs-writer, ci-runner)
+  explorer, reviewer, fixer, tester, docs-writer, ci-runner, designer)
 - `docs/parity.md` — living capability list
 - `docs/usage.md` — commands, formats, keyboard map, reports
 - `docs/qc/` — manual QC checklists per phase
@@ -86,7 +121,12 @@ recorded in `docs/current-model-map.md`.
 ## Secret scanning
 
 The pull-request template and the release checklist both require that no
-secrets are committed. For automated enforcement, run
-[`gitleaks`](https://github.com/gitleaks/gitleaks) locally or enable GitHub's
-built-in secret scanning on the repository — a manual scan of tracked files
-was performed for the v0.1.0 release (`docs/qc/release-v0.1.0.md`).
+secrets are committed, and the security workflow enforces it: `gitleaks` scans
+the full history on every push, every pull request and weekly. A manual scan of
+tracked files was performed for the v0.1.0 release
+(`docs/qc/release-v0.1.0.md`); the automated scan replaces that step.
+
+The default branch is protected: changes land through a pull request whose
+required status checks pass. The maintainer does not push to `main` directly,
+and the workspace tooling (`ci.sh`) always goes through a pull request
+(D18, `docs/qc/project-health.md`).

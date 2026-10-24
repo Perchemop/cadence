@@ -1,0 +1,45 @@
+name: Lockfile
+
+# Cargo is not run on the maintainer's machine, so Cargo.lock is regenerated
+# here rather than locally.
+#
+# Dispatch this workflow when a dependency has been added or changed and the
+# lockfile needs refreshing: it resolves the graph on a runner and uploads the
+# resulting `Cargo.lock` as an artefact, which is then committed like any other
+# change and verified by the normal CI run. The file is never committed from
+# inside the workflow, so every lockfile change is reviewed and CI-checked.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    name: Regenerate Cargo.lock
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Resolve the dependency graph
+        run: cargo generate-lockfile
+      - name: Summarise the result
+        shell: bash
+        run: |
+          {
+            echo "## Cargo.lock regenerated"
+            echo
+            echo "Packages in the resolved graph: $(grep -c '^\[\[package\]\]' Cargo.lock)"
+            echo
+            echo "Commit the uploaded file as-is; CI verifies it."
+          } >> "$GITHUB_STEP_SUMMARY"
+          git --no-pager diff --stat -- Cargo.lock || true
+      - name: Upload the regenerated lockfile
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Cargo.lock
+          path: Cargo.lock
+          if-no-files-found: error
+          retention-days: 7

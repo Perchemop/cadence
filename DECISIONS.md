@@ -273,3 +273,79 @@ The report is honest by construction: it renders whatever the engine can
 schedule and states plainly when it cannot. It never invents dates, and
 derived schedule data is recomputed at generation time rather than read from
 cached fields (D9).
+
+## D18 — Project-health practices adopted from opensource.guide (2026-10-24)
+
+The build was reviewed against GitHub's opensource.guide collection, which
+covers what a *project* needs (not only what a *program* needs). The result was
+a body of work with one property: none of it changes the scheduling engine, and
+all of it is required before the project can honestly call itself open source.
+
+Adopted, and implemented in this change:
+
+* **Required repository documents.** `CODE_OF_CONDUCT.md`, `SECURITY.md`,
+  `ACCESSIBILITY.md`, `VISION.md`, `GOVERNANCE.md` and `CONTRIBUTORS.md`, each
+  written for this project (nothing is copied from a third-party template), and
+  `README.md` and `CONTRIBUTING.md` rewritten for a reader who has never heard
+  of Cadence. `ATTRIBUTION.md` now also covers non-code assets, the licence
+  classes accepted, and the tooling/model terms behind the build's provenance.
+* **Contribution surface.** Issue forms for a bug, a feature and — separately,
+  because the context and urgency differ — an accessibility report; a pull
+  request template with an accessibility section for UI changes and a licence
+  and secret-scanning line for dependencies; contribution labels.
+* **Security in CI.** A `Security` workflow: secret scanning over the full
+  history, dependency licence/advisory/ban/source checks driven by `deny.toml`,
+  dependency review on pull requests, CodeQL static analysis of the Rust
+  sources and of the workflow files themselves, and a CycloneDX SBOM per run —
+  the release workflow attaches an SBOM to each release as well. Dependabot
+  covers cargo and the pinned actions, and every action is pinned to a commit
+  SHA (except `dtolnay/rust-toolchain`, which reads its own ref name to choose
+  the toolchain).
+* **Governance in writing.** `GOVERNANCE.md` names the model (BDFL with a
+  written trail), the decision rule (consensus seeking, maintainer as
+  tiebreaker), the public-by-default rule with its two private exceptions, the
+  path to becoming a maintainer, the metrics that are and are not tracked, and
+  the response-time and effort boundaries.
+* **Repository controls.** The default branch requires the multi-platform build
+  checks and an up-to-date branch, and refuses force pushes and deletion;
+  required *review* is deliberately not enabled while there is a single
+  maintainer, because GitHub forbids self-approval and an unsatisfiable rule is
+  not a control — it is recorded to be switched on with the second maintainer.
+  Private vulnerability reporting, secret scanning with push protection, and
+  Dependabot alerts/security updates are enabled in the repository settings
+  (build-side equivalents live in the security workflow, so the guarantees do
+  not rest on a setting alone).
+
+Recorded but **not decided** — these are for the maintainer, and they are listed
+in `VISION.md` so they stay visible: the name-conflict and trademark check, the
+canonical home URL and handles, the employer/IP question, and the second-admin
+and MFA requirements. The guide's own conflict list (local-test policy versus
+contributor expectations, public-from-day-one versus security gates, direct
+pushes versus protected branches) is handled as follows: `CONTRIBUTING.md`
+documents the exact local build and test commands and states plainly that the
+no-local-builds rule is a constraint of the maintainer's machine rather than a
+rule for contributors; and the default branch is protected with required status
+checks, which matches the pull-request flow already in use.
+
+## D19 — Cargo.lock is regenerated in CI, and its freshness is checked (2026-10-24)
+
+Adding the PDF print path pulled in `rfd`, and the committed `Cargo.lock` was
+never regenerated — cargo is not run on the maintainer's machine, so a `cargo`
+step that would have rewritten the lockfile never ran. CI stayed green because
+cargo updates the lockfile in the runner's workspace, which means the committed
+lockfile was silently lagging the manifests: builds were not reproducible from
+the repository, and the licence check could not see the new dependency at all.
+
+Two changes follow:
+
+* `.github/workflows/lockfile.yml` regenerates `Cargo.lock` on a runner and
+  uploads it as an artefact, for the maintainer to commit like any other
+  change. The file is deliberately **not** committed from inside the workflow,
+  so a lockfile change is always a reviewed, CI-verified change.
+* A lockfile-freshness check (`cargo metadata --locked` in the same workflow)
+  fails the build when the committed lockfile no longer matches the manifests,
+  so this class of drift cannot recur silently. The check is switched on in the
+  change that commits the refreshed lockfile, because enabling it first would
+  fail every build until the lockfile it describes has been written.
+
+The alternative — running cargo locally — remains excluded by the build rules.
