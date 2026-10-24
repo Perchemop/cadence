@@ -62,7 +62,8 @@ clippy with warnings denied, release binary packaged for all three.
 
 ### Later
 
-- [ ] Resource histograms rendered in the GUI (data and engine support exist).
+- [x] Resource usage rendered in the GUI (per-day, per-resource, in the
+      Resources view — as a table; a bar-chart form is still open polish).
 - [ ] Suite shared crates (`crash-report`, `update-check`) extracted once a
       second application joins the suite (guide §7.3).
 
