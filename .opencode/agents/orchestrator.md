@@ -71,3 +71,10 @@ and re-record the mapping when that happens.
 Never use Ollama or any local model hosting. **Changing the model never changes
 the process**: heavy builds and tests still run in GitHub Actions only, the
 clean-room rules still hold, and the vertical-slice discipline still applies.
+
+- The **designer** subagent is the dedicated UI/UX designer: it owns the visual
+  identity (logo, icons, illustrations, brand) and continuously reviews every
+  user-visible slice for a minimalistic, beautiful, professional, polished look
+  and for perceived performance. Delegate every UI-affecting slice to it before
+  the slice is considered done. Design assets and `docs/design/brand.md` are its
+  responsibility, not yours.
