@@ -80,3 +80,11 @@ recorded in `docs/current-model-map.md`.
 - Derived schedule data is never persisted; it is recomputed (D9).
 - Dependency-light: a new dependency has to earn its place, which is why the
   XML and JSON readers live in-tree (D14).
+
+## Secret scanning
+
+The pull-request template and the release checklist both require that no
+secrets are committed. For automated enforcement, run
+[`gitleaks`](https://github.com/gitleaks/gitleaks) locally or enable GitHub's
+built-in secret scanning on the repository — a manual scan of tracked files
+was performed for the v0.1.0 release (`docs/qc/release-v0.1.0.md`).
