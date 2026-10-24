@@ -2,8 +2,10 @@
 
 ## Prerequisites
 
-- Rust stable (via [rustup](https://rustup.rs)) — needed only if you want
-  `rustfmt`/`rustc` locally. Nothing else is required.
+- Nothing is required locally. Do **not** run any `cargo` command on this
+  machine — that includes `cargo fmt`, `cargo check`, `cargo metadata` and
+  `cargo tree`. Formatting is matched by hand from the `Diff in ...` lines in
+  the CI log; CI is the only verification that exists.
 
 ## Local workflow (keep it light)
 
