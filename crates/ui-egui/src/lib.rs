@@ -8,18 +8,20 @@
 use std::collections::BTreeMap;
 
 use cadence_commands::{
-    AddResourceToActivity, CaptureBaseline, CommandStack, CreateRelationship, CreateResource,
-    DeleteResource, RemoveBaseline, RemoveResourceFromActivity, RenameActivity, RenameResource,
-    SetActivityActualCost, SetActivityActualDates, SetActivityBudget, SetActivityConstraint,
-    SetActivityDuration, SetActivityProgress, SetRelationshipLag, SetResourceCapacity,
+    AddResourceToActivity, CaptureBaseline, CommandStack, CreateCalendar, CreateRelationship,
+    CreateResource, DeleteResource, RemoveBaseline, RemoveResourceFromActivity, RenameActivity,
+    RenameCalendar, RenameResource, SetActivityActualCost, SetActivityActualDates,
+    SetActivityBudget, SetActivityCalendar, SetActivityConstraint, SetActivityDuration,
+    SetActivityProgress, SetCalendarDefinition, SetRelationshipLag, SetResourceCapacity,
     SetResourceKind,
 };
+use cadence_core::calendar_set::CalendarId;
 use cadence_core::engine::schedule;
 use cadence_core::engine::Schedule;
 use cadence_core::engine::{evm_metrics, level_resources, resource_conflicts, resource_histogram};
 use cadence_core::model::{
-    Activity, ActivityId, Baseline, BaselineId, Constraint, LinkType, Project, ResourceId,
-    ResourceKind,
+    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, Project,
+    ResourceId, ResourceKind,
 };
 use egui::{
     Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2, Visuals,
@@ -89,6 +91,7 @@ enum ViewMode {
     Gantt,
     Resources,
     Baselines,
+    Calendars,
 }
 
 const CONSTRAINT_LABELS: [&str; 6] = [
@@ -154,6 +157,10 @@ pub struct CadenceApp {
     selected_baseline: Option<BaselineId>,
     baseline_name_buffer: String,
     status_date_buffer: String,
+    selected_calendar: Option<CalendarId>,
+    calendar_name_buffer: String,
+    calendar_weekdays: [bool; 7],
+    calendar_holidays_buffer: String,
 }
 
 impl CadenceApp {
@@ -192,6 +199,10 @@ impl CadenceApp {
             selected_baseline: None,
             baseline_name_buffer: String::new(),
             status_date_buffer: today().to_string(),
+            selected_calendar: None,
+            calendar_name_buffer: String::new(),
+            calendar_weekdays: [true, true, true, true, true, false, false],
+            calendar_holidays_buffer: String::new(),
         }
     }
 
@@ -417,6 +428,131 @@ impl CadenceApp {
             }
             Err(error) => self.status_message = Some(error),
         }
+    }
+
+    /// Load the calendar editor buffers for the given calendar.
+    fn select_calendar(&mut self, id: CalendarId) {
+        self.selected_calendar = Some(id);
+        if let Some(named) = self.project.calendars.named(id) {
+            self.calendar_name_buffer = named.name.clone();
+            self.calendar_weekdays = named.calendar.working_weekdays();
+            self.calendar_holidays_buffer = named
+                .calendar
+                .holidays()
+                .iter()
+                .map(|date| date.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+        }
+    }
+
+    /// Create a calendar from the editor buffers.
+    fn create_calendar(&mut self) {
+        let name = self.calendar_name_buffer.trim().to_string();
+        if name.is_empty() {
+            self.status_message = Some("Calendar name must not be empty".to_string());
+            return;
+        }
+        let Some(calendar) = self.build_calendar() else {
+            return;
+        };
+        let id = self.project.calendars.next_id();
+        let command = CreateCalendar::new(id, name, calendar);
+        match self.stack.execute(&mut self.project, Box::new(command)) {
+            Ok(()) => {
+                self.status_message = None;
+                self.select_calendar(id);
+            }
+            Err(error) => self.status_message = Some(error),
+        }
+    }
+
+    /// Apply the editor buffers to the selected calendar.
+    fn apply_calendar_edits(&mut self) {
+        let Some(id) = self.selected_calendar else {
+            return;
+        };
+        let Some(named) = self.project.calendars.named(id).cloned() else {
+            return;
+        };
+
+        let name = self.calendar_name_buffer.trim().to_string();
+        if !name.is_empty() && name != named.name {
+            if let Err(error) = self
+                .stack
+                .execute(&mut self.project, Box::new(RenameCalendar { id, name }))
+            {
+                self.status_message = Some(error);
+            }
+        }
+
+        let Some(calendar) = self.build_calendar() else {
+            return;
+        };
+        if calendar != named.calendar {
+            if let Err(error) = self.stack.execute(
+                &mut self.project,
+                Box::new(SetCalendarDefinition { id, calendar }),
+            ) {
+                self.status_message = Some(error);
+            }
+        }
+
+        self.select_calendar(id);
+    }
+
+    /// Delete the selected calendar, refusing while an activity uses it.
+    fn delete_selected_calendar(&mut self) {
+        let Some(id) = self.selected_calendar else {
+            return;
+        };
+        if self
+            .project
+            .activities
+            .iter()
+            .any(|activity| activity.calendar == Some(id))
+        {
+            self.status_message = Some(format!(
+                "{} activity(ies) use this calendar — clear their calendar first",
+                self.project
+                    .activities
+                    .iter()
+                    .filter(|activity| activity.calendar == Some(id))
+                    .count()
+            ));
+            return;
+        }
+        match self
+            .stack
+            .execute(&mut self.project, Box::new(DeleteCalendar { id }))
+        {
+            Ok(()) => {
+                self.selected_calendar = None;
+                self.status_message = None;
+            }
+            Err(error) => self.status_message = Some(error),
+        }
+    }
+
+    /// Build a calendar from the editor buffers, reporting why it is invalid.
+    fn build_calendar(&mut self) -> Option<Calendar> {
+        if !self.calendar_weekdays.iter().any(|working| *working) {
+            self.status_message = Some("A calendar needs at least one working day".to_string());
+            return None;
+        }
+        let mut calendar = Calendar::new(self.calendar_weekdays).ok()?;
+        for entry in self.calendar_holidays_buffer.split(',') {
+            let trimmed = entry.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let Some(date) = parse_date(trimmed) else {
+                self.status_message = Some(format!("\"{trimmed}\" is not a valid date"));
+                return None;
+            };
+            calendar = calendar.with_holiday(date);
+        }
+        Some(calendar)
     }
 
     /// Remove the selected resource from the dictionary.
@@ -744,6 +880,9 @@ impl eframe::App for CadenceApp {
                 if ui.button("Baselines").clicked() {
                     self.view_mode = ViewMode::Baselines;
                 }
+                if ui.button("Calendars").clicked() {
+                    self.view_mode = ViewMode::Calendars;
+                }
                 if ui
                     .button("Save report")
                     .on_hover_text("Write a Markdown report next to the working directory")
@@ -806,6 +945,55 @@ impl eframe::App for CadenceApp {
                                 ui.label("Constraint date (YYYY-MM-DD)");
                                 ui.text_edit_singleline(&mut self.constraint_date_buffer);
                             }
+
+                            ui.separator();
+                            ui.heading("Calendar");
+                            let calendar_names = self.project.calendars.calendars().to_vec();
+                            let current = self
+                                .project
+                                .activity(id)
+                                .and_then(|activity| activity.calendar);
+                            let selected_text = current
+                                .and_then(|current| {
+                                    calendar_names
+                                        .iter()
+                                        .find(|named| named.id == current)
+                                        .map(|named| named.name.clone())
+                                })
+                                .unwrap_or_else(|| "Project default".to_string());
+                            ComboBox::from_id_salt("activity_calendar")
+                                .selected_text(selected_text)
+                                .show_ui(ui, |ui| {
+                                    if ui
+                                        .selectable_label(current.is_none(), "Project default")
+                                        .clicked()
+                                        && current.is_some()
+                                    {
+                                        let _ = self.stack.execute(
+                                            &mut self.project,
+                                            Box::new(SetActivityCalendar {
+                                                activity: id,
+                                                calendar: None,
+                                            }),
+                                        );
+                                        self.recompute();
+                                    }
+                                    for named in &calendar_names {
+                                        let picked = current == Some(named.id);
+                                        if ui.selectable_label(picked, &named.name).clicked()
+                                            && !picked
+                                        {
+                                            let _ = self.stack.execute(
+                                                &mut self.project,
+                                                Box::new(SetActivityCalendar {
+                                                    activity: id,
+                                                    calendar: Some(named.id),
+                                                }),
+                                            );
+                                            self.recompute();
+                                        }
+                                    }
+                                });
 
                             ui.separator();
                             ui.heading("Progress");
@@ -1299,6 +1487,99 @@ impl eframe::App for CadenceApp {
                                         });
                                 });
                         }
+                    }
+                });
+            }
+            ViewMode::Calendars => {
+                egui::Panel::right("calendar_inspector")
+                    .default_size(300.0)
+                    .show(ui, |ui| {
+                        ui.heading("Calendars");
+                        ui.label("Name");
+                        ui.text_edit_singleline(&mut self.calendar_name_buffer);
+                        ui.label("Working days");
+                        ui.horizontal_wrapped(|ui| {
+                            for (index, label) in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                                .iter()
+                                .enumerate()
+                            {
+                                ui.checkbox(&mut self.calendar_weekdays[index], *label);
+                            }
+                        });
+                        ui.label("Holidays (comma-separated YYYY-MM-DD)");
+                        ui.text_edit_singleline(&mut self.calendar_holidays_buffer);
+
+                        if ui.button("Add calendar").clicked() {
+                            self.create_calendar();
+                        }
+                        if self.selected_calendar.is_some() {
+                            if ui.button("Apply changes").clicked() {
+                                self.apply_calendar_edits();
+                            }
+                            if ui.button("Delete calendar").clicked() {
+                                self.delete_selected_calendar();
+                            }
+                        }
+                        ui.label(
+                            "A calendar cannot be deleted while an activity uses it; \
+                             holidays and working days can be changed at any time.",
+                        );
+                    });
+
+                let calendars = self.project.calendars.calendars().to_vec();
+                let selected = self.selected_calendar;
+                egui::CentralPanel::default().show(ui, |ui| {
+                    ui.heading("Named calendars");
+                    if calendars.is_empty() {
+                        ui.label(
+                            "No named calendars yet; the project uses one shared working week.",
+                        );
+                    }
+                    Grid::new("calendar_rows")
+                        .striped(true)
+                        .spacing([12.0, 4.0])
+                        .show(ui, |ui| {
+                            for header in ["Calendar", "Working days", "Holidays", "Activities"] {
+                                ui.label(header);
+                            }
+                            ui.end_row();
+
+                            for named in &calendars {
+                                if ui
+                                    .selectable_label(selected == Some(named.id), &named.name)
+                                    .clicked()
+                                {
+                                    self.select_calendar(named.id);
+                                }
+                                ui.label(format!("{}/7", named.calendar.working_days_per_week()));
+                                ui.label(named.calendar.holidays().len().to_string());
+                                let users = self
+                                    .project
+                                    .activities
+                                    .iter()
+                                    .filter(|activity| activity.calendar == Some(named.id))
+                                    .count();
+                                ui.label(users.to_string());
+                                ui.end_row();
+                            }
+                        });
+
+                    ui.separator();
+                    if let Some(id) = selected {
+                        if let Some(named) = self.project.calendars.named(id) {
+                            ui.heading(&named.name);
+                            ui.label(format!("Calendar {}", named.id));
+                            let holidays = named.calendar.holidays();
+                            if holidays.is_empty() {
+                                ui.label("No holiday exceptions.");
+                            } else {
+                                for holiday in holidays {
+                                    ui.label(holiday.to_string());
+                                }
+                            }
+                        }
+                    } else {
+                        ui.label("Select a calendar to see its holidays.");
                     }
                 });
             }

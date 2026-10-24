@@ -2028,7 +2028,7 @@ mod tests {
 
         // The activity keeps its reference; the definition changed under it.
         let named = project.calendars.named(CalendarId(1)).expect("calendar");
-        assert_eq!(named.calendar.working_weekdays()[5], true);
+        assert!(named.calendar.working_weekdays()[5]);
         assert!(named.calendar.holidays().contains(&jan(26)));
         assert_eq!(
             project.activity(a).expect("activity").calendar,
@@ -2038,7 +2038,7 @@ mod tests {
         // Undo puts the original definition back, reference still intact.
         stack.undo(&mut project).expect("undo redefine");
         let named = project.calendars.named(CalendarId(1)).expect("calendar");
-        assert_eq!(named.calendar.working_weekdays()[5], false);
+        assert!(!named.calendar.working_weekdays()[5]);
         assert!(named.calendar.holidays().contains(&jan(25)));
         assert_eq!(
             project.activity(a).expect("activity").calendar,
