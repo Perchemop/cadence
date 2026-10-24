@@ -49,6 +49,9 @@ follows Keep a Changelog; releases use git tags.
   and SHA-256 checksums; crash-report and update-check stubs; ROADMAP.md,
   pull-request template, release workflow, brand and research documents,
   CONTRIBUTING.md
+- Calendar management in the GUI (Calendars view) and a
+  `SetCalendarDefinition` command for editing working days and holidays in
+  place; per-activity calendar picker in the inspector
 - Property tests for resource leveling (delays only, delays match the
   calendar, conflict-free results are reachable through constraints) and for
   all four interchange formats (arbitrary projects round-trip within each
