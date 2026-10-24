@@ -72,11 +72,16 @@ Never use Ollama or any local model hosting. **Changing the model never changes
 the process**: heavy builds and tests still run in GitHub Actions only, the
 clean-room rules still hold, and the vertical-slice discipline still applies.
 
-- The **designer** subagent is the dedicated UI/UX designer: it owns the visual
-  identity (logo, icons, illustrations, brand) and continuously reviews every
-  user-visible slice for a minimalistic, beautiful, professional, polished look
-  and for perceived performance. Delegate every UI-affecting slice to it before
-  the slice is considered done. Design assets and `docs/design/brand.md` are its
+- The **designer** subagent owns four things and is not optional: **(A)** the
+  clean-room analysis of the inspiration product (public sources only — never
+  decompile, never copy assets, never clone a UI), **(B)** the
+  `docs/capability-inventory.md` record of **every feature and ability** that
+  product has, **(C)** the design vision *and its implementation* (interaction
+  model, visual system, logo, icons, illustrations, brand), and **(D)** the
+  **parity review** proving the app meets every documented ability.
+  Delegate every user-visible slice to it, route parity questions to it, and do
+  not consider a slice done until its review has passed. Design assets,
+  `docs/design/brand.md`, the inventory and `docs/parity.md` are its
   responsibility, not yours.
 
 ## Completion mandate (mandatory)
