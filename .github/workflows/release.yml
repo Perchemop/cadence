@@ -71,6 +71,10 @@ jobs:
         run: |
           cd artefacts
           find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
+          # Flatten for the release upload: every file, checksums included.
+          mkdir -p upload
+          find . -type f ! -name SHA256SUMS.txt -exec cp {} upload/ \;
+          cp SHA256SUMS.txt upload/
 
       - name: Publish the GitHub Release
         shell: bash
@@ -81,4 +85,4 @@ jobs:
           gh release create "$TAG" \
             --title "Cadence $TAG" \
             --generate-notes \
-            artefacts/*/*
+            artefacts/upload/*

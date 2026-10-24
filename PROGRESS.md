@@ -49,6 +49,35 @@ Guide conformance completed in the same pass:
   weeks. 203 tests in total.
 - CI green on `opencode/ci`.
 
+## 2026-10-24 — v0.1.0 released; guide rewritten as suite-ready edition
+
+The guide was rewritten as the "Suite-Ready" edition. Its new requirements
+were implemented and verified:
+
+- **v0.1.0 published**: tag `v0.1.0` on main; release.yml built release
+  binaries on Linux, Windows and macOS and published them with SHA-256SUMS at
+  https://github.com/Perchemop/cadence/releases/tag/v0.1.0 (workflow
+  checksum-glob bug found on the first run and fixed).
+- **Crash stub**: `crash_report::install()` panic hook appends version, OS,
+  panic message and a backtrace to a local crash log; nothing is sent
+  anywhere. README gained a privacy section. MSRV bumped to 1.81 for
+  `std::panic::PanicHookInfo`.
+- **Update-check stub**: `update_check` module with the full v0.2.0 API shape
+  (variants allowed dead code until wired) surfaced as `cadence version`.
+- **ROADMAP.md**: milestones with evidence-based readiness.
+- **.github/PULL_REQUEST_TEMPLATE.md**: the guide §8.3 checklist.
+- **.github/workflows/release.yml**: tag-triggered release builds and notes.
+- **docs/design/brand.md**: original identity and tested colour tokens.
+- **docs/research/**: process README (human gate) plus four draft notes
+  (Gantt printing, AccessKit, crash submission, update check) — original
+  summaries and public URLs only.
+- **CONTRIBUTING.md**: licence terms for PRs.
+- Native PDF printing landed earlier in this pass (D16 reversed): PDF writer,
+  `cadence print`, GUI **Print report…** with a native save dialog (`rfd`).
+
+Verified on main at each step (runs on 862c268, 25c17b8, bf32a89, d15467a,
+f7e3553 and the release run 40042554896).
+
 ## 2026-10-24 — P5-2b native PDF printing (D16 reversed)
 
 - `cadence-core/src/pdf.rs`: a dependency-free PDF 1.4 writer — text pages in
