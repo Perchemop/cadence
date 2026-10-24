@@ -1408,6 +1408,55 @@ pub struct SetActivityCalendar {
     pub calendar: Option<CalendarId>,
 }
 
+/// Replace a named calendar's working-time definition.
+///
+/// Activities referencing the calendar keep their reference — only the
+/// definition (working weekdays and holidays) changes. The identifier and name
+/// are untouched.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetCalendarDefinition {
+    /// Calendar to update.
+    pub id: CalendarId,
+    /// New working-time definition.
+    pub calendar: Calendar,
+}
+
+impl Command for SetCalendarDefinition {
+    fn description(&self) -> String {
+        format!("redefine calendar {}", self.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let position = project
+            .calendars
+            .calendars()
+            .iter()
+            .position(|entry| entry.id == self.id)
+            .ok_or_else(|| format!("calendar {} does not exist", self.id))?;
+        let previous = project
+            .calendars
+            .remove(self.id)
+            .map_err(|error| error.to_string())?;
+        if let Err(error) =
+            project
+                .calendars
+                .add(self.id, previous.name.clone(), self.calendar.clone())
+        {
+            // Put the old definition back at its position so a failed command
+            // changes nothing.
+            project
+                .calendars
+                .restore(previous, position)
+                .map_err(|rollback| format!("{error}; rollback also failed: {rollback}"))?;
+            return Err(error.to_string());
+        }
+        Ok(Box::new(SetCalendarDefinition {
+            id: self.id,
+            calendar: previous.calendar,
+        }))
+    }
+}
+
 impl Command for SetActivityCalendar {
     fn description(&self) -> String {
         match self.calendar {
@@ -1938,6 +1987,80 @@ mod tests {
 
         stack.undo(&mut project).expect("undo delete");
         assert!(project.wbs.node(WbsId(2)).is_some());
+    }
+
+    #[test]
+    fn calendar_definition_changes_are_undoable_and_revert_on_failure() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 2);
+
+        let week = [true, true, true, true, true, false, false];
+        let calendar = Calendar::new(week)
+            .expect("valid week")
+            .with_holiday(jan(25));
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateCalendar::new(CalendarId(1), "Six day", calendar)),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityCalendar {
+                activity: a,
+                calendar: Some(CalendarId(1)),
+            }),
+        );
+
+        // Redefine: Saturday becomes a working day, the holiday moves.
+        let redefined = Calendar::new([true, true, true, true, true, true, false])
+            .expect("valid week")
+            .with_holiday(jan(26));
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetCalendarDefinition {
+                id: CalendarId(1),
+                calendar: redefined,
+            }),
+        );
+
+        // The activity keeps its reference; the definition changed under it.
+        let named = project.calendars.named(CalendarId(1)).expect("calendar");
+        assert!(named.calendar.working_weekdays()[5]);
+        assert!(named.calendar.holidays().contains(&jan(26)));
+        assert_eq!(
+            project.activity(a).expect("activity").calendar,
+            Some(CalendarId(1))
+        );
+
+        // Undo puts the original definition back, reference still intact.
+        stack.undo(&mut project).expect("undo redefine");
+        let named = project.calendars.named(CalendarId(1)).expect("calendar");
+        assert!(!named.calendar.working_weekdays()[5]);
+        assert!(named.calendar.holidays().contains(&jan(25)));
+        assert_eq!(
+            project.activity(a).expect("activity").calendar,
+            Some(CalendarId(1))
+        );
+    }
+
+    #[test]
+    fn redefining_an_unknown_calendar_is_rejected() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(SetCalendarDefinition {
+                    id: CalendarId(9),
+                    calendar: Calendar::weekend(),
+                }),
+            )
+            .expect_err("unknown calendar must be rejected");
+        assert!(error.contains("does not exist"));
     }
 
     #[test]
