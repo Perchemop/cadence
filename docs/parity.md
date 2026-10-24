@@ -78,6 +78,7 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | JSON interchange | done | `cadence-interchange::json`: Cadence's own versioned schema and the only format that is lossless — it carries the WBS tree, named calendars and activity membership as well as everything the other formats do; CLI `export-json`/`import-json` |
 | WBS and named calendars in interchange | done for JSON | MSPDI, MPX and CSV cannot express them and import them empty (documented in `interchange::json`) |
 | Printing / PDF and reports | done | Markdown reports (`cadence report`, **Save report**) and PDF printing (`cadence print`, **Print report…** via a native save dialog); D16 reversed |
+| Calendar management in the UI | done | Calendars view: list, create, rename, delete, working-day and holiday editing, per-activity assignment |
 | Keyboard map | in progress | Ctrl+Z/Y undo-redo and Ctrl+1..4 view switching added; full keyboard-only operation audit pending |
 | Accessibility audit | in progress | WCAG AA contrast for theme text verified by tests (`accessibility_tests`); screen-reader (AccessKit) pass pending |
 | Performance pass | in progress | 10k-activity schedule, 10k-day resource analysis and 200-activity leveling all time-budgeted in CI; smooth-interaction profiling pending |

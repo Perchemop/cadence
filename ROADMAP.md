@@ -57,8 +57,8 @@ clippy with warnings denied, release binary packaged for all three.
       D15 records why this must be an explicit mode).
 - [ ] Per-assignment resource units and cost rate tables (D11 records the
       current one-unit model).
-- [ ] Calendar editing in the GUI (calendars are modelled and persisted; the
-      GUI surface is not built).
+- [x] Calendar editing in the GUI (Calendars view, calendar definition
+      command, per-activity assignment).
 
 ### Later
 

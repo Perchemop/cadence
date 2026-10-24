@@ -77,6 +77,23 @@ earned-value metrics against the most recent baseline; and the baseline list.
 | Ctrl+4 | Baselines |
 | Ctrl+D | Toggle light/dark theme |
 
+## Views
+
+* **Table** — the sortable activity list and inspector (details, constraint,
+  calendar, progress, resources, relationships).
+* **Gantt** — timeline with bars, dependency arrows, zoom and a progress
+  overlay, drag to create dependencies.
+* **Resources** — dictionary, capacity editing, assignments, per-day usage,
+  leveling preview and apply.
+* **Baselines** — capture and delete baselines, variance against the selected
+  baseline, and earned-value metrics at a status date.
+* **Calendars** — named calendars with working days and holidays, create /
+  rename / delete, and per-activity assignment (a calendar cannot be deleted
+  while an activity uses it).
+
+Reports live outside the views: `cadence report` writes Markdown and
+`cadence print` writes a PDF, both from any project file.
+
 ## Examples
 
 `cargo run -p cadence-app --example bridge_report` builds the sample bridge

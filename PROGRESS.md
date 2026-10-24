@@ -49,6 +49,24 @@ Guide conformance completed in the same pass:
   weeks. 203 tests in total.
 - CI green on `opencode/ci`.
 
+## 2026-10-24 — Calendars view and in-place calendar definition command
+
+- New `SetCalendarDefinition` command: replaces a named calendar's working
+  week and holidays in place, so activities keep their reference; the inverse
+  command restores the previous definition, and a failed command rolls the
+  old one back rather than losing it (tested, including the unknown-calendar
+  rejection).
+- New Calendars view in the GUI: calendar table (working days/week, holidays,
+  activities using each), create with name/working-day checkboxes/holiday
+  dates, rename, delete (refused while an activity uses the calendar, with a
+  count), holiday list for the selected calendar.
+- Inspector gained a per-activity calendar picker routed through the existing
+  `SetActivityCalendar` command.
+- Command tests cover the round trip (definition changes, reference intact,
+  undo restores) and rejection. Clippy caught `assert_eq!` with literal bools
+  in the first test draft, corrected to `assert!`/`assert!(!..)`.
+- CI green on `opencode/ci`.
+
 ## 2026-10-24 — v0.1.0 released; guide rewritten as suite-ready edition
 
 The guide was rewritten as the "Suite-Ready" edition. Its new requirements
