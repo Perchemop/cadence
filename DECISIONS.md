@@ -379,3 +379,34 @@ answered by fixing the repository rather than relaxing the check:
   `[workspace.dependencies]` entry — good hygiene, and it keeps the crates
   publishable as-is — rather than `wildcards = "allow"`, which would have
   re-opened the door for every future dependency.
+
+## D21 — Release discipline: the version string, the checksums and the tag must agree (2026-10-24)
+
+v0.1.1 was published twice, and the first publishing taught three lessons the
+hard way. The tag was cut before the crate version was bumped, so the released
+binary answered `cadence version` with "0.1.0" from inside the v0.1.1 release —
+exactly the string a bug report would quote. The checksum step listed artefact
+*directory* paths and, because the shell creates the output file before the
+listing runs, checksummed the empty sums file itself; the hash values were
+right but `sha256sum -c` could not be run against the downloaded assets.
+
+Both were fixed, the release was deleted, and v0.1.1 was re-published from the
+corrected commit. The rules that follow are recorded so they are decisions, not
+memories:
+
+1. **The crate version is bumped in the same change as the tag that publishes
+   it.** A release whose `cadence version` disagrees with its tag is a defect,
+   because every bug report, checksum comparison and support answer starts
+   from the string the binary prints.
+2. **`SHA256SUMS.txt` lists plain asset names** — the names as released — so a
+   downloader can run `sha256sum -c SHA256SUMS.txt` directly, and it is written
+   where the listing cannot see it, so it is never its own input.
+3. **Linux ARM64 is a first-class target.** The maintainer's machine is
+   aarch64, so every change builds and tests on ARM Linux in CI, and every
+   release carries `cadence-linux-aarch64`. "It works on the machines that
+   build it" is not a release claim this project can make, because none of its
+   verification happens on the maintainer's laptop.
+
+The six `cadence-*` entries in `Cargo.lock` were updated by hand for the
+version bump — path dependencies have no resolution to redo — and the
+lockfile-freshness check in CI validated the result.

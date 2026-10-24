@@ -448,3 +448,24 @@ f7e3553 and the release run 40042554896).
 
 - Phase 2 (P2-1..): egui/eframe app shell, design system, then Gantt and
   tables. No further Phase-1 work remains.
+## 2026-10-24 — v0.1.1: open-source readiness released, Linux ARM64 first-class
+
+PR #25 merged (all fourteen checks green, twelve of them required on `main`):
+Linux ARM64 joined the CI matrix and the release matrix, so `cadence-linux-
+aarch64` is built on every change and shipped in every release. `v0.1.1` was
+tagged on `main` and the release workflow passed all six jobs, including
+`Build (ubuntu-24.04-arm)`.
+
+The released ARM64 binary was installed on the maintainer's aarch64 machine
+(`~/.local/bin/cadence`), its SHA-256 verified, and exercised: `--help`,
+`version`, the demo schedule, a `save`/`load` round-trip, a Markdown report
+and a PDF print — all working on the target machine. The GUI needs a display
+and was not exercised here.
+
+That run exposed two defects in the first publishing (D21): the binary
+reported version 0.1.0 inside the v0.1.1 release (the tag was cut before the
+crate version was bumped), and `SHA256SUMS.txt` listed artefact directory paths
+plus a checksum of its own empty file. Both were repaired, the workspace
+version is now 0.1.1 (the six `Cargo.lock` entries synced to match), and
+v0.1.1 was deleted and re-published from the corrected commit so that the tag,
+the checksum file and the string `cadence version` prints all agree.

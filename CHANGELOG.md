@@ -5,6 +5,10 @@ follows Keep a Changelog; releases use git tags.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.1] — 2026-10-24
+
 ### Added
 
 - `cadence-interchange` crate: Microsoft Project XML (MSPDI) and MPX import
@@ -96,6 +100,10 @@ Project health (opensource.guide review — see D18 and
 - Linux is built and tested on ARM64 (aarch64) as well as x86-64, in CI and in
   every release: the first release shipped no ARM Linux binary, and the
   maintainer's machine is aarch64
+- Release hygiene (D21): the crate version is bumped in the same change as
+  the tag that publishes it, and `SHA256SUMS.txt` lists plain asset names that
+  `sha256sum -c` verifies directly — the first publishing of v0.1.1 had
+  neither and was withdrawn and re-published
 - `ATTRIBUTION.md` extended with the accepted licence classes, non-code asset
   policy, the terms of the tooling and models used to build the project, and
   the SBOM location

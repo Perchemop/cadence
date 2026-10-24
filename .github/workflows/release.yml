@@ -76,11 +76,19 @@ jobs:
         shell: bash
         run: |
           cd artefacts
-          find . -type f -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
-          # Flatten for the release upload: every file, checksums included.
+          # Flatten to plain asset names first: the release carries plain
+          # names, so the checksum file must list plain names too, or
+          # `sha256sum -c SHA256SUMS.txt` cannot be run against the
+          # downloaded assets. The sums are written to the parent directory
+          # while the listing happens, so the file can never checksum
+          # itself (the first publishing of v0.1.1 did both wrong).
           mkdir -p upload
-          find . -type f ! -name SHA256SUMS.txt -exec cp {} upload/ \;
-          cp SHA256SUMS.txt upload/
+          find . -mindepth 2 -type f -exec cp {} upload/ \;
+          (
+            cd upload
+            sha256sum -- * > ../SHA256SUMS.txt
+            cp ../SHA256SUMS.txt .
+          )
 
       - name: Publish the GitHub Release
         shell: bash
