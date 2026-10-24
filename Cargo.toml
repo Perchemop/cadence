@@ -36,7 +36,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 thiserror = "2"
 proptest = "1"
 eframe = "0.35"
-egui = "0.35"
+egui = "0.37"
 
 [profile.release]
 lto = "thin"
