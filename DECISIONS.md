@@ -349,3 +349,33 @@ Two changes follow:
   fail every build until the lockfile it describes has been written.
 
 The alternative — running cargo locally — remains excluded by the build rules.
+
+## D20 — The dependency checks are policy, not decoration (2026-10-24)
+
+The security workflow's first runs found five real things, and each one was
+answered by fixing the repository rather than relaxing the check:
+
+* **Unmaintained crates.** Four "unmaintained crate" advisories fire on the
+  GUI stack: `ttf-parser` (RUSTSEC-2026-0192) and the merged-into-`zbus`-6
+  trio `zvariant`, `zbus_names`, `zvariant_derive` (RUSTSEC-2026-0370, -0371,
+  -0372). None is a vulnerability, none is a direct dependency, and none has a
+  safe upgrade: the parents (`winit`/`eframe`, `accesskit`, and `ashpd` via
+  `rfd`) have not migrated yet. Each advisory ID is an explicit, dated ignore
+  entry in `deny.toml` with the reason and the re-check trigger. The
+  alternative — downgrading the whole unmaintained class to a warning — would
+  have made every future case invisible instead of three current ones
+  deliberate.
+* **A yanked pin.** `clipboard-win 5.4.1` was yanked upstream. The remedy is
+  the D19 regeneration, not an ignore: the lockfile workflow re-resolves that
+  package explicitly, and the refreshed lock commits the result.
+* **Font licences.** `epaint_default_fonts` embeds Ubuntu and Noto Emoji
+  glyphs under the Ubuntu Font Licence 1.0 and OFL-1.1 — permissive,
+  OSI-approved font licences covering an asset, not code. They are
+  allow-listed for exactly that purpose, and the fonts are now recorded in
+  `ATTRIBUTION.md`, which had wrongly said the project had no third-party
+  non-code assets.
+* **Wildcard requirements.** The wildcard ban flagged the internal workspace
+  dependencies, which were path-only. The fix is an explicit `version` on each
+  `[workspace.dependencies]` entry — good hygiene, and it keeps the crates
+  publishable as-is — rather than `wildcards = "allow"`, which would have
+  re-opened the door for every future dependency.

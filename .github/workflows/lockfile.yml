@@ -3,11 +3,19 @@ name: Lockfile
 # Cargo is not run on the maintainer's machine, so Cargo.lock is regenerated
 # here rather than locally.
 #
+# The freshness job runs on every push and pull request: `cargo metadata
+# --locked` fails when the committed lockfile no longer matches the
+# manifests, which is exactly the drift that let the `rfd` dependency and a
+# yanked `clipboard-win` pin go unnoticed (D19). It is excluded from dispatching
+# this workflow, where the lockfile is stale by definition — that dispatch is
+# what refreshes it.
+#
 # The regenerate job runs on every pull request and on demand: it resolves the
 # dependency graph on a runner and uploads the resulting `Cargo.lock` as an
 # artefact, which is then committed like any other change and verified by the
 # normal CI run. The file is deliberately never committed from inside the
-# workflow, so every lockfile change is reviewed and CI-checked.
+# workflow, so every lockfile change is reviewed and CI-checked. It is also
+# excluded from main pushes, which would produce an upload nothing consumes.
 #
 # The `cargo update -p clipboard-win` step makes the yanked-crate policy
 # enforceable: fresh resolution avoids yanked versions, and this re-resolve of
@@ -15,6 +23,8 @@ name: Lockfile
 # hoping the full regeneration moved it.
 
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -22,8 +32,20 @@ permissions:
   contents: read
 
 jobs:
+  freshness:
+    name: Lockfile freshness
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Fail if Cargo.lock lags the manifests
+        run: cargo metadata --locked --format-version 1 > /dev/null
+
   regenerate:
     name: Regenerate Cargo.lock
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

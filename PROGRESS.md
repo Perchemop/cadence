@@ -48,6 +48,32 @@ and the licence check could not see the new dependency. Recorded as D19;
 maintainer to commit, and a freshness check (`cargo metadata --locked`) is
 switched on with the refreshed lockfile.
 
+Resolved in the same pull request. The security workflow's first runs found
+five more real things, each answered by fixing the repository rather than
+relaxing the check (D20):
+
+- Four unmaintained-crate advisories fire on the GUI stack (`ttf-parser`, and
+  `zvariant`, `zbus_names`, `zvariant_derive`, merged into `zbus` 6 upstream).
+  None is a vulnerability, none is a direct dependency, and none has a safe
+  upgrade until `winit`/`eframe`, `accesskit` and `ashpd` migrate. Each ID is
+  an explicit, dated ignore in `deny.toml` with the reason and the re-check
+  trigger.
+- A yanked `clipboard-win 5.4.1` pin: the remedy is the regeneration, not an
+  ignore. The lockfile workflow now runs on every pull request and re-resolves
+  that package explicitly.
+- `epaint_default_fonts` embeds Ubuntu and Noto Emoji glyphs under the Ubuntu
+  Font Licence 1.0 and OFL-1.1 — permissive, OSI-approved font licences. Both
+  are allow-listed in `deny.toml` for that purpose, and the fonts are now
+  recorded in `ATTRIBUTION.md`, which had wrongly said the project carried no
+  third-party non-code assets.
+- The wildcard-dependency ban flagged the internal workspace dependencies,
+  which were path-only. The fix is an explicit `version` on each
+  `[workspace.dependencies]` entry — good hygiene, and it keeps the crates
+  publishable — rather than relaxing the ban.
+
+The refreshed `Cargo.lock` is committed in the same change, with the freshness
+check on.
+
 Not decided here (maintainer-side, listed in `VISION.md` and `ROADMAP.md`):
 name/trademark check, canonical home URL and handles, employer/IP policy, a
 second admin with MFA, real-machine testing of the Windows and macOS binaries,

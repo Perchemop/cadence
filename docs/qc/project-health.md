@@ -71,11 +71,12 @@ scheduling engine, so the engine-side gates remain in
       `dtolnay/rust-toolchain`, which reads its own ref name to select the
       toolchain.
 - [x] Protected default branch with required status checks, so a CI result is
-      meaningful. Configured on `main`: required checks `Verify
-      (ubuntu-latest)`, `Verify (windows-latest)`, `Verify (macos-latest)` and
-      `Package (Linux)`; branches must be up to date; force pushes and branch
-      deletion disabled; the maintainer account is exempt from the checks so a
-      broken pipeline cannot lock the project out (see `GOVERNANCE.md`).
+      meaningful. Configured on `main`: the required checks are the ones
+      listed in `.ci-required.txt` (build and package on three platforms, the
+      six security checks, and lockfile freshness); branches must be up to
+      date; force pushes and branch deletion disabled; the maintainer account
+      is exempt from the checks so a broken pipeline cannot lock the project
+      out (see `GOVERNANCE.md`).
 - [x] Private vulnerability reporting enabled, so a report creates a private
       advisory instead of a public issue (`SECURITY.md` is the public guide to
       it).
@@ -96,8 +97,9 @@ scheduling engine, so the engine-side gates remain in
 - [x] `cargo clippy --workspace --all-targets -- -D warnings` passes.
 - [x] `cargo test --workspace` passes on Linux, Windows and macOS.
 - [x] The security workflow passes on `main`.
-- [ ] `Cargo.lock` refreshed from the lockfile workflow and the freshness check
-      enabled (D19) — the committed lockfile currently lags the manifests.
+- [x] `Cargo.lock` refreshed from the lockfile workflow and the freshness check
+      enabled (D19): the committed lockfile no longer lags the manifests, the
+      yanked `clipboard-win` pin is gone, and any future drift fails the build.
 
 ## Human-gated items (recorded, not decided)
 
@@ -112,5 +114,8 @@ These need the maintainer, and are listed in `VISION.md` so they stay visible:
 
 ## Evidence
 
-- Main-branch CI after the merge: run _pending this change_.
-- Security workflow on `main`: _pending this change_.
+- The checks named in `.ci-required.txt` on PR #15's final commit: all green,
+  including the security workflow's licence, advisory, secret-scanning, SAST
+  and SBOM jobs.
+- The same set re-runs on `main` immediately after the merge; those runs are
+  the durable record (the repository's Actions tab keeps them).

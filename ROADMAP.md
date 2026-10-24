@@ -66,12 +66,21 @@ touches the scheduling engine. See D18 for the decisions and
 - [x] Protected default branch with required status checks.
 - [x] `ATTRIBUTION.md` extended to non-code assets, accepted licence classes,
       and the terms of the tooling and models used to build the project.
-- [ ] `Cargo.lock` refreshed by the CI lockfile workflow, and the freshness
-      check switched on (D19) — the lock lags the manifests today because cargo
-      is never run on the maintainer's machine.
+- [x] `Cargo.lock` refreshed by the CI lockfile workflow, and the freshness
+      check switched on (D19). The first security run also flagged four
+      unmaintained-crate advisories from the GUI stack, a yanked
+      `clipboard-win` pin, and path-only internal workspace requirements —
+      answered with recorded ignores, the regeneration, and explicit versions
+      (D20).
 - [ ] Maintainer-side items recorded in [`VISION.md`](VISION.md) and awaiting
       the human: name/trademark check, canonical home URL and handles,
       employer/IP question, second admin and MFA.
+
+### Next slice (decided 2026-10-24)
+
+- [ ] Machine-readable schedule output (`--json`) from the CLI, so the tool can
+      be driven by scripts and assistive technology without parsing the aligned
+      plain-text table (guide section 21.5, accessibility of tooling).
 
 ### Human-gated (recorded, not decided)
 

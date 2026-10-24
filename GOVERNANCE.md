@@ -57,8 +57,9 @@ consensus among maintainers, and this file must be updated at that point.
 - Commit access is granted sparingly: to the maintainer, and to a contributor
   who has demonstrated sustained, careful work and wants it.
 - The default branch (`main`) is protected: changes land through a pull request
-  with passing required status checks (`Verify` on Linux, Windows and macOS, and
-  `Package (Linux)`), the branch must be up to date with `main`, and force
+  with passing required status checks — the multi-platform build and package
+  checks plus the security and lockfile checks listed in `.ci-required.txt` —
+  the branch must be up to date with `main`, and force
   pushes and branch deletion are disabled. Nobody relies on direct pushes; the
   build tooling opens a pull request for every change.
 - **Review approval is not required while there is one maintainer**, because

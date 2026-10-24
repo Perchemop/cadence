@@ -71,8 +71,9 @@ Decisions in D18 and D19, evidence in `docs/qc/project-health.md`.
 - [x] P6-3: Security pipeline (secret scanning, dependency licence and advisory
       checks, dependency review, CodeQL static analysis, SBOM per run and per
       release, Dependabot, pinned action SHAs, protected default branch)
-- [ ] P6-4: Refresh `Cargo.lock` from the CI lockfile workflow and switch on the
-      freshness check (D19)
+- [x] P6-4: Refresh `Cargo.lock` from the CI lockfile workflow and switch on the
+      freshness check (D19); unmaintained-crate advisories recorded, yanked pin
+      cleared, font licences allowed and attributed (D20)
 - [ ] P6-5: Maintainer-side items recorded in `VISION.md`: name/trademark check,
       canonical home URL and handles, employer/IP question, second admin and
       MFA, real-machine testing of the Windows and macOS binaries

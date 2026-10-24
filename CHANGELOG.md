@@ -81,8 +81,18 @@ Project health (opensource.guide review — see D18 and
   each release
 - Dependabot for cargo and GitHub Actions (grouped, labelled); every workflow
   action pinned to a commit SHA
-- Lockfile workflow that regenerates `Cargo.lock` on a runner and uploads it,
-  because cargo is never run on the maintainer's machine (D19)
+- Lockfile workflow that regenerates `Cargo.lock` on a runner and uploads it
+  (it runs on every pull request), because cargo is never run on the
+  maintainer's machine; a freshness check fails any build whose lockfile lags
+  the manifests (D19)
+- `Cargo.lock` refreshed from that workflow, clearing a yanked `clipboard-win`
+  pin that cargo could never have moved locally
+- The four unmaintained-crate advisories from the GUI stack recorded as
+  explicit, dated ignores in `deny.toml` (D20), and the fonts the GUI stack
+  embeds (Ubuntu, Noto Emoji) recorded with their licences in
+  `ATTRIBUTION.md` and allow-listed in the licence check
+- Workspace-internal dependencies carry explicit versions, so the
+  wildcard-dependency ban is satisfied by the manifest rather than relaxed
 - `ATTRIBUTION.md` extended with the accepted licence classes, non-code asset
   policy, the terms of the tooling and models used to build the project, and
   the SBOM location
