@@ -24,3 +24,8 @@ targets = [
 # Pull requests plan (validate) only; tags build and publish.
 pr-run-mode = "plan"
 install-updater = false
+
+# The release workflow stays hand-written and SHA-pinned (guide §20.3) until
+# `dist init` is adopted wholesale, so dist must not try to regenerate it.
+# `dist plan` still validates everything in this file.
+allow-dirty = ["ci"]
