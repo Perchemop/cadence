@@ -1,0 +1,55 @@
+# Mutation testing (guide §9): cargo-mutants injects small faults and fails
+# when the suite still passes, which is the only cheap evidence that the CPM
+# assertions actually constrain the schedule instead of restating it.
+#
+# Weekly, not per pull request: a full run is hours. The engine is first
+# because a subtly wrong forward/backward pass produces plausible dates that
+# nobody questions until a crew is on site.
+name: Mutation tests
+
+on:
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutants-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      # The workspace denies warnings; mutants adds temporary code paths and a
+      # mutator-generated warning must not masquerade as a test failure.
+      RUSTFLAGS: ""
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - uses: taiki-e/install-action@c1952a69c392b2c5f2eaa845b56120fff5fe49d3 # v2.48.5
+        with:
+          tool: cargo-mutants
+
+      # Cheap sanity check: a wrong path fails in seconds, not after an hour.
+      - name: List the mutants in scope
+        run: cargo mutants --list --file crates/core/src/engine.rs
+
+      - name: Mutate the scheduling engine
+        run: |
+          cargo mutants \
+            --file crates/core/src/engine.rs \
+            --timeout 300 -j 2
+
+      - name: Upload the mutant report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mutants-report
+          path: mutants.out
+          if-no-files-found: warn
+          retention-days: 30
