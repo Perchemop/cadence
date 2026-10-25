@@ -45,6 +45,15 @@ permissions:
   - action: shell
     resource: "bash ~/.config/opencode/scripts/ci.sh *"
     effect: allow
+  - action: shell
+    resource: "gh run list*"
+    effect: allow
+  - action: shell
+    resource: "gh run view*"
+    effect: allow
+  - action: shell
+    resource: "gh run download*"
+    effect: allow
   - action: subagent
     resource: "*"
     effect: deny
