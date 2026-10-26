@@ -38,10 +38,12 @@ pub fn issue_title(log: &str) -> String {
     if log.trim().is_empty() {
         return "Bug report: Cadence".to_string();
     }
-    let message = log
+    let Some(message) = log
         .lines()
         .find_map(|line| line.strip_prefix("panic message: "))
-        .unwrap_or("Cadence crashed");
+    else {
+        return "Cadence crashed".to_string();
+    };
     let message = message.lines().next().unwrap_or(message).trim();
     if message.is_empty() {
         "Cadence crashed".to_string()
@@ -62,9 +64,7 @@ pub fn issue_body(log: &str, notes: &str) -> String {
         if notes.is_empty() {
             "## Bug report\n\nNo information was sent automatically.\n".to_string()
         } else {
-            format!(
-                "## What happened\n\n{notes}\n\nNo information was sent automatically.\n"
-            )
+            format!("## What happened\n\n{notes}\n\nNo information was sent automatically.\n")
         }
     } else if notes.is_empty() {
         format!(
