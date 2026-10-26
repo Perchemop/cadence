@@ -131,13 +131,23 @@ without blocking the application.
 | Ctrl+4 | Baselines |
 | Ctrl+5 | Calendars |
 | Ctrl+D | Toggle light/dark theme |
+| Ctrl+Plus / Ctrl+Minus | Zoom the Gantt timeline in or out |
+| Ctrl+0 | Reset the Gantt zoom |
+| Up / Down | Select the previous/next activity in the Activity table |
+| Tab / Shift+Tab | Move focus between controls |
+| Space / Enter | Activate the focused control or selectable row |
+| F1 | Open the keyboard-shortcuts window |
 
 ## Views
 
 * **Table** — the sortable activity list and inspector (details, constraint,
-  calendar, progress, resources, relationships).
+  calendar, progress, resources, relationships). The inspector's **Add
+  relationship** form creates dependency links without dragging.
 * **Gantt** — timeline with bars, dependency arrows, zoom and a progress
-  overlay, drag to create dependencies.
+  overlay. Drag between bars to create dependencies, or use the inspector's
+  **Add relationship** form; the zoom buttons and `Ctrl+Plus` / `Ctrl+Minus`
+  work without a pointer. A text summary above the chart names the activity
+  and critical counts, and the Table view lists the same data as text.
 * **Resources** — dictionary, capacity editing, assignments, per-day usage,
   leveling preview and apply.
 * **Baselines** — capture and delete baselines, variance against the selected

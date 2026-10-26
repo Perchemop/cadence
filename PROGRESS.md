@@ -3,6 +3,47 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-26 — Accessibility audit: keyboard paths and AccessKit (v0.2.0)
+
+Done in this slice:
+
+- A **Keyboard shortcuts** window (toolbar **Shortcuts** or `F1`) lists every
+  global shortcut and the pointer-free task path, so the keyboard map is
+  discoverable inside the application.
+- The Activity table now supports `Up`/`Down` to select the previous/next
+  activity in the current sort order; the selected row scrolls into view.
+  `Tab`/`Shift+Tab` and `Space`/`Enter` continue to reach and activate the
+  standard widgets in every view.
+- Dependency links are no longer pointer-only. The inspector's **Add
+  relationship** form chooses a predecessor, successor, link type
+  (`FS`/`SS`/`FF`/`SF`) and lag, then runs the same `CreateRelationship`
+  command as drag-to-link. A cycle or invalid endpoint is rejected and the
+  command is undone. Dragging between Gantt bars remains a shortcut.
+- Gantt zoom has keyboard controls (`Ctrl+Plus`, `Ctrl+Minus`, `Ctrl+0`) and
+  visible `−`, `+` and `Reset` buttons. The chart now carries a text summary
+  and legend, and critical bars are marked with a leading `!` rather than
+  relying on colour alone.
+- The Gantt canvas exposes an AccessKit label through
+  `Response::widget_info`; the Table view is the per-activity semantic
+  alternative. AccessKit itself is enabled by eframe's default features.
+- The Table inspector is wrapped in a vertical scroll area, and status messages
+  are prefixed with `Status:` so the text is self-describing.
+- `ACCESSIBILITY.md` was rewritten around the evidence and the remaining
+  limits; `docs/usage.md` has the expanded keyboard map, and `ROADMAP.md`,
+  `REQUIREMENTS_TRACEABILITY.md`, `docs/parity.md` and `CHANGELOG.md` record
+  the slice.
+
+Tests: new unit tests cover the link-type index round trip, rejection of
+missing/identical link endpoints, and the Gantt summary text. The existing
+WCAG AA contrast tests remain. Keyboard-only operation and the AccessKit tree
+are interactive/OS-level checks; the code-level pass and the remaining
+platform-specific manual checks are documented in `ACCESSIBILITY.md`.
+
+Known limits recorded: individual Gantt bars are not separate AccessKit nodes;
+Gantt panning remains pointer/wheel-driven (zoom is keyboard); status messages
+are not live regions; the PDF Gantt page is an image, with the Markdown report
+and Table view as the accessible alternatives.
+
 ## 2026-10-26 — Opt-in update check against GitHub Releases (v0.2.0)
 
 Done in this slice:
@@ -338,7 +379,9 @@ f7e3553 and the release run 40042554896).
   its report and checks a JSON round trip (linted by `clippy --all-targets`).
 - Native print/PDF, the full keyboard-only audit, screen-reader support and
   the first tagged release are recorded as deliberate, user-owned deferrals
-  in `docs/qc/phase-5.md`.
+  in `docs/qc/phase-5.md`. (The accessibility items were completed in the
+  2026-10-26 accessibility slice; the first tagged release shipped as
+  `v0.1.0`.)
 - CI green on `opencode/ci` (run 39892304802, 189 tests passed).
 
 ## 2026-10-23 — P5-1c Cadence JSON interchange

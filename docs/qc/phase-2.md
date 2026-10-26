@@ -26,4 +26,6 @@ Checklist for the Phase-2 Gantt and table slices.
 ## Carried into Phase 3
 
 - Resource dictionary, assignments, histograms, leveling (P3-1..P3-3).
-- Design polish and accessibility pass (P2 QC subset deferred to Phase 3).
+- Design polish and accessibility pass (P2 QC subset deferred to Phase 3;
+  completed in the accessibility slice, see `docs/qc/phase-5.md` and
+  `ACCESSIBILITY.md`).

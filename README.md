@@ -68,12 +68,14 @@ checksums and a CycloneDX bill of materials.
 
 ## Status
 
-Phases 0–4 are complete and Phase 5 is complete except for two decided
-deferrals (native print dialogs and the screen-reader audit) recorded in
-[`docs/implementation-report.md`](docs/implementation-report.md), which also
-lists the verification evidence. `v0.1.0` is the first functional release;
-[`ROADMAP.md`](ROADMAP.md) carries the living readiness percentages and the
-next milestones.
+Phases 0–4 are complete. Phase 5 is complete apart from manual,
+platform-specific screen-reader passes: the code-level accessibility audit and
+AccessKit wiring are done, and native print dialogs are implemented. The
+remaining checks and the verification evidence are recorded in
+[`docs/implementation-report.md`](docs/implementation-report.md) and
+[`ACCESSIBILITY.md`](ACCESSIBILITY.md). `v0.1.0` was the first functional
+release; [`ROADMAP.md`](ROADMAP.md) carries the living readiness percentages
+and the v0.2.0 infrastructure work.
 
 ## Building and verifying
 

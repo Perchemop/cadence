@@ -441,3 +441,29 @@ tags so a bad tag cannot claim an update.
 The shared `update-check` crate remains deferred to the point where a second
 application joins the suite (ROADMAP "Later"); for now the module lives in
 `cadence-ui-egui` and the binary's CLI calls it.
+
+## D23 — AccessKit through eframe, with the Table as the Gantt's semantic alternative (2026-10-26)
+
+AccessKit support comes from `eframe` 0.35's default features (`accesskit` is
+in the default set), so no extra dependency, feature flag or parallel
+accessibility tree was added. Standard egui widgets expose their role, label,
+enabled state and selected state through the platform adapter; Cadence does not
+reimplement those semantics.
+
+The custom-painted Gantt is the exception. It gets one summary node through
+`Response::widget_info` (activity count, critical count, project dates, and a
+legend explaining the critical marker and progress fill). Individual bars are
+**not** separate AccessKit nodes: adding them would duplicate the Table view,
+risk interfering with drag-to-link, and require a manual assistive-technology
+pass that CI cannot perform. The Table view is the documented per-activity
+semantic alternative, with one row per activity and text columns for duration,
+start, finish, float and criticality.
+
+Keyboard-only operation is treated as a first-class path, not a fallback:
+`Up`/`Down` select activities in the Table, the inspector has an **Add
+relationship** form that runs the same command as drag-to-link, and the Gantt
+has keyboard zoom (`Ctrl+Plus`, `Ctrl+Minus`, `Ctrl+0`). The remaining limits —
+pointer/wheel panning of the Gantt canvas, status text that is not a live
+region, an image-only Gantt PDF, and the need for manual screen-reader passes on
+each release platform — are recorded in `ACCESSIBILITY.md` instead of being
+claimed as complete.

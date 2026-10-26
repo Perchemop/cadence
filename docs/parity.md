@@ -82,7 +82,7 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | WBS and named calendars in interchange | done for JSON | MSPDI, MPX and CSV cannot express them and import them empty (documented in `interchange::json`) |
 | Printing / PDF and reports | done | Markdown reports (`cadence report`, **Save report**) and PDF printing (`cadence print`, **Print report…** via a native save dialog); D16 reversed |
 | Calendar management in the UI | done | Calendars view: list, create, rename, delete, working-day and holiday editing, per-activity assignment |
-| Keyboard map | in progress | Ctrl+Z/Y undo-redo and Ctrl+1..4 view switching added; full keyboard-only operation audit pending |
-| Accessibility audit | in progress | WCAG AA contrast for theme text verified by tests (`accessibility_tests`); screen-reader (AccessKit) pass pending |
+| Keyboard map | done | Ctrl+Z/Y undo-redo, Ctrl+1..5 view switching, Ctrl+D theme, Up/Down table selection, Ctrl+Plus/Minus/0 Gantt zoom, F1 shortcut window; every view reviewed for pointer-only paths |
+| Accessibility audit | done for the code-level scope | AccessKit is enabled by eframe's defaults; standard widgets expose labels/roles, the Gantt canvas has a `WidgetInfo` summary, and WCAG AA contrast is tested (`accessibility_tests`); per-bar Gantt nodes, live-region status text and manual screen-reader passes are recorded in `ACCESSIBILITY.md` |
 | Performance pass | in progress | 10k-activity schedule, 10k-day resource analysis and 200-activity leveling all time-budgeted in CI; smooth-interaction profiling pending |
 | Documentation, example projects, first tagged release | in progress | `docs/usage.md` and the `bridge_report` example added; tagging is a release decision |
