@@ -16,10 +16,10 @@ use std::process::ExitCode;
 use cadence_commands::{Command, CommandStack, CreateActivity, CreateRelationship};
 use cadence_core::engine::{schedule, Schedule};
 use cadence_core::model::{LinkType, Project};
+use cadence_ui_egui::update_check;
 use time::{Date, Month};
 
 mod crash_report;
-mod update_check;
 
 const USAGE: &str = "\
 Cadence — construction project scheduling
@@ -30,7 +30,8 @@ Usage:
   cadence load <file> [--json]   Load a project file and print its schedule
   cadence report <file> [out]    Write a Markdown report (stdout if no file)
   cadence print <file> <out.pdf>  Print a project report to PDF
-  cadence version                Show the version and update-check status
+  cadence version                Show the version and the last cached update check
+  cadence check-updates          Ask GitHub Releases for the latest version
   cadence gui [file]             Open the project in the GUI (demo if no file)
   cadence export-xml <in> <out>  Save a project file as Microsoft Project XML
   cadence import-xml <in> <out>  Import Microsoft Project XML into a project file
@@ -61,6 +62,7 @@ fn main() -> ExitCode {
         [command, input, output] if command == "report" => print_report(input, Some(output)),
         [command, input, output] if command == "print" => print_report_pdf(input, output),
         [command] if command == "version" => print_version(),
+        [command] if command == "check-updates" => check_updates(),
         [command] if command == "gui" => gui_demo(),
         [command, path] if command == "gui" => gui_file(path),
         [command, input, output] if command == "export-xml" => {
@@ -296,18 +298,46 @@ fn pdf_pages(bytes: &[u8]) -> usize {
     text.matches("/Type /Page ").count() + text.matches("/Type /Page\n").count()
 }
 
-/// Print the version and the update-check status.
+/// Print the version and the last cached update-check status.
+///
+/// The version command never reaches the network: update checks are opt-in,
+/// so an explicit `cadence check-updates` (or the GUI's **Check now** button)
+/// is what makes the request.
 fn print_version() -> Result<(), String> {
+    println!("Cadence {}", update_check::current_version());
+    match update_check::cached_status() {
+        Some(update_check::UpdateStatus::UpToDate) => {
+            println!("Up to date (from the last update check).");
+        }
+        Some(update_check::UpdateStatus::UpdateAvailable { version, url }) => {
+            println!("Update available: {version}");
+            println!("Release: {url}");
+        }
+        Some(update_check::UpdateStatus::Unavailable(message)) => {
+            println!("The last update check failed: {message}");
+        }
+        Some(update_check::UpdateStatus::NotChecked) | None => {
+            println!("No recent update check; run `cadence check-updates` or open the GUI.");
+        }
+    }
+    Ok(())
+}
+
+/// Ask GitHub Releases for the latest version and report the result.
+fn check_updates() -> Result<(), String> {
     println!("Cadence {}", update_check::current_version());
     match update_check::check_for_update() {
         update_check::UpdateStatus::UpToDate => println!("Up to date."),
-        update_check::UpdateStatus::UpdateAvailable(version) => {
+        update_check::UpdateStatus::UpdateAvailable { version, url } => {
             println!("Update available: {version}");
+            println!("Release: {url}");
         }
-        update_check::UpdateStatus::Stub => println!(
-            "Update checks are not wired up yet (planned for a later release); \
-             no network request was made."
-        ),
+        update_check::UpdateStatus::Unavailable(message) => {
+            println!("Update check unavailable: {message}");
+        }
+        update_check::UpdateStatus::NotChecked => {
+            println!("No update status is available yet.");
+        }
     }
     Ok(())
 }

@@ -7,6 +7,8 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::mpsc;
+use std::time::Duration;
 
 use cadence_commands::{
     AddResourceToActivity, CaptureBaseline, CommandStack, CreateCalendar, CreateRelationship,
@@ -30,6 +32,7 @@ use egui::{
 use time::{Date, Month};
 
 pub mod crash;
+pub mod update_check;
 
 /// Accent colour used for selection and highlights in both themes.
 pub const ACCENT: Color32 = Color32::from_rgb(0x2F, 0x6F, 0xED);
@@ -168,6 +171,9 @@ pub struct CadenceApp {
     crash_log: String,
     crash_notes: String,
     show_crash_dialog: bool,
+    update_status: update_check::UpdateStatus,
+    update_receiver: Option<mpsc::Receiver<update_check::UpdateStatus>>,
+    show_update_dialog: bool,
 }
 
 impl CadenceApp {
@@ -176,6 +182,8 @@ impl CadenceApp {
         let schedule = schedule(&project).map_err(|error| error.to_string());
         let crash_log = crash::read_log().unwrap_or_default();
         let show_crash_dialog = !crash_log.is_empty();
+        let update_status =
+            update_check::cached_status().unwrap_or(update_check::UpdateStatus::NotChecked);
         Self {
             project,
             schedule,
@@ -216,7 +224,23 @@ impl CadenceApp {
             crash_log,
             crash_notes: String::new(),
             show_crash_dialog,
+            update_status,
+            update_receiver: None,
+            show_update_dialog: false,
         }
+    }
+
+    /// Start a background update check unless one is already running.
+    fn start_update_check(&mut self) {
+        if self.update_receiver.is_some() {
+            return;
+        }
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let status = update_check::check_for_update();
+            let _ = sender.send(status);
+        });
+        self.update_receiver = Some(receiver);
     }
 
     fn recompute(&mut self) {
@@ -826,6 +850,23 @@ impl eframe::App for CadenceApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
+        // Poll the background update check at a low rate; the network request
+        // itself happens on its own thread so the UI never blocks.
+        if let Some(receiver) = self.update_receiver.take() {
+            match receiver.try_recv() {
+                Ok(status) => self.update_status = status,
+                Err(mpsc::TryRecvError::Empty) => {
+                    self.update_receiver = Some(receiver);
+                    ctx.request_repaint_after(Duration::from_millis(250));
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.update_status = update_check::UpdateStatus::Unavailable(
+                        "the update checker stopped unexpectedly".to_string(),
+                    );
+                }
+            }
+        }
+
         if ctx.input(|input| input.key_pressed(egui::Key::D) && input.modifiers.ctrl) {
             self.dark = !self.dark;
             apply_theme(&ctx, self.dark);
@@ -981,6 +1022,19 @@ impl eframe::App for CadenceApp {
                     }
                     self.crash_notes.clear();
                     self.show_crash_dialog = true;
+                }
+                let update_label = match &self.update_status {
+                    update_check::UpdateStatus::UpdateAvailable { version, .. } => {
+                        format!("Update available: {version}")
+                    }
+                    _ => "Updates".to_string(),
+                };
+                if ui
+                    .button(update_label)
+                    .on_hover_text("Check GitHub Releases for a newer Cadence")
+                    .clicked()
+                {
+                    self.show_update_dialog = true;
                 }
                 if ui.button("Undo").clicked() {
                     let _ = self.stack.undo(&mut self.project);
@@ -1715,6 +1769,50 @@ impl eframe::App for CadenceApp {
                 });
             if !open {
                 self.show_crash_dialog = false;
+            }
+        }
+
+        if self.show_update_dialog {
+            let mut open = true;
+            egui::Window::new("Updates")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    ui.label(format!("Cadence {}", update_check::current_version()));
+                    ui.add_space(4.0);
+                    match &self.update_status {
+                        update_check::UpdateStatus::NotChecked => {
+                            ui.label("No update check has run yet.");
+                        }
+                        update_check::UpdateStatus::UpToDate => {
+                            ui.label("You are running the latest release.");
+                        }
+                        update_check::UpdateStatus::UpdateAvailable { version, url } => {
+                            ui.label(format!("Update available: {version}"));
+                            if ui.button("Open release page").clicked() {
+                                ui.ctx().open_url(egui::OpenUrl::new_tab(url.clone()));
+                            }
+                        }
+                        update_check::UpdateStatus::Unavailable(message) => {
+                            ui.label(format!("Update check unavailable: {message}"));
+                        }
+                    }
+                    ui.add_space(4.0);
+                    if self.update_receiver.is_some() {
+                        ui.label("Checking…");
+                    } else if ui.button("Check now").clicked() {
+                        self.start_update_check();
+                    }
+                    ui.add_space(4.0);
+                    ui.label(
+                        "The check sends one GET request to the public GitHub \
+                         Releases API. It sends no project data, account or \
+                         identifier; the answer is cached for a few hours.",
+                    );
+                });
+            if !open {
+                self.show_update_dialog = false;
             }
         }
     }

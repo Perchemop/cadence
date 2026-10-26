@@ -12,13 +12,13 @@
 
 | # | Question | Answer |
 |---|---|---|
-| 4 (suite) | Part of a multi-app suite? | **No — single app.** Suite shared crates (`crash-report`, `update-check`) are deferred until a second app exists; v0.1.0 ships in-app stubs instead (ROADMAP notes the extraction point) |
+| 4 (suite) | Part of a multi-app suite? | **No — single app.** Suite shared crates (`crash-report`, `update-check`) are deferred until a second app exists; v0.2.0 ships in-app modules instead (ROADMAP notes the extraction point) |
 | 10 (primary platform) | Primary local OS for the first working build | **Linux** (the machine used daily); other platforms via CI |
 | 11 (targets) | Platforms after local success | Windows, macOS (both in CI and releases); web/WASM not planned for v1 |
-| 12 (offline) | Fully offline? | Yes for scheduling, persistence, reports and interchange; crash submission and update checks are opt-in, fail-soft network features planned for 0.2.x |
+| 12 (offline) | Fully offline? | Yes for scheduling, persistence, reports and interchange; crash submission and update checks are opt-in, fail-soft network features shipped in 0.2.0 |
 | 16 (releases) | Frequent semver GitHub Releases with detailed notes? | **Confirmed** — release.yml publishes on `v*.*.*` tags; v0.1.0 released |
 | 17 (roadmap) | Public ROADMAP.md with readiness % and milestones? | **Confirmed** — `ROADMAP.md` maintained with evidence-based percentages |
-| 18 (shared crates) | Shared crash/update crates now? | Deferred (single app); stubs live in the app binary |
+| 18 (shared crates) | Shared crash/update crates now? | Deferred (single app); the in-app modules live in `cadence-ui-egui` and the CLI calls them |
 
 ## Assumptions (unconfirmed — risk noted)
 

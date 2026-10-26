@@ -17,6 +17,8 @@ takes the file path; with no arguments `cadence` runs a built-in demo project.
 | `cadence load <file> [--json]` | Load a project file and print its schedule |
 | `cadence report <file> [out]` | Write a Markdown report (stdout if no file) |
 | `cadence print <file> <out.pdf>` | Print the report as a PDF |
+| `cadence version` | Show the version and the last cached update check |
+| `cadence check-updates` | Ask GitHub Releases for the latest version |
 | `cadence gui [file]` | Open the project in the GUI (demo if no file) |
 | `cadence export-xml <in> <out>` | Microsoft Project XML (MSPDI) |
 | `cadence import-xml <in> <out>` | Import MSPDI |
@@ -100,6 +102,22 @@ directory. Nothing is uploaded. On the next launch the GUI shows the log in a
 a pre-filled issue in your browser, **Copy details** copies the preview, and
 **Dismiss** deletes the local log. The **Report a bug…** toolbar button opens
 the same window even when there is no crash log.
+
+## Update checks
+
+Update checks are opt-in. `cadence version` prints the running version and the
+last cached answer but never reaches the network. `cadence check-updates` asks
+the public GitHub Releases API for the latest release and prints whether an
+update is available and where to get it. In the GUI, **Updates** opens a small
+window with the same information and a **Check now** button; when a newer
+release is known, the toolbar button changes to **Update available: `<version>`**
+and the window links to the release page.
+
+The check is one bounded GET request with a `Cadence/<version>` user agent. It
+sends no project data, account, identifier or token. A successful answer is
+cached in the system temporary directory for six hours, so repeated checks do
+not hit the API, and an offline or failed check is reported in the window
+without blocking the application.
 
 ## Keyboard map (GUI)
 

@@ -77,6 +77,8 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | CSV activity table import/export | done | `cadence-interchange::csv`: one row per activity with constraints, links, assignments and progress; CLI `export-csv`/`import-csv` |
 | JSON interchange | done | `cadence-interchange::json`: Cadence's own versioned schema and the only format that is lossless — it carries the WBS tree, named calendars and activity membership as well as everything the other formats do; CLI `export-json`/`import-json` |
 | Machine-readable CLI schedule output (`--json`) | done | `cadence-interchange::schedule`, guide §21.5 tooling accessibility |
+| Crash reporting | done | local panic log, GUI preview, opt-in pre-filled GitHub issue; no token embedded |
+| Update check | done | opt-in GitHub Releases check with a six-hour cache, fail-soft offline; `cadence check-updates` and GUI **Updates** |
 | WBS and named calendars in interchange | done for JSON | MSPDI, MPX and CSV cannot express them and import them empty (documented in `interchange::json`) |
 | Printing / PDF and reports | done | Markdown reports (`cadence report`, **Save report**) and PDF printing (`cadence print`, **Print report…** via a native save dialog); D16 reversed |
 | Calendar management in the UI | done | Calendars view: list, create, rename, delete, working-day and holiday editing, per-activity assignment |

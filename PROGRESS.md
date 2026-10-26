@@ -3,6 +3,34 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-26 — Opt-in update check against GitHub Releases (v0.2.0)
+
+Done in this slice:
+
+- New `cadence-ui-egui::update_check` module: fetches
+  `releases/latest` from the public GitHub API, parses the tag and HTML URL
+  with `serde_json`, compares the tag with the running version, and caches a
+  successful answer in the system temporary directory for six hours.
+- The check is opt-in. `cadence version` prints only the cached answer and
+  never reaches the network; `cadence check-updates` and the GUI's **Updates →
+  Check now** button are the explicit triggers. No check runs on GUI startup.
+- The GUI **Updates** window shows the current version, up-to-date / update
+  available / unavailable states, the release link, and a privacy note. When a
+  newer release is cached, the toolbar button reads **Update available:
+  `<version>`**.
+- One new direct dependency: `ureq` 2.12 with default features off and only
+  `tls` enabled. Its rustls backend uses `ring` and bundled WebPKI roots, so
+  the binary stays self-contained. The version comparison is in-crate.
+- Fail-soft behaviour: four-second connect/read/write timeouts, a 256 KiB
+  response cap, and an `UpdateStatus::Unavailable` result that the UI/CLI
+  render without blocking or failing the application.
+- `README.md`, `docs/usage.md`, `DECISIONS.md` (D22), `ATTRIBUTION.md` and
+  `CHANGELOG.md` document the flow, the privacy position and the dependency.
+
+Tests: the update module tests cover newer/older/equal tags, the `v` prefix,
+pre-release ordering, malformed tags, and cache serialisation. Network access
+is not exercised in tests; the command and dialog are interactive/opt-in.
+
 ## 2026-10-26 — Print the Gantt view (v0.2.0 suite infrastructure)
 
 Decided as the next vertical slice (ROADMAP.md).

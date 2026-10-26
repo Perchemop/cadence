@@ -98,8 +98,16 @@ touches the scheduling engine. See D18 for the decisions and
 
 ### Next slice (decided 2026-10-26, after crash reporting)
 
-- [ ] Update check: query the GitHub Releases API, compare versions, and
-      surface the result in the GUI; fail soft offline (guide §7.2).
+- [x] Update check: query the GitHub Releases API, compare versions, and
+      surface the result in the GUI; fail soft offline (guide §7.2). The check
+      is opt-in (`cadence check-updates` and the GUI **Updates** window), and
+      `cadence version` uses only the cached answer.
+
+### Next slice (decided 2026-10-26, after the update check)
+
+- [ ] Accessibility audit: AccessKit integration for screen readers and a
+      keyboard-only operation pass over every view, with the gaps fixed or
+      recorded (v0.2.0 suite infrastructure; guide Part I §9).
 
 ### Human-gated (recorded, not decided)
 
@@ -115,8 +123,9 @@ touches the scheduling engine. See D18 for the decisions and
 - [x] Crash reporting: GitHub Issue creation with user consent, UI preview
       before send (guide §7.1); the local log and the pre-filled browser issue
       flow are in place, no token is embedded.
-- [ ] Update check: query GitHub Releases API, compare versions, surface in
-      the GUI; fail soft offline (guide §7.2).
+- [x] Update check: query GitHub Releases API, compare versions, surface in
+      the GUI; fail soft offline (guide §7.2). Implemented as an opt-in check
+      (`cadence check-updates`, GUI **Updates**) with a six-hour cache.
 - [x] Print the Gantt view: capture the rendered view and emit an image page
       through the existing PDF writer (GUI **Print Gantt…**, whole-window
       screenshot; timeline cropping/stitching is a later polish item).

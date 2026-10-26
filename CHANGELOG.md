@@ -22,6 +22,11 @@ follows Keep a Changelog; releases use git tags.
   accepts optional notes, and opens a pre-filled GitHub issue in the browser;
   **Report a bug…** uses the same consent-first flow, and nothing is sent
   automatically (no token is embedded in the binary)
+- Opt-in update check against the public GitHub Releases API: the new
+  `cadence check-updates` command and the GUI **Updates** window compare the
+  latest release tag with the running version, link to the release page, cache
+  a successful answer for six hours, and fail soft offline (`cadence version`
+  uses only the cached answer and never reaches the network)
 
 ## [0.1.1] — 2026-10-24
 
