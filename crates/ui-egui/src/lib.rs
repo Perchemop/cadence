@@ -7,7 +7,6 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 
 use cadence_commands::{
     AddResourceToActivity, CaptureBaseline, CommandStack, CreateCalendar, CreateRelationship,
@@ -164,7 +163,6 @@ pub struct CadenceApp {
     calendar_weekdays: [bool; 7],
     calendar_holidays_buffer: String,
     gantt_print_path: Option<PathBuf>,
-    gantt_screenshot: Arc<Mutex<Option<Arc<egui::ColorImage>>>>,
 }
 
 impl CadenceApp {
@@ -208,7 +206,6 @@ impl CadenceApp {
             calendar_weekdays: [true, true, true, true, true, false, false],
             calendar_holidays_buffer: String::new(),
             gantt_print_path: None,
-            gantt_screenshot: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -874,32 +871,38 @@ impl eframe::App for CadenceApp {
         // Consume a captured Gantt screenshot, if one was requested, and write
         // the resulting PDF to the path chosen by the user.
         if let Some(path) = self.gantt_print_path.clone() {
-            if let Ok(mut guard) = self.gantt_screenshot.lock() {
-                if let Some(image) = guard.take() {
-                    let width = image.size[0] as u32;
-                    let height = image.size[1] as u32;
-                    let mut rgb = Vec::with_capacity(width as usize * height as usize * 3);
-                    for pixel in &image.pixels {
-                        rgb.push(pixel.r());
-                        rgb.push(pixel.g());
-                        rgb.push(pixel.b());
+            let screenshot = ctx.input(|input| {
+                input.events.iter().find_map(|event| {
+                    if let egui::Event::Screenshot { image, .. } = event {
+                        Some(image.clone())
+                    } else {
+                        None
                     }
-                    let mut pdf = cadence_core::pdf::Pdf::new();
-                    pdf.image_page(width, height, rgb);
-                    match std::fs::write(&path, pdf.to_bytes()) {
-                        Ok(()) => {
-                            self.status_message =
-                                Some(format!("Gantt printed to {}", path.display()));
-                        }
-                        Err(error) => {
-                            self.status_message =
-                                Some(format!("Cannot write {}: {error}", path.display()));
-                        }
-                    }
-                    self.gantt_print_path = None;
-                } else {
-                    ui.ctx().request_repaint();
+                })
+            });
+            if let Some(image) = screenshot {
+                let width = image.size[0] as u32;
+                let height = image.size[1] as u32;
+                let mut rgb = Vec::with_capacity(width as usize * height as usize * 3);
+                for pixel in &image.pixels {
+                    rgb.push(pixel.r());
+                    rgb.push(pixel.g());
+                    rgb.push(pixel.b());
                 }
+                let mut pdf = cadence_core::pdf::Pdf::new();
+                pdf.image_page(width, height, rgb);
+                match std::fs::write(&path, pdf.to_bytes()) {
+                    Ok(()) => {
+                        self.status_message = Some(format!("Gantt printed to {}", path.display()));
+                    }
+                    Err(error) => {
+                        self.status_message =
+                            Some(format!("Cannot write {}: {error}", path.display()));
+                    }
+                }
+                self.gantt_print_path = None;
+            } else {
+                ctx.request_repaint();
             }
         }
 
@@ -951,12 +954,9 @@ impl eframe::App for CadenceApp {
                         .save_file()
                     {
                         self.gantt_print_path = Some(path);
-                        let slot = Arc::clone(&self.gantt_screenshot);
-                        ui.ctx().request_screenshot(move |image| {
-                            if let Ok(mut guard) = slot.lock() {
-                                *guard = Some(image);
-                            }
-                        });
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
+                            egui::UserData::default(),
+                        ));
                     }
                 }
                 if ui.button("Undo").clicked() {
