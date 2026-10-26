@@ -3,6 +3,19 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-26 — Print the Gantt view (v0.2.0 suite infrastructure)
+
+Decided as the next vertical slice (ROADMAP.md).
+
+Scope:
+- Add a GUI command / menu entry to print the current Gantt view to PDF,
+  using the existing `cadence-core::pdf` image page support.
+- Capture the rendered Gantt widget as an RGB buffer (egui screenshot), scale to
+  fit A4 landscape with 56 pt margins, and emit a PDF file via the existing
+  `report::project_report_pdf` pipeline or a new `gantt_print` function.
+- CLI may expose `cadence print-gantt <file> <out.pdf>` in a later step; initial
+  focus is the GUI Print… dialog.
+
 ## 2026-10-25 — machine-readable schedule output (`--json`)
 
 Done in this slice:

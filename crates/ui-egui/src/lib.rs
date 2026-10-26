@@ -6,6 +6,8 @@
 //! through the command layer.
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use cadence_commands::{
     AddResourceToActivity, CaptureBaseline, CommandStack, CreateCalendar, CreateRelationship,
@@ -161,6 +163,8 @@ pub struct CadenceApp {
     calendar_name_buffer: String,
     calendar_weekdays: [bool; 7],
     calendar_holidays_buffer: String,
+    gantt_print_path: Option<PathBuf>,
+    gantt_screenshot: Arc<Mutex<Option<Arc<egui::ColorImage>>>>,
 }
 
 impl CadenceApp {
@@ -203,6 +207,8 @@ impl CadenceApp {
             calendar_name_buffer: String::new(),
             calendar_weekdays: [true, true, true, true, true, false, false],
             calendar_holidays_buffer: String::new(),
+            gantt_print_path: None,
+            gantt_screenshot: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -865,6 +871,38 @@ impl eframe::App for CadenceApp {
             }
         }
 
+        // Consume a captured Gantt screenshot, if one was requested, and write
+        // the resulting PDF to the path chosen by the user.
+        if let Some(path) = self.gantt_print_path.clone() {
+            if let Ok(mut guard) = self.gantt_screenshot.lock() {
+                if let Some(image) = guard.take() {
+                    let width = image.size[0] as u32;
+                    let height = image.size[1] as u32;
+                    let mut rgb = Vec::with_capacity(width as usize * height as usize * 3);
+                    for pixel in &image.pixels {
+                        rgb.push(pixel.r());
+                        rgb.push(pixel.g());
+                        rgb.push(pixel.b());
+                    }
+                    let mut pdf = cadence_core::pdf::Pdf::new();
+                    pdf.image_page(width, height, rgb);
+                    match std::fs::write(&path, pdf.to_bytes()) {
+                        Ok(()) => {
+                            self.status_message =
+                                Some(format!("Gantt printed to {}", path.display()));
+                        }
+                        Err(error) => {
+                            self.status_message =
+                                Some(format!("Cannot write {}: {error}", path.display()));
+                        }
+                    }
+                    self.gantt_print_path = None;
+                } else {
+                    ui.ctx().request_repaint();
+                }
+            }
+        }
+
         egui::Panel::top("toolbar").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("Cadence");
@@ -898,6 +936,28 @@ impl eframe::App for CadenceApp {
                     .clicked()
                 {
                     self.print_report_dialog();
+                }
+                if ui
+                    .add_enabled(
+                        self.view_mode == ViewMode::Gantt,
+                        egui::Button::new("Print Gantt…"),
+                    )
+                    .on_hover_text("Save a print-ready PDF of the Gantt view via a file dialog")
+                    .clicked()
+                {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("PDF document", &["pdf"])
+                        .set_file_name(format!("{}-gantt.pdf", file_stem(&self.project.name)))
+                        .save_file()
+                    {
+                        self.gantt_print_path = Some(path);
+                        let slot = Arc::clone(&self.gantt_screenshot);
+                        ui.ctx().request_screenshot(move |image| {
+                            if let Ok(mut guard) = slot.lock() {
+                                *guard = Some(image);
+                            }
+                        });
+                    }
                 }
                 if ui.button("Undo").clicked() {
                     let _ = self.stack.undo(&mut self.project);
@@ -1652,6 +1712,17 @@ fn variance_text(value: Option<i64>) -> String {
         None => "-".to_string(),
         Some(value) if value > 0 => format!("+{value}"),
         Some(value) => value.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod gantt_print_tests {
+    #[test]
+    fn pdf_image_page_path_compiles() {
+        let mut pdf = cadence_core::pdf::Pdf::new();
+        pdf.image_page(2, 2, vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        let bytes = pdf.to_bytes();
+        assert!(!bytes.is_empty());
     }
 }
 

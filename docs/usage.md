@@ -86,8 +86,10 @@ dates, float and criticality; per-resource committed and over-allocated days;
 earned-value metrics against the most recent baseline; and the baseline list.
 `cadence print <file> <out.pdf>` renders the same report as a print-ready PDF
 (heading and body text, wrapped and paginated over A4 pages). In the GUI,
-**Save report** writes the Markdown next to the working directory and
-**Print report…** opens a native save dialog for the PDF.
+**Save report** writes the Markdown next to the working directory,
+**Print report…** opens a native save dialog for the report PDF, and
+**Print Gantt…** (enabled in the Gantt view) captures the current Gantt
+timeline as a single landscape A4 page in a PDF.
 
 ## Keyboard map (GUI)
 

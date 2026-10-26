@@ -85,6 +85,11 @@ touches the scheduling engine. See D18 for the decisions and
       be driven by scripts and assistive technology without parsing the aligned
       plain-text table (guide section 21.5, accessibility of tooling).
 
+### Next slice (decided 2026-10-26)
+
+- [ ] Print the Gantt view: capture the rendered view and emit an image page
+      through the existing PDF writer (v0.2.0 suite infrastructure).
+
 ### Human-gated (recorded, not decided)
 
 - [ ] Name conflict check and trademark search for "Cadence"; reserve the
