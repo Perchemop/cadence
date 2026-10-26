@@ -115,13 +115,19 @@ fn main() -> ExitCode {
 /// other placement of `--json` stays in the arguments and reaches the
 /// ordinary usage error explaining the command forms.
 fn split_json_flag(arguments: Vec<String>) -> (Vec<String>, bool) {
-    if matches!(
-        arguments.as_slice(),
-        [last] | ["load", _, last] if last == "--json"
-    ) {
-        let mut arguments = arguments;
-        arguments.pop();
-        return (arguments, true);
+    let mut arguments = arguments;
+    if let Some(last) = arguments.last() {
+        if last == "--json" {
+            let is_valid = match arguments.len() {
+                1 => true,
+                3 if arguments[0] == "load" => true,
+                _ => false,
+            };
+            if is_valid {
+                arguments.pop();
+                return (arguments, true);
+            }
+        }
     }
     (arguments, false)
 }
@@ -239,7 +245,10 @@ fn print_schedule_output(project: &Project, json: bool) -> Result<(), String> {
         Err(error) => {
             let message = error.to_string();
             if json {
-                print!("{}", cadence_interchange::schedule::schedule_error(&message));
+                print!(
+                    "{}",
+                    cadence_interchange::schedule::schedule_error(&message)
+                );
             }
             Err(message)
         }

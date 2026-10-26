@@ -51,7 +51,7 @@
 use cadence_core::engine::{ActivitySchedule, Schedule};
 use cadence_core::model::{Activity, Project};
 
-use crate::json::{Number, Value, write_value};
+use crate::json::{write_value, Number, Value};
 
 /// The schema version of the schedule and error documents this build writes.
 const SCHEDULE_SCHEMA_VERSION: i64 = 1;
@@ -231,7 +231,7 @@ mod tests {
     }
 
     /// The string of an object member, read back through the parser.
-    fn text(value: &Value, key: &str) -> Option<&str> {
+    fn text<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
         value.get(key).and_then(Value::as_str)
     }
 
