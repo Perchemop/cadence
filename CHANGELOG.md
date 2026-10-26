@@ -5,7 +5,15 @@ follows Keep a Changelog; releases use git tags.
 
 ## [Unreleased]
 
-Nothing yet.
+- Machine-readable schedule output: `cadence --json` and
+  `cadence load <file> --json` print the schedule as a JSON document
+  (`cadence-interchange/src/schedule.rs`), written by the existing in-crate
+  JSON machinery; a `kind` field distinguishes a schedule from an error
+  document, stdout carries only the document, diagnostics for humans go to
+  stderr as `ERROR <UTC timestamp> cadence: <message>`, and usage errors now
+  exit with code 2 (the usage screen also documents the exit codes)
+- `docs/usage.md` documents the `--json` forms, the schedule and error
+  document shapes, and the exit codes
 
 ## [0.1.1] — 2026-10-24
 

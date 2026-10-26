@@ -81,7 +81,7 @@ touches the scheduling engine. See D18 for the decisions and
 
 ### Next slice (decided 2026-10-24)
 
-- [ ] Machine-readable schedule output (`--json`) from the CLI, so the tool can
+- [x] Machine-readable schedule output (`--json`) from the CLI, so the tool can
       be driven by scripts and assistive technology without parsing the aligned
       plain-text table (guide section 21.5, accessibility of tooling).
 

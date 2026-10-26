@@ -30,6 +30,7 @@ requirement lives.
 | R21 | Security in CI: secret scanning, dependency licence/advisory checks, dependency review, SAST, SBOM | `.github/workflows/security.yml`, `.github/workflows/release.yml`, `deny.toml`, `.github/dependabot.yml` | security workflow runs on `main` and on the pull request | done |
 | R22 | Protected default branch with required status checks | repository settings | state recorded in `docs/qc/project-health.md` | done |
 | R23 | Reproducible dependency graph: current `Cargo.lock`, regenerated in CI | `Cargo.lock`, `.github/workflows/lockfile.yml` | lockfile workflow run + freshness check | in progress (D19) |
+| R24 | Machine-readable schedule output (--json) for scripts and assistive technology | `cadence-interchange/src/schedule.rs`, CLI `cadence [--json]`, `cadence load <file> --json` | unit tests parsing the document in `schedule.rs`; documented in `docs/usage.md` | done |
 
 When a slice lands, this table and `docs/parity.md` are updated in the same
 commit.

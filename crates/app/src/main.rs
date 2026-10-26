@@ -1,10 +1,15 @@
 //! Cadence application entry point.
 //!
 //! With no arguments the binary runs a small demo project through the CPM
-//! engine and prints the resulting schedule as an aligned plain-text table.
-//! `save` and `load` exercise SQLite project files. The GUI arrives in Phase 2;
-//! this headless path keeps the engine usable and observable from the command
-//! line in the meantime.
+//! engine and prints the resulting schedule as an aligned plain-text table;
+//! with `--json` the same schedule is printed as a machine-readable document
+//! for scripts and assistive technology (guide section 21.5).
+//! `save` and `load` exercise SQLite project files. The GUI arrives in
+//! Phase 2; this headless path keeps the engine usable and observable from
+//! the command line in the meantime. Failures print a
+//! `ERROR <timestamp> cadence: <message>` diagnostic to stderr, because a
+//! script reading stdout and a person reading the terminal each need their
+//! own copy of the story.
 
 use std::process::ExitCode;
 
@@ -20,9 +25,9 @@ const USAGE: &str = "\
 Cadence — construction project scheduling
 
 Usage:
-  cadence                        Run the built-in demo project
+  cadence [--json]              Run the built-in demo project
   cadence save <file>            Save the demo project to a SQLite project file
-  cadence load <file>            Load a project file and print its schedule
+  cadence load <file> [--json]   Load a project file and print its schedule
   cadence report <file> [out]    Write a Markdown report (stdout if no file)
   cadence print <file> <out.pdf>  Print a project report to PDF
   cadence version                Show the version and update-check status
@@ -36,19 +41,22 @@ Usage:
   cadence export-json <in> <out> Save a project file as Cadence JSON
   cadence import-json <in> <out> Import Cadence JSON into a project file
   cadence --help                 Show this help
+
+  Exit codes: 0 success, 1 error, 2 usage error
 ";
 
 fn main() -> ExitCode {
     crash_report::install();
-    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let (arguments, json) = split_json_flag(std::env::args().skip(1).collect());
+    let mut usage_error = false;
     let result = match arguments.as_slice() {
-        [] => run_demo(),
+        [] => run_demo(json),
         [flag] if flag == "--help" || flag == "-h" => {
             print!("{USAGE}");
             Ok(())
         }
         [command, path] if command == "save" => save_demo(path),
-        [command, path] if command == "load" => load_and_print(path),
+        [command, path] if command == "load" => load_and_print(path, json),
         [command, path] if command == "report" => print_report(path, None),
         [command, input, output] if command == "report" => print_report(input, Some(output)),
         [command, input, output] if command == "print" => print_report_pdf(input, output),
@@ -80,7 +88,9 @@ fn main() -> ExitCode {
             import_interchange(input, output, Format::Json)
         }
         _ => {
+            usage_error = true;
             eprint!("{USAGE}");
+            eprintln!("Run 'cadence --help' for the command reference.");
             Err("invalid arguments".to_string())
         }
     };
@@ -88,10 +98,55 @@ fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
-            eprintln!("cadence: {message}");
-            ExitCode::FAILURE
+            emit_error(&message);
+            if usage_error {
+                ExitCode::from(2)
+            } else {
+                ExitCode::FAILURE
+            }
         }
     }
+}
+
+/// Split the optional `--json` flag off the command-line arguments.
+///
+/// The flag is accepted only where a schedule is printed — `cadence --json`
+/// for the demo and `cadence load <file> --json` — and it comes last, so any
+/// other placement of `--json` stays in the arguments and reaches the
+/// ordinary usage error explaining the command forms.
+fn split_json_flag(arguments: Vec<String>) -> (Vec<String>, bool) {
+    if matches!(
+        arguments.as_slice(),
+        [last] | ["load", _, last] if last == "--json"
+    ) {
+        let mut arguments = arguments;
+        arguments.pop();
+        return (arguments, true);
+    }
+    (arguments, false)
+}
+
+/// Write one diagnostic line to stderr, labelled with a severity and the
+/// current UTC time (guide section 21.5). The machine-facing documents go to
+/// stdout; this line is the same fact for the person watching the terminal.
+fn emit_error(message: &str) {
+    eprintln!("ERROR {} cadence: {message}", timestamp());
+}
+
+/// The current UTC second as `YYYY-MM-DDTHH:MM:SSZ`.
+///
+/// Built from the components because `Date`'s own display is already
+/// ISO-8601 and a seconds-resolution timestamp is all a diagnostic line
+/// needs; `now_utc()` carries subsecond digits that would only add noise.
+fn timestamp() -> String {
+    let now = time::OffsetDateTime::now_utc();
+    format!(
+        "{}T{:02}:{:02}:{:02}Z",
+        now.date(),
+        now.hour(),
+        now.minute(),
+        now.second()
+    )
 }
 
 /// Open interchange format selected on the command line.
@@ -153,11 +208,9 @@ fn import_interchange(input: &str, output: &str, format: Format) -> Result<(), S
     Ok(())
 }
 
-fn run_demo() -> Result<(), String> {
+fn run_demo(json: bool) -> Result<(), String> {
     let project = demo_project()?;
-    let schedule = schedule(&project).map_err(|error| error.to_string())?;
-    print_schedule(&project, &schedule);
-    Ok(())
+    print_schedule_output(&project, json)
 }
 
 fn save_demo(path: &str) -> Result<(), String> {
@@ -167,11 +220,41 @@ fn save_demo(path: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn load_and_print(path: &str) -> Result<(), String> {
+fn load_and_print(path: &str, json: bool) -> Result<(), String> {
     let project = cadence_persistence::load_project(path).map_err(|error| error.to_string())?;
-    let schedule = schedule(&project).map_err(|error| error.to_string())?;
-    print_schedule(&project, &schedule);
-    Ok(())
+    print_schedule_output(&project, json)
+}
+
+/// Schedule a project and print the result: the aligned plain-text table by
+/// default, or the JSON schedule document when `--json` asked for
+/// machine-readable output.
+///
+/// In JSON mode stdout carries only the document. If the schedule cannot be
+/// produced, the error document is still printed to stdout — a `kind` of
+/// `"error"` is a valid answer — and reporting the same failure to the
+/// person running the command is left to the caller, who decides the exit
+/// code.
+fn print_schedule_output(project: &Project, json: bool) -> Result<(), String> {
+    match schedule(project) {
+        Err(error) => {
+            let message = error.to_string();
+            if json {
+                print!("{}", cadence_interchange::schedule::schedule_error(&message));
+            }
+            Err(message)
+        }
+        Ok(schedule) => {
+            if json {
+                print!(
+                    "{}",
+                    cadence_interchange::schedule::schedule_export(project, &schedule)
+                );
+            } else {
+                print_schedule(project, &schedule);
+            }
+            Ok(())
+        }
+    }
 }
 
 /// Write a Markdown project report to stdout or to a file.

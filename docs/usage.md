@@ -12,9 +12,9 @@ takes the file path; with no arguments `cadence` runs a built-in demo project.
 
 | Command | Effect |
 |---|---|
-| `cadence` | Run the demo project and print its schedule |
+| `cadence [--json]` | Run the demo project and print its schedule |
 | `cadence save <file>` | Save the demo project to a project file |
-| `cadence load <file>` | Load a project file and print its schedule |
+| `cadence load <file> [--json]` | Load a project file and print its schedule |
 | `cadence report <file> [out]` | Write a Markdown report (stdout if no file) |
 | `cadence print <file> <out.pdf>` | Print the report as a PDF |
 | `cadence gui [file]` | Open the project in the GUI (demo if no file) |
@@ -26,6 +26,30 @@ takes the file path; with no arguments `cadence` runs a built-in demo project.
 | `cadence import-csv <in> <out>` | Import CSV |
 | `cadence export-json <in> <out>` | Cadence JSON (lossless) |
 | `cadence import-json <in> <out>` | Import Cadence JSON |
+
+## Machine-readable output
+
+`cadence --json` and `cadence load <file> --json` print the schedule as one
+JSON document, so that scripts and assistive technology (guide section 21.5,
+accessibility of tooling) never have to parse the aligned plain-text table.
+The top-level `cadence` member is the document's own schema version (1), and
+`kind` says which document it is:
+
+* `kind` is `"schedule"` when the engine succeeded. `project` carries the
+  name and the first and last working days; `activities` lists one entry per
+  scheduled activity, in project order — `id`, `name`, `duration_days` (in
+  working days; 0 is a milestone), the `scheduled`, `early` and `late`
+  start/finish dates, `total_float_days` and `free_float_days` in working
+  days, and a `critical` boolean; and `critical_path` lists the critical
+  activity ids.
+* `kind` is `"error"` when the schedule could not be computed; then
+  `error.message` says what went wrong, using the same text the CLI writes
+  to stderr.
+
+stdout carries only the document, with one trailing newline; everything a
+human needs goes to stderr as diagnostics of the form
+`ERROR 2026-10-25T12:34:56Z cadence: <message>`. Exit codes: 0 success,
+1 error, 2 usage error.
 
 ## Scheduling model
 
