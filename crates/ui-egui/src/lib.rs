@@ -29,6 +29,8 @@ use egui::{
 };
 use time::{Date, Month};
 
+pub mod crash;
+
 /// Accent colour used for selection and highlights in both themes.
 pub const ACCENT: Color32 = Color32::from_rgb(0x2F, 0x6F, 0xED);
 
@@ -163,12 +165,17 @@ pub struct CadenceApp {
     calendar_weekdays: [bool; 7],
     calendar_holidays_buffer: String,
     gantt_print_path: Option<PathBuf>,
+    crash_log: String,
+    crash_notes: String,
+    show_crash_dialog: bool,
 }
 
 impl CadenceApp {
     /// Build the application from a loaded project.
     pub fn new(project: Project) -> Self {
         let schedule = schedule(&project).map_err(|error| error.to_string());
+        let crash_log = crash::read_log().unwrap_or_default();
+        let show_crash_dialog = !crash_log.is_empty();
         Self {
             project,
             schedule,
@@ -206,6 +213,9 @@ impl CadenceApp {
             calendar_weekdays: [true, true, true, true, true, false, false],
             calendar_holidays_buffer: String::new(),
             gantt_print_path: None,
+            crash_log,
+            crash_notes: String::new(),
+            show_crash_dialog,
         }
     }
 
@@ -959,6 +969,19 @@ impl eframe::App for CadenceApp {
                         ));
                     }
                 }
+                if ui
+                    .button("Report a bug…")
+                    .on_hover_text("Preview and report a problem to the Cadence issue tracker")
+                    .clicked()
+                {
+                    if self.crash_log.is_empty() {
+                        if let Some(log) = crash::read_log() {
+                            self.crash_log = log;
+                        }
+                    }
+                    self.crash_notes.clear();
+                    self.show_crash_dialog = true;
+                }
                 if ui.button("Undo").clicked() {
                     let _ = self.stack.undo(&mut self.project);
                     self.recompute();
@@ -1644,6 +1667,54 @@ impl eframe::App for CadenceApp {
                         ui.label("Select a calendar to see its holidays.");
                     }
                 });
+            }
+        }
+
+        if self.show_crash_dialog {
+            let mut open = true;
+            egui::Window::new("Crash report")
+                .collapsible(false)
+                .resizable(true)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    ui.label(
+                        "Cadence found a crash log from a previous run. \
+                         Nothing has been sent anywhere.",
+                    );
+                    ui.add_space(4.0);
+                    ui.label("Preview");
+                    egui::ScrollArea::vertical()
+                        .max_height(220.0)
+                        .show(ui, |ui| {
+                            ui.monospace(self.crash_log.clone());
+                        });
+                    ui.add_space(4.0);
+                    ui.label("Optional notes (what were you doing?)");
+                    ui.text_edit_multiline(&mut self.crash_notes);
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Open GitHub issue").clicked() {
+                            let url = crash::issue_url(&self.crash_log, &self.crash_notes);
+                            ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                            crash::clear_log();
+                            self.crash_log.clear();
+                            self.crash_notes.clear();
+                            self.show_crash_dialog = false;
+                        }
+                        if ui.button("Copy details").clicked() {
+                            ui.ctx()
+                                .copy_text(crash::issue_body(&self.crash_log, &self.crash_notes));
+                        }
+                        if ui.button("Dismiss").clicked() {
+                            crash::clear_log();
+                            self.crash_log.clear();
+                            self.crash_notes.clear();
+                            self.show_crash_dialog = false;
+                        }
+                    });
+                });
+            if !open {
+                self.show_crash_dialog = false;
             }
         }
     }

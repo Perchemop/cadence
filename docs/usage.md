@@ -91,6 +91,16 @@ earned-value metrics against the most recent baseline; and the baseline list.
 **Print Gantt…** (enabled in the Gantt view) captures the current Gantt
 timeline as a single landscape A4 page in a PDF.
 
+## Crash reports
+
+If Cadence panics, the panic hook appends the version, operating system, panic
+message and a backtrace to a local crash log in the system temporary
+directory. Nothing is uploaded. On the next launch the GUI shows the log in a
+**Crash report** window with an optional notes box; **Open GitHub issue** opens
+a pre-filled issue in your browser, **Copy details** copies the preview, and
+**Dismiss** deletes the local log. The **Report a bug…** toolbar button opens
+the same window even when there is no crash log.
+
 ## Keyboard map (GUI)
 
 | Keys | Action |

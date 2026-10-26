@@ -29,6 +29,28 @@ not a crop of the Gantt timeline, and virtualised rows outside the viewport are
 not included. A later slice can crop to the timeline and scroll-and-stitch the
 full plan.
 
+## 2026-10-26 — Crash reporting: preview and pre-filled GitHub issue (v0.2.0)
+
+Done in this slice:
+
+- New `cadence-ui-egui::crash` module: reads the same local crash log the panic
+  hook writes, builds an issue title/body preview, percent-encodes a pre-filled
+  GitHub new-issue URL, and clears the log after the user acts.
+- The GUI detects a crash log at startup and shows a **Crash report** window
+  with the log preview, an optional notes box, **Open GitHub issue**,
+  **Copy details** and **Dismiss**. Nothing is sent automatically; the only
+  network-facing step is the browser opening the pre-filled issue URL after the
+  user presses the button, and no token is embedded in the binary.
+- A **Report a bug…** toolbar button opens the same window without a crash log,
+  so ordinary bugs use the same consent-first path.
+- The application's panic hook now uses the shared log-path function, keeping
+  the writer and reader on the same file.
+- `README.md` privacy section and `docs/usage.md` document the flow.
+
+Tests: the crash module tests cover title extraction, empty-log fallback,
+notes/log composition, URL encoding and the unreserved-character set. The
+dialog itself is interactive-only.
+
 ## 2026-10-25 — machine-readable schedule output (`--json`)
 
 Done in this slice:

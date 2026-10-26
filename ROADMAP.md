@@ -92,8 +92,14 @@ touches the scheduling engine. See D18 for the decisions and
 
 ### Next slice (decided 2026-10-26, after Gantt print)
 
-- [ ] Crash reporting: GitHub Issue creation with user consent and a UI
-      preview before send (v0.2.0 suite infrastructure, guide §7.1).
+- [x] Crash reporting: GitHub Issue creation with user consent and a UI
+      preview before send (v0.2.0 suite infrastructure, guide §7.1). The GUI
+      opens a pre-filled issue URL in the browser; no token is embedded.
+
+### Next slice (decided 2026-10-26, after crash reporting)
+
+- [ ] Update check: query the GitHub Releases API, compare versions, and
+      surface the result in the GUI; fail soft offline (guide §7.2).
 
 ### Human-gated (recorded, not decided)
 
@@ -106,8 +112,9 @@ touches the scheduling engine. See D18 for the decisions and
 
 ### v0.2.0 — suite infrastructure
 
-- [ ] Crash reporting: GitHub Issue creation with user consent, UI preview
-      before send (guide §7.1); local crash log already in place.
+- [x] Crash reporting: GitHub Issue creation with user consent, UI preview
+      before send (guide §7.1); the local log and the pre-filled browser issue
+      flow are in place, no token is embedded.
 - [ ] Update check: query GitHub Releases API, compare versions, surface in
       the GUI; fail soft offline (guide §7.2).
 - [x] Print the Gantt view: capture the rendered view and emit an image page
