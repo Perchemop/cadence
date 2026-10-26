@@ -3,6 +3,36 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-25 — machine-readable schedule output (`--json`)
+
+Done in this slice:
+
+- `cadence --json` and `cadence load <file> --json` print the schedule as one
+  JSON document. `cadence-interchange` gained a `schedule` module that reuses
+  the crate's private JSON reader and writer to carry the derived schedule —
+  project start/finish, per-activity scheduled/early/late dates, total and
+  free float, criticality and the critical path — with a schema version and a
+  `kind` field that distinguishes a schedule from an error document.
+- This is deliberately the one document where derived dates are written; the
+  interchange document still never carries them (D9). The point is
+  accessibility of tooling (guide §21.5): scripts and assistive technology
+  should not have to parse the aligned plain-text table.
+- Usage errors exit with code 2 (real errors stay 1), the usage screen points
+  at `cadence --help`, and every failure now prints an
+  `ERROR <UTC timestamp> cadence: <message>` diagnostic on stderr; in JSON
+  mode the machine reading stdout gets the error document and the person
+  reading the terminal gets the error line.
+- Tests in `schedule.rs` parse every written document with the crate's own
+  JSON reader and assert on the parsed values: the full field set of a
+  two-activity FS chain, a milestone's start == finish, quoting and newlines
+  surviving a round trip, the empty project, a cyclic project's error
+  document, and a single-activity critical path.
+- `docs/usage.md` documents the command forms, the document shapes and the
+  exit codes; ROADMAP, the traceability table (R24) and the parity tracker
+  are updated in the same change.
+- Verification runs in GitHub Actions on the verification branch; nothing was
+  built or tested locally, per the no-local-builds rule.
+
 ## 2026-10-24 — project health: open-source readiness (D18, D19)
 
 The program was complete; the *project* was not. Reviewed against GitHub's
