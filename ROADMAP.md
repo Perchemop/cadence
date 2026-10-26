@@ -31,7 +31,7 @@ clippy with warnings denied, release binary packaged for all three.
 | Reports (Markdown + PDF) and printing | 100% | report + PDF writer tests; dialog hands-on |
 | Interchange MSPDI / MPX / CSV / JSON | 100% of documented subsets | round-trip + property tests |
 | CI: multi-OS verify + release artefacts | 100% | runs on every push; release.yml on tags |
-| Accessibility | ~60% | WCAG AA contrast verified; keyboard map added; screen-reader/keyboard-only audit outstanding |
+| Accessibility | 100% (code-level audit) | WCAG AA contrast tests; AccessKit on through eframe; keyboard-only pass over every view; pointer-free link creation and Gantt zoom; limits recorded in `ACCESSIBILITY.md` |
 | Crash reporting | stub | local panic hook + crash log (guide §6.1 allows a stub) |
 | Update check | stub | version reported; network check deferred to 0.2.x |
 
@@ -105,9 +105,18 @@ touches the scheduling engine. See D18 for the decisions and
 
 ### Next slice (decided 2026-10-26, after the update check)
 
-- [ ] Accessibility audit: AccessKit integration for screen readers and a
+- [x] Accessibility audit: AccessKit integration for screen readers and a
       keyboard-only operation pass over every view, with the gaps fixed or
-      recorded (v0.2.0 suite infrastructure; guide Part I §9).
+      recorded (v0.2.0 suite infrastructure; guide Part I §9). Added a
+      keyboard-shortcuts window (`F1`), `Up`/`Down` row selection, keyboard
+      Gantt zoom, a pointer-free **Add relationship** form, a scrollable
+      inspector, and an AccessKit summary for the Gantt canvas.
+
+### Next slice (decided 2026-10-26, after the accessibility audit)
+
+- [ ] Progress-driven rescheduling mode: an explicit mode in which actual
+      start/finish dates feed the forward pass (D15), with progress updates
+      that preserve recorded actuals and surface variance.
 
 ### Human-gated (recorded, not decided)
 
@@ -129,8 +138,10 @@ touches the scheduling engine. See D18 for the decisions and
 - [x] Print the Gantt view: capture the rendered view and emit an image page
       through the existing PDF writer (GUI **Print Gantt…**, whole-window
       screenshot; timeline cropping/stitching is a later polish item).
-- [ ] Accessibility: AccessKit integration for screen readers; full
-      keyboard-only operation audit.
+- [x] Accessibility: AccessKit integration for screen readers; full
+      keyboard-only operation audit. AccessKit is enabled by eframe's default
+      features; every view was reviewed for pointer-only paths, with the
+      remaining toolkit limits recorded in `ACCESSIBILITY.md`.
 
 ### v0.3.x — deeper scheduling
 

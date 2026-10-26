@@ -17,12 +17,18 @@ Checklist for the Phase-5 polish and interop slices. Phase-1..4 gates live in
       pages, ASCII-hex streams), `cadence print <file> <out.pdf>`, and a GUI
       **Print report…** button using a native save dialog. Dialog behaviour
       itself needs interactive verification (below).
-- [x] Keyboard shortcuts (P5-3, partial): Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y
-      undo-redo and Ctrl+1..4 view switching from any view.
-- [x] Accessibility (P5-3, partial): WCAG AA (4.5:1) contrast verified by
-      tests for every colour the app draws text in, on both themes
+- [x] Keyboard shortcuts (P5-3): Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y undo-redo,
+      Ctrl+1..5 view switching, Up/Down table selection, Ctrl+Plus/Minus/0
+      Gantt zoom, and the F1 **Keyboard shortcuts** window. Every view was
+      reviewed for pointer-only paths; drag-to-link has an inspector form.
+- [x] Accessibility (P5-3): AccessKit is enabled by eframe's default
+      features, standard widgets expose their labels and roles, and the Gantt
+      canvas carries a `WidgetInfo` summary with the Table view as the
+      per-activity semantic alternative. WCAG AA (4.5:1) contrast is verified
+      by tests for every colour the app draws text in, on both themes
       (`accessibility_tests` in `cadence-ui-egui`), including white-on-accent
-      for selections and 3:1 non-text contrast for the accent itself.
+      for selections and 3:1 non-text contrast for the accent itself. Limits
+      are recorded in `ACCESSIBILITY.md`.
 - [x] Performance gates (P5-3, partial): 10,000-activity schedule under 1 s,
       10,000 committed resource days analysed under 2 s, and 100 parallel
       activities leveled under 3 s — all asserted in CI on every platform.
@@ -46,9 +52,10 @@ Checklist for the Phase-5 polish and interop slices. Phase-1..4 gates live in
 
 ## Deliberately deferred (user decisions, not engineering gaps)
 
-- Screen-reader audit and full keyboard-only operation
-  (P5-3): enabling AccessKit adds its dependency tree and needs interactive
-  verification with a screen reader, which CI cannot do. The native save
-  dialog in **Print report…** is likewise interactive-only.
+- Manual screen-reader passes on each release platform (P5-3): the code-level
+  audit and AccessKit wiring are complete, but a human with NVDA on Windows,
+  VoiceOver on macOS or Orca on Linux must verify each platform, which CI
+  cannot do. The native save dialogs in **Print report…** and **Print Gantt…**
+  are likewise interactive-only.
 - First tagged release (P5-4): a release decision — what to include, version
   number, and merging PR #1 to `main` first (now done).

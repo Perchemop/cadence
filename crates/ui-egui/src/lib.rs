@@ -112,6 +112,46 @@ const CONSTRAINT_LABELS: [&str; 6] = [
 /// Labels for the resource kinds, in the order of [`ResourceKind`].
 const RESOURCE_KIND_LABELS: [&str; 3] = ["Labour", "Equipment", "Material"];
 
+/// Labels for the four relationship types, in [`LinkType::ALL`] order.
+const LINK_TYPE_LABELS: [&str; 4] = [
+    "Finish → Start (FS)",
+    "Start → Start (SS)",
+    "Finish → Finish (FF)",
+    "Start → Finish (SF)",
+];
+
+/// Convert a relationship type into its index in [`LINK_TYPE_LABELS`].
+fn link_type_index(link_type: LinkType) -> usize {
+    LinkType::ALL
+        .iter()
+        .position(|candidate| *candidate == link_type)
+        .unwrap_or(0)
+}
+
+/// Convert a relationship-type index back into a [`LinkType`].
+fn link_type_from_index(index: usize) -> LinkType {
+    LinkType::ALL[index.min(LinkType::ALL.len() - 1)]
+}
+
+/// The display label for a relationship-type index.
+fn link_type_label(index: usize) -> &'static str {
+    LINK_TYPE_LABELS[index.min(LINK_TYPE_LABELS.len() - 1)]
+}
+
+/// Validate the inspector's predecessor/successor choice.
+fn link_endpoints(
+    predecessor: Option<ActivityId>,
+    successor: Option<ActivityId>,
+) -> Result<(ActivityId, ActivityId), String> {
+    match (predecessor, successor) {
+        (Some(predecessor), Some(successor)) if predecessor != successor => {
+            Ok((predecessor, successor))
+        }
+        (Some(_), Some(_)) => Err("A link needs two different activities".to_string()),
+        _ => Err("Choose both a predecessor and a successor".to_string()),
+    }
+}
+
 /// Convert a resource kind into its index in [`RESOURCE_KIND_LABELS`].
 fn resource_kind_index(kind: ResourceKind) -> usize {
     match kind {
@@ -174,6 +214,12 @@ pub struct CadenceApp {
     update_status: update_check::UpdateStatus,
     update_receiver: Option<mpsc::Receiver<update_check::UpdateStatus>>,
     show_update_dialog: bool,
+    link_predecessor: Option<ActivityId>,
+    link_successor: Option<ActivityId>,
+    link_type_index: usize,
+    link_lag_buffer: String,
+    show_shortcuts_dialog: bool,
+    scroll_to_selection: bool,
 }
 
 impl CadenceApp {
@@ -227,6 +273,12 @@ impl CadenceApp {
             update_status,
             update_receiver: None,
             show_update_dialog: false,
+            link_predecessor: None,
+            link_successor: None,
+            link_type_index: 0,
+            link_lag_buffer: "0".to_string(),
+            show_shortcuts_dialog: false,
+            scroll_to_selection: false,
         }
     }
 
@@ -279,6 +331,62 @@ impl CadenceApp {
                 .budget_at_completion
                 .map(format_money)
                 .unwrap_or_default();
+        }
+        self.link_predecessor = Some(id);
+        if self.link_successor == Some(id) {
+            self.link_successor = None;
+        }
+    }
+
+    /// Add a dependency link from the inspector form.
+    ///
+    /// This is the pointer-free equivalent of dragging between two Gantt bars.
+    fn add_link_from_form(&mut self) {
+        let endpoints = link_endpoints(self.link_predecessor, self.link_successor);
+        let (predecessor, successor) = match endpoints {
+            Ok(pair) => pair,
+            Err(message) => {
+                self.status_message = Some(message);
+                return;
+            }
+        };
+        let Ok(lag) = self.link_lag_buffer.trim().parse::<i64>() else {
+            self.status_message = Some("Lag must be a whole number of working days".to_string());
+            return;
+        };
+        let link_type = link_type_from_index(self.link_type_index);
+        let id = self.project.next_relationship_id();
+        match self.stack.execute(
+            &mut self.project,
+            Box::new(CreateRelationship::new(
+                id,
+                predecessor,
+                successor,
+                link_type,
+                lag,
+            )),
+        ) {
+            Ok(()) => {
+                self.recompute();
+                match self.schedule.clone() {
+                    Err(error) => {
+                        let _ = self.stack.undo(&mut self.project);
+                        self.recompute();
+                        self.status_message = Some(format!("Cannot add link: {error}"));
+                    }
+                    Ok(_) => {
+                        self.selected_relationship = Some(id);
+                        self.last_rel = None;
+                        self.status_message = Some(format!(
+                            "Added {} link {} → {}",
+                            link_type, predecessor, successor
+                        ));
+                    }
+                }
+            }
+            Err(error) => {
+                self.status_message = Some(format!("Cannot add link: {error}"));
+            }
         }
     }
 
@@ -919,6 +1027,70 @@ impl eframe::App for CadenceApp {
             }
         }
 
+        // F1 opens the keyboard reference from every view.
+        if ctx.input(|input| input.key_pressed(egui::Key::F1)) {
+            self.show_shortcuts_dialog = true;
+        }
+
+        // A dialog owns the keyboard while it is open, so the view shortcuts
+        // do not act behind it.
+        let dialog_open =
+            self.show_crash_dialog || self.show_update_dialog || self.show_shortcuts_dialog;
+
+        // Gantt zoom from the keyboard; Ctrl+wheel remains the pointer path.
+        if self.view_mode == ViewMode::Gantt && !ctx.text_edit_focused() && !dialog_open {
+            let (zoom_in, zoom_out, zoom_reset) = ctx.input(|input| {
+                let ctrl = input.modifiers.ctrl;
+                let plus = input.key_pressed(egui::Key::Plus)
+                    || input.key_pressed(egui::Key::Equals);
+                (
+                    ctrl && plus,
+                    ctrl && input.key_pressed(egui::Key::Minus),
+                    ctrl && input.key_pressed(egui::Key::Num0),
+                )
+            });
+            if zoom_in {
+                self.pixels_per_day = (self.pixels_per_day * 1.25).clamp(2.0, 60.0);
+            }
+            if zoom_out {
+                self.pixels_per_day = (self.pixels_per_day / 1.25).clamp(2.0, 60.0);
+            }
+            if zoom_reset {
+                self.pixels_per_day = 14.0;
+            }
+        }
+
+        // Up/Down select the previous/next activity in the Table view. Skip
+        // while a text field or a combo popup is using the keyboard.
+        if self.view_mode == ViewMode::Table
+            && !ctx.text_edit_focused()
+            && !ctx.any_popup_open()
+            && !dialog_open
+        {
+            let (previous, next) = ctx.input(|input| {
+                (
+                    input.key_pressed(egui::Key::ArrowUp),
+                    input.key_pressed(egui::Key::ArrowDown),
+                )
+            });
+            if previous || next {
+                let activities = self.sorted_activities();
+                if !activities.is_empty() {
+                    let current = self
+                        .selected
+                        .and_then(|id| activities.iter().position(|activity| activity.id == id));
+                    let index = if next {
+                        current.map_or(0, |index| (index + 1).min(activities.len() - 1))
+                    } else {
+                        current.map_or(activities.len() - 1, |index| index.saturating_sub(1))
+                    };
+                    let id = activities[index].id;
+                    self.select(id);
+                    self.scroll_to_selection = true;
+                }
+            }
+        }
+
         // Consume a captured Gantt screenshot, if one was requested, and write
         // the resulting PDF to the path chosen by the user.
         if let Some(path) = self.gantt_print_path.clone() {
@@ -1045,12 +1217,19 @@ impl eframe::App for CadenceApp {
                     self.recompute();
                 }
                 if let Some(message) = &self.status_message {
-                    ui.label(message);
+                    ui.label(format!("Status: {message}"));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("Toggle theme").clicked() {
                         self.dark = !self.dark;
                         apply_theme(&ctx, self.dark);
+                    }
+                    if ui
+                        .button("Shortcuts")
+                        .on_hover_text("Keyboard shortcuts (F1)")
+                        .clicked()
+                    {
+                        self.show_shortcuts_dialog = true;
                     }
                 });
             });
@@ -1061,143 +1240,228 @@ impl eframe::App for CadenceApp {
                 egui::Panel::right("inspector")
                     .default_size(260.0)
                     .show(ui, |ui| {
-                        ui.heading("Inspector");
-                        if let Some(id) = self.selected {
-                            ui.label(format!("Activity {}", id));
-                            ui.label("Name");
-                            ui.text_edit_singleline(&mut self.name_buffer);
-                            ui.label("Duration (working days)");
-                            ui.text_edit_singleline(&mut self.duration_buffer);
-                            ui.label("Constraint");
-                            ComboBox::from_id_salt("constraint_kind")
-                                .selected_text(CONSTRAINT_LABELS[self.constraint_kind])
-                                .show_ui(ui, |ui| {
-                                    for (index, label) in CONSTRAINT_LABELS.iter().enumerate() {
-                                        ui.selectable_value(
-                                            &mut self.constraint_kind,
-                                            index,
-                                            *label,
-                                        );
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                ui.heading("Inspector");
+                                if let Some(id) = self.selected {
+                                    ui.label(format!("Activity {}", id));
+                                    ui.label("Name");
+                                    ui.text_edit_singleline(&mut self.name_buffer);
+                                    ui.label("Duration (working days)");
+                                    ui.text_edit_singleline(&mut self.duration_buffer);
+                                    ui.label("Constraint");
+                                    let labels = CONSTRAINT_LABELS;
+                                    ComboBox::from_id_salt("constraint_kind")
+                                        .selected_text(CONSTRAINT_LABELS[self.constraint_kind])
+                                        .show_ui(ui, |ui| {
+                                            for (index, label) in labels.iter().enumerate() {
+                                                ui.selectable_value(
+                                                    &mut self.constraint_kind,
+                                                    index,
+                                                    *label,
+                                                );
+                                            }
+                                        });
+                                    if self.constraint_kind >= 2 {
+                                        ui.label("Constraint date (YYYY-MM-DD)");
+                                        ui.text_edit_singleline(&mut self.constraint_date_buffer);
                                     }
-                                });
-                            if self.constraint_kind >= 2 {
-                                ui.label("Constraint date (YYYY-MM-DD)");
-                                ui.text_edit_singleline(&mut self.constraint_date_buffer);
-                            }
 
-                            ui.separator();
-                            ui.heading("Calendar");
-                            let calendar_names = self.project.calendars.calendars().to_vec();
-                            let current = self
-                                .project
-                                .activity(id)
-                                .and_then(|activity| activity.calendar);
-                            let selected_text = current
-                                .and_then(|current| {
-                                    calendar_names
-                                        .iter()
-                                        .find(|named| named.id == current)
-                                        .map(|named| named.name.clone())
-                                })
-                                .unwrap_or_else(|| "Project default".to_string());
-                            ComboBox::from_id_salt("activity_calendar")
-                                .selected_text(selected_text)
-                                .show_ui(ui, |ui| {
-                                    if ui
-                                        .selectable_label(current.is_none(), "Project default")
-                                        .clicked()
-                                        && current.is_some()
-                                    {
-                                        let _ = self.stack.execute(
-                                            &mut self.project,
-                                            Box::new(SetActivityCalendar {
-                                                activity: id,
-                                                calendar: None,
-                                            }),
-                                        );
-                                        self.recompute();
+                                    ui.separator();
+                                    ui.heading("Calendar");
+                                    let calendar_names =
+                                        self.project.calendars.calendars().to_vec();
+                                    let current = self
+                                        .project
+                                        .activity(id)
+                                        .and_then(|activity| activity.calendar);
+                                    let selected_text = current
+                                        .and_then(|current| {
+                                            calendar_names
+                                                .iter()
+                                                .find(|named| named.id == current)
+                                                .map(|named| named.name.clone())
+                                        })
+                                        .unwrap_or_else(|| "Project default".to_string());
+                                    ComboBox::from_id_salt("activity_calendar")
+                                        .selected_text(selected_text)
+                                        .show_ui(ui, |ui| {
+                                            if ui
+                                                .selectable_label(
+                                                    current.is_none(),
+                                                    "Project default",
+                                                )
+                                                .clicked()
+                                                && current.is_some()
+                                            {
+                                                let _ = self.stack.execute(
+                                                    &mut self.project,
+                                                    Box::new(SetActivityCalendar {
+                                                        activity: id,
+                                                        calendar: None,
+                                                    }),
+                                                );
+                                                self.recompute();
+                                            }
+                                            for named in &calendar_names {
+                                                let picked = current == Some(named.id);
+                                                if ui
+                                                    .selectable_label(picked, &named.name)
+                                                    .clicked()
+                                                    && !picked
+                                                {
+                                                    let _ = self.stack.execute(
+                                                        &mut self.project,
+                                                        Box::new(SetActivityCalendar {
+                                                            activity: id,
+                                                            calendar: Some(named.id),
+                                                        }),
+                                                    );
+                                                    self.recompute();
+                                                }
+                                            }
+                                        });
+
+                                    ui.separator();
+                                    ui.heading("Progress");
+                                    ui.label("Percent complete");
+                                    ui.text_edit_singleline(&mut self.progress_buffer);
+                                    ui.label("Budget at completion");
+                                    ui.text_edit_singleline(&mut self.budget_buffer);
+                                    ui.label("Actual cost");
+                                    ui.text_edit_singleline(&mut self.actual_cost_buffer);
+                                    ui.label("Actual start (YYYY-MM-DD)");
+                                    ui.text_edit_singleline(&mut self.actual_start_buffer);
+                                    ui.label("Actual finish (YYYY-MM-DD)");
+                                    ui.text_edit_singleline(&mut self.actual_finish_buffer);
+
+                                    if ui.button("Apply").clicked() {
+                                        self.apply_edits();
                                     }
-                                    for named in &calendar_names {
-                                        let picked = current == Some(named.id);
-                                        if ui.selectable_label(picked, &named.name).clicked()
-                                            && !picked
-                                        {
-                                            let _ = self.stack.execute(
-                                                &mut self.project,
-                                                Box::new(SetActivityCalendar {
-                                                    activity: id,
-                                                    calendar: Some(named.id),
+
+                                    ui.separator();
+                                    ui.heading("Relationships");
+                                    ComboBox::from_id_salt("relationship_select")
+                                        .selected_text(
+                                            self.selected_relationship
+                                                .and_then(|id| self.project.relationship(id))
+                                                .map(|r| format!("rel {}", r.id))
+                                                .unwrap_or_else(|| {
+                                                    "Select relationship".to_string()
                                                 }),
-                                            );
-                                            self.recompute();
+                                        )
+                                        .show_ui(ui, |ui| {
+                                            for rel in self.project.relationships.clone() {
+                                                ui.selectable_value(
+                                                    &mut self.selected_relationship,
+                                                    Some(rel.id),
+                                                    format!(
+                                                        "{} -> {}",
+                                                        rel.predecessor, rel.successor
+                                                    ),
+                                                );
+                                            }
+                                        });
+
+                                    if self.last_rel != self.selected_relationship {
+                                        self.last_rel = self.selected_relationship;
+                                        self.lag_buffer = self
+                                            .selected_relationship
+                                            .and_then(|id| self.project.relationship(id))
+                                            .map(|r| r.lag.to_string())
+                                            .unwrap_or_default();
+                                    }
+
+                                    if self.selected_relationship.is_some() {
+                                        if let Some(rel) = self
+                                            .selected_relationship
+                                            .and_then(|id| self.project.relationship(id))
+                                        {
+                                            ui.label(format!(
+                                                "Type: {}",
+                                                LINK_TYPE_LABELS[link_type_index(rel.link_type)]
+                                            ));
+                                        }
+                                        ui.label("Lag (working days)");
+                                        ui.text_edit_singleline(&mut self.lag_buffer);
+                                        if ui.button("Apply lag").clicked() {
+                                            if let (Some(id), Ok(lag)) = (
+                                                self.selected_relationship,
+                                                self.lag_buffer.trim().parse::<i64>(),
+                                            ) {
+                                                let _ = self.stack.execute(
+                                                    &mut self.project,
+                                                    Box::new(SetRelationshipLag { id, lag }),
+                                                );
+                                                self.recompute();
+                                            }
                                         }
                                     }
-                                });
 
-                            ui.separator();
-                            ui.heading("Progress");
-                            ui.label("Percent complete");
-                            ui.text_edit_singleline(&mut self.progress_buffer);
-                            ui.label("Budget at completion");
-                            ui.text_edit_singleline(&mut self.budget_buffer);
-                            ui.label("Actual cost");
-                            ui.text_edit_singleline(&mut self.actual_cost_buffer);
-                            ui.label("Actual start (YYYY-MM-DD)");
-                            ui.text_edit_singleline(&mut self.actual_start_buffer);
-                            ui.label("Actual finish (YYYY-MM-DD)");
-                            ui.text_edit_singleline(&mut self.actual_finish_buffer);
-
-                            if ui.button("Apply").clicked() {
-                                self.apply_edits();
-                            }
-
-                            ui.separator();
-                            ui.heading("Relationships");
-                            ComboBox::from_id_salt("relationship_select")
-                                .selected_text(
-                                    self.selected_relationship
-                                        .and_then(|id| self.project.relationship(id))
-                                        .map(|r| format!("rel {}", r.id))
-                                        .unwrap_or_else(|| "Select relationship".to_string()),
-                                )
-                                .show_ui(ui, |ui| {
-                                    for rel in self.project.relationships.clone() {
-                                        ui.selectable_value(
-                                            &mut self.selected_relationship,
-                                            Some(rel.id),
-                                            format!("{} -> {}", rel.predecessor, rel.successor),
-                                        );
+                                    ui.separator();
+                                    ui.heading("Add relationship");
+                                    ui.label(
+                                        "This form is the keyboard path; dragging between \
+                                         Gantt bars is a shortcut.",
+                                    );
+                                    let activity_choices = self.project.activities.clone();
+                                    let predecessor_text = self
+                                        .link_predecessor
+                                        .and_then(|id| self.project.activity(id))
+                                        .map(|activity| activity.name.clone())
+                                        .unwrap_or_else(|| "Select activity".to_string());
+                                    ui.label("Predecessor");
+                                    ComboBox::from_id_salt("link_predecessor")
+                                        .selected_text(predecessor_text)
+                                        .show_ui(ui, |ui| {
+                                            for activity in &activity_choices {
+                                                ui.selectable_value(
+                                                    &mut self.link_predecessor,
+                                                    Some(activity.id),
+                                                    &activity.name,
+                                                );
+                                            }
+                                        });
+                                    let successor_text = self
+                                        .link_successor
+                                        .and_then(|id| self.project.activity(id))
+                                        .map(|activity| activity.name.clone())
+                                        .unwrap_or_else(|| "Select activity".to_string());
+                                    ui.label("Successor");
+                                    ComboBox::from_id_salt("link_successor")
+                                        .selected_text(successor_text)
+                                        .show_ui(ui, |ui| {
+                                            for activity in &activity_choices {
+                                                ui.selectable_value(
+                                                    &mut self.link_successor,
+                                                    Some(activity.id),
+                                                    &activity.name,
+                                                );
+                                            }
+                                        });
+                                    ui.label("Type");
+                                    let link_types = LINK_TYPE_LABELS;
+                                    ComboBox::from_id_salt("link_type")
+                                        .selected_text(link_type_label(self.link_type_index))
+                                        .show_ui(ui, |ui| {
+                                            for (index, label) in link_types.iter().enumerate() {
+                                                ui.selectable_value(
+                                                    &mut self.link_type_index,
+                                                    index,
+                                                    *label,
+                                                );
+                                            }
+                                        });
+                                    ui.label("Lag (working days)");
+                                    ui.text_edit_singleline(&mut self.link_lag_buffer);
+                                    if ui.button("Add link").clicked() {
+                                        self.add_link_from_form();
                                     }
-                                });
-
-                            if self.last_rel != self.selected_relationship {
-                                self.last_rel = self.selected_relationship;
-                                self.lag_buffer = self
-                                    .selected_relationship
-                                    .and_then(|id| self.project.relationship(id))
-                                    .map(|r| r.lag.to_string())
-                                    .unwrap_or_default();
-                            }
-
-                            if self.selected_relationship.is_some() {
-                                ui.label("Lag (working days)");
-                                ui.text_edit_singleline(&mut self.lag_buffer);
-                                if ui.button("Apply lag").clicked() {
-                                    if let (Some(id), Ok(lag)) = (
-                                        self.selected_relationship,
-                                        self.lag_buffer.trim().parse::<i64>(),
-                                    ) {
-                                        let _ = self.stack.execute(
-                                            &mut self.project,
-                                            Box::new(SetRelationshipLag { id, lag }),
-                                        );
-                                        self.recompute();
-                                    }
+                                } else {
+                                    ui.label("Select an activity in the table.");
                                 }
-                            }
-                        } else {
-                            ui.label("Select an activity in the table.");
-                        }
+                            });
                     });
 
                 let schedule = self.schedule.clone();
@@ -1247,11 +1511,13 @@ impl eframe::App for CadenceApp {
                                     for activity in self.sorted_activities() {
                                         if let Some(result) = schedule.activity(activity.id) {
                                             let selected = self.selected == Some(activity.id);
-                                            if ui
-                                                .selectable_label(selected, &activity.name)
-                                                .clicked()
-                                            {
+                                            let response =
+                                                ui.selectable_label(selected, &activity.name);
+                                            if response.clicked() {
                                                 self.select(activity.id);
+                                            }
+                                            if selected && self.scroll_to_selection {
+                                                response.scroll_to_me(Some(egui::Align::Center));
                                             }
                                             ui.label(activity.original_duration.to_string());
                                             ui.label(result.scheduled_start.to_string());
@@ -1262,6 +1528,7 @@ impl eframe::App for CadenceApp {
                                         }
                                     }
                                 });
+                            self.scroll_to_selection = false;
                         });
                     }
                 });
@@ -1815,6 +2082,56 @@ impl eframe::App for CadenceApp {
                 self.show_update_dialog = false;
             }
         }
+
+        if self.show_shortcuts_dialog {
+            let mut open = true;
+            egui::Window::new("Keyboard shortcuts")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    egui::Grid::new("shortcut_grid")
+                        .striped(true)
+                        .spacing([16.0, 4.0])
+                        .show(ui, |ui| {
+                            for (keys, action) in [
+                                ("Ctrl+Z", "Undo"),
+                                ("Ctrl+Y or Ctrl+Shift+Z", "Redo"),
+                                (
+                                    "Ctrl+1 … Ctrl+5",
+                                    "Switch view: Table, Gantt, Resources, Baselines, \
+                                     Calendars",
+                                ),
+                                ("Ctrl+D", "Toggle light/dark theme"),
+                                (
+                                    "Ctrl+Plus / Ctrl+Minus",
+                                    "Zoom the Gantt timeline in or out",
+                                ),
+                                ("Ctrl+0", "Reset the Gantt zoom"),
+                                ("Tab / Shift+Tab", "Move focus between controls"),
+                                ("Space / Enter", "Activate the focused button or row"),
+                                (
+                                    "Up / Down",
+                                    "Select the previous/next activity in the Table view",
+                                ),
+                                ("F1", "Open this window"),
+                            ] {
+                                ui.label(keys);
+                                ui.label(action);
+                                ui.end_row();
+                            }
+                        });
+                    ui.add_space(4.0);
+                    ui.label(
+                        "Every task has a pointer-free path: choose an activity in the \
+                         Table view, edit it in the inspector, and add dependency links \
+                         with the form there.",
+                    );
+                });
+            if !open {
+                self.show_shortcuts_dialog = false;
+            }
+        }
     }
 }
 
@@ -2019,6 +2336,21 @@ fn resource_day_usage(
     usage
 }
 
+/// One-line description of the Gantt canvas for screen readers and sighted
+/// users alike.
+fn gantt_summary(schedule: &Schedule) -> String {
+    let count = schedule.activities.len();
+    let noun = if count == 1 { "activity" } else { "activities" };
+    format!(
+        "Gantt chart: {count} {noun}, {} critical, {} to {}. \
+         Red bars (marked !) are critical; the darker fill is recorded progress. \
+         The Table view lists the same data as text.",
+        schedule.critical_path.len(),
+        schedule.project_start,
+        schedule.project_finish
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn render_gantt(
     ui: &mut Ui,
@@ -2044,12 +2376,42 @@ fn render_gantt(
     let header_height = 24.0;
     let total_height = project.activities.len() as f32 * row_height + header_height;
     let timeline_width = total_days * pixels_per_day + 40.0;
+    let summary = gantt_summary(&current_schedule);
+    ui.label(&summary);
+    ui.horizontal(|ui| {
+        ui.label("Zoom");
+        if ui
+            .button("−")
+            .on_hover_text("Zoom out (Ctrl+Minus)")
+            .clicked()
+        {
+            *pixels_per_day_out = (*pixels_per_day_out / 1.25).clamp(2.0, 60.0);
+        }
+        if ui
+            .button("+")
+            .on_hover_text("Zoom in (Ctrl+Plus)")
+            .clicked()
+        {
+            *pixels_per_day_out = (*pixels_per_day_out * 1.25).clamp(2.0, 60.0);
+        }
+        if ui
+            .button("Reset")
+            .on_hover_text("Reset zoom (Ctrl+0)")
+            .clicked()
+        {
+            *pixels_per_day_out = 14.0;
+        }
+        ui.label(format!("{:.0}%", *pixels_per_day_out / 14.0 * 100.0));
+    });
 
     ScrollArea::both().show(ui, |ui| {
         let (rect, response) = ui.allocate_exact_size(
             Vec2::new(timeline_width, total_height),
             Sense::click_and_drag(),
         );
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Other, true, summary.as_str())
+        });
         let mut painter = ui.painter_at(rect);
         let clip = ui.clip_rect().intersect(rect);
         painter.set_clip_rect(clip);
@@ -2198,10 +2560,15 @@ fn render_gantt(
                     }
                 }
 
+                let bar_label = if result.critical {
+                    format!("! {}", activity.name)
+                } else {
+                    activity.name.clone()
+                };
                 painter.text(
                     bar.center(),
                     Align2::CENTER_CENTER,
-                    &activity.name,
+                    &bar_label,
                     egui::FontId::proportional(10.0),
                     Color32::WHITE,
                 );
@@ -2342,6 +2709,41 @@ mod accessibility_tests {
         // so WCAG 1.4.11's 3:1 non-text minimum applies.
         assert!(contrast_ratio(ACCENT, LIGHT_TEXT_BACKGROUND) >= 3.0);
         assert!(contrast_ratio(ACCENT, DARK_TEXT_BACKGROUND) >= 3.0);
+    }
+
+    #[test]
+    fn link_types_round_trip_through_the_inspector_index() {
+        for link_type in LinkType::ALL {
+            let index = link_type_index(link_type);
+            assert_eq!(link_type_from_index(index), link_type);
+            assert!(LINK_TYPE_LABELS[index].contains(link_type.abbreviation()));
+        }
+    }
+
+    #[test]
+    fn link_endpoints_require_two_distinct_activities() {
+        let first = ActivityId::new(1);
+        let second = ActivityId::new(2);
+        assert_eq!(link_endpoints(Some(first), Some(second)), Ok((first, second)));
+        assert!(link_endpoints(Some(first), Some(first)).is_err());
+        assert!(link_endpoints(None, Some(second)).is_err());
+        assert!(link_endpoints(Some(first), None).is_err());
+    }
+
+    #[test]
+    fn the_gantt_summary_names_the_text_alternative() {
+        let mut project = Project::new(
+            "Accessible",
+            Date::from_calendar_date(2026, Month::January, 5).expect("date"),
+        );
+        project
+            .activities
+            .push(Activity::new(ActivityId::new(1), "Survey", 2));
+        let schedule = schedule(&project).expect("schedule succeeds");
+        let summary = gantt_summary(&schedule);
+        assert!(summary.contains("1 activity"));
+        assert!(summary.contains("critical"));
+        assert!(summary.contains("Table view"));
     }
 }
 

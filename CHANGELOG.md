@@ -5,6 +5,18 @@ follows Keep a Changelog; releases use git tags.
 
 ## [Unreleased]
 
+- Accessibility pass: a **Keyboard shortcuts** window (`F1` or the toolbar
+  **Shortcuts** button), `Up`/`Down` activity selection in the Table view,
+  keyboard Gantt zoom (`Ctrl+Plus`, `Ctrl+Minus`, `Ctrl+0`) with visible zoom
+  buttons, a pointer-free **Add relationship** form in the inspector (the
+  drag-to-link gesture remains a shortcut), a scrollable inspector, and
+  `Status:`-prefixed status text
+- AccessKit summary for the custom-painted Gantt canvas, a text summary and
+  legend above it, and a leading `!` on critical bars; the Table view is the
+  documented per-activity screen-reader alternative
+- `ACCESSIBILITY.md` now records the keyboard pass, the AccessKit behaviour and
+  the remaining toolkit limits; the keyboard map in `docs/usage.md` covers the
+  new shortcuts
 - Machine-readable schedule output: `cadence --json` and
   `cadence load <file> --json` print the schedule as a JSON document
   (`cadence-interchange/src/schedule.rs`), written by the existing in-crate
