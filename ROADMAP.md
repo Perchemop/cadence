@@ -85,6 +85,16 @@ touches the scheduling engine. See D18 for the decisions and
       be driven by scripts and assistive technology without parsing the aligned
       plain-text table (guide section 21.5, accessibility of tooling).
 
+### Next slice (decided 2026-10-26)
+
+- [x] Print the Gantt view: capture the rendered view and emit an image page
+      through the existing PDF writer (GUI **Print Gantt…**).
+
+### Next slice (decided 2026-10-26, after Gantt print)
+
+- [ ] Crash reporting: GitHub Issue creation with user consent and a UI
+      preview before send (v0.2.0 suite infrastructure, guide §7.1).
+
 ### Human-gated (recorded, not decided)
 
 - [ ] Name conflict check and trademark search for "Cadence"; reserve the
@@ -100,8 +110,9 @@ touches the scheduling engine. See D18 for the decisions and
       before send (guide §7.1); local crash log already in place.
 - [ ] Update check: query GitHub Releases API, compare versions, surface in
       the GUI; fail soft offline (guide §7.2).
-- [ ] Print the Gantt view: capture the rendered view and emit an image page
-      through the existing PDF writer.
+- [x] Print the Gantt view: capture the rendered view and emit an image page
+      through the existing PDF writer (GUI **Print Gantt…**, whole-window
+      screenshot; timeline cropping/stitching is a later polish item).
 - [ ] Accessibility: AccessKit integration for screen readers; full
       keyboard-only operation audit.
 
