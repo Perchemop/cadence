@@ -18,6 +18,10 @@ follows Keep a Changelog; releases use git tags.
   viewport screenshot command and writes it as a single A4 landscape image
   page in a PDF via the existing `cadence-core::pdf` writer (no new
   dependency)
+- GUI crash reporting: a **Crash report** window previews the local crash log,
+  accepts optional notes, and opens a pre-filled GitHub issue in the browser;
+  **Report a bug…** uses the same consent-first flow, and nothing is sent
+  automatically (no token is embedded in the binary)
 
 ## [0.1.1] — 2026-10-24
 

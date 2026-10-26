@@ -110,13 +110,16 @@ Accessibility reports are treated as correctness reports, not as opinions.
 
 ## Privacy
 
-Cadence works fully offline and sends nothing anywhere. If it crashes, a
-technical entry (version, operating system, panic message, backtrace) is
-appended to a crash log in your system temporary directory; that file stays on
-your machine and is never uploaded. Update checks make no network requests —
-`cadence version` reports the running version and says so. If crash
-submission or online update checks are added later, they will be opt-in and
-documented here.
+Cadence works fully offline unless you choose to open a crash report in your
+browser. If it crashes, a technical entry (version, operating system, panic
+message, backtrace) is appended to a crash log in your system temporary
+directory; that file stays on your machine and is never uploaded. On the next
+launch the GUI shows the log, lets you add notes, and only opens a pre-filled
+GitHub issue when you press **Open GitHub issue** — nothing is sent
+automatically, and no token is embedded in the application. Update checks make
+no network requests — `cadence version` reports the running version and says
+so. If online update checks are added later, they will be opt-in and documented
+here.
 
 Badges do not lie here: nothing in this project measures you. The only metrics
 recorded are the ones GitHub reports publicly (release downloads, clones,
