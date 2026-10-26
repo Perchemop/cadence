@@ -116,10 +116,12 @@ message, backtrace) is appended to a crash log in your system temporary
 directory; that file stays on your machine and is never uploaded. On the next
 launch the GUI shows the log, lets you add notes, and only opens a pre-filled
 GitHub issue when you press **Open GitHub issue** — nothing is sent
-automatically, and no token is embedded in the application. Update checks make
-no network requests — `cadence version` reports the running version and says
-so. If online update checks are added later, they will be opt-in and documented
-here.
+automatically, and no token is embedded in the application. Update checks are
+opt-in: `cadence version` uses only the last cached answer and never reaches
+the network, while `cadence check-updates` or the GUI's **Updates → Check now**
+sends one GET request to the public GitHub Releases API. The request includes
+no project data, account, identifier or token; the answer is cached for a few
+hours and failures are reported without blocking the application.
 
 Badges do not lie here: nothing in this project measures you. The only metrics
 recorded are the ones GitHub reports publicly (release downloads, clones,

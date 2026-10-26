@@ -410,3 +410,34 @@ memories:
 The six `cadence-*` entries in `Cargo.lock` were updated by hand for the
 version bump — path dependencies have no resolution to redo — and the
 lockfile-freshness check in CI validated the result.
+
+## D22 — Update checks are opt-in and use one small HTTP dependency (2026-10-26)
+
+The update check asks `https://api.github.com/repos/Perchemop/cadence/releases/latest`
+for the latest release and compares its tag with the running version. It is
+**opt-in**: nothing is requested on startup. `cadence version` reports only the
+last cached answer; `cadence check-updates` and the GUI's **Updates → Check
+now** button are the two explicit triggers. This follows the recorded
+assumption that crash submission and update checks are opt-in, fail-soft
+network features.
+
+The request itself is a single bounded GET with a four-second connect/read/write
+timeout, a `Cadence/<version>` user agent and a 256 KiB response cap. It sends
+no project data, account, identifier or token. A successful answer is cached
+in the system temporary directory for six hours; failures are reported in the
+UI/CLI but never block or fail the application, and are not cached so a later
+attempt can recover.
+
+The one new direct dependency is `ureq` 2.12 with default features disabled and
+only `tls` enabled. Hand-rolling TLS is not acceptable, and `ureq` is the
+smallest maintained blocking client that fits the existing synchronous code.
+Its rustls backend uses `ring` and the bundled WebPKI roots, so the release
+binary stays self-contained and has no OpenSSL runtime dependency. The version
+comparison is written in-crate (~40 lines) rather than adding `semver`: release
+tags are a narrow `vMAJOR.MINOR.PATCH` shape, the parser handles the `v`
+prefix, build metadata and pre-release ordering, and unit tests cover malformed
+tags so a bad tag cannot claim an update.
+
+The shared `update-check` crate remains deferred to the point where a second
+application joins the suite (ROADMAP "Later"); for now the module lives in
+`cadence-ui-egui` and the binary's CLI calls it.
