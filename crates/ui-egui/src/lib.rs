@@ -1041,8 +1041,8 @@ impl eframe::App for CadenceApp {
         if self.view_mode == ViewMode::Gantt && !ctx.text_edit_focused() && !dialog_open {
             let (zoom_in, zoom_out, zoom_reset) = ctx.input(|input| {
                 let ctrl = input.modifiers.ctrl;
-                let plus = input.key_pressed(egui::Key::Plus)
-                    || input.key_pressed(egui::Key::Equals);
+                let plus =
+                    input.key_pressed(egui::Key::Plus) || input.key_pressed(egui::Key::Equals);
                 (
                     ctrl && plus,
                     ctrl && input.key_pressed(egui::Key::Minus),
@@ -2724,7 +2724,10 @@ mod accessibility_tests {
     fn link_endpoints_require_two_distinct_activities() {
         let first = ActivityId::new(1);
         let second = ActivityId::new(2);
-        assert_eq!(link_endpoints(Some(first), Some(second)), Ok((first, second)));
+        assert_eq!(
+            link_endpoints(Some(first), Some(second)),
+            Ok((first, second))
+        );
         assert!(link_endpoints(Some(first), Some(first)).is_err());
         assert!(link_endpoints(None, Some(second)).is_err());
         assert!(link_endpoints(Some(first), None).is_err());
