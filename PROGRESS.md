@@ -7,14 +7,27 @@ green CI (`main` branch).
 
 Decided as the next vertical slice (ROADMAP.md).
 
-Scope:
-- Add a GUI command / menu entry to print the current Gantt view to PDF,
-  using the existing `cadence-core::pdf` image page support.
-- Capture the rendered Gantt widget as an RGB buffer (egui screenshot), scale to
-  fit A4 landscape with 56 pt margins, and emit a PDF file via the existing
-  `report::project_report_pdf` pipeline or a new `gantt_print` function.
-- CLI may expose `cadence print-gantt <file> <out.pdf>` in a later step; initial
-  focus is the GUI Print… dialog.
+Done in this slice:
+- New **Print Gantt…** toolbar button, enabled only in the Gantt view. It opens
+  the same native save dialog as **Print report…** and writes a PDF named after
+  the project (`<project>-gantt.pdf`).
+- The Gantt is captured with eframe/egui's viewport screenshot command
+  (`ViewportCommand::Screenshot`); the returned RGBA frame is converted to RGB
+  and written as a single A4 landscape image page through the existing
+  `cadence-core::pdf` writer. No new dependency was added.
+- The capture is asynchronous: the button records the chosen path and requests
+  the screenshot, and the next frame consumes the `Event::Screenshot` payload
+  and writes the file. The status bar reports the path or the write error.
+- `docs/usage.md` documents the button and the one-page output.
+- Tests: a smoke test exercises the `Pdf::image_page` path used by the print
+  action. The full screenshot path is interactive-only (needs a running
+  viewport) and is recorded as such in the Phase-5 QC gate.
+- CI green on `opencode/ci` (run 40289149574 and the follow-up fix run).
+
+Known limit of this first implementation: the screenshot is the whole window,
+not a crop of the Gantt timeline, and virtualised rows outside the viewport are
+not included. A later slice can crop to the timeline and scroll-and-stitch the
+full plan.
 
 ## 2026-10-25 — machine-readable schedule output (`--json`)
 

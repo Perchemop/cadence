@@ -14,6 +14,10 @@ follows Keep a Changelog; releases use git tags.
   exit with code 2 (the usage screen also documents the exit codes)
 - `docs/usage.md` documents the `--json` forms, the schedule and error
   document shapes, and the exit codes
+- GUI **Print Gantt…** button: captures the Gantt view through eframe's
+  viewport screenshot command and writes it as a single A4 landscape image
+  page in a PDF via the existing `cadence-core::pdf` writer (no new
+  dependency)
 
 ## [0.1.1] — 2026-10-24
 
