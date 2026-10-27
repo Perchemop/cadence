@@ -47,6 +47,18 @@ the failover plugin, so the structure never depends on which model is running.
 - Never use Ollama or any local model hosting.
 - No model change affects the process: heavy work runs in GitHub Actions.
 
+## Public research method (guide §2.4)
+
+Product research for future expansion is done with the session's web-search and
+page-fetch tools (the same free-model tier), restricted to **public** pages:
+vendor product/help pages, public standards (DCMA, GAO, AACE, PMBOK), public
+tutorials and public talks. Notes are written as **original behavioural
+summaries plus URLs** in `docs/research/`; source text is never pasted, and no
+proprietary source, decompilation output or third-party screenshots are
+committed. Context7 is not used for product research — it indexes library
+documentation, not arbitrary public pages. Each note goes through the human
+gate (guide §2.3) before a large implementation depends on it.
+
 ## Verified availability (re-checked 2026-10-22)
 
 Live probes of the NVIDIA free tier, which is tier 2 in the provider order:

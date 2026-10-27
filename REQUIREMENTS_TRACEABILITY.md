@@ -36,3 +36,14 @@ requirement lives.
 
 When a slice lands, this table and `docs/parity.md` are updated in the same
 commit.
+
+## Future expansion (candidates — no requirement ID yet)
+
+These are **not** in scope and carry no requirement ID until the owner approves
+the research note (guide §2.3). They are listed so the note is traceable.
+
+| Candidate | Research note | Status |
+|---|---|---|
+| Programme audit tool (audit a construction programme inside Cadence) | `docs/research/schedule-audit.md` | draft — human gate pending |
+| Optional AI integration (document understanding, proposals, advice) | `docs/research/ai-integration.md` | draft — human gate pending |
+| Lookahead / field planning (Aphex-inspired) | `docs/research/aphex-integration.md` | draft — human gate pending |
