@@ -14,7 +14,9 @@ implementation slice.
   `AUDIT-HIGHFLOAT`, `AUDIT-NEGFLOAT`, `AUDIT-HIGHDUR`, `AUDIT-INVALIDDATES`,
   `AUDIT-RESOURCES`, `AUDIT-MISSED`, `AUDIT-BEI`), each returning pass / fail /
   not-applicable with a measured value, a threshold, a plain sentence and
-  per-activity or per-relationship findings.
+  per-activity or per-relationship findings. The logic check exempts
+  zero-duration start/finish milestones, the same convention the DCMA
+  assessment uses.
 - `AuditConfig` carries the thresholds (percentage limit, high-float and
   high-duration working days, minimum FS share, minimum BEI) and the optional
   status date; `AuditReport` and the result types are serde-serialisable so the

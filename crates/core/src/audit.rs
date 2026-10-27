@@ -252,7 +252,9 @@ fn is_open(activity: &Activity) -> bool {
 /// or an actual finish on or before it.
 fn is_finished_by(activity: &Activity, status: Date) -> bool {
     activity.percent_complete.unwrap_or(0) >= 10_000
-        || activity.actual_finish.is_some_and(|finish| finish <= status)
+        || activity
+            .actual_finish
+            .is_some_and(|finish| finish <= status)
 }
 
 /// The project's activity with the given id.
@@ -349,10 +351,16 @@ fn check_logic_open_ends(project: &Project, config: &AuditConfig) -> CheckResult
             .relationships
             .iter()
             .any(|relationship| relationship.predecessor == activity.id);
-        if !has_predecessor || !has_successor {
-            let detail = if !has_predecessor && !has_successor {
+        // A zero-duration activity at a network boundary is a milestone: an
+        // open start or open finish is legitimate for it, the same exemption
+        // the DCMA assessment makes for project start and finish milestones.
+        let milestone = activity.original_duration == 0;
+        let missing_predecessor = !has_predecessor && !(milestone && has_successor);
+        let missing_successor = !has_successor && !(milestone && has_predecessor);
+        if missing_predecessor || missing_successor {
+            let detail = if missing_predecessor && missing_successor {
                 "no predecessor and no successor"
-            } else if !has_predecessor {
+            } else if missing_predecessor {
                 "no predecessor"
             } else {
                 "no successor"
@@ -372,7 +380,10 @@ fn check_logic_open_ends(project: &Project, config: &AuditConfig) -> CheckResult
         CheckCategory::Structure,
         outcome,
         Some(format!("{} of {} open activities", findings.len(), total)),
-        Some(format!("no more than {}", percent(config.percentage_limit_bp))),
+        Some(format!(
+            "no more than {}",
+            percent(config.percentage_limit_bp)
+        )),
         format!(
             "{} of {total} open activities are missing a predecessor or successor ({}).",
             findings.len(),
@@ -445,7 +456,10 @@ fn check_lags(project: &Project, config: &AuditConfig) -> CheckResult {
         CheckCategory::Logic,
         outcome,
         Some(format!("{} of {} relationships", findings.len(), total)),
-        Some(format!("no more than {}", percent(config.percentage_limit_bp))),
+        Some(format!(
+            "no more than {}",
+            percent(config.percentage_limit_bp)
+        )),
         format!(
             "{} of {total} relationships carry a lag ({}).",
             findings.len(),
@@ -524,7 +538,10 @@ fn check_hard_constraints(project: &Project, config: &AuditConfig) -> CheckResul
         CheckCategory::Constraints,
         outcome,
         Some(format!("{} of {} open activities", findings.len(), total)),
-        Some(format!("no more than {}", percent(config.percentage_limit_bp))),
+        Some(format!(
+            "no more than {}",
+            percent(config.percentage_limit_bp)
+        )),
         format!(
             "{} of {total} open activities carry a hard date constraint ({}); hard constraints stop the schedule from moving.",
             findings.len(),
@@ -534,11 +551,7 @@ fn check_hard_constraints(project: &Project, config: &AuditConfig) -> CheckResul
     )
 }
 
-fn check_high_float(
-    project: &Project,
-    schedule: &Schedule,
-    config: &AuditConfig,
-) -> CheckResult {
+fn check_high_float(project: &Project, schedule: &Schedule, config: &AuditConfig) -> CheckResult {
     let open = open_activities(project);
     let mut findings = Vec::new();
     for activity in &open {
@@ -813,7 +826,10 @@ fn check_missed_tasks(
         CheckCategory::Baseline,
         outcome,
         Some(format!("{} of {} due activities", findings.len(), due)),
-        Some(format!("no more than {}", percent(config.percentage_limit_bp))),
+        Some(format!(
+            "no more than {}",
+            percent(config.percentage_limit_bp)
+        )),
         format!(
             "{} of {due} activities due by the status date are missed ({}).",
             findings.len(),
@@ -939,9 +955,13 @@ mod tests {
     #[test]
     fn a_clean_project_passes_the_structure_checks() {
         let mut project = project();
-        let a = add_activity(&mut project, 1, "A", 3);
-        let b = add_activity(&mut project, 2, "B", 3);
-        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+        let start = add_activity(&mut project, 1, "Start", 0);
+        let a = add_activity(&mut project, 2, "A", 3);
+        let b = add_activity(&mut project, 3, "B", 3);
+        let finish = add_activity(&mut project, 4, "Finish", 0);
+        add_relationship(&mut project, 1, start, a, LinkType::Fs, 0);
+        add_relationship(&mut project, 2, a, b, LinkType::Fs, 0);
+        add_relationship(&mut project, 3, b, finish, LinkType::Fs, 0);
 
         let report = run(&project);
 
@@ -1010,7 +1030,14 @@ mod tests {
             .map(|id| add_activity(&mut project, id, "A", 1))
             .collect();
         for window in ids.windows(2) {
-            add_relationship(&mut project, window[0].0, window[0], window[1], LinkType::Fs, 0);
+            add_relationship(
+                &mut project,
+                window[0].0,
+                window[0],
+                window[1],
+                LinkType::Fs,
+                0,
+            );
         }
         project.relationships[0].lag = 1;
 
