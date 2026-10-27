@@ -37,13 +37,14 @@ requirement lives.
 When a slice lands, this table and `docs/parity.md` are updated in the same
 commit.
 
-## Future expansion (candidates — no requirement ID yet)
+## Future expansion (approved 2026-10-27, queued)
 
-These are **not** in scope and carry no requirement ID until the owner approves
-the research note (guide §2.3). They are listed so the note is traceable.
+The owner approved all three notes on 2026-10-27 (audit tool first). They carry
+requirement IDs once their first slice lands; until then they are traceable to
+their research note.
 
 | Candidate | Research note | Status |
 |---|---|---|
-| Programme audit tool (audit a construction programme inside Cadence) | `docs/research/schedule-audit.md` | draft — human gate pending |
-| Optional AI integration (document understanding, proposals, advice) | `docs/research/ai-integration.md` | draft — human gate pending |
-| Lookahead / field planning (Aphex-inspired) | `docs/research/aphex-integration.md` | draft — human gate pending |
+| Programme audit tool (audit a construction programme inside Cadence) | `docs/research/schedule-audit.md` | approved 2026-10-27 — next slice (will become R27) |
+| Lookahead / field planning (Aphex-inspired) | `docs/research/aphex-integration.md` | approved 2026-10-27 — queued |
+| Optional AI integration (document understanding, proposals, advice) | `docs/research/ai-integration.md` | approved 2026-10-27 — queued |

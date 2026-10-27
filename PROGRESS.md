@@ -3,6 +3,33 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-28 — Programme audit: core checks (first slice)
+
+The owner approved the audit research note on 2026-10-27; this is the first
+implementation slice.
+
+- New `crates/core/src/audit.rs`: a pure, deterministic programme audit over a
+  scheduled project. Twelve checks with stable ids (`AUDIT-LOGIC`,
+  `AUDIT-LEADS`, `AUDIT-LAGS`, `AUDIT-RELTYPES`, `AUDIT-HARDCONST`,
+  `AUDIT-HIGHFLOAT`, `AUDIT-NEGFLOAT`, `AUDIT-HIGHDUR`, `AUDIT-INVALIDDATES`,
+  `AUDIT-RESOURCES`, `AUDIT-MISSED`, `AUDIT-BEI`), each returning pass / fail /
+  not-applicable with a measured value, a threshold, a plain sentence and
+  per-activity or per-relationship findings. The logic check exempts
+  zero-duration start/finish milestones, the same convention the DCMA
+  assessment uses.
+- `AuditConfig` carries the thresholds (percentage limit, high-float and
+  high-duration working days, minimum FS share, minimum BEI) and the optional
+  status date; `AuditReport` and the result types are serde-serialisable so the
+  CLI `--json` and the GUI can share one document later.
+- Fifteen unit tests cover a clean programme, each failing check, the
+  not-applicable paths (no status date, no baseline, no resources), baseline
+  performance and determinism.
+- No CLI or GUI yet: the `cadence audit` command and the GUI **Audit** view are
+  the next stages of this slice, and the critical-path test/CPLI plus forensic
+  comparison remain later stages.
+
+Verification: CI pending on this pull request.
+
 ## 2026-10-27 — Future-expansion research notes (audit tool, optional AI, Aphex)
 
 This slice adds **documentation only**: researched future capabilities recorded

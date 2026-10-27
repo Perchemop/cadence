@@ -1,7 +1,8 @@
 # Research — optional AI integration (documents, advice, draft schedules, status)
 
-Status: draft, not human-approved. Large implementation must not depend on this
-note until the owner approves it (guide §2.3, §8.4).
+Status: **approved by the owner (2026-10-27)** as a future expansion. It is
+queued behind the programme audit tool and the Aphex-inspired lookahead work;
+implementation has not started.
 
 ## Behaviour wanted
 

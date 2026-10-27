@@ -1,7 +1,8 @@
 # Research — programme audit tool (schedule quality and health)
 
-Status: draft, not human-approved. Large implementation must not depend on this
-note until the owner approves it (guide §2.3, §8.4).
+Status: **approved by the owner (2026-10-27)** for implementation, as the first
+of the three future-expansion notes. This note is the acceptance-criteria source
+for the audit slice.
 
 ## Behaviour wanted
 
@@ -102,7 +103,7 @@ commonly used checks and default thresholds:
 
 | # | Check | Flags | Default pass |
 |---|---|---|---|
-| 1 | Logic | Open activities with no predecessor, no successor, or neither | ≤ 5% |
+| 1 | Logic | Open activities with no predecessor, no successor, or neither (zero-duration start/finish milestones are exempt) | ≤ 5% |
 | 2 | Leads | Relationships with negative lag | none |
 | 3 | Lags | Relationships with positive lag | ≤ 5% |
 | 4 | Relationship types | Non-finish-to-start relationships | ≥ 90% FS |
@@ -146,6 +147,10 @@ schedule risk analysis with Monte Carlo).
   that returns the offending activities with their measured values.
 - Defaults follow the DCMA thresholds above but every threshold is
   configurable, because contractors, owners and PMOs use different limits.
+  Cadence has no separate milestone object, so the logic check's start/finish
+  exemption applies to zero-duration activities: an open start or open finish
+  is legitimate for a zero-duration activity, and every other open activity
+  needs logic on both sides.
 - Findings are actionable: check ID, activity ID and name, measured value,
   threshold, one-sentence explanation and a suggested fix; the GUI links a
   finding to the activity, and the CLI/report prints the same data.

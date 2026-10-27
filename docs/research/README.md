@@ -27,17 +27,18 @@ Implemented (kept for the record of what was approved):
 - [`update-check.md`](update-check.md) — checking GitHub Releases for a newer
   version, failing soft offline (shipped as `cadence check-updates`).
 
-Draft, awaiting the human gate (do not implement large features from these yet):
+Approved by the owner (2026-10-27), in this queue:
 
-- [`schedule-audit.md`](schedule-audit.md) — an in-app tool that audits a
-  construction programme (logic, float, constraints, dates, resources, baseline
-  performance, critical path) against DCMA/GAO-style checks.
-- [`aphex-integration.md`](aphex-integration.md) — short-interval/lookahead
-  planning ideas (rolling windows, weekly work plans, diary, production
-  tracking, location clashes) inspired by publicly documented behaviour.
-- [`ai-integration.md`](ai-integration.md) — optional, off-by-default AI
-  assistance: document understanding, programme advice, skeleton schedules,
-  activity enrichment and draft status updates, all via reviewable proposals.
+1. [`schedule-audit.md`](schedule-audit.md) — an in-app tool that audits a
+   construction programme (logic, float, constraints, dates, resources, baseline
+   performance, critical path) against DCMA/GAO-style checks. **Next slice; in
+   progress.**
+2. [`aphex-integration.md`](aphex-integration.md) — short-interval/lookahead
+   planning ideas (rolling windows, weekly work plans, diary, production
+   tracking, location clashes) inspired by publicly documented behaviour.
+3. [`ai-integration.md`](ai-integration.md) — optional, off-by-default AI
+   assistance: document understanding, programme advice, skeleton schedules,
+   activity enrichment and draft status updates, all via reviewable proposals.
 
-Approval is requested for the three drafts; see the owner question raised with
-this change.
+Approval means the acceptance criteria in each note may drive implementation;
+it does not commit a release date.

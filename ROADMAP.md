@@ -112,11 +112,19 @@ touches the scheduling engine. See D18 for the decisions and
       Gantt zoom, a pointer-free **Add relationship** form, a scrollable
       inspector, and an AccessKit summary for the Gantt canvas.
 
-### Next slice (decided 2026-10-26, after the accessibility audit)
+### Next slice (decided 2026-10-27, owner-approved)
 
-- [ ] Progress-driven rescheduling mode: an explicit mode in which actual
-      start/finish dates feed the forward pass (D15), with progress updates
-      that preserve recorded actuals and surface variance.
+- [ ] Programme audit tool (research note approved 2026-10-27): audit a
+      construction programme inside Cadence for schedule quality and health,
+      with a GUI **Audit** view and `cadence audit [--json]`. First version
+      covers structure/logic (open ends, leads, lags, relationship types),
+      float (high/negative), hard constraints, high duration, invalid dates,
+      missing resources, and baseline performance (missed tasks, BEI) when a
+      baseline and status date exist; critical-path test/CPLI and forensic
+      comparison follow. Acceptance criteria in
+      [`docs/research/schedule-audit.md`](docs/research/schedule-audit.md).
+
+Progress-driven rescheduling remains queued in v0.3.x below.
 
 ### Human-gated (recorded, not decided)
 
@@ -159,12 +167,12 @@ touches the scheduling engine. See D18 for the decisions and
 - [ ] Suite shared crates (`crash-report`, `update-check`) extracted once a
       second application joins the suite (guide §7.3).
 
-### Future expansion (candidates — human gate pending)
+### Future expansion (approved 2026-10-27, queued)
 
-These are researched and recorded, not committed. Each has a draft note in
-`docs/research/`; the owner approves or rejects the note before any large
-implementation depends on it (guide §2.3, §8.4). Priority order is the owner's
-once approved.
+The owner approved all three research notes on 2026-10-27, with this order:
+audit tool first (now the next slice), then the Aphex-inspired lookahead /
+field-planning work, then the optional AI integration. Approval lets the
+acceptance criteria drive implementation; it does not promise a release date.
 
 - [ ] **Programme audit tool** — an in-app tool that audits a construction
       programme for health and quality (open ends, leads/lags, hard

@@ -50,12 +50,13 @@ Explicitly *not* planned, so that "no" stays impersonal (see
 - Reading or writing proprietary/project-file formats that require reverse
   engineering — see the clean-room rule in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-## Future expansion (candidates, not committed)
+## Future expansion (approved 2026-10-27, queued)
 
-A few directions are researched and recorded but deliberately not promised,
-so they do not affect the "finished" bar for the current scope. Each has a
-draft note in `docs/research/` and needs the owner's approval before a large
-implementation depends on it (guide §2.3):
+The owner approved these directions on 2026-10-27, in this order: the programme
+audit tool first, then the Aphex-inspired lookahead/field-planning work, then
+the optional AI integration. Approval lets the research notes' acceptance
+criteria drive implementation; it does not commit a release date. Each has a
+note in `docs/research/`:
 
 - A **programme audit tool**: audit a construction programme inside Cadence for
   schedule quality and health — logic, float, constraints, dates, resources,
