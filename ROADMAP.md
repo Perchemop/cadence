@@ -159,6 +159,33 @@ touches the scheduling engine. See D18 for the decisions and
 - [ ] Suite shared crates (`crash-report`, `update-check`) extracted once a
       second application joins the suite (guide §7.3).
 
+### Future expansion (candidates — human gate pending)
+
+These are researched and recorded, not committed. Each has a draft note in
+`docs/research/`; the owner approves or rejects the note before any large
+implementation depends on it (guide §2.3, §8.4). Priority order is the owner's
+once approved.
+
+- [ ] **Programme audit tool** — an in-app tool that audits a construction
+      programme for health and quality (open ends, leads/lags, hard
+      constraints, high/negative float, invalid dates, missing resources,
+      missed tasks, critical-path test, CPLI/BEI, forensic comparison), with a
+      GUI Audit view and `cadence audit [--json]`. Inspired by public
+      DCMA 14-point / GAO ten-practices behaviour and the commercial audit
+      tools; research: [`docs/research/schedule-audit.md`](docs/research/schedule-audit.md).
+- [ ] **Optional AI integration** — off-by-default assistant that reads
+      user-supplied PDFs/emails/documents and proposes programme advice,
+      skeleton WBS/activities, activity enrichment and status updates as
+      reviewable, undoable command proposals; bring-your-own provider, no
+      network without consent. Research:
+      [`docs/research/ai-integration.md`](docs/research/ai-integration.md).
+- [ ] **Lookahead / field planning (Aphex-inspired)** — rolling short-interval
+      windows derived from the master schedule, weekly work plans with
+      owner/promise tracking, a daily diary and huddle briefing, production
+      tracking, light location clash detection and published-snapshot
+      comparison. Research:
+      [`docs/research/aphex-integration.md`](docs/research/aphex-integration.md).
+
 ## Out of scope (recorded in `docs/scope.md`)
 
 Mobile platforms; any type of telemetry; proprietary file formats.

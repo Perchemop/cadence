@@ -5,6 +5,16 @@ follows Keep a Changelog; releases use git tags.
 
 ## [Unreleased]
 
+- Research notes (draft, owner approval pending) for three future-expansion
+  capabilities, with original behavioural summaries and public URLs:
+  `docs/research/schedule-audit.md` (an in-app tool that audits a construction
+  programme against public DCMA/GAO-style checks), `docs/research/ai-integration.md`
+  (optional, off-by-default AI assistance that proposes reviewable changes) and
+  `docs/research/aphex-integration.md` (short-interval/lookahead and field
+  planning inspired by publicly documented Aphex behaviour)
+- `docs/inspiration.md` records Aphex and the audit/AI reference products;
+  `ROADMAP.md`, `docs/scope.md`, `VISION.md` and `docs/parity.md` list the
+  candidates without committing to them
 - Accessibility pass: a **Keyboard shortcuts** window (`F1` or the toolbar
   **Shortcuts** button), `Up`/`Down` activity selection in the Table view,
   keyboard Gantt zoom (`Ctrl+Plus`, `Ctrl+Minus`, `Ctrl+0`) with visible zoom

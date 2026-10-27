@@ -3,6 +3,43 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-27 — Future-expansion research notes (audit tool, optional AI, Aphex)
+
+This slice adds **documentation only**: researched future capabilities recorded
+with original behavioural summaries and public URLs, ahead of the human gate
+(guide §2.3). Nothing is implemented and nothing is committed as a roadmap
+promise.
+
+Added:
+
+- `docs/research/schedule-audit.md` — a tool to audit a construction programme
+  **inside Cadence**: logic/open ends, leads and lags, relationship types, hard
+  constraints, high and negative float, high duration, invalid dates, missing
+  resources, missed tasks, critical-path test, CPLI/BEI and forensic version
+  comparison, against public DCMA 14-point / GAO ten-best-practices behaviour
+  and the commercial audit tools (P6 Check Schedule, Deltek Acumen Fuse, SSI
+  Schedule Analyzer, Steelray, Barbecana, web services). Pure-function design,
+  GUI Audit view plus `cadence audit [--json]`.
+- `docs/research/ai-integration.md` — an optional, off-by-default assistant that
+  reads user-supplied PDFs/emails/documents and *proposes* programme advice,
+  skeleton WBS/activities, activity enrichment and status updates as reviewable,
+  undoable typed-command proposals. Bring-your-own provider, no network without
+  consent, engine stays the source of truth.
+- `docs/research/aphex-integration.md` — short-interval/lookahead planning
+  inspired by publicly documented Aphex behaviour: rolling windows, weekly work
+  plans with owner/promise tracking, daily diary and briefing, production
+  tracking, light location clash detection, published-snapshot comparison and a
+  master→lookahead bridge.
+
+Updated: `docs/inspiration.md` (Aphex and the audit/AI reference products, with
+a clean-room note), `ROADMAP.md` and `docs/scope.md` (candidates section, no
+commitment), `VISION.md` (future-expansion paragraph), `docs/parity.md`
+(candidate rows), `docs/research/README.md`, `docs/current-model-map.md`
+(public-research method), `CHANGELOG.md`.
+
+Human gate: the three notes are drafts and are presented to the owner for
+approval or rejection before any large implementation depends on them.
+
 ## 2026-10-26 — Accessibility audit: keyboard paths and AccessKit (v0.2.0)
 
 Done in this slice:
@@ -43,6 +80,9 @@ Known limits recorded: individual Gantt bars are not separate AccessKit nodes;
 Gantt panning remains pointer/wheel-driven (zoom is keyboard); status messages
 are not live regions; the PDF Gantt page is an image, with the Markdown report
 and Table view as the accessible alternatives.
+
+Verified: CI green on the pull-request run (40317806235) and on `main` after
+the squash merge (run 40394121824, commit `c613758`).
 
 ## 2026-10-26 — Opt-in update check against GitHub Releases (v0.2.0)
 

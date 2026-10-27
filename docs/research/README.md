@@ -15,14 +15,29 @@ work.
 
 ## Current notes
 
-- [`printing-the-gantt-view.md`](printing-the-gantt-view.md) — capturing the
-  rendered Gantt view and putting it into a PDF page.
-- [`screen-reader-support.md`](screen-reader-support.md) — AccessKit
-  integration through eframe.
-- [`crash-report-submission.md`](crash-report-submission.md) — turning the
-  local crash log into an optional GitHub Issue.
-- [`update-check.md`](update-check.md) — checking GitHub Releases for a newer
-  version, failing soft offline.
+Implemented (kept for the record of what was approved):
 
-None of these have been approved for implementation yet; they are the reading
-list for the next slices.
+- [`printing-the-gantt-view.md`](printing-the-gantt-view.md) — capturing the
+  rendered Gantt view and putting it into a PDF page (shipped as **Print
+  Gantt…**).
+- [`screen-reader-support.md`](screen-reader-support.md) — AccessKit
+  integration through eframe (shipped; see `ACCESSIBILITY.md`).
+- [`crash-report-submission.md`](crash-report-submission.md) — turning the
+  local crash log into an optional GitHub Issue (shipped).
+- [`update-check.md`](update-check.md) — checking GitHub Releases for a newer
+  version, failing soft offline (shipped as `cadence check-updates`).
+
+Draft, awaiting the human gate (do not implement large features from these yet):
+
+- [`schedule-audit.md`](schedule-audit.md) — an in-app tool that audits a
+  construction programme (logic, float, constraints, dates, resources, baseline
+  performance, critical path) against DCMA/GAO-style checks.
+- [`aphex-integration.md`](aphex-integration.md) — short-interval/lookahead
+  planning ideas (rolling windows, weekly work plans, diary, production
+  tracking, location clashes) inspired by publicly documented behaviour.
+- [`ai-integration.md`](ai-integration.md) — optional, off-by-default AI
+  assistance: document understanding, programme advice, skeleton schedules,
+  activity enrichment and draft status updates, all via reviewable proposals.
+
+Approval is requested for the three drafts; see the owner question raised with
+this change.
