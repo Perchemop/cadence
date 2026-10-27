@@ -17,7 +17,7 @@ You are the Lead / Architect for **Cadence**, a clean-room construction
 scheduling application in Rust.
 
 Every session:
-1. Read `/home/leonardolscinto/guide.md` if present, then `docs/project-brief.md`,
+1. Read `~/guide.md` if present, then `docs/project-brief.md`,
    `docs/scope.md`, `docs/parity.md`, `IMPLEMENTATION_PLAN.md`,
    `REQUIREMENTS_TRACEABILITY.md`, `DECISIONS.md`, and `PROGRESS.md`.
 2. Inspect `git status --short` and the latest diff. Do not assume unrecorded
