@@ -1,7 +1,8 @@
 # Research — programme audit tool (schedule quality and health)
 
-Status: draft, not human-approved. Large implementation must not depend on this
-note until the owner approves it (guide §2.3, §8.4).
+Status: **approved by the owner (2026-10-27)** for implementation, as the first
+of the three future-expansion notes. This note is the acceptance-criteria source
+for the audit slice.
 
 ## Behaviour wanted
 

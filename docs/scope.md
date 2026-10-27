@@ -37,11 +37,11 @@
 - Longest-path extraction as an alternative to total-float criticality
 - Resource leveling beyond the basic algorithm
 
-### Researched future expansion (owner approval pending)
+### Future expansion (approved 2026-10-27, queued)
 
-These are recorded in `ROADMAP.md` and `docs/research/` but are **not
-committed**: the owner reviews and approves or rejects each research note before
-a large implementation begins (guide §2.3).
+The owner approved these on 2026-10-27, in this order, so their research notes
+may now drive implementation; no release date is committed. They remain outside
+the v1 "finished" bar until their first slice lands.
 
 - **Programme audit tool** — audit a construction programme for schedule
   quality and health (DCMA/GAO-style checks) inside Cadence; see

@@ -87,14 +87,14 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | Performance pass | in progress | 10k-activity schedule, 10k-day resource analysis and 200-activity leveling all time-budgeted in CI; smooth-interaction profiling pending |
 | Documentation, example projects, first tagged release | in progress | `docs/usage.md` and the `bridge_report` example added; tagging is a release decision |
 
-## Future expansion (candidates — research only, human gate pending)
+## Future expansion (approved 2026-10-27, queued)
 
-Researched and recorded, **not committed**. No implementation may depend on a
-note here until the owner approves it (guide §2.3); status moves to `todo` only
-after that.
+The owner approved all three research notes on 2026-10-27 (audit tool first).
+Approval lets the acceptance criteria drive implementation; it does not promise
+a release date.
 
 | Capability | Status | Notes |
 |---|---|---|
-| Programme audit tool | research | Audit a construction programme inside Cadence (logic, float, constraints, dates, resources, baseline performance, critical-path integrity) against public DCMA/GAO-style checks; GUI Audit view + `cadence audit [--json]`. Note: `docs/research/schedule-audit.md` |
-| Optional AI integration | research | Off-by-default, consent-gated document understanding and reviewable, undoable proposals (advice, skeleton schedules, activity enrichment, status updates). Note: `docs/research/ai-integration.md` |
-| Lookahead / field planning (Aphex-inspired) | research | Rolling short-interval windows from the master schedule, weekly work plans, diary, production tracking, light location clash detection. Note: `docs/research/aphex-integration.md` |
+| Programme audit tool | in progress | Audit a construction programme inside Cadence (logic, float, constraints, dates, resources, baseline performance, critical-path integrity) against public DCMA/GAO-style checks; GUI Audit view + `cadence audit [--json]`. Note: `docs/research/schedule-audit.md` |
+| Optional AI integration | approved — queued | Off-by-default, consent-gated document understanding and reviewable, undoable proposals (advice, skeleton schedules, activity enrichment, status updates). Note: `docs/research/ai-integration.md` |
+| Lookahead / field planning (Aphex-inspired) | approved — queued | Rolling short-interval windows from the master schedule, weekly work plans, diary, production tracking, light location clash detection. Note: `docs/research/aphex-integration.md` |

@@ -5,7 +5,13 @@ follows Keep a Changelog; releases use git tags.
 
 ## [Unreleased]
 
-- Research notes (draft, owner approval pending) for three future-expansion
+- New `cadence-core` programme-audit module (`audit.rs`, first slice): twelve
+  schedule-quality and health checks with configurable thresholds and
+  per-activity/per-relationship findings — open ends, leads, lags, relationship
+  types, hard constraints, high float, negative float, high duration, invalid
+  dates, missing resources, missed tasks and the baseline execution index. Pure
+  and deterministic; not yet wired to the CLI or GUI
+- Research notes (now owner-approved 2026-10-27) for three future-expansion
   capabilities, with original behavioural summaries and public URLs:
   `docs/research/schedule-audit.md` (an in-app tool that audits a construction
   programme against public DCMA/GAO-style checks), `docs/research/ai-integration.md`
