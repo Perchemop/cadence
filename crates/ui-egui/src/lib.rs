@@ -22,8 +22,8 @@ use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding
 use cadence_core::calendar_set::CalendarId;
 use cadence_core::engine::schedule;
 use cadence_core::engine::Schedule;
-use cadence_core::lookahead::lookahead;
 use cadence_core::engine::{evm_metrics, level_resources, resource_conflicts, resource_histogram};
+use cadence_core::lookahead::lookahead;
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, Project,
     ResourceId, ResourceKind,
@@ -2160,9 +2160,7 @@ impl eframe::App for CadenceApp {
                     ui.add_space(4.0);
                     let weeks = [2usize, 4, 6, 12][self.lookahead_weeks.min(3)];
                     let Some(from) = parse_date(self.lookahead_start_buffer.trim()) else {
-                        ui.label(
-                            "The window start must be a date in YYYY-MM-DD format.",
-                        );
+                        ui.label("The window start must be a date in YYYY-MM-DD format.");
                         return;
                     };
                     let Ok(schedule) = self.schedule.clone() else {
@@ -2192,13 +2190,7 @@ impl eframe::App for CadenceApp {
                         .striped(true)
                         .spacing([12.0, 4.0])
                         .show(ui, |ui| {
-                            for header in [
-                                "Activity",
-                                "Start",
-                                "Finish",
-                                "State",
-                                "Critical",
-                            ] {
+                            for header in ["Activity", "Start", "Finish", "State", "Critical"] {
                                 ui.label(header);
                             }
                             ui.end_row();
