@@ -14,6 +14,7 @@
 use std::process::ExitCode;
 
 use cadence_commands::{Command, CommandStack, CreateActivity, CreateRelationship};
+use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
 use cadence_core::engine::{schedule, Schedule};
 use cadence_core::model::{LinkType, Project};
 use cadence_ui_egui::update_check;
@@ -28,6 +29,8 @@ Usage:
   cadence [--json]              Run the built-in demo project
   cadence save <file>            Save the demo project to a SQLite project file
   cadence load <file> [--json]   Load a project file and print its schedule
+  cadence audit <file> [--json] [--status-date YYYY-MM-DD]
+                                  Audit the programme's schedule quality
   cadence report <file> [out]    Write a Markdown report (stdout if no file)
   cadence print <file> <out.pdf>  Print a project report to PDF
   cadence version                Show the version and the last cached update check
@@ -58,6 +61,14 @@ fn main() -> ExitCode {
         }
         [command, path] if command == "save" => save_demo(path),
         [command, path] if command == "load" => load_and_print(path, json),
+        [command, path] if command == "audit" => audit_command(path, json, None),
+        [command, path, flag, value]
+            if command == "audit"
+                && flag == "--status-date"
+                && parse_status_date(value).is_some() =>
+        {
+            audit_command(path, json, parse_status_date(value))
+        }
         [command, path] if command == "report" => print_report(path, None),
         [command, input, output] if command == "report" => print_report(input, Some(output)),
         [command, input, output] if command == "print" => print_report_pdf(input, output),
@@ -122,7 +133,8 @@ fn split_json_flag(arguments: Vec<String>) -> (Vec<String>, bool) {
         if last == "--json" {
             let is_valid = match arguments.len() {
                 1 => true,
-                3 if arguments[0] == "load" => true,
+                3 if arguments[0] == "load" || arguments[0] == "audit" => true,
+                5 if arguments[0] == "audit" && arguments[2] == "--status-date" => true,
                 _ => false,
             };
             if is_valid {
@@ -231,6 +243,87 @@ fn save_demo(path: &str) -> Result<(), String> {
 fn load_and_print(path: &str, json: bool) -> Result<(), String> {
     let project = cadence_persistence::load_project(path).map_err(|error| error.to_string())?;
     print_schedule_output(&project, json)
+}
+
+/// Audit a project file's programme and print the report.
+///
+/// Findings are data, not errors: the command succeeds whenever the audit ran,
+/// even when checks fail, because the report itself carries the bad news. The
+/// most recent baseline, if any, drives the baseline checks — the same
+/// convention the earned-value panel uses.
+fn audit_command(path: &str, json: bool, status_date: Option<Date>) -> Result<(), String> {
+    let project = cadence_persistence::load_project(path).map_err(|error| error.to_string())?;
+    let schedule = schedule(&project).map_err(|error| error.to_string())?;
+    let config = AuditConfig {
+        status_date,
+        ..AuditConfig::default()
+    };
+    let report = audit(&project, &schedule, project.baselines.last(), &config);
+    if json {
+        print!(
+            "{}",
+            cadence_interchange::audit::audit_export(&project, &schedule, status_date, &report)
+        );
+    } else {
+        print_audit(&report);
+    }
+    Ok(())
+}
+
+/// Print an audit report as plain text: one block per check, then a tally.
+///
+/// Every check is named by its stable id so a finding can be quoted in a
+/// review or an issue; outcomes are words, never colour alone.
+fn print_audit(report: &AuditReport) {
+    let mut pass = 0;
+    let mut fail = 0;
+    let mut not_applicable = 0;
+    for check in &report.checks {
+        let outcome = match check.outcome {
+            CheckOutcome::Pass => {
+                pass += 1;
+                "pass"
+            }
+            CheckOutcome::Fail => {
+                fail += 1;
+                "FAIL"
+            }
+            CheckOutcome::NotApplicable => {
+                not_applicable += 1;
+                "n/a"
+            }
+        };
+        println!("{}  [{}]", check.id.code(), outcome);
+        println!("  {}", check.summary);
+        if let Some(measured) = &check.measured {
+            println!("  measured:  {measured}");
+        }
+        if let Some(threshold) = &check.threshold {
+            println!("  threshold: {threshold}");
+        }
+        for finding in &check.findings {
+            match finding {
+                Finding::Activity { id, name, detail } => {
+                    println!("  - {name} ({id}): {detail}");
+                }
+                Finding::Relationship { id, detail } => {
+                    println!("  - relationship {id}: {detail}");
+                }
+            }
+        }
+        println!();
+    }
+    println!("{pass} pass, {fail} fail, {not_applicable} not applicable");
+}
+
+/// Parse an ISO-8601 date for the audit status date.
+fn parse_status_date(value: &str) -> Option<Date> {
+    let (year, rest) = value.split_once('-')?;
+    let (month, day) = rest.split_once('-')?;
+    let year = year.parse::<i32>().ok()?;
+    let month = month.parse::<u8>().ok()?;
+    let day = day.parse::<u8>().ok()?;
+    Date::from_calendar_date(year, Month::try_from(month).ok()?, day).ok()
 }
 
 /// Schedule a project and print the result: the aligned plain-text table by

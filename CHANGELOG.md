@@ -11,6 +11,13 @@ follows Keep a Changelog; releases use git tags.
   types, hard constraints, high float, negative float, high duration, invalid
   dates, missing resources, missed tasks and the baseline execution index. Pure
   and deterministic; not yet wired to the CLI or GUI
+- `cadence audit <file> [--json] [--status-date YYYY-MM-DD]` (second slice):
+  prints the audit as plain text (stable check id, outcome in words, measured
+  value, threshold, summary, findings, tally) or as a machine-readable
+  `kind: "audit"` JSON document written by the in-crate JSON machinery
+  (`cadence-interchange/src/audit.rs`); findings are data, so the command
+  succeeds when the audit ran even when checks fail. The GUI **Audit** view is
+  the remaining stage
 - Research notes (now owner-approved 2026-10-27) for three future-expansion
   capabilities, with original behavioural summaries and public URLs:
   `docs/research/schedule-audit.md` (an in-app tool that audits a construction

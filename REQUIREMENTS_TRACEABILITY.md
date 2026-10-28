@@ -33,6 +33,7 @@ requirement lives.
 | R24 | Machine-readable schedule output (--json) for scripts and assistive technology | `cadence-interchange/src/schedule.rs`, CLI `cadence [--json]`, `cadence load <file> --json` | unit tests parsing the document in `schedule.rs`; documented in `docs/usage.md` | done |
 | R25 | Crash reporting with consent: local crash log, preview, pre-filled GitHub issue | `cadence-app/src/crash_report.rs` (panic hook), `cadence-ui-egui/src/crash.rs` (preview/URL), GUI **Crash report** and **Report a bug…** | crash module unit tests (title, body, URL encoding); dialog interactive-only; documented in `README.md` and `docs/usage.md` | done |
 | R26 | Opt-in update check against GitHub Releases, fail-soft offline, cached | `cadence-ui-egui/src/update_check.rs`, CLI `cadence check-updates`, GUI **Updates** window | version-comparison, malformed-tag and cache-serialisation tests; network path opt-in and interactive; documented in `README.md`, `docs/usage.md`, D22 | done |
+| R27 | Programme audit tool: schedule-quality checks over a construction programme | `cadence-core/src/audit.rs` (12 checks), `cadence-interchange/src/audit.rs` (`kind: "audit"` document), CLI `cadence audit [--json] [--status-date]` | 15 audit unit tests + interchange document tests; GUI **Audit** view, critical-path test/CPLI and forensic comparison pending | in progress |
 
 When a slice lands, this table and `docs/parity.md` are updated in the same
 commit.

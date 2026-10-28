@@ -15,6 +15,7 @@ takes the file path; with no arguments `cadence` runs a built-in demo project.
 | `cadence [--json]` | Run the demo project and print its schedule |
 | `cadence save <file>` | Save the demo project to a project file |
 | `cadence load <file> [--json]` | Load a project file and print its schedule |
+| `cadence audit <file> [--json] [--status-date YYYY-MM-DD]` | Audit the programme's schedule quality |
 | `cadence report <file> [out]` | Write a Markdown report (stdout if no file) |
 | `cadence print <file> <out.pdf>` | Print the report as a PDF |
 | `cadence version` | Show the version and the last cached update check |
@@ -52,6 +53,30 @@ stdout carries only the document, with one trailing newline; everything a
 human needs goes to stderr as diagnostics of the form
 `ERROR 2026-10-25T12:34:56Z cadence: <message>`. Exit codes: 0 success,
 1 error, 2 usage error.
+
+## Auditing a programme
+
+`cadence audit <file>` runs the schedule-quality audit (research note
+[`schedule-audit.md`](research/schedule-audit.md), owner-approved) over a
+project file and prints one block per check: the stable check id
+(`AUDIT-LOGIC`, `AUDIT-LEADS`, …), the outcome in words (`pass`, `FAIL`,
+`n/a`), the measured value, the threshold, a plain sentence, and the flagged
+activities or relationships, then a tally. Findings are data, not errors: the
+command succeeds whenever the audit ran, even when checks fail.
+
+* The default thresholds follow the DCMA 14-point assessment; every threshold
+  is configurable in code (`cadence_core::audit::AuditConfig`), and the
+  not-applicable outcome means the check could not run with the data
+  available (no status date, no baseline, or no resources loaded).
+* `--status-date YYYY-MM-DD` enables the date-sensitive checks (invalid
+  dates, missed tasks, baseline execution index). The most recent baseline in
+  the file, if any, drives the baseline checks.
+* `--json` prints the same report as one machine-readable document (`kind` is
+  `"audit"`) with `project`, `status_date` and one entry per check (`id`,
+  `category`, `title`, `outcome`, `measured`, `threshold`, `summary`,
+  `findings`). stdout carries only the document; diagnostics go to stderr.
+* The GUI **Audit** view is the next stage of this capability; the audit is
+  offline like everything else in Cadence.
 
 ## Scheduling model
 

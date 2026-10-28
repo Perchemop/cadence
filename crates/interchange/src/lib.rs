@@ -24,10 +24,13 @@
 //! calendars and activity membership — and converts nothing. The other three
 //! formats have no way to express the WBS or named calendars and leave them
 //! empty on import. Outside the interchange family, [`schedule`] writes the
-//! *derived* schedule of a project (dates, float, criticality) as JSON for
-//! scripts and assistive technology; it is the only document this crate
-//! writes that carries derived dates, and it is never read back.
+//! *derived* schedule of a project (dates, float, criticality) and [`audit`]
+//! writes the derived *audit* of that schedule (programme-quality checks and
+//! findings) as JSON for scripts and assistive technology; they are the only
+//! documents this crate writes that carry derived results, and neither is ever
+//! read back.
 
+pub mod audit;
 pub mod csv;
 pub mod json;
 pub mod mpx;

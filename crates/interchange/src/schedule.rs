@@ -139,7 +139,7 @@ pub fn schedule_error(message: &str) -> String {
 
 /// Serialize a document exactly as `json::export` serializes the interchange
 /// document: pretty-printed from the top level with one trailing newline.
-fn to_text(document: &Value) -> String {
+pub(crate) fn to_text(document: &Value) -> String {
     let mut output = String::new();
     write_value(document, 0, &mut output);
     output.push('\n');
