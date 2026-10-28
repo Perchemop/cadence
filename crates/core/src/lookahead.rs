@@ -69,10 +69,8 @@ pub fn lookahead(
         .iter()
         .filter_map(|activity| {
             let scheduled = schedule.activity(activity.id)?;
-            let starts_in_or_before =
-                scheduled.scheduled_start < window_end;
-            let finishes_on_or_after =
-                scheduled.scheduled_finish >= window_start;
+            let starts_in_or_before = scheduled.scheduled_start < window_end;
+            let finishes_on_or_after = scheduled.scheduled_finish >= window_start;
             (starts_in_or_before && finishes_on_or_after).then(|| LookaheadEntry {
                 id: activity.id,
                 name: activity.name.clone(),
@@ -163,9 +161,10 @@ mod tests {
         let project = chain();
         let schedule = scheduled(&project);
 
-        // C starts in week 2; a window starting in C's second week contains C
-        // already in progress.
-        let entries = lookahead(&project, &schedule, jan(19), 2);
+        // C spans jan13-26; a one-week window from jan19 (ending jan26)
+        // contains C alone, already in progress. The finish milestone (jan27)
+        // starts on the window's end day and is correctly excluded.
+        let entries = lookahead(&project, &schedule, jan(19), 1);
 
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "C");
