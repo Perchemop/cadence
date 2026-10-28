@@ -13,11 +13,15 @@
 //! the public sources and the full design. Everything is offline and
 //! deterministic: no I/O, no clock, no randomness.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use time::Date;
 
-use crate::engine::Schedule;
-use crate::model::{Activity, ActivityId, Baseline, Constraint, LinkType, Project, RelationshipId};
+use crate::engine::{schedule_with_minimum_starts, Schedule};
+use crate::model::{
+    Activity, ActivityId, Baseline, Calendar, Constraint, LinkType, Project, RelationshipId,
+};
 
 /// Thresholds and context for an audit.
 ///
@@ -38,6 +42,11 @@ pub struct AuditConfig {
     pub min_finish_to_start_bp: u32,
     /// Minimum baseline execution index. Default 9500 (95%).
     pub bei_min_bp: u32,
+    /// Minimum critical path length index. Default 9500 (95%).
+    pub cpli_min_bp: u32,
+    /// Working days the critical-path test delays one critical activity by.
+    /// Default 600, the DCMA convention.
+    pub critical_path_nudge_days: u32,
 }
 
 impl Default for AuditConfig {
@@ -49,6 +58,8 @@ impl Default for AuditConfig {
             high_duration_days: 44,
             min_finish_to_start_bp: 9000,
             bei_min_bp: 9500,
+            cpli_min_bp: 9500,
+            critical_path_nudge_days: 600,
         }
     }
 }
@@ -81,6 +92,10 @@ pub enum CheckId {
     MissedTasks,
     /// Baseline execution index.
     BaselineExecutionIndex,
+    /// Delay one critical activity and check the finish moves with it.
+    CriticalPathTest,
+    /// Critical path length index against the baseline deadline.
+    CriticalPathLengthIndex,
 }
 
 impl CheckId {
@@ -99,6 +114,8 @@ impl CheckId {
             Self::MissingResources => "AUDIT-RESOURCES",
             Self::MissedTasks => "AUDIT-MISSED",
             Self::BaselineExecutionIndex => "AUDIT-BEI",
+            Self::CriticalPathTest => "AUDIT-CPT",
+            Self::CriticalPathLengthIndex => "AUDIT-CPLI",
         }
     }
 
@@ -117,6 +134,8 @@ impl CheckId {
             Self::MissingResources => "Resources — missing resources",
             Self::MissedTasks => "Baseline — missed tasks",
             Self::BaselineExecutionIndex => "Baseline — execution index",
+            Self::CriticalPathTest => "Critical path — critical path test",
+            Self::CriticalPathLengthIndex => "Critical path — length index",
         }
     }
 }
@@ -139,6 +158,8 @@ pub enum CheckCategory {
     Resources,
     /// Baseline performance.
     Baseline,
+    /// Critical-path integrity.
+    CriticalPath,
 }
 
 /// Result of one check.
@@ -235,6 +256,8 @@ pub fn audit(
         check_missing_resources(project),
         check_missed_tasks(project, baseline, config),
         check_baseline_execution_index(project, baseline, config),
+        check_critical_path_test(project, schedule, config),
+        check_critical_path_length_index(project, schedule, baseline, config),
     ];
     for check in &mut checks {
         sort_findings(&mut check.findings);
@@ -895,8 +918,143 @@ fn check_baseline_execution_index(
     )
 }
 
-#[cfg(test)]
-mod tests {
+/// The calendar that governs an activity's dates: its named calendar, or the
+/// project default.
+fn activity_calendar<'a>(project: &'a Project, activity: &Activity) -> &'a Calendar {
+    match activity.calendar {
+        None => &project.calendar,
+        Some(id) => project.calendars.calendar(id).unwrap_or(&project.calendar),
+    }
+}
+
+/// A critical-path check that cannot run.
+fn critical_path_test_skip(summary: &str) -> CheckResult {
+    not_applicable(CheckId::CriticalPathTest, CheckCategory::CriticalPath, summary)
+}
+
+/// A critical-path index check that cannot run.
+fn critical_path_index_skip(summary: &str) -> CheckResult {
+    not_applicable(
+        CheckId::CriticalPathLengthIndex,
+        CheckCategory::CriticalPath,
+        summary,
+    )
+}
+
+fn check_critical_path_test(
+    project: &Project,
+    schedule: &Schedule,
+    config: &AuditConfig,
+) -> CheckResult {
+    let Some((activity, result)) = project
+        .activities
+        .iter()
+        .filter(|candidate| is_open(candidate))
+        .filter_map(|candidate| {
+            schedule
+                .activity(candidate.id)
+                .map(|scheduled| (candidate, scheduled))
+        })
+        .filter(|(_, scheduled)| scheduled.critical)
+        .max_by_key(|(candidate, scheduled)| (scheduled.early_finish, candidate.id))
+    else {
+        return critical_path_test_skip("No open critical activities to test.");
+    };
+    let calendar = activity_calendar(project, activity);
+    let nudge = i64::from(config.critical_path_nudge_days);
+    let Ok(nudged_start) = calendar.add_working_days(result.scheduled_start, nudge) else {
+        return critical_path_test_skip(
+            "The activity's calendar cannot add the nudge, so the test cannot run.",
+        );
+    };
+    let mut minimum_starts = HashMap::new();
+    minimum_starts.insert(activity.id, nudged_start);
+    let Ok(test) = schedule_with_minimum_starts(project, &minimum_starts) else {
+        return critical_path_test_skip(
+            "Rescheduling with the delayed activity failed, so the test cannot run.",
+        );
+    };
+    let moved = calendar
+        .working_days_between(schedule.project_finish, test.project_finish)
+        .abs();
+    let outcome = if moved == nudge {
+        CheckOutcome::Pass
+    } else {
+        CheckOutcome::Fail
+    };
+    make(
+        CheckId::CriticalPathTest,
+        CheckCategory::CriticalPath,
+        outcome,
+        Some(format!(
+            "delaying {} by {nudge} working days moves the finish {moved}",
+            activity.name
+        )),
+        Some(format!("the finish moves by all {nudge} working days")),
+        format!(
+            "Delaying the last-finishing critical activity ({}) by {nudge} working days \
+             moves the project finish by {moved}; a full move proves the critical path \
+             is driving the finish.",
+            activity.name
+        ),
+        Vec::new(),
+    )
+}
+
+fn check_critical_path_length_index(
+    project: &Project,
+    schedule: &Schedule,
+    baseline: Option<&Baseline>,
+    config: &AuditConfig,
+) -> CheckResult {
+    let Some(baseline) = baseline else {
+        return critical_path_index_skip(
+            "A baseline provides the deadline the index measures against.",
+        );
+    };
+    let deadline = baseline
+        .snapshots
+        .iter()
+        .filter_map(|snapshot| snapshot.baseline_finish)
+        .max();
+    let Some(deadline) = deadline else {
+        return critical_path_index_skip(
+            "The baseline has no finish dates, so the index cannot run.",
+        );
+    };
+    let calendar = &project.calendar;
+    let path = calendar
+        .working_days_between(schedule.project_start, schedule.project_finish)
+        .saturating_add(1);
+    if path <= 0 {
+        return critical_path_index_skip(
+            "The programme spans no working days, so the index cannot run.",
+        );
+    }
+    let float = calendar.working_days_between(schedule.project_finish, deadline);
+    let index = (path + float).saturating_mul(10_000) / path;
+    let shown = u32::try_from(index.max(0)).unwrap_or(u32::MAX);
+    let outcome = if index >= i64::from(config.cpli_min_bp) {
+        CheckOutcome::Pass
+    } else {
+        CheckOutcome::Fail
+    };
+    make(
+        CheckId::CriticalPathLengthIndex,
+        CheckCategory::CriticalPath,
+        outcome,
+        Some(format!(
+            "critical path {path} working days, float to the deadline {float}"
+        )),
+        Some(format!("at least {}", percent(config.cpli_min_bp))),
+        format!(
+            "The critical path length index is {} against the baseline deadline \
+             {deadline}: the path plus its float, over the path length.",
+            percent(shown)
+        ),
+        Vec::new(),
+    )
+}
     use super::*;
     use crate::engine::schedule;
     use crate::model::{ActivityBaselineSnapshot, BaselineId, Relationship, Resource, ResourceId};
@@ -1220,6 +1378,114 @@ mod tests {
             outcome(&report, CheckId::BaselineExecutionIndex),
             CheckOutcome::Pass
         );
+    }
+
+    #[test]
+    fn the_critical_path_test_passes_on_a_driving_chain() {
+        let mut project = project();
+        let start = add_activity(&mut project, 1, "Start", 0);
+        let a = add_activity(&mut project, 2, "A", 3);
+        let b = add_activity(&mut project, 3, "B", 3);
+        let finish = add_activity(&mut project, 4, "Finish", 0);
+        add_relationship(&mut project, 1, start, a, LinkType::Fs, 0);
+        add_relationship(&mut project, 2, a, b, LinkType::Fs, 0);
+        add_relationship(&mut project, 3, b, finish, LinkType::Fs, 0);
+
+        let report = run(&project);
+
+        assert_eq!(
+            outcome(&report, CheckId::CriticalPathTest),
+            CheckOutcome::Pass
+        );
+    }
+
+    #[test]
+    fn the_length_index_needs_a_baseline() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A", 2);
+
+        let report = run(&project);
+
+        assert_eq!(
+            outcome(&report, CheckId::CriticalPathLengthIndex),
+            CheckOutcome::NotApplicable
+        );
+    }
+
+    #[test]
+    fn the_length_index_passes_when_the_deadline_matches() {
+        let mut project = project();
+        let start = add_activity(&mut project, 1, "Start", 0);
+        let a = add_activity(&mut project, 2, "A", 3);
+        let b = add_activity(&mut project, 3, "B", 3);
+        let finish = add_activity(&mut project, 4, "Finish", 0);
+        add_relationship(&mut project, 1, start, a, LinkType::Fs, 0);
+        add_relationship(&mut project, 2, a, b, LinkType::Fs, 0);
+        add_relationship(&mut project, 3, b, finish, LinkType::Fs, 0);
+        let baseline = baseline_from_schedule(&project);
+
+        let report = run_with(&project, Some(&baseline), &AuditConfig::default());
+
+        assert_eq!(
+            outcome(&report, CheckId::CriticalPathLengthIndex),
+            CheckOutcome::Pass
+        );
+    }
+
+    #[test]
+    fn a_missed_deadline_fails_the_length_index() {
+        let mut project = project();
+        let start = add_activity(&mut project, 1, "Start", 0);
+        let a = add_activity(&mut project, 2, "A", 3);
+        let b = add_activity(&mut project, 3, "B", 3);
+        let finish = add_activity(&mut project, 4, "Finish", 0);
+        add_relationship(&mut project, 1, start, a, LinkType::Fs, 0);
+        add_relationship(&mut project, 2, a, b, LinkType::Fs, 0);
+        add_relationship(&mut project, 3, b, finish, LinkType::Fs, 0);
+        let schedule = schedule(&project).expect("schedule succeeds");
+        let snapshots = project
+            .activities
+            .iter()
+            .filter_map(|activity| {
+                let scheduled = schedule.activity(activity.id)?;
+                Some(ActivityBaselineSnapshot {
+                    activity_id: activity.id,
+                    baseline_duration: activity.original_duration,
+                    baseline_start: Some(scheduled.scheduled_start),
+                    baseline_finish: project
+                        .calendar
+                        .add_working_days(scheduled.scheduled_finish, -5)
+                        .ok(),
+                })
+            })
+            .collect();
+        let baseline = Baseline::from_snapshots(BaselineId::new(1), "Baseline", jan(5), snapshots);
+
+        let report = run_with(&project, Some(&baseline), &AuditConfig::default());
+
+        assert_eq!(
+            outcome(&report, CheckId::CriticalPathLengthIndex),
+            CheckOutcome::Fail
+        );
+    }
+
+    /// A baseline that records the programme exactly as it is scheduled now.
+    fn baseline_from_schedule(project: &Project) -> Baseline {
+        let schedule = schedule(project).expect("schedule succeeds");
+        let snapshots = project
+            .activities
+            .iter()
+            .filter_map(|activity| {
+                let scheduled = schedule.activity(activity.id)?;
+                Some(ActivityBaselineSnapshot {
+                    activity_id: activity.id,
+                    baseline_duration: activity.original_duration,
+                    baseline_start: Some(scheduled.scheduled_start),
+                    baseline_finish: Some(scheduled.scheduled_finish),
+                })
+            })
+            .collect();
+        Baseline::from_snapshots(BaselineId::new(1), "Baseline", jan(5), snapshots)
     }
 
     #[test]

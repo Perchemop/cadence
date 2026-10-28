@@ -75,7 +75,10 @@ Third slice of the owner-approved audit tool:
 - Every control is a standard egui widget with the existing keyboard support
   (Tab / Shift+Tab, Space / Enter), and the layout wraps for narrow windows.
 
-Verification: CI pending on this pull request.
+Verification: CI green on the pull request (PR #37, commit `88b4375`; CI run
+40648470610, Security 40648470609, Lockfile 40648470563) and on `main` after
+the squash merge (commit `3cb7ce8`; CI run 40649232990, Security 40649233026,
+Lockfile 40649233058).
 
 ## 2026-10-27 — Future-expansion research notes (audit tool, optional AI, Aphex)
 

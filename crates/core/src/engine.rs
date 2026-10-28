@@ -618,8 +618,10 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
 ///
 /// The minimum starts behave like a "start no earlier than" constraint that is
 /// never violated: they raise the forward pass and the backward pass is kept
-/// consistent with them.
-fn schedule_with_minimum_starts(
+/// consistent with them. Resource leveling uses this to apply leveled dates,
+/// and the programme audit's critical-path test uses it to nudge one activity
+/// and measure how the finish responds.
+pub fn schedule_with_minimum_starts(
     project: &Project,
     minimum_starts: &HashMap<ActivityId, Date>,
 ) -> Result<Schedule, SchedError> {
