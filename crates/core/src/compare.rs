@@ -135,14 +135,22 @@ pub struct Comparison {
 
 impl Comparison {
     /// True when nothing changed at all.
+    ///
+    /// A project-date shift of zero working days counts as unchanged, and an
+    /// absent date shift (either side could not be scheduled) simply carries
+    /// no evidence of change.
     pub fn is_empty(&self) -> bool {
+        let dates_unchanged = match &self.project_dates {
+            Some(dates) => dates.start.days == 0 && dates.finish.days == 0,
+            None => true,
+        };
         self.added_activities.is_empty()
             && self.removed_activities.is_empty()
             && self.duration_changes.is_empty()
             && self.date_changes.is_empty()
             && self.constraint_changes.is_empty()
             && self.relationship_changes.is_empty()
-            && self.project_dates.is_none()
+            && dates_unchanged
     }
 }
 
@@ -250,46 +258,37 @@ fn compare_with(
     duration_changes.sort_by_key(|change| change.id);
 
     let mut date_changes: Vec<DateChange> = Vec::new();
-    if let (Some(before_schedule), Some(after_schedule)) = (before_schedule, after_schedule) {
-        for activity in &after.activities {
-            let Some(previous) = before_activities.get(&activity.id) else {
-                continue;
-            };
-            let (Some(previous_scheduled), Some(current_scheduled)) = (
-                before_schedule.activity(previous.id),
-                after_schedule.activity(activity.id),
-            ) else {
-                continue;
-            };
-            if previous_scheduled.scheduled_start == current_scheduled.scheduled_start
-                && previous_scheduled.scheduled_finish == current_scheduled.scheduled_finish
-            {
-                continue;
-            }
-            let calendar = activity_calendar(after, activity);
-            date_changes.push(DateChange {
-                id: activity.id,
-                name: activity.name.clone(),
-                start: DateShift {
-                    before: Some(previous_scheduled.scheduled_start),
-                    after: Some(current_scheduled.scheduled_start),
-                    days: calendar.working_days_between(
-                        previous_scheduled.scheduled_start,
-                        current_scheduled.scheduled_start,
-                    ),
-                },
-                finish: DateShift {
-                    before: Some(previous_scheduled.scheduled_finish),
-                    after: Some(current_scheduled.scheduled_finish),
-                    days: calendar.working_days_between(
-                        previous_scheduled.scheduled_finish,
-                        current_scheduled.scheduled_finish,
-                    ),
-                },
-            });
+    for activity in &after.activities {
+        let Some(previous) = before_activities.get(&activity.id) else {
+            continue;
+        };
+        let Some((before_start, before_finish)) = scheduled_dates(before_schedule, previous)
+        else {
+            continue;
+        };
+        let Some((after_start, after_finish)) = scheduled_dates(after_schedule, activity) else {
+            continue;
+        };
+        if before_start == after_start && before_finish == after_finish {
+            continue;
         }
-        date_changes.sort_by_key(|change| change.id);
+        let calendar = activity_calendar(after, activity);
+        date_changes.push(DateChange {
+            id: activity.id,
+            name: activity.name.clone(),
+            start: DateShift {
+                before: Some(before_start),
+                after: Some(after_start),
+                days: calendar.working_days_between(before_start, after_start),
+            },
+            finish: DateShift {
+                before: Some(before_finish),
+                after: Some(after_finish),
+                days: calendar.working_days_between(before_finish, after_finish),
+            },
+        });
     }
+    date_changes.sort_by_key(|change| change.id);
 
     let mut constraint_changes: Vec<ConstraintChange> = after
         .activities
@@ -388,6 +387,23 @@ fn compare_with(
         relationship_changes,
         project_dates,
     }
+}
+
+/// An activity's scheduled dates: from the engine schedule when one is
+/// available, otherwise from the cached fields (a rebuilt baseline programme
+/// carries its snapshot dates there; a loaded project file carries none).
+fn scheduled_dates(
+    schedule: Option<&Schedule>,
+    activity: &Activity,
+) -> Option<(Date, Date)> {
+    schedule
+        .and_then(|schedule| schedule.activity(activity.id))
+        .map(|scheduled| (scheduled.scheduled_start, scheduled.scheduled_finish))
+        .or_else(|| {
+            activity
+                .scheduled_start
+                .zip(activity.scheduled_finish)
+        })
 }
 
 /// The calendar that governs an activity's dates: its named calendar, or the
@@ -564,6 +580,9 @@ mod tests {
             (3, 8)
         );
         assert!(comparison.date_changes[0].finish.days > 0);
+        // A baseline records no project-level dates, so the project-date
+        // section is honestly absent in baseline mode.
+        assert!(comparison.project_dates.is_none());
     }
 
     #[test]

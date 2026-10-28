@@ -35,9 +35,7 @@
 //! }
 //! ```
 
-use cadence_core::compare::{
-    Comparison, DateShift, RelationshipChange,
-};
+use cadence_core::compare::{Comparison, DateShift, RelationshipChange};
 use cadence_core::model::Project;
 
 use crate::json::{Number, Value};
@@ -54,10 +52,7 @@ pub fn comparison_export(project: &Project, comparison: &Comparison) -> String {
             "cadence".to_string(),
             Value::Number(Number::Int(COMPARISON_SCHEMA_VERSION)),
         ),
-        (
-            "kind".to_string(),
-            Value::String("comparison".to_string()),
-        ),
+        ("kind".to_string(), Value::String("comparison".to_string())),
         (
             "project".to_string(),
             Value::Object(vec![(
@@ -202,10 +197,7 @@ fn shift_json(shift: &DateShift) -> Value {
                 None => Value::Null,
             },
         ),
-        (
-            "days".to_string(),
-            Value::Number(Number::Int(shift.days)),
-        ),
+        ("days".to_string(), Value::Number(Number::Int(shift.days))),
     ])
 }
 
@@ -233,7 +225,10 @@ fn relationship_change_json(change: &RelationshipChange) -> Value {
             "link_type".to_string(),
             Value::String(relationship.link_type.abbreviation().to_string()),
         ),
-        ("lag".to_string(), Value::Number(Number::Int(relationship.lag))),
+        (
+            "lag".to_string(),
+            Value::Number(Number::Int(relationship.lag)),
+        ),
     ];
     if let RelationshipChange::Changed { after, .. } = change {
         members.push((

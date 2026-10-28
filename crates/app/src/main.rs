@@ -329,10 +329,9 @@ fn print_audit(report: &AuditReport) {
 /// always reported and date movement only when both sides schedule. Like the
 /// audit, findings are data: the command succeeds when the comparison ran.
 fn compare_command(before_path: &str, after_path: &str, json: bool) -> Result<(), String> {
-    let before = cadence_persistence::load_project(before_path)
-        .map_err(|error| error.to_string())?;
-    let after =
-        cadence_persistence::load_project(after_path).map_err(|error| error.to_string())?;
+    let before =
+        cadence_persistence::load_project(before_path).map_err(|error| error.to_string())?;
+    let after = cadence_persistence::load_project(after_path).map_err(|error| error.to_string())?;
     let comparison = compare(&before, &after);
     if json {
         print!(
@@ -382,10 +381,7 @@ fn print_comparison(before_path: &str, after_path: &str, comparison: &Comparison
     for change in &comparison.date_changes {
         println!(
             "Dates: {} ({}): start {:+} d, finish {:+} d",
-            change.name,
-            change.id,
-            change.start.days,
-            change.finish.days
+            change.name, change.id, change.start.days, change.finish.days
         );
     }
     for change in &comparison.constraint_changes {
