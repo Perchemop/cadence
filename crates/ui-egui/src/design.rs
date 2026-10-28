@@ -73,10 +73,22 @@ pub const fn palette(dark: bool) -> Palette {
 pub fn install_fonts(ctx: &Context) {
     let mut fonts = FontDefinitions::default();
     let inter = [
-        ("Inter-Regular", include_bytes!("../../assets/fonts/Inter-Regular.ttf")),
-        ("Inter-Medium", include_bytes!("../../assets/fonts/Inter-Medium.ttf")),
-        ("Inter-SemiBold", include_bytes!("../../assets/fonts/Inter-SemiBold.ttf")),
-        ("Inter-Bold", include_bytes!("../../assets/fonts/Inter-Bold.ttf")),
+        (
+            "Inter-Regular",
+            include_bytes!("../../assets/fonts/Inter-Regular.ttf"),
+        ),
+        (
+            "Inter-Medium",
+            include_bytes!("../../assets/fonts/Inter-Medium.ttf"),
+        ),
+        (
+            "Inter-SemiBold",
+            include_bytes!("../../assets/fonts/Inter-SemiBold.ttf"),
+        ),
+        (
+            "Inter-Bold",
+            include_bytes!("../../assets/fonts/Inter-Bold.ttf"),
+        ),
     ];
     for (name, data) in inter {
         fonts
@@ -106,10 +118,7 @@ pub fn install_fonts(ctx: &Context) {
     text.insert(egui::TextStyle::Body, egui::FontId::proportional(11.0));
     text.insert(egui::TextStyle::Small, egui::FontId::proportional(9.5));
     text.insert(egui::TextStyle::Button, egui::FontId::proportional(11.0));
-    text.insert(
-        egui::TextStyle::Heading,
-        egui::FontId::proportional(16.0),
-    );
+    text.insert(egui::TextStyle::Heading, egui::FontId::proportional(16.0));
     text.insert(egui::TextStyle::Monospace, egui::FontId::monospace(11.0));
     ctx.set_fonts(fonts);
     ctx.set_style(style);
@@ -119,7 +128,11 @@ pub fn install_fonts(ctx: &Context) {
 /// widget states, all from the design tokens.
 pub fn apply(ctx: &Context, dark: bool) {
     let p = palette(dark);
-    let mut v = if dark { Visuals::dark() } else { Visuals::light() };
+    let mut v = if dark {
+        Visuals::dark()
+    } else {
+        Visuals::light()
+    };
 
     v.panel_fill = p.panel;
     v.extreme_bg_color = p.deep;

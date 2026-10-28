@@ -2733,8 +2733,8 @@ fn render_gantt(
         }
         let now = today();
         if now >= origin && now <= finish {
-            let x = rect.min.x
-                + (now.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
+            let x =
+                rect.min.x + (now.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
             painter.line_segment(
                 [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
                 egui::Stroke::new(1.5, ACCENT),
