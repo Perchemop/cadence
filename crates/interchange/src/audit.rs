@@ -262,9 +262,7 @@ mod tests {
             "a relationship finding carries its kind"
         );
         assert_eq!(
-            reltypes_findings[0]
-                .get("id")
-                .and_then(Value::as_i64),
+            reltypes_findings[0].get("id").and_then(Value::as_i64),
             Some(1),
             "the finding names the relationship id"
         );
