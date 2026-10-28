@@ -24,6 +24,10 @@ Documentation slice closing the research-parity gap with the Aphex note:
 No code changes; no new capabilities claimed. The notes are drafts for the
 human gate, like every research note (guide §2.3).
 
+Verification: CI green on the pull request and on `main` after the squash
+merge (PR #39, commit `61787d0`; all required checks passed; main commit
+`a6a73cc`).
+
 ## 2026-10-28 — Programme audit: core checks (first slice)
 
 The owner approved the audit research note on 2026-10-27; this is the first
