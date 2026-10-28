@@ -29,7 +29,7 @@ use cadence_core::model::{
     ResourceId, ResourceKind,
 };
 use egui::{
-    Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2, Visuals,
+    Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2,
 };
 use time::{Date, Month};
 

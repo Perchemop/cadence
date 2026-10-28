@@ -130,7 +130,6 @@ fn install_style(ctx: &Context) {
             style.spacing.button_padding = egui::vec2(8.0, 4.0);
             style.spacing.menu_margin = Margin::symmetric(6, 4).into();
             style.spacing.indent = 16.0;
-            style.spacing.scroll = 8.0;
         });
     }
 }
