@@ -113,20 +113,35 @@ pub fn install_fonts(ctx: &Context) {
             .or_default()
             .insert(0, name.to_string());
     }
-    let mut style = (*ctx.style()).clone();
-    let text = &mut style.text_styles;
-    text.insert(egui::TextStyle::Body, egui::FontId::proportional(11.0));
-    text.insert(egui::TextStyle::Small, egui::FontId::proportional(9.5));
-    text.insert(egui::TextStyle::Button, egui::FontId::proportional(11.0));
-    text.insert(egui::TextStyle::Heading, egui::FontId::proportional(16.0));
-    text.insert(egui::TextStyle::Monospace, egui::FontId::monospace(11.0));
     ctx.set_fonts(fonts);
-    ctx.set_style(style);
+}
+
+/// Apply the type scale and spacing rhythm to both themes' styles.
+fn install_style(ctx: &Context) {
+    for theme in [egui::Theme::Light, egui::Theme::Dark] {
+        ctx.style_mut_of(theme, |style| {
+            let text = &mut style.text_styles;
+            text.insert(egui::TextStyle::Body, egui::FontId::proportional(11.0));
+            text.insert(egui::TextStyle::Small, egui::FontId::proportional(9.5));
+            text.insert(egui::TextStyle::Button, egui::FontId::proportional(11.0));
+            text.insert(
+                egui::TextStyle::Heading,
+                egui::FontId::proportional(16.0),
+            );
+            text.insert(egui::TextStyle::Monospace, egui::FontId::monospace(11.0));
+            style.spacing.item_spacing = Margin::symmetric(8, 4).into();
+            style.spacing.button_padding = egui::vec2(8.0, 4.0);
+            style.spacing.menu_margin = Margin::symmetric(6, 4).into();
+            style.spacing.indent = 16.0;
+            style.spacing.scroll = 8.0;
+        });
+    }
 }
 
 /// Apply the full theme: background, panels, widget rounding, spacing and
 /// widget states, all from the design tokens.
 pub fn apply(ctx: &Context, dark: bool) {
+    install_style(ctx);
     let p = palette(dark);
     let mut v = if dark {
         Visuals::dark()
@@ -187,7 +202,6 @@ pub fn apply(ctx: &Context, dark: bool) {
     v.spacing.indent = 16.0;
     v.spacing.scroll = 8.0;
 
-    v.text_cursor_preview = true;
     v.striped = true;
 
     ctx.set_visuals(v);
