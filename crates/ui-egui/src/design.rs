@@ -128,7 +128,7 @@ fn install_style(ctx: &Context) {
             text.insert(egui::TextStyle::Monospace, egui::FontId::monospace(11.0));
             style.spacing.item_spacing = egui::vec2(8.0, 4.0);
             style.spacing.button_padding = egui::vec2(8.0, 4.0);
-            style.spacing.menu_margin = Margin::symmetric(6, 4).into();
+            style.spacing.menu_margin = Margin::symmetric(6, 4);
             style.spacing.indent = 16.0;
         });
     }
