@@ -67,7 +67,11 @@ command succeeds whenever the audit ran, even when checks fail.
 * The default thresholds follow the DCMA 14-point assessment; every threshold
   is configurable in code (`cadence_core::audit::AuditConfig`), and the
   not-applicable outcome means the check could not run with the data
-  available (no status date, no baseline, or no resources loaded).
+  available (no status date, no baseline, or no resources loaded). The
+  critical-path test delays the last-finishing critical activity by 600
+  working days and expects the finish to move by the same amount; the
+  critical path length index measures the path plus its float against the
+  most recent baseline's deadline.
 * `--status-date YYYY-MM-DD` enables the date-sensitive checks (invalid
   dates, missed tasks, baseline execution index). The most recent baseline in
   the file, if any, drives the baseline checks.

@@ -117,6 +117,7 @@ fn category_label(category: &CheckCategory) -> &'static str {
         CheckCategory::Dates => "dates",
         CheckCategory::Resources => "resources",
         CheckCategory::Baseline => "baseline",
+        CheckCategory::CriticalPath => "critical-path",
     }
 }
 

@@ -2039,9 +2039,9 @@ impl eframe::App for CadenceApp {
                     }
                     ui.heading("Audit");
                     ui.label(
-                        "Twelve schedule-quality checks over the current programme, \
-                         following public DCMA and GAO practice. Findings are data, \
-                         not errors: fix what matters and re-run.",
+                        "Schedule-quality checks over the current programme, following \
+                         public DCMA and GAO practice. Findings are data, not errors: \
+                         fix what matters and re-run.",
                     );
                     ui.add_space(4.0);
                     ui.horizontal_wrapped(|ui| {

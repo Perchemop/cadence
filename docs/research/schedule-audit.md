@@ -161,10 +161,12 @@ schedule risk analysis with Monte Carlo).
 - Works on the internal model, so it can audit a program created in Cadence and
   any program imported from MSPDI, MPX, CSV or Cadence JSON.
 - Phased delivery, smallest first: (1) structure/logic/float/constraint/date
-  checks; (2) resource and baseline-performance checks (missed tasks, BEI);
-  (3) critical-path checks (critical path test, CPLI, near-critical paths);
-  (4) comparative/forensic audit of two versions or a baseline against the
-  current programme; (5) custom checks and threshold profiles.
+  checks *(delivered)*; (2) resource and baseline-performance checks, missed
+  tasks and BEI *(delivered)*; (3) critical-path checks — the critical path
+  test and CPLI are delivered, near-critical paths are not yet; (4)
+  comparative/forensic audit of two versions or a baseline against the current
+  programme *(remaining)*; (5) custom checks and threshold profiles
+  *(remaining)*.
 
 ## Acceptance criteria (first version)
 

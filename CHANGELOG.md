@@ -5,6 +5,11 @@ follows Keep a Changelog; releases use git tags.
 
 ## [Unreleased]
 
+- Workspace version bumped to 0.2.0: the audit's critical-path slice extends
+  the public `cadence-core` API in breaking ways for exhaustive construction
+  (new `AuditConfig` fields, new `CheckId` and `CheckCategory` variants), so
+  the semver gate requires the pre-1.0 minor bump; the bump also matches the
+  v0.2.0 milestone
 - New `cadence-core` programme-audit module (`audit.rs`, first slice): twelve
   schedule-quality and health checks with configurable thresholds and
   per-activity/per-relationship findings — open ends, leads, lags, relationship
@@ -22,6 +27,12 @@ follows Keep a Changelog; releases use git tags.
   optional status date with a **Run audit** button, and activity findings that
   jump to the activity in the table; the audit re-runs after edits and never
   per frame
+- Critical-path checks (fourth slice): `AUDIT-CPT` delays the last-finishing
+  critical activity by 600 working days and expects the project finish to move
+  by the same amount (`cadence-core` gained a public
+  `schedule_with_minimum_starts` for the test), and `AUDIT-CPLI` computes the
+  critical path length index against the most recent baseline's deadline; both
+  report not-applicable when they cannot run honestly
 - Research notes (now owner-approved 2026-10-27) for three future-expansion
   capabilities, with original behavioural summaries and public URLs:
   `docs/research/schedule-audit.md` (an in-app tool that audits a construction
