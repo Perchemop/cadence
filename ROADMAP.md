@@ -193,7 +193,10 @@ acceptance criteria drive implementation; it does not promise a release date.
       windows derived from the master schedule, weekly work plans with
       owner/promise tracking, a daily diary and huddle briefing, production
       tracking, light location clash detection and published-snapshot
-      comparison. Research:
+      comparison. **Done so far:** the window extraction
+      (`cadence-core::lookahead`) and the GUI **Lookahead** view (`Ctrl+7`).
+      **Remaining:** published snapshots, promise tracking, diary, production
+      tracking, clash detection. Research:
       [`docs/research/aphex-integration.md`](docs/research/aphex-integration.md).
 
 ## Out of scope (recorded in `docs/scope.md`)

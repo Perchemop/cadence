@@ -97,4 +97,4 @@ a release date.
 |---|---|---|
 | Programme audit tool | done | All five stages shipped: 14 core checks, `cadence audit [--json] [--status-date]`, the GUI **Audit** view, the critical-path test/CPLI, and the forensic comparison (`cadence audit-compare`, baseline comparison, `kind: "comparison"` JSON). Note: `docs/research/schedule-audit.md` |
 | Optional AI integration | approved — queued | Off-by-default, consent-gated document understanding and reviewable, undoable proposals (advice, skeleton schedules, activity enrichment, status updates). Note: `docs/research/ai-integration.md` |
-| Lookahead / field planning (Aphex-inspired) | approved — queued | Rolling short-interval windows from the master schedule, weekly work plans, diary, production tracking, light location clash detection. Note: `docs/research/aphex-integration.md` |
+| Lookahead / field planning (Aphex-inspired) | in progress | The rolling-window extraction and the GUI **Lookahead** view (`Ctrl+7`) are shipped; published snapshots, weekly work plans with owner/promise tracking, diary, production tracking and location clash detection remain. Note: `docs/research/aphex-integration.md` |

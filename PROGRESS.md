@@ -107,6 +107,26 @@ Verification: CI green on the pull request (PR #40, head `a2c4ff73`; all
 required checks including the new pii-scan) and on `main` after the squash
 merge (commit `5c71155`).
 
+## 2026-10-28 — Lookahead: core window and GUI view
+
+First and second slices of the Aphex-inspired lookahead work:
+
+- `cadence-core::lookahead`: the rolling-window extraction — activities whose
+  scheduled span intersects a window of `weeks` calendar weeks from a start
+  date, normalised onto the project calendar, in scheduled-start order,
+  flagged critical and in-progress. Five unit tests pin the window bounds,
+  the end-day boundary (a milestone starting on the window's end day is
+  excluded), determinism and the unschedulable case.
+- The GUI **Lookahead** view (toolbar **Lookahead**, `Ctrl+7`): window start
+  date and length selector (2/4/6/12 weeks), a count, and a grid of entries
+  that opens the activity in the table. Empty-window and unschedulable states
+  are written in text, and the layout wraps for narrow windows. It is a view
+  of the same schedule, never a second plan.
+- The keyboard map, the shortcuts window, and `docs/usage.md` cover the new
+  view.
+
+Verification: CI pending on this pull request.
+
 ## 2026-10-28 — Programme audit: GUI Audit view
 
 Third slice of the owner-approved audit tool:

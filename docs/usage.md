@@ -164,6 +164,7 @@ without blocking the application.
 | Ctrl+4 | Baselines |
 | Ctrl+5 | Calendars |
 | Ctrl+6 | Audit |
+| Ctrl+7 | Lookahead |
 | Ctrl+D | Toggle light/dark theme |
 | Ctrl+Plus / Ctrl+Minus | Zoom the Gantt timeline in or out |
 | Ctrl+0 | Reset the Gantt zoom |
@@ -194,6 +195,11 @@ without blocking the application.
   flagged activities and relationships. Selecting an activity finding jumps to
   it in the table; the audit re-runs automatically after edits, and
   **Run audit** applies the optional status date.
+* **Lookahead** — the rolling short-interval window over the master schedule:
+  everything scheduled to work between a start date and a window length of
+  two, four, six or twelve weeks, in start order, flagged in-progress or
+  upcoming and critical. Selecting an entry opens the activity in the table.
+  It is a view of the same schedule, never a second plan.
 
 Reports live outside the views: `cadence report` writes Markdown and
 `cadence print` writes a PDF, both from any project file.
