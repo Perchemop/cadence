@@ -229,7 +229,10 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      baseline_finish TEXT,
                      PRIMARY KEY (baseline_id, activity_id)
                  );
-                 PRAGMA user_version = 4;",
+                 ALTER TABLE activities ADD COLUMN owner TEXT;
+                 ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activities ADD COLUMN delay_reason TEXT;
+                 PRAGMA user_version = 5;",
             )?;
             Ok(())
         }
@@ -268,7 +271,10 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      baseline_finish TEXT,
                      PRIMARY KEY (baseline_id, activity_id)
                  );
-                 PRAGMA user_version = 4;",
+                 ALTER TABLE activities ADD COLUMN owner TEXT;
+                 ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activities ADD COLUMN delay_reason TEXT;
+                 PRAGMA user_version = 5;",
             )?;
             Ok(())
         }
@@ -277,7 +283,10 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
             connection.execute_batch(
                 "ALTER TABLE activities ADD COLUMN actual_start TEXT;
                  ALTER TABLE activities ADD COLUMN actual_finish TEXT;
-                 PRAGMA user_version = 4;",
+                 ALTER TABLE activities ADD COLUMN owner TEXT;
+                 ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activities ADD COLUMN delay_reason TEXT;
+                 PRAGMA user_version = 5;",
             )?;
             Ok(())
         }
