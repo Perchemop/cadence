@@ -28,9 +28,7 @@ use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, Project,
     ResourceId, ResourceKind,
 };
-use egui::{
-    Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2,
-};
+use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
 use time::{Date, Month};
 
 pub mod crash;
