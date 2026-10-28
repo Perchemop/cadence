@@ -75,20 +75,17 @@ pub fn install_fonts(ctx: &Context) {
     let inter = [
         (
             "Inter-Regular",
-            include_bytes!("assets/fonts/Inter-Regular.ttf"),
+            include_bytes!("../assets/fonts/Inter-Regular.ttf"),
         ),
         (
             "Inter-Medium",
-            include_bytes!("assets/fonts/Inter-Medium.ttf"),
+            include_bytes!("../assets/fonts/Inter-Medium.ttf"),
         ),
         (
             "Inter-SemiBold",
-            include_bytes!("assets/fonts/Inter-SemiBold.ttf"),
+            include_bytes!("../assets/fonts/Inter-SemiBold.ttf"),
         ),
-        (
-            "Inter-Bold",
-            include_bytes!("assets/fonts/Inter-Bold.ttf"),
-        ),
+        ("Inter-Bold", include_bytes!("../assets/fonts/Inter-Bold.ttf")),
     ];
     for (name, data) in inter {
         fonts
@@ -124,10 +121,7 @@ fn install_style(ctx: &Context) {
             text.insert(egui::TextStyle::Body, egui::FontId::proportional(11.0));
             text.insert(egui::TextStyle::Small, egui::FontId::proportional(9.5));
             text.insert(egui::TextStyle::Button, egui::FontId::proportional(11.0));
-            text.insert(
-                egui::TextStyle::Heading,
-                egui::FontId::proportional(16.0),
-            );
+            text.insert(egui::TextStyle::Heading, egui::FontId::proportional(16.0));
             text.insert(egui::TextStyle::Monospace, egui::FontId::monospace(11.0));
             style.spacing.item_spacing = Margin::symmetric(8, 4).into();
             style.spacing.button_padding = egui::vec2(8.0, 4.0);
@@ -195,12 +189,6 @@ pub fn apply(ctx: &Context, dark: bool) {
     } else {
         Color32::from_rgb(0xF0, 0xF2, 0xF5)
     };
-
-    v.spacing.item_spacing = Margin::symmetric(8, 4).into();
-    v.spacing.button_padding = egui::vec2(8.0, 4.0);
-    v.spacing.menu_margin = Margin::symmetric(6, 4).into();
-    v.spacing.indent = 16.0;
-    v.spacing.scroll = 8.0;
 
     v.striped = true;
 
