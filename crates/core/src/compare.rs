@@ -262,8 +262,7 @@ fn compare_with(
         let Some(previous) = before_activities.get(&activity.id) else {
             continue;
         };
-        let Some((before_start, before_finish)) = scheduled_dates(before_schedule, previous)
-        else {
+        let Some((before_start, before_finish)) = scheduled_dates(before_schedule, previous) else {
             continue;
         };
         let Some((after_start, after_finish)) = scheduled_dates(after_schedule, activity) else {
@@ -392,18 +391,11 @@ fn compare_with(
 /// An activity's scheduled dates: from the engine schedule when one is
 /// available, otherwise from the cached fields (a rebuilt baseline programme
 /// carries its snapshot dates there; a loaded project file carries none).
-fn scheduled_dates(
-    schedule: Option<&Schedule>,
-    activity: &Activity,
-) -> Option<(Date, Date)> {
+fn scheduled_dates(schedule: Option<&Schedule>, activity: &Activity) -> Option<(Date, Date)> {
     schedule
         .and_then(|schedule| schedule.activity(activity.id))
         .map(|scheduled| (scheduled.scheduled_start, scheduled.scheduled_finish))
-        .or_else(|| {
-            activity
-                .scheduled_start
-                .zip(activity.scheduled_finish)
-        })
+        .or_else(|| activity.scheduled_start.zip(activity.scheduled_finish))
 }
 
 /// The calendar that governs an activity's dates: its named calendar, or the

@@ -114,7 +114,7 @@ touches the scheduling engine. See D18 for the decisions and
 
 ### Next slice (decided 2026-10-27, owner-approved)
 
-- [ ] Programme audit tool (research note approved 2026-10-27): audit a
+- [x] Programme audit tool (research note approved 2026-10-27): audit a
       construction programme inside Cadence for schedule quality and health,
       with a GUI **Audit** view and `cadence audit [--json]`. **Done so far:**
       the core check engine (12 checks, stable ids, configurable thresholds,
@@ -122,8 +122,9 @@ touches the scheduling engine. See D18 for the decisions and
       `kind: "audit"` document, the GUI **Audit** view (`Ctrl+6`, findings
       that jump to the activity, status date + re-run) and the critical-path
       checks (CPT nudge test and the length index against the baseline
-      deadline). **Remaining:** the forensic version comparison. Acceptance
-      criteria in [`docs/research/schedule-audit.md`](docs/research/schedule-audit.md).
+      deadline) and the forensic comparison (`cadence audit-compare`,
+      baseline comparison, `kind: "comparison"` JSON). Acceptance criteria in
+      [`docs/research/schedule-audit.md`](docs/research/schedule-audit.md).
 
 Progress-driven rescheduling remains queued in v0.3.x below.
 

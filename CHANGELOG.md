@@ -32,6 +32,14 @@ follows Keep a Changelog; releases use git tags.
   optional status date with a **Run audit** button, and activity findings that
   jump to the activity in the table; the audit re-runs after edits and never
   per frame
+- Forensic comparison (fifth slice): a pure `cadence-core::compare` module
+  comparing two programmes (activities added/removed, duration, scheduled-date
+  and constraint changes, relationships added/removed/changed/retyped,
+  project-date shift) and a baseline against the current programme;
+  `cadence audit-compare <before> <after> [--json]` prints the report as text
+  or a machine-readable `kind: "comparison"` document
+  (`cadence-interchange/src/compare.rs`). Matching is by id, so CSV-imported
+  before-files (which renumber) show wholesale add/remove — documented
 - Critical-path checks (fourth slice): `AUDIT-CPT` delays the last-finishing
   critical activity by 600 working days and expects the project finish to move
   by the same amount (`cadence-core` gained a public
