@@ -9,8 +9,8 @@ consulted.
 
 | Product | What inspires us (public concepts only) |
 |---|---|
-| Microsoft Project | The idea of a combined activity table + Gantt view; baseline and variance workflow; earned-value reporting basics |
-| Primavera P6 | Enterprise scheduling concepts: WBS hierarchy, activity codes, multiple calendars, resource leveling at scale |
+| Microsoft Project | The idea of a combined activity table + Gantt view; baseline and variance workflow; earned-value reporting basics. Capability inventory: [`docs/research/ms-project-capabilities.md`](research/ms-project-capabilities.md) |
+| Primavera P6 | Enterprise scheduling concepts: WBS hierarchy, activity codes, multiple calendars, resource leveling at scale. Capability inventory: [`docs/research/primavera-p6-capabilities.md`](research/primavera-p6-capabilities.md) |
 | PMBOK (public standard) | CPM, precedence diagramming, float terminology, EVM formulas (SPI, CPI, SV, CV) |
 
 ## Future-expansion references (candidates — human gate pending)
