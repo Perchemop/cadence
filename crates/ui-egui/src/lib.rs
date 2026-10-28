@@ -22,6 +22,7 @@ use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding
 use cadence_core::calendar_set::CalendarId;
 use cadence_core::engine::schedule;
 use cadence_core::engine::Schedule;
+use cadence_core::lookahead::lookahead;
 use cadence_core::engine::{evm_metrics, level_resources, resource_conflicts, resource_histogram};
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, Project,
@@ -100,6 +101,7 @@ enum ViewMode {
     Baselines,
     Calendars,
     Audit,
+    Lookahead,
 }
 
 const CONSTRAINT_LABELS: [&str; 6] = [
@@ -227,6 +229,8 @@ pub struct CadenceApp {
     audit_status_buffer: String,
     audit_version: u64,
     edit_version: u64,
+    lookahead_start_buffer: String,
+    lookahead_weeks: usize,
 }
 
 impl CadenceApp {
@@ -291,6 +295,8 @@ impl CadenceApp {
             audit_status_buffer: String::new(),
             audit_version: 0,
             edit_version: 0,
+            lookahead_start_buffer: today().to_string(),
+            lookahead_weeks: 2,
         }
     }
 
@@ -1048,6 +1054,7 @@ impl eframe::App for CadenceApp {
                     egui::Key::Num4,
                     egui::Key::Num5,
                     egui::Key::Num6,
+                    egui::Key::Num7,
                 ]
                 .iter()
                 .position(|key| input.key_pressed(*key))
@@ -1062,7 +1069,8 @@ impl eframe::App for CadenceApp {
                     2 => ViewMode::Resources,
                     3 => ViewMode::Baselines,
                     4 => ViewMode::Calendars,
-                    _ => ViewMode::Audit,
+                    5 => ViewMode::Audit,
+                    _ => ViewMode::Lookahead,
                 };
             }
         }
@@ -1191,6 +1199,9 @@ impl eframe::App for CadenceApp {
                 }
                 if ui.button("Audit").clicked() {
                     self.view_mode = ViewMode::Audit;
+                }
+                if ui.button("Lookahead").clicked() {
+                    self.view_mode = ViewMode::Lookahead;
                 }
                 if ui
                     .button("Save report")
@@ -2124,6 +2135,98 @@ impl eframe::App for CadenceApp {
                         });
                 });
             }
+            ViewMode::Lookahead => {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    ui.heading("Lookahead");
+                    ui.label(
+                        "The rolling short-interval window over the master schedule: \
+                         everything scheduled to work in the next few weeks, in start \
+                         order. It is a view of the same schedule, never a second \
+                         plan.",
+                    );
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Window starts (YYYY-MM-DD)");
+                        ui.text_edit_singleline(&mut self.lookahead_start_buffer);
+                        ui.label("Length");
+                        for (index, weeks) in [2usize, 4, 6, 12].iter().enumerate() {
+                            ui.selectable_value(
+                                &mut self.lookahead_weeks,
+                                index,
+                                format!("{weeks} w"),
+                            );
+                        }
+                    });
+                    ui.add_space(4.0);
+                    let weeks = [2usize, 4, 6, 12][self.lookahead_weeks.min(3)];
+                    let Some(from) = parse_date(self.lookahead_start_buffer.trim()) else {
+                        ui.label(
+                            "The window start must be a date in YYYY-MM-DD format.",
+                        );
+                        return;
+                    };
+                    let Ok(schedule) = self.schedule.clone() else {
+                        ui.label(
+                            "The programme cannot be scheduled, so there is no \
+                             lookahead; fix the scheduling error shown in the table.",
+                        );
+                        return;
+                    };
+                    let entries = lookahead(&self.project, &schedule, from, weeks as u32);
+                    let window_end = from
+                        .checked_add(time::Duration::weeks(weeks as i64))
+                        .unwrap_or(from);
+                    ui.label(format!(
+                        "{} activities between {from} and {window_end}",
+                        entries.len()
+                    ));
+                    ui.separator();
+                    if entries.is_empty() {
+                        ui.label(
+                            "Nothing is scheduled in this window yet; move the \
+                             window or add work in the table.",
+                        );
+                        return;
+                    }
+                    Grid::new("lookahead_rows")
+                        .striped(true)
+                        .spacing([12.0, 4.0])
+                        .show(ui, |ui| {
+                            for header in [
+                                "Activity",
+                                "Start",
+                                "Finish",
+                                "State",
+                                "Critical",
+                            ] {
+                                ui.label(header);
+                            }
+                            ui.end_row();
+                            for entry in &entries {
+                                let label = format!("{} ({})", entry.name, entry.id);
+                                if ui.selectable_label(false, &label).clicked() {
+                                    self.select(entry.id);
+                                    self.view_mode = ViewMode::Table;
+                                }
+                                ui.label(entry.scheduled_start.to_string());
+                                ui.label(entry.scheduled_finish.to_string());
+                                ui.label(if entry.in_progress {
+                                    "In progress"
+                                } else {
+                                    "Upcoming"
+                                });
+                                ui.label(if entry.critical { "Yes" } else { "No" });
+                                ui.end_row();
+                            }
+                        });
+                    ui.separator();
+                    ui.label(
+                        "Select an entry to open the activity in the table. The \
+                         window comes from the master schedule, so editing dates \
+                         there moves the lookahead too.",
+                    );
+                });
+            }
         }
 
         if self.show_crash_dialog {
@@ -2233,9 +2336,9 @@ impl eframe::App for CadenceApp {
                                 ("Ctrl+Z", "Undo"),
                                 ("Ctrl+Y or Ctrl+Shift+Z", "Redo"),
                                 (
-                                    "Ctrl+1 … Ctrl+6",
+                                    "Ctrl+1 … Ctrl+7",
                                     "Switch view: Table, Gantt, Resources, Baselines, \
-                                     Calendars, Audit",
+                                     Calendars, Audit, Lookahead",
                                 ),
                                 ("Ctrl+D", "Toggle light/dark theme"),
                                 (

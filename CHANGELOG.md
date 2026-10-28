@@ -5,6 +5,11 @@ follows Keep a Changelog; releases use git tags.
 
 ## [Unreleased]
 
+- Lookahead planning (first slices, Aphex-inspired): `cadence-core::lookahead`
+  extracts the rolling short-interval window over the scheduled programme, and
+  the GUI **Lookahead** view (`Ctrl+7`) shows it with a configurable start date
+  and 2/4/6/12-week length; entries open the activity in the table. A pure
+  view over the same schedule, never a second plan
 - Capability inventories for the two reference products —
   `docs/research/ms-project-capabilities.md` and
   `docs/research/primavera-p6-capabilities.md` (original summaries, public
