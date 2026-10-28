@@ -118,10 +118,11 @@ touches the scheduling engine. See D18 for the decisions and
       construction programme inside Cadence for schedule quality and health,
       with a GUI **Audit** view and `cadence audit [--json]`. **Done so far:**
       the core check engine (12 checks, stable ids, configurable thresholds,
-      unit tests) and the `cadence audit` CLI with the machine-readable
-      `kind: "audit"` document. **Remaining:** the GUI **Audit** view, then
-      the critical-path test/CPLI and forensic comparison. Acceptance criteria
-      in [`docs/research/schedule-audit.md`](docs/research/schedule-audit.md).
+      unit tests), the `cadence audit` CLI with the machine-readable
+      `kind: "audit"` document, and the GUI **Audit** view (`Ctrl+6`, findings
+      that jump to the activity, status date + re-run). **Remaining:** the
+      critical-path test/CPLI and forensic version comparison. Acceptance
+      criteria in [`docs/research/schedule-audit.md`](docs/research/schedule-audit.md).
 
 Progress-driven rescheduling remains queued in v0.3.x below.
 

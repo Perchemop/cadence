@@ -16,8 +16,12 @@ follows Keep a Changelog; releases use git tags.
   value, threshold, summary, findings, tally) or as a machine-readable
   `kind: "audit"` JSON document written by the in-crate JSON machinery
   (`cadence-interchange/src/audit.rs`); findings are data, so the command
-  succeeds when the audit ran even when checks fail. The GUI **Audit** view is
-  the remaining stage
+  succeeds when the audit ran even when checks fail
+- GUI **Audit** view (third slice): toolbar **Audit** button and `Ctrl+6`, a
+  pass/fail/not-applicable tally, one block per check with findings, an
+  optional status date with a **Run audit** button, and activity findings that
+  jump to the activity in the table; the audit re-runs after edits and never
+  per frame
 - Research notes (now owner-approved 2026-10-27) for three future-expansion
   capabilities, with original behavioural summaries and public URLs:
   `docs/research/schedule-audit.md` (an in-app tool that audits a construction

@@ -52,6 +52,29 @@ Second slice of the owner-approved audit tool:
   with the in-crate JSON machinery; two tests parse it back and assert the
   check, outcome, finding-kind and id fields.
 
+Verification: CI green on the pull request and on `main` after the squash
+merge (PR #36, commit `47a81cb`; CI run 40645751035, Security 40645751033,
+Lockfile 40645751042).
+
+## 2026-10-28 — Programme audit: GUI Audit view
+
+Third slice of the owner-approved audit tool:
+
+- New **Audit** view (toolbar **Audit**, `Ctrl+6`, and the keyboard-shortcuts
+  window updated): a heading and one-line explanation, the optional
+  **Status date** field with a **Run audit** button, a pass / fail /
+  not-applicable tally, and one block per check — stable id, outcome in words
+  (never colour alone), measured value, threshold, plain sentence, and the
+  flagged activities and relationships.
+- Selecting an activity finding selects that activity and switches to the
+  Table view, so a finding is a path to the work, not just a line of text.
+- The audit runs when the view is shown and after any edit (tracked by an
+  edit version bumped in `recompute`), never per frame; on a 10,000-activity
+  programme that keeps interaction smooth. When the programme cannot be
+  scheduled the view says so instead of showing an empty report.
+- Every control is a standard egui widget with the existing keyboard support
+  (Tab / Shift+Tab, Space / Enter), and the layout wraps for narrow windows.
+
 Verification: CI pending on this pull request.
 
 ## 2026-10-27 — Future-expansion research notes (audit tool, optional AI, Aphex)

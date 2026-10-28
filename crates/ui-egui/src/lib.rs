@@ -18,6 +18,7 @@ use cadence_commands::{
     SetActivityProgress, SetCalendarDefinition, SetRelationshipLag, SetResourceCapacity,
     SetResourceKind,
 };
+use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
 use cadence_core::calendar_set::CalendarId;
 use cadence_core::engine::schedule;
 use cadence_core::engine::Schedule;
@@ -98,6 +99,7 @@ enum ViewMode {
     Resources,
     Baselines,
     Calendars,
+    Audit,
 }
 
 const CONSTRAINT_LABELS: [&str; 6] = [
@@ -220,6 +222,11 @@ pub struct CadenceApp {
     link_lag_buffer: String,
     show_shortcuts_dialog: bool,
     scroll_to_selection: bool,
+    audit_report: Option<AuditReport>,
+    audit_status_applied: Option<Date>,
+    audit_status_buffer: String,
+    audit_version: u64,
+    edit_version: u64,
 }
 
 impl CadenceApp {
@@ -279,6 +286,11 @@ impl CadenceApp {
             link_lag_buffer: "0".to_string(),
             show_shortcuts_dialog: false,
             scroll_to_selection: false,
+            audit_report: None,
+            audit_status_applied: None,
+            audit_status_buffer: String::new(),
+            audit_version: 0,
+            edit_version: 0,
         }
     }
 
@@ -296,7 +308,33 @@ impl CadenceApp {
     }
 
     fn recompute(&mut self) {
+        self.edit_version = self.edit_version.wrapping_add(1);
         self.schedule = schedule(&self.project).map_err(|error| error.to_string());
+    }
+
+    /// Run the programme audit with the applied status date.
+    ///
+    /// The audit is pure and cheap, but it is not free on a 10,000-activity
+    /// programme, so it runs when the Audit view is shown or its data changed
+    /// (tracked by the edit version), never per frame.
+    fn run_audit(&mut self) {
+        let Some(schedule) = self.schedule.clone().ok() else {
+            self.audit_report = None;
+            self.audit_version = self.edit_version;
+            return;
+        };
+        let config = AuditConfig {
+            status_date: self.audit_status_applied,
+            ..AuditConfig::default()
+        };
+        let report = audit(
+            &self.project,
+            &schedule,
+            self.project.baselines.last(),
+            &config,
+        );
+        self.audit_report = Some(report);
+        self.audit_version = self.edit_version;
     }
 
     fn select(&mut self, id: ActivityId) {
@@ -1009,6 +1047,7 @@ impl eframe::App for CadenceApp {
                     egui::Key::Num3,
                     egui::Key::Num4,
                     egui::Key::Num5,
+                    egui::Key::Num6,
                 ]
                 .iter()
                 .position(|key| input.key_pressed(*key))
@@ -1022,7 +1061,8 @@ impl eframe::App for CadenceApp {
                     1 => ViewMode::Gantt,
                     2 => ViewMode::Resources,
                     3 => ViewMode::Baselines,
-                    _ => ViewMode::Calendars,
+                    4 => ViewMode::Calendars,
+                    _ => ViewMode::Audit,
                 };
             }
         }
@@ -1148,6 +1188,9 @@ impl eframe::App for CadenceApp {
                 }
                 if ui.button("Calendars").clicked() {
                     self.view_mode = ViewMode::Calendars;
+                }
+                if ui.button("Audit").clicked() {
+                    self.view_mode = ViewMode::Audit;
                 }
                 if ui
                     .button("Save report")
@@ -1989,6 +2032,98 @@ impl eframe::App for CadenceApp {
                     }
                 });
             }
+            ViewMode::Audit => {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    if self.audit_report.is_none() || self.audit_version != self.edit_version {
+                        self.run_audit();
+                    }
+                    ui.heading("Audit");
+                    ui.label(
+                        "Twelve schedule-quality checks over the current programme, \
+                         following public DCMA and GAO practice. Findings are data, \
+                         not errors: fix what matters and re-run.",
+                    );
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Status date (YYYY-MM-DD, optional)");
+                        ui.text_edit_singleline(&mut self.audit_status_buffer);
+                        if ui.button("Run audit").clicked() {
+                            let trimmed = self.audit_status_buffer.trim().to_string();
+                            if trimmed.is_empty() {
+                                self.audit_status_applied = None;
+                                self.run_audit();
+                            } else if let Some(status) = parse_date(&trimmed) {
+                                self.audit_status_applied = Some(status);
+                                self.run_audit();
+                            } else {
+                                self.status_message =
+                                    Some("Status date must be YYYY-MM-DD".to_string());
+                            }
+                        }
+                    });
+                    let Some(report) = self.audit_report.clone() else {
+                        ui.label(
+                            "The programme cannot be scheduled, so there is nothing \
+                             to audit; fix the scheduling error shown in the table.",
+                        );
+                        return;
+                    };
+                    let mut pass = 0;
+                    let mut fail = 0;
+                    let mut not_applicable = 0;
+                    for check in &report.checks {
+                        match check.outcome {
+                            CheckOutcome::Pass => pass += 1,
+                            CheckOutcome::Fail => fail += 1,
+                            CheckOutcome::NotApplicable => not_applicable += 1,
+                        }
+                    }
+                    ui.label(format!(
+                        "{pass} pass, {fail} fail, {not_applicable} not applicable"
+                    ));
+                    ui.separator();
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            for check in &report.checks {
+                                let word = match check.outcome {
+                                    CheckOutcome::Pass => "pass",
+                                    CheckOutcome::Fail => "FAIL",
+                                    CheckOutcome::NotApplicable => "not applicable",
+                                };
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.monospace(check.id.code());
+                                    ui.label(format!("[{word}]"));
+                                    if let Some(measured) = &check.measured {
+                                        ui.label(measured);
+                                    }
+                                });
+                                ui.label(&check.summary);
+                                if let Some(threshold) = &check.threshold {
+                                    ui.label(format!("Threshold: {threshold}"));
+                                }
+                                for finding in &check.findings {
+                                    match finding {
+                                        Finding::Activity { id, name, detail } => {
+                                            ui.horizontal_wrapped(|ui| {
+                                                let label = format!("{name} ({id})");
+                                                if ui.selectable_label(false, &label).clicked() {
+                                                    self.select(*id);
+                                                    self.view_mode = ViewMode::Table;
+                                                }
+                                                ui.label(detail);
+                                            });
+                                        }
+                                        Finding::Relationship { id, detail } => {
+                                            ui.label(format!("Relationship {id}: {detail}"));
+                                        }
+                                    }
+                                }
+                                ui.separator();
+                            }
+                        });
+                });
+            }
         }
 
         if self.show_crash_dialog {
@@ -2098,9 +2233,9 @@ impl eframe::App for CadenceApp {
                                 ("Ctrl+Z", "Undo"),
                                 ("Ctrl+Y or Ctrl+Shift+Z", "Redo"),
                                 (
-                                    "Ctrl+1 … Ctrl+5",
+                                    "Ctrl+1 … Ctrl+6",
                                     "Switch view: Table, Gantt, Resources, Baselines, \
-                                     Calendars",
+                                     Calendars, Audit",
                                 ),
                                 ("Ctrl+D", "Toggle light/dark theme"),
                                 (
