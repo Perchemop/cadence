@@ -75,19 +75,19 @@ pub fn install_fonts(ctx: &Context) {
     let inter = [
         (
             "Inter-Regular",
-            include_bytes!("../../assets/fonts/Inter-Regular.ttf"),
+            include_bytes!("assets/fonts/Inter-Regular.ttf"),
         ),
         (
             "Inter-Medium",
-            include_bytes!("../../assets/fonts/Inter-Medium.ttf"),
+            include_bytes!("assets/fonts/Inter-Medium.ttf"),
         ),
         (
             "Inter-SemiBold",
-            include_bytes!("../../assets/fonts/Inter-SemiBold.ttf"),
+            include_bytes!("assets/fonts/Inter-SemiBold.ttf"),
         ),
         (
             "Inter-Bold",
-            include_bytes!("../../assets/fonts/Inter-Bold.ttf"),
+            include_bytes!("assets/fonts/Inter-Bold.ttf"),
         ),
     ];
     for (name, data) in inter {
