@@ -42,3 +42,17 @@ Approved by the owner (2026-10-27), in this queue:
 
 Approval means the acceptance criteria in each note may drive implementation;
 it does not commit a release date.
+
+## Capability inventories (reference products)
+
+Clean-room inventories of what the reference products do, for the parity
+review (guide §II.27.3); summaries and URLs only:
+
+- [`ms-project-capabilities.md`](ms-project-capabilities.md) — Microsoft
+  Project: scheduling, baselines, resources, earned value, views and the
+  Compare Projects diff, with what Cadence already ships and what is
+  deliberately out of scope.
+- [`primavera-p6-capabilities.md`](primavera-p6-capabilities.md) — Primavera
+  P6: enterprise structure, activity types and codes, schedule log and health
+  checks, Schedule Comparison, leveling, earned value periods, and the
+  documented-vs-proprietary format split.

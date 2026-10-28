@@ -5,6 +5,11 @@ follows Keep a Changelog; releases use git tags.
 
 ## [Unreleased]
 
+- Capability inventories for the two reference products —
+  `docs/research/ms-project-capabilities.md` and
+  `docs/research/primavera-p6-capabilities.md` (original summaries, public
+  URLs, and a shipped-vs-out-of-scope table for each) — so parity claims are
+  traceable
 - Workspace version bumped to 0.2.0: the audit's critical-path slice extends
   the public `cadence-core` API in breaking ways for exhaustive construction
   (new `AuditConfig` fields, new `CheckId` and `CheckCategory` variants), so

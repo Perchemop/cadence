@@ -3,6 +3,27 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-10-28 — Research: MS Project and P6 capability inventories
+
+Documentation slice closing the research-parity gap with the Aphex note:
+
+- `docs/research/ms-project-capabilities.md` — a clean-room capability
+  inventory of Microsoft Project (scheduling, baselines and tracking,
+  resources and cost, earned value, views and the Compare Projects diff,
+  interchange, Copilot), each with public-source URLs, a table of what Cadence
+  already ships, and the deliberately-out list (proprietary `.mpp`, enterprise
+  cloud features).
+- `docs/research/primavera-p6-capabilities.md` — the same for Primavera P6
+  (EPS/WBS structure, activity types and codes/UDFs, constraints, calendars,
+  longest path, schedule log and health checks, Schedule Comparison, leveling,
+  earned-value periods, Visualizer, XER-vs-XML), with the out-of-scope list
+  (proprietary XER, enterprise/cloud surfaces).
+- `docs/inspiration.md` and `docs/research/README.md` link both inventories so
+  parity claims about the reference products are traceable.
+
+No code changes; no new capabilities claimed. The notes are drafts for the
+human gate, like every research note (guide §2.3).
+
 ## 2026-10-28 — Programme audit: core checks (first slice)
 
 The owner approved the audit research note on 2026-10-27; this is the first
