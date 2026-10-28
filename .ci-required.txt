@@ -22,4 +22,4 @@ Bill of materials
 # Reproducible dependency graph (lockfile.yml)
 Lockfile freshness
 # Personal data scan (pii.yml)
-pii-scan
+Personal data scan
