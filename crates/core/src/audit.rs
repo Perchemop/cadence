@@ -929,7 +929,11 @@ fn activity_calendar<'a>(project: &'a Project, activity: &Activity) -> &'a Calen
 
 /// A critical-path check that cannot run.
 fn critical_path_test_skip(summary: &str) -> CheckResult {
-    not_applicable(CheckId::CriticalPathTest, CheckCategory::CriticalPath, summary)
+    not_applicable(
+        CheckId::CriticalPathTest,
+        CheckCategory::CriticalPath,
+        summary,
+    )
 }
 
 /// A critical-path index check that cannot run.

@@ -101,6 +101,11 @@ Fourth slice of the owner-approved audit tool:
   baseline, it passes when the deadline matches the schedule, and a deadline
   already missed by five working days fails it. The GUI Audit view and the
   `--json` document carry the two new checks automatically.
+- The semver gate required a version bump: `AuditConfig` gained fields and
+  `CheckId`/`CheckCategory` gained variants, which breaks exhaustive
+  construction of the published 0.1.1 crates. The workspace version is now
+  0.2.0, matching the v0.2.0 milestone (D21's tag-time bump rule still applies
+  to the eventual release tag).
 
 Verification: CI pending on this pull request.
 

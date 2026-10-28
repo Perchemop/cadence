@@ -5,6 +5,11 @@ follows Keep a Changelog; releases use git tags.
 
 ## [Unreleased]
 
+- Workspace version bumped to 0.2.0: the audit's critical-path slice extends
+  the public `cadence-core` API in breaking ways for exhaustive construction
+  (new `AuditConfig` fields, new `CheckId` and `CheckCategory` variants), so
+  the semver gate requires the pre-1.0 minor bump; the bump also matches the
+  v0.2.0 milestone
 - New `cadence-core` programme-audit module (`audit.rs`, first slice): twelve
   schedule-quality and health checks with configurable thresholds and
   per-activity/per-relationship findings — open ends, leads, lags, relationship
