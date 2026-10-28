@@ -202,7 +202,9 @@ Fourth slice of the owner-approved audit tool:
   0.2.0, matching the v0.2.0 milestone (D21's tag-time bump rule still applies
   to the eventual release tag).
 
-Verification: CI pending on this pull request.
+Verification: CI green on the pull request (PR #45, head `3fe287a`; all
+required checks passed, lockfile regenerated for 0.3.0) and on `main` after
+the squash merge (commit `38c16ff`).
 
 ## 2026-10-27 — Future-expansion research notes (audit tool, optional AI, Aphex)
 
