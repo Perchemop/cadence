@@ -5,6 +5,14 @@ follows Keep a Changelog; releases use git tags.
 
 ## [Unreleased]
 
+- Workspace version bumped to 0.3.0: the field-planning slice adds public
+  fields to `Activity` and `LookaheadEntry`, which the semver gate treats as
+  breaking for exhaustive construction; the bump matches the v0.3.x roadmap
+  section
+- Field planning (third lookahead slice): activities carry an **owner**, a
+  **promised** flag and a **delay reason**; two undoable commands set them,
+  the schema migrates to version 5 (v4 files migrate in place), Cadence JSON
+  stays lossless, the inspector edits them and the Lookahead grid shows them
 - Lookahead planning (first slices, Aphex-inspired): `cadence-core::lookahead`
   extracts the rolling short-interval window over the scheduled programme, and
   the GUI **Lookahead** view (`Ctrl+7`) shows it with a configurable start date

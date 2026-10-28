@@ -669,6 +669,15 @@ pub struct Activity {
     /// Date work actually finished, as recorded by the user.
     #[serde(default)]
     pub actual_finish: Option<Date>,
+    /// Who is responsible for the activity (field-planning owner).
+    #[serde(default)]
+    pub owner: Option<String>,
+    /// True when the activity is a promised near-term task in the lookahead.
+    #[serde(default)]
+    pub promised: bool,
+    /// The reason recorded when a promised activity's dates moved.
+    #[serde(default)]
+    pub delay_reason: Option<String>,
 }
 
 impl Activity {
@@ -696,6 +705,9 @@ impl Activity {
             percent_complete: None,
             actual_start: None,
             actual_finish: None,
+            owner: None,
+            promised: false,
+            delay_reason: None,
         }
     }
 

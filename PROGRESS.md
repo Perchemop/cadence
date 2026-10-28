@@ -125,6 +125,30 @@ First and second slices of the Aphex-inspired lookahead work:
 - The keyboard map, the shortcuts window, and `docs/usage.md` cover the new
   view.
 
+Verification: CI green on the pull request (PR #43, head `697db91`; all
+required checks passed) and on `main` after the squash merge (commit
+`fe587a6`).
+
+## 2026-10-28 — Field planning: owner, promise and delay reason (schema v5)
+
+Third lookahead slice (Aphex-inspired weekly work plans, minimally scoped):
+
+- `Activity` gains `owner`, `promised` and `delay_reason` (serde defaults, so
+  JSON documents stay forward-compatible). The SQLite schema is version 5;
+  loading a version-4 file migrates it in place by adding the three columns
+  (a test recreates a real v4 file and migrates it).
+- Two new undoable commands: `SetActivityOwner` and `SetActivityPromise`
+  (which records the delay reason). Blank owner or delay-reason values are
+  rejected.
+- The inspector gains a **Field planning** section (owner, promised checkbox,
+  delay reason, apply), and the Lookahead grid shows Owner and Promised
+  columns per entry.
+- Cadence JSON interchange carries the three fields both ways, so it stays
+  the lossless format.
+- The semver gate required the workspace version to move 0.2.0 -> 0.3.0
+  (`Activity` and `LookaheadEntry` gained public fields), matching the v0.3.x
+  roadmap section this slice starts.
+
 Verification: CI pending on this pull request.
 
 ## 2026-10-28 — Programme audit: GUI Audit view

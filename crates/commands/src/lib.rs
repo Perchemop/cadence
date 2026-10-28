@@ -656,6 +656,86 @@ impl Command for SetActivityActualDates {
     }
 }
 
+/// Record who is responsible for an activity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityOwner {
+    /// Activity to update.
+    pub id: ActivityId,
+    /// The responsible person or crew, or `None` to clear it.
+    pub owner: Option<String>,
+}
+
+impl Command for SetActivityOwner {
+    fn description(&self) -> String {
+        match &self.owner {
+            Some(owner) => format!("set owner of activity {id} to {owner}", id = self.id),
+            None => format!("clear the owner of activity {}", self.id),
+        }
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.id) else {
+            return Err(format!("activity {} does not exist", self.id));
+        };
+        if self
+            .owner
+            .as_ref()
+            .is_some_and(|owner| owner.trim().is_empty())
+        {
+            return Err("the owner must not be empty".to_string());
+        }
+        let previous = std::mem::replace(&mut activity.owner, self.owner.clone());
+        Ok(Box::new(SetActivityOwner {
+            id: self.id,
+            owner: previous,
+        }))
+    }
+}
+
+/// Promise a near-term activity in the lookahead, optionally recording why its
+/// dates moved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityPromise {
+    /// Activity to update.
+    pub id: ActivityId,
+    /// True when the activity is a promised near-term task.
+    pub promised: bool,
+    /// The delay reason recorded against a promised activity, if any.
+    pub delay_reason: Option<String>,
+}
+
+impl Command for SetActivityPromise {
+    fn description(&self) -> String {
+        match (self.promised, &self.delay_reason) {
+            (true, Some(reason)) => {
+                format!("promise activity {} (delay: {reason})", self.id)
+            }
+            (true, None) => format!("promise activity {}", self.id),
+            (false, _) => format!("withdraw the promise on activity {}", self.id),
+        }
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.id) else {
+            return Err(format!("activity {} does not exist", self.id));
+        };
+        if let Some(reason) = &self.delay_reason {
+            if reason.trim().is_empty() {
+                return Err("the delay reason must not be empty".to_string());
+            }
+        }
+        let previous_promised = activity.promised;
+        let previous_reason = activity.delay_reason.clone();
+        activity.promised = self.promised;
+        activity.delay_reason = self.delay_reason.clone();
+        Ok(Box::new(SetActivityPromise {
+            id: self.id,
+            promised: previous_promised,
+            delay_reason: previous_reason,
+        }))
+    }
+}
+
 /// Render an optional date for a command description.
 fn date_label(date: Option<Date>) -> String {
     date.map_or_else(|| "unknown".to_string(), |date| date.to_string())
@@ -1857,6 +1937,60 @@ mod tests {
         assert!(error.is_err());
         assert_eq!(project, snapshot);
         assert!(stack.can_undo());
+    }
+
+    #[test]
+    fn owner_and_promise_are_recorded_and_reversible() {
+        let mut project = project();
+        project
+            .activities
+            .push(Activity::new(ActivityId::new(1), "A", 3));
+        let id = project.activities[0].id;
+
+        let mut command = SetActivityOwner {
+            id,
+            owner: Some("Crew 3".to_string()),
+        };
+        let mut reverse = command.apply(&mut project).expect("owner applies");
+        assert_eq!(project.activities[0].owner, Some("Crew 3".to_string()));
+        reverse.apply(&mut project).expect("owner undoes");
+        assert_eq!(project.activities[0].owner, None);
+
+        let mut command = SetActivityPromise {
+            id,
+            promised: true,
+            delay_reason: Some("waiting on a permit".to_string()),
+        };
+        let mut reverse = command.apply(&mut project).expect("promise applies");
+        assert!(project.activities[0].promised);
+        assert_eq!(
+            project.activities[0].delay_reason,
+            Some("waiting on a permit".to_string())
+        );
+        reverse.apply(&mut project).expect("promise undoes");
+        assert!(!project.activities[0].promised);
+    }
+
+    #[test]
+    fn an_empty_owner_or_delay_reason_is_rejected() {
+        let mut project = project();
+        project
+            .activities
+            .push(Activity::new(ActivityId::new(1), "A", 3));
+        let id = project.activities[0].id;
+
+        let mut command = SetActivityOwner {
+            id,
+            owner: Some("   ".to_string()),
+        };
+        assert!(command.apply(&mut project).is_err());
+
+        let mut command = SetActivityPromise {
+            id,
+            promised: true,
+            delay_reason: Some("  ".to_string()),
+        };
+        assert!(command.apply(&mut project).is_err());
     }
 
     #[test]

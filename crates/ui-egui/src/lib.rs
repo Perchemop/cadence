@@ -15,8 +15,8 @@ use cadence_commands::{
     CreateResource, DeleteCalendar, DeleteResource, RemoveBaseline, RemoveResourceFromActivity,
     RenameActivity, RenameCalendar, RenameResource, SetActivityActualCost, SetActivityActualDates,
     SetActivityBudget, SetActivityCalendar, SetActivityConstraint, SetActivityDuration,
-    SetActivityProgress, SetCalendarDefinition, SetRelationshipLag, SetResourceCapacity,
-    SetResourceKind,
+    SetActivityOwner, SetActivityProgress, SetActivityPromise, SetCalendarDefinition,
+    SetRelationshipLag, SetResourceCapacity, SetResourceKind,
 };
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
 use cadence_core::calendar_set::CalendarId;
@@ -231,6 +231,9 @@ pub struct CadenceApp {
     edit_version: u64,
     lookahead_start_buffer: String,
     lookahead_weeks: usize,
+    owner_buffer: String,
+    promised_buffer: bool,
+    delay_reason_buffer: String,
 }
 
 impl CadenceApp {
@@ -297,6 +300,9 @@ impl CadenceApp {
             edit_version: 0,
             lookahead_start_buffer: today().to_string(),
             lookahead_weeks: 2,
+            owner_buffer: String::new(),
+            promised_buffer: false,
+            delay_reason_buffer: String::new(),
         }
     }
 
@@ -380,6 +386,44 @@ impl CadenceApp {
         if self.link_successor == Some(id) {
             self.link_successor = None;
         }
+        if let Some(activity) = self.project.activity(id) {
+            self.owner_buffer = activity.owner.clone().unwrap_or_default();
+            self.promised_buffer = activity.promised;
+            self.delay_reason_buffer = activity.delay_reason.clone().unwrap_or_default();
+        }
+    }
+
+    /// Apply the field-planning buffers through the command layer.
+    ///
+    /// The owner and the promise/delay-reason are two separate commands so
+    /// each undoes on its own; moving a promised activity later still asks
+    /// for the reason in the delay-reason field, which the promise command
+    /// records.
+    fn apply_field_planning(&mut self, id: ActivityId) {
+        let owner = self.owner_buffer.trim();
+        let owner = if owner.is_empty() {
+            None
+        } else {
+            Some(owner.to_string())
+        };
+        let _ = self
+            .stack
+            .execute(&mut self.project, Box::new(SetActivityOwner { id, owner }));
+        let reason = self.delay_reason_buffer.trim();
+        let delay_reason = if reason.is_empty() {
+            None
+        } else {
+            Some(reason.to_string())
+        };
+        let _ = self.stack.execute(
+            &mut self.project,
+            Box::new(SetActivityPromise {
+                id,
+                promised: self.promised_buffer,
+                delay_reason,
+            }),
+        );
+        self.recompute();
     }
 
     /// Add a dependency link from the inspector form.
@@ -1378,6 +1422,20 @@ impl eframe::App for CadenceApp {
                                         });
 
                                     ui.separator();
+                                    ui.heading("Field planning");
+                                    ui.label("Owner");
+                                    ui.text_edit_singleline(&mut self.owner_buffer);
+                                    ui.checkbox(
+                                        &mut self.promised_buffer,
+                                        "Promised in the lookahead",
+                                    );
+                                    ui.label("Delay reason (why dates moved)");
+                                    ui.text_edit_singleline(&mut self.delay_reason_buffer);
+                                    if ui.button("Apply field planning").clicked() {
+                                        self.apply_field_planning(id);
+                                    }
+
+                                    ui.separator();
                                     ui.heading("Progress");
                                     ui.label("Percent complete");
                                     ui.text_edit_singleline(&mut self.progress_buffer);
@@ -2190,7 +2248,10 @@ impl eframe::App for CadenceApp {
                         .striped(true)
                         .spacing([12.0, 4.0])
                         .show(ui, |ui| {
-                            for header in ["Activity", "Start", "Finish", "State", "Critical"] {
+                            for header in [
+                                "Activity", "Start", "Finish", "State", "Owner", "Promised",
+                                "Critical",
+                            ] {
                                 ui.label(header);
                             }
                             ui.end_row();
@@ -2207,6 +2268,9 @@ impl eframe::App for CadenceApp {
                                 } else {
                                     "Upcoming"
                                 });
+                                ui.label(entry.owner.clone().unwrap_or_else(|| "-".to_string()));
+                                let promise = if entry.promised { "Promised" } else { "-" };
+                                ui.label(promise);
                                 ui.label(if entry.critical { "Yes" } else { "No" });
                                 ui.end_row();
                             }

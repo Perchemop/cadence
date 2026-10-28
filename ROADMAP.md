@@ -194,9 +194,10 @@ acceptance criteria drive implementation; it does not promise a release date.
       owner/promise tracking, a daily diary and huddle briefing, production
       tracking, light location clash detection and published-snapshot
       comparison. **Done so far:** the window extraction
-      (`cadence-core::lookahead`) and the GUI **Lookahead** view (`Ctrl+7`).
-      **Remaining:** published snapshots, promise tracking, diary, production
-      tracking, clash detection. Research:
+      (`cadence-core::lookahead`), the GUI **Lookahead** view (`Ctrl+7`) and
+      owner/promise/delay-reason tracking (schema v5). **Remaining:**
+      published snapshots, the diary, production tracking, clash detection.
+      Research:
       [`docs/research/aphex-integration.md`](docs/research/aphex-integration.md).
 
 ## Out of scope (recorded in `docs/scope.md`)
