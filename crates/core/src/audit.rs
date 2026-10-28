@@ -1055,6 +1055,9 @@ fn check_critical_path_length_index(
         Vec::new(),
     )
 }
+
+#[cfg(test)]
+mod tests {
     use super::*;
     use crate::engine::schedule;
     use crate::model::{ActivityBaselineSnapshot, BaselineId, Relationship, Resource, ResourceId};

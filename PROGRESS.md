@@ -80,6 +80,30 @@ Verification: CI green on the pull request (PR #37, commit `88b4375`; CI run
 the squash merge (commit `3cb7ce8`; CI run 40649232990, Security 40649233026,
 Lockfile 40649233058).
 
+## 2026-10-28 — Programme audit: critical-path test and length index
+
+Fourth slice of the owner-approved audit tool:
+
+- `AUDIT-CPT` (critical path test): the audit delays the last-finishing open
+  critical activity by 600 working days (configurable
+  `AuditConfig::critical_path_nudge_days`), reschedules through the engine's
+  minimum-start hook (now public:
+  `cadence_core::engine::schedule_with_minimum_starts`), and passes only when
+  the project finish moves by the full nudge — the DCMA sanity check that the
+  critical path actually drives the finish.
+- `AUDIT-CPLI` (critical path length index): the path length plus its float to
+  the most recent baseline's latest baseline finish, over the path length,
+  compared with `AuditConfig::cpli_min_bp` (95%). Not-applicable without a
+  baseline, without baseline finish dates, or when the programme spans no
+  working days; a finish that cannot move because of a hard constraint shows
+  up as a failure or as an honest cannot-run, never silently.
+- Four new unit tests: CPT passes on a driving chain, the index needs a
+  baseline, it passes when the deadline matches the schedule, and a deadline
+  already missed by five working days fails it. The GUI Audit view and the
+  `--json` document carry the two new checks automatically.
+
+Verification: CI pending on this pull request.
+
 ## 2026-10-27 — Future-expansion research notes (audit tool, optional AI, Aphex)
 
 This slice adds **documentation only**: researched future capabilities recorded
