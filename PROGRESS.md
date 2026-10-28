@@ -107,6 +107,12 @@ Verification: CI green on the pull request (PR #40, head `a2c4ff73`; all
 required checks including the new pii-scan) and on `main` after the squash
 merge (commit `5c71155`).
 
+## 2026-10-28 — Release 0.3.0
+
+The 0.3.0 release notes were cut in `CHANGELOG.md` (audit tool, lookahead,
+field planning, schema v5, version bumps, accessibility pass) and the tag was
+published from the changelog commit's green CI run.
+
 ## 2026-10-28 — Lookahead: core window and GUI view
 
 First and second slices of the Aphex-inspired lookahead work:
