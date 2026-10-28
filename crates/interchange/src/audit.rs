@@ -193,7 +193,7 @@ mod tests {
             RelationshipId::new(1),
             ActivityId::new(1),
             ActivityId::new(2),
-            cadence_core::model::LinkType::Fs,
+            cadence_core::model::LinkType::Ss,
             0,
         ));
         project
@@ -227,37 +227,44 @@ mod tests {
         };
         assert_eq!(checks.len(), report.checks.len());
 
+        // The two-activity sample has no start or finish milestones, so the
+        // logic check fails with one activity finding per open end.
         let logic = checks
             .iter()
             .find(|check| text(check, "id") == Some("AUDIT-LOGIC"))
             .expect("logic check present");
-        assert_eq!(text(logic, "outcome"), Some("pass"));
+        assert_eq!(text(logic, "outcome"), Some("fail"));
         assert_eq!(text(logic, "category"), Some("structure"));
-        let findings = logic.get("findings").expect("findings member");
-        assert_eq!(*findings, Value::Array(Vec::new()));
+        let logic_findings = logic.get("findings").expect("findings member");
+        let Value::Array(logic_findings) = logic_findings else {
+            panic!("findings is an array");
+        };
+        assert_eq!(logic_findings.len(), 2);
+        assert_eq!(text(&logic_findings[0], "kind"), Some("activity"));
+        assert_eq!(logic_findings[0].get("id").and_then(Value::as_i64), Some(1));
+        assert_eq!(text(&logic_findings[0], "name"), Some("Survey"));
 
-        // The type check fails on a single non-finish-to-start relationship,
-        // which surfaces as a relationship finding in the document.
-        assert!(checks
-            .iter()
-            .any(|check| text(check, "id") == Some("AUDIT-RELTYPES")
-                && text(check, "outcome") == Some("fail")));
+        // The sample's relationship is start-to-start, so the type check fails
+        // with a relationship finding.
         let reltypes = checks
             .iter()
             .find(|check| text(check, "id") == Some("AUDIT-RELTYPES"))
             .expect("relationship-type check present");
-        let findings = reltypes.get("findings").expect("findings member");
-        let Value::Array(findings) = findings else {
+        assert_eq!(text(reltypes, "outcome"), Some("fail"));
+        let reltypes_findings = reltypes.get("findings").expect("findings member");
+        let Value::Array(reltypes_findings) = reltypes_findings else {
             panic!("findings is an array");
         };
-        assert_eq!(findings.len(), 1);
+        assert_eq!(reltypes_findings.len(), 1);
         assert_eq!(
-            text(&findings[0], "kind"),
+            text(&reltypes_findings[0], "kind"),
             Some("relationship"),
             "a relationship finding carries its kind"
         );
         assert_eq!(
-            findings[0].get("id").and_then(Value::as_i64),
+            reltypes_findings[0]
+                .get("id")
+                .and_then(Value::as_i64),
             Some(1),
             "the finding names the relationship id"
         );
