@@ -101,9 +101,11 @@ Final stage of the owner-approved audit research note:
 - Nine unit tests cover identical programmes, add/remove, duration and date
   movement, relationship change and re-pointing, constraint change, the
   baseline comparison (including a snapshot missing an activity) and
-  determinism.
+  determinism. `docs/usage.md` documents the command.
 
-Verification: CI pending on this pull request.
+Verification: CI green on the pull request (PR #40, head `a2c4ff73`; all
+required checks including the new pii-scan) and on `main` after the squash
+merge (commit `5c71155`).
 
 ## 2026-10-28 — Programme audit: GUI Audit view
 
