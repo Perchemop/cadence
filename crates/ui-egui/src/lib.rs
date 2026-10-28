@@ -12,12 +12,11 @@ use std::time::Duration;
 
 use cadence_commands::{
     AddResourceToActivity, CaptureBaseline, CommandStack, CreateCalendar, CreateRelationship,
-    SetActivityOwner, SetActivityPromise,
     CreateResource, DeleteCalendar, DeleteResource, RemoveBaseline, RemoveResourceFromActivity,
     RenameActivity, RenameCalendar, RenameResource, SetActivityActualCost, SetActivityActualDates,
     SetActivityBudget, SetActivityCalendar, SetActivityConstraint, SetActivityDuration,
-    SetActivityProgress, SetCalendarDefinition, SetRelationshipLag, SetResourceCapacity,
-    SetResourceKind,
+    SetActivityOwner, SetActivityProgress, SetActivityPromise, SetCalendarDefinition,
+    SetRelationshipLag, SetResourceCapacity, SetResourceKind,
 };
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
 use cadence_core::calendar_set::CalendarId;
@@ -402,14 +401,20 @@ impl CadenceApp {
     /// records.
     fn apply_field_planning(&mut self, id: ActivityId) {
         let owner = self.owner_buffer.trim();
-        let owner = if owner.is_empty() { None } else { Some(owner.to_string()) };
-        let _ = self.stack.execute(
-            &mut self.project,
-            Box::new(SetActivityOwner { id, owner }),
-        );
+        let owner = if owner.is_empty() {
+            None
+        } else {
+            Some(owner.to_string())
+        };
+        let _ = self
+            .stack
+            .execute(&mut self.project, Box::new(SetActivityOwner { id, owner }));
         let reason = self.delay_reason_buffer.trim();
-        let delay_reason =
-            if reason.is_empty() { None } else { Some(reason.to_string()) };
+        let delay_reason = if reason.is_empty() {
+            None
+        } else {
+            Some(reason.to_string())
+        };
         let _ = self.stack.execute(
             &mut self.project,
             Box::new(SetActivityPromise {
@@ -1420,7 +1425,10 @@ impl eframe::App for CadenceApp {
                                     ui.heading("Field planning");
                                     ui.label("Owner");
                                     ui.text_edit_singleline(&mut self.owner_buffer);
-                                    ui.checkbox(&mut self.promised_buffer, "Promised in the lookahead");
+                                    ui.checkbox(
+                                        &mut self.promised_buffer,
+                                        "Promised in the lookahead",
+                                    );
                                     ui.label("Delay reason (why dates moved)");
                                     ui.text_edit_singleline(&mut self.delay_reason_buffer);
                                     if ui.button("Apply field planning").clicked() {
@@ -2241,12 +2249,7 @@ impl eframe::App for CadenceApp {
                         .spacing([12.0, 4.0])
                         .show(ui, |ui| {
                             for header in [
-                                "Activity",
-                                "Start",
-                                "Finish",
-                                "State",
-                                "Owner",
-                                "Promised",
+                                "Activity", "Start", "Finish", "State", "Owner", "Promised",
                                 "Critical",
                             ] {
                                 ui.label(header);

@@ -667,7 +667,7 @@ pub struct SetActivityOwner {
 
 impl Command for SetActivityOwner {
     fn description(&self) -> String {
-        match self.owner {
+        match &self.owner {
             Some(owner) => format!("set owner of activity {id} to {owner}", id = self.id),
             None => format!("clear the owner of activity {}", self.id),
         }
@@ -677,7 +677,11 @@ impl Command for SetActivityOwner {
         let Some(activity) = project.activity_mut(self.id) else {
             return Err(format!("activity {} does not exist", self.id));
         };
-        if self.owner.as_ref().is_some_and(|owner| owner.trim().is_empty()) {
+        if self
+            .owner
+            .as_ref()
+            .is_some_and(|owner| owner.trim().is_empty())
+        {
             return Err("the owner must not be empty".to_string());
         }
         let previous = std::mem::replace(&mut activity.owner, self.owner.clone());
@@ -1938,7 +1942,9 @@ mod tests {
     #[test]
     fn owner_and_promise_are_recorded_and_reversible() {
         let mut project = project();
-        project.activities.push(Activity::new(ActivityId::new(1), "A", 3));
+        project
+            .activities
+            .push(Activity::new(ActivityId::new(1), "A", 3));
         let id = project.activities[0].id;
 
         let command = SetActivityOwner {
@@ -1968,7 +1974,9 @@ mod tests {
     #[test]
     fn an_empty_owner_or_delay_reason_is_rejected() {
         let mut project = project();
-        project.activities.push(Activity::new(ActivityId::new(1), "A", 3));
+        project
+            .activities
+            .push(Activity::new(ActivityId::new(1), "A", 3));
         let id = project.activities[0].id;
 
         let mut command = SetActivityOwner {
