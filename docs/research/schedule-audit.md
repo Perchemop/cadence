@@ -163,10 +163,10 @@ schedule risk analysis with Monte Carlo).
 - Phased delivery, smallest first: (1) structure/logic/float/constraint/date
   checks *(delivered)*; (2) resource and baseline-performance checks, missed
   tasks and BEI *(delivered)*; (3) critical-path checks — the critical path
-  test and CPLI are delivered, near-critical paths are not yet; (4)
-  comparative/forensic audit of two versions or a baseline against the current
-  programme *(remaining)*; (5) custom checks and threshold profiles
-  *(remaining)*.
+  test and CPLI are delivered, near-critical paths are not yet; (4) the
+  forensic comparison of two versions and of a baseline against the current
+  programme is delivered (`cadence audit-compare`, `cadence-core::compare`);
+  (5) custom checks and threshold profiles remain open.
 
 ## Acceptance criteria (first version)
 

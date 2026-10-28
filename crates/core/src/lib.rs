@@ -7,6 +7,7 @@
 
 pub mod audit;
 pub mod calendar_set;
+pub mod compare;
 pub mod engine;
 pub mod model;
 pub mod pdf;

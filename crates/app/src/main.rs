@@ -15,6 +15,7 @@ use std::process::ExitCode;
 
 use cadence_commands::{Command, CommandStack, CreateActivity, CreateRelationship};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
+use cadence_core::compare::{compare, Comparison, RelationshipChange};
 use cadence_core::engine::{schedule, Schedule};
 use cadence_core::model::{LinkType, Project};
 use cadence_ui_egui::update_check;
@@ -31,6 +32,8 @@ Usage:
   cadence load <file> [--json]   Load a project file and print its schedule
   cadence audit <file> [--json] [--status-date YYYY-MM-DD]
                                   Audit the programme's schedule quality
+  cadence audit-compare <before> <after> [--json]
+                                  Forensic comparison of two programme versions
   cadence report <file> [out]    Write a Markdown report (stdout if no file)
   cadence print <file> <out.pdf>  Print a project report to PDF
   cadence version                Show the version and the last cached update check
@@ -68,6 +71,9 @@ fn main() -> ExitCode {
                 && parse_status_date(value).is_some() =>
         {
             audit_command(path, json, parse_status_date(value))
+        }
+        [command, input, output] if command == "audit-compare" => {
+            compare_command(input, output, json)
         }
         [command, path] if command == "report" => print_report(path, None),
         [command, input, output] if command == "report" => print_report(input, Some(output)),
@@ -134,6 +140,7 @@ fn split_json_flag(arguments: Vec<String>) -> (Vec<String>, bool) {
             let is_valid = match arguments.len() {
                 1 => true,
                 3 if arguments[0] == "load" || arguments[0] == "audit" => true,
+                4 if arguments[0] == "audit-compare" => true,
                 5 if arguments[0] == "audit" && arguments[2] == "--status-date" => true,
                 _ => false,
             };
@@ -314,6 +321,108 @@ fn print_audit(report: &AuditReport) {
         println!();
     }
     println!("{pass} pass, {fail} fail, {not_applicable} not applicable");
+}
+
+/// Compare two programme versions and print the forensic report.
+///
+/// Both files are scheduled with the ordinary engine; structural changes are
+/// always reported and date movement only when both sides schedule. Like the
+/// audit, findings are data: the command succeeds when the comparison ran.
+fn compare_command(before_path: &str, after_path: &str, json: bool) -> Result<(), String> {
+    let before =
+        cadence_persistence::load_project(before_path).map_err(|error| error.to_string())?;
+    let after = cadence_persistence::load_project(after_path).map_err(|error| error.to_string())?;
+    let comparison = compare(&before, &after);
+    if json {
+        print!(
+            "{}",
+            cadence_interchange::compare::comparison_export(&after, &comparison)
+        );
+    } else {
+        print_comparison(before_path, after_path, &comparison);
+    }
+    Ok(())
+}
+
+/// Print a comparison as plain text, grouped by kind of change.
+fn print_comparison(before_path: &str, after_path: &str, comparison: &Comparison) {
+    println!("Comparison: {before_path} -> {after_path}");
+    if let Some(dates) = &comparison.project_dates {
+        let finish_before = dates
+            .finish
+            .before
+            .map_or_else(|| "?".to_string(), |date| date.to_string());
+        let finish_after = dates
+            .finish
+            .after
+            .map_or_else(|| "?".to_string(), |date| date.to_string());
+        println!(
+            "Project finish: {finish_before} -> {finish_after} ({} working days)",
+            dates.finish.days
+        );
+    }
+    println!();
+    if comparison.is_empty() {
+        println!("No changes between the two versions.");
+        return;
+    }
+    for reference in &comparison.added_activities {
+        println!("Added activity: {} ({})", reference.name, reference.id);
+    }
+    for reference in &comparison.removed_activities {
+        println!("Removed activity: {} ({})", reference.name, reference.id);
+    }
+    for change in &comparison.duration_changes {
+        println!(
+            "Duration: {} ({}): {} -> {} working days",
+            change.name, change.id, change.before, change.after
+        );
+    }
+    for change in &comparison.date_changes {
+        println!(
+            "Dates: {} ({}): start {:+} d, finish {:+} d",
+            change.name, change.id, change.start.days, change.finish.days
+        );
+    }
+    for change in &comparison.constraint_changes {
+        println!(
+            "Constraint: {} ({}): {} -> {}",
+            change.name, change.id, change.before, change.after
+        );
+    }
+    for change in &comparison.relationship_changes {
+        match change {
+            RelationshipChange::Added { relationship } => {
+                println!(
+                    "Relationship added: {} -> {} ({} lag {})",
+                    relationship.predecessor,
+                    relationship.successor,
+                    relationship.link_type.abbreviation(),
+                    relationship.lag
+                );
+            }
+            RelationshipChange::Removed { relationship } => {
+                println!(
+                    "Relationship removed: {} -> {} ({} lag {})",
+                    relationship.predecessor,
+                    relationship.successor,
+                    relationship.link_type.abbreviation(),
+                    relationship.lag
+                );
+            }
+            RelationshipChange::Changed { before, after } => {
+                println!(
+                    "Relationship changed: {} -> {}: {} lag {} -> {} lag {}",
+                    before.predecessor,
+                    before.successor,
+                    before.link_type.abbreviation(),
+                    before.lag,
+                    after.link_type.abbreviation(),
+                    after.lag
+                );
+            }
+        }
+    }
 }
 
 /// Parse an ISO-8601 date for the audit status date.

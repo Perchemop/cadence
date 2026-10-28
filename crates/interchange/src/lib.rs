@@ -31,6 +31,7 @@
 //! read back.
 
 pub mod audit;
+pub mod compare;
 pub mod csv;
 pub mod json;
 pub mod mpx;

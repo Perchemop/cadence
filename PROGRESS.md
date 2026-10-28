@@ -24,6 +24,10 @@ Documentation slice closing the research-parity gap with the Aphex note:
 No code changes; no new capabilities claimed. The notes are drafts for the
 human gate, like every research note (guide §2.3).
 
+Verification: CI green on the pull request and on `main` after the squash
+merge (PR #39, commit `61787d0`; all required checks passed; main commit
+`a6a73cc`).
+
 ## 2026-10-28 — Programme audit: core checks (first slice)
 
 The owner approved the audit research note on 2026-10-27; this is the first
@@ -76,6 +80,30 @@ Second slice of the owner-approved audit tool:
 Verification: CI green on the pull request and on `main` after the squash
 merge (PR #36, commit `47a81cb`; CI run 40645751035, Security 40645751033,
 Lockfile 40645751042).
+
+## 2026-10-28 — Programme audit: forensic comparison (fifth and final slice)
+
+Final stage of the owner-approved audit research note:
+
+- New `cadence-core::compare`: a pure, deterministic comparison of two
+  programmes — activities added and removed, durations changed, scheduled
+  dates moved (in working days on the activity's calendar), constraints
+  changed, and relationships added, removed, changed or re-pointed — plus the
+  project-date shift. `compare_baseline(project, baseline)` does the same
+  against a captured baseline using its snapshots.
+- `cadence audit-compare <before> <after> [--json]` prints the report as
+  plain text grouped by kind of change, or as a machine-readable
+  `kind: "comparison"` document from the new `cadence-interchange::compare`
+  module.
+- Matching is by activity/relationship id: exact for Cadence's own lineage and
+  MSPDI/JSON imports; CSV import renumbers, so a CSV-produced before-file
+  shows wholesale add/remove (documented in the module).
+- Nine unit tests cover identical programmes, add/remove, duration and date
+  movement, relationship change and re-pointing, constraint change, the
+  baseline comparison (including a snapshot missing an activity) and
+  determinism.
+
+Verification: CI pending on this pull request.
 
 ## 2026-10-28 — Programme audit: GUI Audit view
 
