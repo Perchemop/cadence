@@ -75,8 +75,12 @@ command succeeds whenever the audit ran, even when checks fail.
   `"audit"`) with `project`, `status_date` and one entry per check (`id`,
   `category`, `title`, `outcome`, `measured`, `threshold`, `summary`,
   `findings`). stdout carries only the document; diagnostics go to stderr.
-* The GUI **Audit** view is the next stage of this capability; the audit is
-  offline like everything else in Cadence.
+* The GUI **Audit** view (toolbar **Audit** or `Ctrl+6`) shows the same
+  report: a tally, one block per check, and the flagged activities and
+  relationships; selecting an activity finding jumps to it in the table. The
+  view re-runs the audit after edits, and **Run audit** applies the optional
+  status date typed into the field. The audit is offline like everything else
+  in Cadence.
 
 ## Scheduling model
 
@@ -155,6 +159,7 @@ without blocking the application.
 | Ctrl+3 | Resources |
 | Ctrl+4 | Baselines |
 | Ctrl+5 | Calendars |
+| Ctrl+6 | Audit |
 | Ctrl+D | Toggle light/dark theme |
 | Ctrl+Plus / Ctrl+Minus | Zoom the Gantt timeline in or out |
 | Ctrl+0 | Reset the Gantt zoom |
@@ -180,6 +185,11 @@ without blocking the application.
 * **Calendars** — named calendars with working days and holidays, create /
   rename / delete, and per-activity assignment (a calendar cannot be deleted
   while an activity uses it).
+* **Audit** — the schedule-quality audit: a summary tally, one block per check
+  (id, outcome in words, measured value, threshold, plain sentence) and the
+  flagged activities and relationships. Selecting an activity finding jumps to
+  it in the table; the audit re-runs automatically after edits, and
+  **Run audit** applies the optional status date.
 
 Reports live outside the views: `cadence report` writes Markdown and
 `cadence print` writes a PDF, both from any project file.
