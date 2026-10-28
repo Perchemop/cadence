@@ -72,7 +72,7 @@ pub const fn palette(dark: bool) -> Palette {
 /// strong, 16 px headings.
 pub fn install_fonts(ctx: &Context) {
     let mut fonts = FontDefinitions::default();
-    let inter = [
+    let inter: [(&str, &[u8]); 4] = [
         (
             "Inter-Regular",
             include_bytes!("../assets/fonts/Inter-Regular.ttf"),
@@ -85,7 +85,10 @@ pub fn install_fonts(ctx: &Context) {
             "Inter-SemiBold",
             include_bytes!("../assets/fonts/Inter-SemiBold.ttf"),
         ),
-        ("Inter-Bold", include_bytes!("../assets/fonts/Inter-Bold.ttf")),
+        (
+            "Inter-Bold",
+            include_bytes!("../assets/fonts/Inter-Bold.ttf"),
+        ),
     ];
     for (name, data) in inter {
         fonts
@@ -123,7 +126,7 @@ fn install_style(ctx: &Context) {
             text.insert(egui::TextStyle::Button, egui::FontId::proportional(11.0));
             text.insert(egui::TextStyle::Heading, egui::FontId::proportional(16.0));
             text.insert(egui::TextStyle::Monospace, egui::FontId::monospace(11.0));
-            style.spacing.item_spacing = Margin::symmetric(8, 4).into();
+            style.spacing.item_spacing = egui::vec2(8.0, 4.0);
             style.spacing.button_padding = egui::vec2(8.0, 4.0);
             style.spacing.menu_margin = Margin::symmetric(6, 4).into();
             style.spacing.indent = 16.0;
