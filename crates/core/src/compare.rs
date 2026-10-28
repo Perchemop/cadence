@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use time::Date;
 
 use crate::engine::{schedule, Schedule};
-use crate::model::{Activity, ActivityId, Constraint, LinkType, Project, Relationship};
+use crate::model::{Activity, ActivityId, Project, Relationship};
 
 /// A signed date movement in working days.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -402,7 +402,9 @@ fn activity_calendar<'a>(project: &'a Project, activity: &Activity) -> &'a crate
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ActivityBaselineSnapshot, Baseline, BaselineId, RelationshipId};
+    use crate::model::{
+        ActivityBaselineSnapshot, Baseline, BaselineId, Constraint, LinkType, RelationshipId,
+    };
 
     fn jan(day: u8) -> Date {
         Date::from_calendar_date(2026, time::Month::January, day).expect("valid test date")
@@ -456,7 +458,7 @@ mod tests {
 
     #[test]
     fn a_duration_change_moves_the_scheduled_dates() {
-        let mut before = chain();
+        let before = chain();
         let mut after = chain();
         after.activities[1].original_duration = 6;
 
@@ -522,7 +524,10 @@ mod tests {
 
         assert_eq!(comparison.constraint_changes.len(), 1);
         let change = &comparison.constraint_changes[0];
-        assert_eq!((change.before.as_str(), change.after.as_str()), ("asap", "fnlt"));
+        assert_eq!(
+            (change.before.as_str(), change.after.as_str()),
+            ("asap", "fnlt")
+        );
     }
 
     #[test]
@@ -552,7 +557,10 @@ mod tests {
         assert!(comparison.removed_activities.is_empty());
         assert_eq!(comparison.duration_changes.len(), 1);
         assert_eq!(
-            (comparison.duration_changes[0].before, comparison.duration_changes[0].after),
+            (
+                comparison.duration_changes[0].before,
+                comparison.duration_changes[0].after
+            ),
             (3, 8)
         );
         assert!(comparison.date_changes[0].finish.days > 0);
@@ -585,7 +593,7 @@ mod tests {
 
     #[test]
     fn the_comparison_is_deterministic() {
-        let mut before = chain();
+        let before = chain();
         let mut after = chain();
         after.activities[1].original_duration = 5;
         after
