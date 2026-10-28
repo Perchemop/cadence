@@ -1492,7 +1492,7 @@ mod tests {
         project.activities[0].delay_reason = Some("waiting on a permit".to_string());
 
         let dir = TempDir::new();
-        let path = dir.path.join("field.cadence");
+        let path = dir.file("field.cadence");
         save_project(&project, &path).expect("save");
         let loaded = load_project(&path).expect("load");
 
@@ -1510,7 +1510,7 @@ mod tests {
     fn a_version_4_file_migrates_to_field_planning() {
         let project = sample_project();
         let dir = TempDir::new();
-        let path = dir.path.join("v4.cadence");
+        let path = dir.file("v4.cadence");
         save_project(&project, &path).expect("save");
         // Recreate exactly what a v4 writer left: no new columns, user_version 4.
         let connection = Connection::open(&path).expect("open");
