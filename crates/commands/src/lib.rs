@@ -1947,21 +1947,21 @@ mod tests {
             .push(Activity::new(ActivityId::new(1), "A", 3));
         let id = project.activities[0].id;
 
-        let command = SetActivityOwner {
+        let mut command = SetActivityOwner {
             id,
             owner: Some("Crew 3".to_string()),
         };
-        let reverse = command.apply(&mut project).expect("owner applies");
+        let mut reverse = command.apply(&mut project).expect("owner applies");
         assert_eq!(project.activities[0].owner, Some("Crew 3".to_string()));
         reverse.apply(&mut project).expect("owner undoes");
         assert_eq!(project.activities[0].owner, None);
 
-        let command = SetActivityPromise {
+        let mut command = SetActivityPromise {
             id,
             promised: true,
             delay_reason: Some("waiting on a permit".to_string()),
         };
-        let reverse = command.apply(&mut project).expect("promise applies");
+        let mut reverse = command.apply(&mut project).expect("promise applies");
         assert!(project.activities[0].promised);
         assert_eq!(
             project.activities[0].delay_reason,
