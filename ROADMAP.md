@@ -116,13 +116,12 @@ touches the scheduling engine. See D18 for the decisions and
 
 - [ ] Programme audit tool (research note approved 2026-10-27): audit a
       construction programme inside Cadence for schedule quality and health,
-      with a GUI **Audit** view and `cadence audit [--json]`. First version
-      covers structure/logic (open ends, leads, lags, relationship types),
-      float (high/negative), hard constraints, high duration, invalid dates,
-      missing resources, and baseline performance (missed tasks, BEI) when a
-      baseline and status date exist; critical-path test/CPLI and forensic
-      comparison follow. Acceptance criteria in
-      [`docs/research/schedule-audit.md`](docs/research/schedule-audit.md).
+      with a GUI **Audit** view and `cadence audit [--json]`. **Done so far:**
+      the core check engine (12 checks, stable ids, configurable thresholds,
+      unit tests) and the `cadence audit` CLI with the machine-readable
+      `kind: "audit"` document. **Remaining:** the GUI **Audit** view, then
+      the critical-path test/CPLI and forensic comparison. Acceptance criteria
+      in [`docs/research/schedule-audit.md`](docs/research/schedule-audit.md).
 
 Progress-driven rescheduling remains queued in v0.3.x below.
 

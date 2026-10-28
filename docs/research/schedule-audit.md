@@ -18,10 +18,10 @@ Two entry points, one engine:
 
 - A **GUI Audit view** showing a summary dashboard (per-check score and
   severity) and a findings list where selecting a finding jumps to the activity
-  in the table/Gantt.
+  in the table/Gantt. *(Still to build.)*
 - A **`cadence audit <file> [--json]`** command for scripted or headless
-  checks, writing the same report (text, Markdown/PDF and the `--json`
-  document).
+  checks, writing the same report (text and the `--json` document).
+  *(Delivered.)*
 
 ## What professional and paid tools provide (public behaviour only)
 

@@ -28,6 +28,30 @@ implementation slice.
   the next stages of this slice, and the critical-path test/CPLI plus forensic
   comparison remain later stages.
 
+Verification: CI green on the pull request and on `main` after the squash
+merge (PR #35, commit `273b074`; CI run 40586111949, Security 40586111923,
+Lockfile 40586111908).
+
+## 2026-10-28 — Programme audit: `cadence audit` CLI and JSON document
+
+Second slice of the owner-approved audit tool:
+
+- `cadence audit <file>` prints one block per check — stable id
+  (`AUDIT-LOGIC`, `AUDIT-LEADS`, `AUDIT-LAGS`, `AUDIT-RELTYPES`,
+  `AUDIT-HARDCONST`, `AUDIT-HIGHFLOAT`, `AUDIT-NEGFLOAT`, `AUDIT-HIGHDUR`,
+  `AUDIT-INVALIDDATES`, `AUDIT-RESOURCES`, `AUDIT-MISSED`, `AUDIT-BEI`),
+  the outcome in words, the measured value, the threshold, a plain sentence
+  and the flagged activities or relationships — followed by a pass/fail/
+  not-applicable tally. Findings are data: the command succeeds when the
+  audit ran, even when checks fail.
+- `--status-date YYYY-MM-DD` enables the date-sensitive checks; the most
+  recent baseline in the file drives the baseline checks, the same convention
+  the earned-value panel uses. `--json` prints the machine-readable document
+  instead; stdout carries only the document and diagnostics stay on stderr.
+- New `cadence-interchange::audit` module writes the `kind: "audit"` document
+  with the in-crate JSON machinery; two tests parse it back and assert the
+  check, outcome, finding-kind and id fields.
+
 Verification: CI pending on this pull request.
 
 ## 2026-10-27 — Future-expansion research notes (audit tool, optional AI, Aphex)
