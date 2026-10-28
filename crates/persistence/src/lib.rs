@@ -1323,6 +1323,9 @@ mod tests {
                      ALTER TABLE activities DROP COLUMN percent_complete;
                      ALTER TABLE activities DROP COLUMN actual_start;
                      ALTER TABLE activities DROP COLUMN actual_finish;
+                     ALTER TABLE activities DROP COLUMN owner;
+                     ALTER TABLE activities DROP COLUMN promised;
+                     ALTER TABLE activities DROP COLUMN delay_reason;
                      PRAGMA user_version = 1;",
                 )
                 .expect("downgrade schema");
@@ -1383,6 +1386,9 @@ mod tests {
                      ALTER TABLE activities DROP COLUMN percent_complete;
                      ALTER TABLE activities DROP COLUMN actual_start;
                      ALTER TABLE activities DROP COLUMN actual_finish;
+                     ALTER TABLE activities DROP COLUMN owner;
+                     ALTER TABLE activities DROP COLUMN promised;
+                     ALTER TABLE activities DROP COLUMN delay_reason;
                      DROP TABLE baseline_snapshots;
                      DROP TABLE baselines;
                      DROP TABLE activity_resources;
