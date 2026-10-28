@@ -122,10 +122,7 @@ fn category_label(category: &CheckCategory) -> &'static str {
 
 fn check_json(check: &CheckResult) -> Value {
     Value::Object(vec![
-        (
-            "id".to_string(),
-            Value::String(check.id.code().to_string()),
-        ),
+        ("id".to_string(), Value::String(check.id.code().to_string())),
         (
             "category".to_string(),
             Value::String(category_label(&check.category).to_string()),
@@ -135,14 +132,8 @@ fn check_json(check: &CheckResult) -> Value {
             "outcome".to_string(),
             Value::String(outcome_label(&check.outcome).to_string()),
         ),
-        (
-            "measured".to_string(),
-            optional_text(&check.measured),
-        ),
-        (
-            "threshold".to_string(),
-            optional_text(&check.threshold),
-        ),
+        ("measured".to_string(), optional_text(&check.measured)),
+        ("threshold".to_string(), optional_text(&check.threshold)),
         ("summary".to_string(), Value::String(check.summary.clone())),
         (
             "findings".to_string(),
@@ -222,8 +213,8 @@ mod tests {
         };
         let report = audit(&project, &schedule, None, &config);
 
-        let text = audit_export(&project, &schedule, Some(date(8)), &report);
-        let document = parse(&text).expect("valid document");
+        let document_text = audit_export(&project, &schedule, Some(date(8)), &report);
+        let document = parse(&document_text).expect("valid document");
 
         assert_eq!(text(&document, "kind"), Some("audit"));
         assert_eq!(text(&document, "status_date"), Some("2026-01-08"));
@@ -279,8 +270,8 @@ mod tests {
         let config = AuditConfig::default();
         let report = audit(&project, &schedule, None, &config);
 
-        let text = audit_export(&project, &schedule, None, &report);
-        let document = parse(&text).expect("valid document");
+        let document_text = audit_export(&project, &schedule, None, &report);
+        let document = parse(&document_text).expect("valid document");
 
         assert_eq!(document.get("status_date"), Some(&Value::Null));
     }
