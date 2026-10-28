@@ -441,6 +441,15 @@ fn import_activity(value: &Value) -> Result<Activity, InterchangeError> {
     activity.actual_cost = value.get("actual_cost").and_then(money_from_json);
     activity.actual_start = value.get("actual_start").and_then(date_from_json);
     activity.actual_finish = value.get("actual_finish").and_then(date_from_json);
+    activity.owner = match value.get("owner") {
+        Some(Value::String(owner)) => Some(owner.clone()),
+        _ => None,
+    };
+    activity.promised = matches!(value.get("promised"), Some(Value::Bool(true)));
+    activity.delay_reason = match value.get("delay_reason") {
+        Some(Value::String(reason)) => Some(reason.clone()),
+        _ => None,
+    };
     activity.wbs = value.get("wbs").and_then(Value::as_u64).map(WbsId);
     activity.calendar = value
         .get("calendar")
@@ -634,6 +643,21 @@ fn activity_json(activity: &Activity) -> Value {
         (
             "actual_finish".to_string(),
             date_json(activity.actual_finish),
+        ),
+        (
+            "owner".to_string(),
+            match &activity.owner {
+                Some(owner) => Value::String(owner.clone()),
+                None => Value::Null,
+            },
+        ),
+        ("promised".to_string(), Value::Bool(activity.promised)),
+        (
+            "delay_reason".to_string(),
+            match &activity.delay_reason {
+                Some(reason) => Value::String(reason.clone()),
+                None => Value::Null,
+            },
         ),
         (
             "resources".to_string(),

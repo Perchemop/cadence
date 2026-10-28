@@ -125,7 +125,9 @@ First and second slices of the Aphex-inspired lookahead work:
 - The keyboard map, the shortcuts window, and `docs/usage.md` cover the new
   view.
 
-Verification: CI pending on this pull request.
+Verification: CI green on the pull request (PR #43, head `697db91`; all
+required checks passed) and on `main` after the squash merge (commit
+`fe587a6`).
 
 ## 2026-10-28 — Programme audit: GUI Audit view
 

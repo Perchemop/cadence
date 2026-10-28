@@ -40,6 +40,10 @@ pub struct LookaheadEntry {
     /// True when the activity has already started by the window start
     /// (started before the window begins but still working inside it).
     pub in_progress: bool,
+    /// The field-planning owner, copied for display.
+    pub owner: Option<String>,
+    /// True when the activity is a promised near-term task.
+    pub promised: bool,
 }
 
 /// Extract the lookahead window: activities scheduled to work between `from`
@@ -78,6 +82,8 @@ pub fn lookahead(
                 scheduled_finish: scheduled.scheduled_finish,
                 critical: scheduled.critical,
                 in_progress: scheduled.scheduled_start < window_start,
+                owner: activity.owner.clone(),
+                promised: activity.promised,
             })
         })
         .collect();

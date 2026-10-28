@@ -1,7 +1,7 @@
 //! SQLite project files for Cadence.
 //!
 //! A Cadence project file is an ordinary SQLite database. The schema is
-//! versioned with `PRAGMA user_version`; this build reads and writes version 4
+//! versioned with `PRAGMA user_version`; this build reads and writes version 5
 //! and migrates version 1, 2 and 3 files in place.
 //!
 //! Saving runs in a single transaction that replaces the previous contents, so
@@ -24,7 +24,7 @@ use thiserror::Error;
 use time::{Date, Month};
 
 /// Project-file schema version written by this build.
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 
 const SCHEMA: &str = r#"
 CREATE TABLE project (
@@ -71,6 +71,9 @@ CREATE TABLE activities (
     percent_complete INTEGER,
     actual_start TEXT,
     actual_finish TEXT,
+    owner TEXT,
+    promised INTEGER NOT NULL DEFAULT 0,
+    delay_reason TEXT,
     position   INTEGER NOT NULL
 );
 
@@ -278,6 +281,18 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
             )?;
             Ok(())
         }
+        4 => {
+            // Version 5 adds field-planning fields: the activity owner, the
+            // promised flag, and the delay reason recorded against a
+            // promised activity.
+            connection.execute_batch(
+                "ALTER TABLE activities ADD COLUMN owner TEXT;
+                 ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activities ADD COLUMN delay_reason TEXT;
+                 PRAGMA user_version = 5;",
+            )?;
+            Ok(())
+        }
         SCHEMA_VERSION => Ok(()),
         found => Err(PersistenceError::UnsupportedVersion {
             found,
@@ -406,8 +421,8 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
             "INSERT INTO activities
                 (id, name, duration, wbs_id, calendar_id, constraint_kind, constraint_date,
                  budget_at_completion, actual_cost, percent_complete, actual_start,
-                 actual_finish, position)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                 actual_finish, owner, promised, delay_reason, position)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![
                 to_sql_id(activity.id.0, "activity")?,
                 activity.name,
@@ -427,6 +442,9 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
                 activity.percent_complete,
                 activity.actual_start.map(|date| date.to_string()),
                 activity.actual_finish.map(|date| date.to_string()),
+                activity.owner,
+                activity.promised,
+                activity.delay_reason,
                 position as i64,
             ],
         )?;
@@ -668,7 +686,8 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
     let rows = collect_rows(
         connection,
         "SELECT id, name, duration, wbs_id, calendar_id, constraint_kind, constraint_date,
-                budget_at_completion, actual_cost, percent_complete, actual_start, actual_finish
+                budget_at_completion, actual_cost, percent_complete, actual_start, actual_finish,
+                owner, promised, delay_reason
          FROM activities ORDER BY position",
         |row| {
             Ok((
@@ -684,6 +703,9 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
                 row.get::<_, Option<i64>>(9)?,
                 row.get::<_, Option<String>>(10)?,
                 row.get::<_, Option<String>>(11)?,
+                row.get::<_, Option<String>>(12)?,
+                row.get::<_, i64>(13)?,
+                row.get::<_, Option<String>>(14)?,
             ))
         },
     )?;
@@ -702,6 +724,9 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
         percent,
         actual_start,
         actual_finish,
+        owner,
+        promised,
+        delay_reason,
     ) in rows
     {
         let duration = u32::try_from(duration).map_err(|_| {
@@ -729,6 +754,9 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
         activity.percent_complete = percent;
         activity.actual_start = actual_start.map(|value| parse_date(&value)).transpose()?;
         activity.actual_finish = actual_finish.map(|value| parse_date(&value)).transpose()?;
+        activity.owner = owner;
+        activity.promised = promised != 0;
+        activity.delay_reason = delay_reason;
         activities.push(activity);
     }
     Ok(activities)
@@ -1454,5 +1482,51 @@ mod tests {
         assert!(parse_date("2026-01").is_err());
         assert!(parse_date("2026-01-05-01").is_err());
         assert!(parse_date("not-a-date").is_err());
+    }
+
+    #[test]
+    fn field_planning_fields_round_trip() {
+        let mut project = sample_project();
+        project.activities[0].owner = Some("Crew 3".to_string());
+        project.activities[0].promised = true;
+        project.activities[0].delay_reason = Some("waiting on a permit".to_string());
+
+        let file = tempfile::tempdir().expect("tempdir");
+        let path = file.path().join("field.cadence");
+        save_project(&project, &path).expect("save");
+        let loaded = load_project(&path).expect("load");
+
+        assert_eq!(loaded.activities[0].owner, Some("Crew 3".to_string()));
+        assert!(loaded.activities[0].promised);
+        assert_eq!(
+            loaded.activities[0].delay_reason,
+            Some("waiting on a permit".to_string())
+        );
+        assert_eq!(loaded.activities[1].owner, None);
+        assert!(!loaded.activities[1].promised);
+    }
+
+    #[test]
+    fn a_version_4_file_migrates_to_field_planning() {
+        let project = sample_project();
+        let file = tempfile::tempdir().expect("tempdir");
+        let path = file.path().join("v4.cadence");
+        save_project(&project, &path).expect("save");
+        // Recreate exactly what a v4 writer left: no new columns, user_version 4.
+        let connection = Connection::open(&path).expect("open");
+        connection
+            .execute_batch(
+                "ALTER TABLE activities DROP COLUMN owner;
+                 ALTER TABLE activities DROP COLUMN promised;
+                 ALTER TABLE activities DROP COLUMN delay_reason;
+                 PRAGMA user_version = 4;",
+            )
+            .expect("downgrade");
+        drop(connection);
+
+        let loaded = load_project(&path).expect("migrating load");
+        assert_eq!(loaded.activities.len(), project.activities.len());
+        assert_eq!(loaded.activities[0].owner, None);
+        assert!(!loaded.activities[0].promised);
     }
 }
