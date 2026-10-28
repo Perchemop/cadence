@@ -339,7 +339,7 @@ fn compare_command(before_path: &str, after_path: &str, json: bool) -> Result<()
             cadence_interchange::compare::comparison_export(&after, &comparison)
         );
     } else {
-        print_comparison(&before_path, &after_path, &comparison);
+        print_comparison(before_path, after_path, &comparison);
     }
     Ok(())
 }
