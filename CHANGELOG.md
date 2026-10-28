@@ -5,6 +5,48 @@ follows Keep a Changelog; releases use git tags.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-10-28
+
+A programme audit tool, lookahead planning, and field planning — the first
+three owner-approved expansions, plus the reference-product research that
+grounded them.
+
+### Added
+
+- Programme audit tool (all five stages): 14 schedule-quality and health
+  checks in `cadence-core::audit` (open ends with milestone exemption, leads,
+  lags, relationship types, hard constraints, high/negative float, high
+  duration, invalid dates, missing resources, missed tasks, baseline execution
+  index, critical-path test, critical path length index); the GUI **Audit**
+  view (`Ctrl+6`); `cadence audit <file> [--json] [--status-date]`; and the
+  forensic comparison `cadence audit-compare <before> <after> [--json]`
+  (two programmes or a baseline vs current) with a `kind: "comparison"`
+  JSON document
+- Lookahead planning: `cadence-core::lookahead` extracts the rolling
+  short-interval window over the schedule, and the GUI **Lookahead** view
+  (`Ctrl+7`) shows it with a configurable start date and 2/4/6/12-week length
+- Field planning: activities carry an **owner**, a **promised** flag and a
+  **delay reason** (undoable commands, inspector section, Lookahead columns)
+- Capability inventories for Microsoft Project and Primavera P6
+  (`docs/research/`), matching the Aphex research note
+
+### Changed
+
+- SQLite project files are schema version 5; every older file migrates in
+  place (v1/v2/v3/v4 tested)
+- The workspace version moved 0.1.1 -> 0.2.0 -> 0.3.0 across the two
+  public-API-extending slices, per the semver gate
+- Accessibility: keyboard-shortcuts window (`F1`), `Up`/`Down` table
+  selection, keyboard Gantt zoom, pointer-free **Add relationship** form,
+  scrollable inspector, `Status:`-prefixed status text, AccessKit summary for
+  the Gantt canvas, and `!` markers on critical bars
+
+### Fixed
+
+- Update checks are opt-in and cached as designed; `cadence version` no
+  longer claims updates are unwired (it reports the last cached check)
+
+
 - Workspace version bumped to 0.3.0: the field-planning slice adds public
   fields to `Activity` and `LookaheadEntry`, which the semver gate treats as
   breaking for exhaustive construction; the bump matches the v0.3.x roadmap
