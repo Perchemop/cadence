@@ -1751,7 +1751,9 @@ impl eframe::App for CadenceApp {
                                 egui::Label::new(egui::RichText::new("#").weak()),
                             );
                             for (index, col) in defs.iter().enumerate().skip(1) {
-                                let Some(key) = col.0 else { continue; };
+                                let Some(key) = col.0 else {
+                                    continue;
+                                };
                                 if ui
                                     .add_sized(
                                         [widths[index], 22.0],
