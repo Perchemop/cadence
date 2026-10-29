@@ -25,7 +25,7 @@ use thiserror::Error;
 use time::{Date, Month};
 
 /// Project-file schema version written by this build.
-pub const SCHEMA_VERSION: i64 = 6;
+pub const SCHEMA_VERSION: i64 = 7;
 
 const SCHEMA: &str = r#"
 CREATE TABLE project (
@@ -133,6 +133,14 @@ CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
     promised        INTEGER NOT NULL DEFAULT 0,
     percent_complete INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (snapshot_id, activity_id)
+);
+
+CREATE TABLE IF NOT EXISTS daily_notes (
+    id                   INTEGER PRIMARY KEY,
+    date                 TEXT    NOT NULL,
+    content              TEXT    NOT NULL,
+    activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+    lookahead_window_start TEXT
 );
 "#;
 
@@ -421,6 +429,21 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
             )?;
             Ok(())
         }
+        6 => {
+            // Version 7 adds daily notes: dated diary entries linked to
+            // activities or lookahead windows.
+            connection.execute_batch(
+                "CREATE TABLE IF NOT EXISTS daily_notes (
+                    id                   INTEGER PRIMARY KEY,
+                    date                 TEXT    NOT NULL,
+                    content              TEXT    NOT NULL,
+                    activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                    lookahead_window_start TEXT
+                );
+                 PRAGMA user_version = 7;",
+            )?;
+            Ok(())
+        }
         SCHEMA_VERSION => Ok(()),
         found => Err(PersistenceError::UnsupportedVersion {
             found,
@@ -675,6 +698,24 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
         }
     }
 
+    for note in &project.daily_notes {
+        let activity_id_sql = note
+            .activity_id
+            .map(|id| to_sql_id(id.0, "activity"))
+            .transpose()?;
+        transaction.execute(
+            "INSERT INTO daily_notes (id, date, content, activity_id, lookahead_window_start)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                to_sql_id(note.id.0, "daily_note")?,
+                note.date.to_string(),
+                note.content,
+                activity_id_sql,
+                note.lookahead_window_start.map(|date| date.to_string()),
+            ],
+        )?;
+    }
+
     Ok(())
 }
 
@@ -762,6 +803,19 @@ fn read_project(connection: &Connection) -> Result<Project> {
     for snapshot in &mut project.lookahead_snapshots {
         snapshot.entries.sort_by_key(|entry| entry.activity_id);
     }
+
+    let daily_notes = read_daily_notes(connection)?;
+    project.daily_notes = daily_notes
+        .into_iter()
+        .map(|row| DailyNote {
+            id: row.id,
+            date: row.date,
+            content: row.content,
+            activity_id: row.activity_id,
+            lookahead_window_start: row.lookahead_window_start,
+        })
+        .collect();
+    project.daily_notes.sort_by_key(|note| note.id.0);
     Ok(project)
 }
 
@@ -1212,6 +1266,53 @@ fn read_lookahead_snapshot_entries(
         });
     }
     Ok(entries)
+}
+
+/// One daily note row as stored in the database.
+struct DailyNoteRow {
+    /// Note identifier.
+    id: u64,
+    /// Date of the diary entry.
+    date: Date,
+    /// Note content.
+    content: String,
+    /// Optional activity the note concerns.
+    activity_id: Option<u64>,
+    /// Optional lookahead window start the note concerns.
+    lookahead_window_start: Option<Date>,
+}
+
+fn read_daily_notes(connection: &Connection) -> Result<Vec<DailyNoteRow>> {
+    let rows = collect_rows(
+        connection,
+        "SELECT id, date, content, activity_id, lookahead_window_start FROM daily_notes ORDER BY date",
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<i64>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
+        },
+    )?;
+
+    let mut notes = Vec::with_capacity(rows.len());
+    for (id, date, content, activity_id, lookahead_window_start) in rows {
+        let activity_id = activity_id.map(|id| ActivityId(from_sql_id(id, "activity")?));
+        let lookahead_window_start = lookahead_window_start
+            .as_deref()
+            .map(parse_date)
+            .transpose()?;
+        notes.push(DailyNoteRow {
+            id: DailyNoteId(from_sql_id(id, "daily_note")?),
+            date: parse_date(&date)?,
+            content,
+            activity_id,
+            lookahead_window_start,
+        });
+    }
+    Ok(notes)
 }
 
 fn read_holidays(connection: &Connection, query: &str) -> Result<BTreeSet<Date>> {
