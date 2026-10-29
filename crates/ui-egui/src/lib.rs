@@ -3045,8 +3045,7 @@ fn render_gantt(
             + 1;
         let last_row = last_row.min(activities.len());
 
-        for (row, activity) in activities.iter().enumerate().take(last_row).skip(first_row)
-        {
+        for (row, activity) in activities.iter().enumerate().take(last_row).skip(first_row) {
             let y = rect.min.y + header_height + row as f32 * row_height;
             if let Some(result) = current_schedule.activity(activity.id) {
                 let start_days =
