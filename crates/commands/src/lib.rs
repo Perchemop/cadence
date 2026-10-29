@@ -12,8 +12,8 @@
 use cadence_core::calendar_set::{CalendarId, NamedCalendar};
 use cadence_core::engine::{capture_baseline, capture_lookahead_snapshot, schedule};
 use cadence_core::model::{
-    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, DailyNote,
-    DailyNoteId, LookaheadSnapshot, LookaheadSnapshotId, Project, Relationship, RelationshipId,
+    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNote, DailyNoteId,
+    LinkType, LookaheadSnapshot, LookaheadSnapshotId, Project, Relationship, RelationshipId,
     Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsNode};
@@ -1331,7 +1331,11 @@ impl Command for UpdateDailyNote {
         if self.content.trim().is_empty() {
             return Err("the note content must not be empty".to_string());
         }
-        let Some(note) = project.daily_notes.iter_mut().find(|item| item.id == self.id) else {
+        let Some(note) = project
+            .daily_notes
+            .iter_mut()
+            .find(|item| item.id == self.id)
+        else {
             return Err(format!("daily note {} does not exist", self.id));
         };
         let previous = std::mem::replace(&mut note.content, self.content.clone());
