@@ -906,5 +906,10 @@ behaviour matrix).
 - Gantt rows follow the table's sort order so table and canvas stay aligned.
 - `docs/ui-patterns.md`: clean-room observable-behaviour matrix for MS
   Project, P6, Asta Powerproject, ProjectLibre and Aphex.
+- **Activity table column chooser**: a `Columns` menu in the toolbar lets
+  users pick which columns show in the table (row number always first, Activity
+  column flexes to fill) — MS Project column customization / P6 layouts
+  behaviour, original UI. `SortKey` gained `Ord`/`Hash` derives and
+  `ordered_columns`/`all_columns`/`label`/`width` helpers.
 - Pending: CI verification (heavy toolchain runs in GitHub Actions only).
 

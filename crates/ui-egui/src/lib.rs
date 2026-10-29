@@ -5,7 +5,7 @@
 //! source of truth; this crate only displays its results and routes edits
 //! through the command layer.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -74,7 +74,7 @@ pub fn apply_theme(ctx: &Context, dark: bool) {
 }
 
 /// Sort key for the activity table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum SortKey {
     Name,
     Duration,
@@ -82,6 +82,50 @@ enum SortKey {
     Finish,
     Float,
     Critical,
+}
+
+impl SortKey {
+    /// Every data column that can be shown in the activity table, in the order
+    /// they appear left to right.
+    fn ordered_columns() -> Vec<SortKey> {
+        vec![
+            SortKey::Name,
+            SortKey::Duration,
+            SortKey::Start,
+            SortKey::Finish,
+            SortKey::Float,
+            SortKey::Critical,
+        ]
+    }
+
+    /// Every data column as a set (for membership tests).
+    fn all_columns() -> BTreeSet<SortKey> {
+        Self::ordered_columns().into_iter().collect()
+    }
+
+    /// Human-readable column label.
+    fn label(self) -> &'static str {
+        match self {
+            SortKey::Name => "Activity",
+            SortKey::Duration => "Dur",
+            SortKey::Start => "Start",
+            SortKey::Finish => "Finish",
+            SortKey::Float => "Float",
+            SortKey::Critical => "Critical",
+        }
+    }
+
+    /// Fixed pixel width of the column, or `0.0` when it flexes to fill.
+    fn width(self) -> f32 {
+        match self {
+            SortKey::Name => 0.0,
+            SortKey::Duration => 60.0,
+            SortKey::Start => 96.0,
+            SortKey::Finish => 96.0,
+            SortKey::Float => 56.0,
+            SortKey::Critical => 64.0,
+        }
+    }
 }
 
 /// Which top-level view is shown.
@@ -231,6 +275,7 @@ pub struct CadenceApp {
     sorted_key: SortKey,
     sorted_ascending: bool,
     show_split_gantt: bool,
+    visible_columns: BTreeSet<SortKey>,
 }
 
 impl CadenceApp {
@@ -305,6 +350,7 @@ impl CadenceApp {
             sorted_key: SortKey::Name,
             sorted_ascending: true,
             show_split_gantt: true,
+            visible_columns: SortKey::all_columns(),
         }
     }
 
@@ -1290,6 +1336,24 @@ impl eframe::App for CadenceApp {
                 {
                     self.show_split_gantt = !self.show_split_gantt;
                 }
+                let columns_menu = ui.menu_button("Columns", |ui| {
+                    ui.heading("Visible columns");
+                    for key in SortKey::ordered_columns() {
+                        let mut visible = self.visible_columns.contains(&key);
+                        if ui.checkbox(&mut visible, key.label()).changed() {
+                            if visible {
+                                self.visible_columns.insert(key);
+                            } else {
+                                self.visible_columns.remove(&key);
+                            }
+                        }
+                    }
+                    ui.separator();
+                    if ui.button("Reset to default").clicked() {
+                        self.visible_columns = SortKey::all_columns();
+                    }
+                });
+                columns_menu.response.on_hover_text("Choose which columns show in the activity table (MS Project / P6 column chooser)");
                 if ui
                     .button("Save report")
                     .on_hover_text("Write a Markdown report next to the working directory")
@@ -1654,9 +1718,29 @@ impl eframe::App for CadenceApp {
                     Ok(schedule) => {
                         let row_height = 20.0;
                         let spacing = 12.0;
-                        let fixed = 36.0 + 60.0 + 96.0 + 96.0 + 56.0 + 64.0 + spacing * 6.0;
-                        let activity_width = (ui.available_width() - fixed).max(180.0);
-                        let widths = [36.0, activity_width, 60.0, 96.0, 96.0, 56.0, 64.0];
+
+                        // Column chooser: MS Project / P6 let the user pick which
+                        // columns show in the table. Row number is always first;
+                        // the Activity column flexes to fill remaining width.
+                        let mut defs: Vec<(Option<SortKey>, &'static str, f32)> =
+                            vec![(None, "#", 36.0)];
+                        for key in SortKey::ordered_columns() {
+                            if self.visible_columns.contains(&key) {
+                                defs.push((Some(key), key.label(), key.width()));
+                            }
+                        }
+                        let fixed_sum: f32 = defs
+                            .iter()
+                            .filter(|(_, _, w)| *w > 0.0)
+                            .map(|(_, _, w)| *w)
+                            .sum();
+                        let available = ui.available_width();
+                        let flexible_budget =
+                            (available - fixed_sum - spacing * (defs.len() as f32 - 1.0)).max(0.0);
+                        let mut widths: Vec<f32> = Vec::with_capacity(defs.len());
+                        for (_, _, w) in &defs {
+                            widths.push(if *w == 0.0 { flexible_budget } else { *w });
+                        }
 
                         // Sticky header: a fixed row of sort buttons above the
                         // virtualised body, so it stays visible while scrolling.
@@ -1666,21 +1750,14 @@ impl eframe::App for CadenceApp {
                                 [widths[0], 22.0],
                                 egui::Label::new(egui::RichText::new("#").weak()),
                             );
-                            for (index, (label, key)) in [
-                                ("Activity", SortKey::Name),
-                                ("Dur", SortKey::Duration),
-                                ("Start", SortKey::Start),
-                                ("Finish", SortKey::Finish),
-                                ("Float", SortKey::Float),
-                                ("Critical", SortKey::Critical),
-                            ]
-                            .into_iter()
-                            .enumerate()
-                            {
+                            for (index, col) in defs.iter().enumerate().skip(1) {
+                                let Some(key) = col.0 else {
+                                    continue;
+                                };
                                 if ui
                                     .add_sized(
-                                        [widths[index + 1], 22.0],
-                                        egui::Button::new(label).frame(false),
+                                        [widths[index], 22.0],
+                                        egui::Button::new(key.label()).frame(false),
                                     )
                                     .clicked()
                                 {
@@ -1713,68 +1790,94 @@ impl eframe::App for CadenceApp {
                                     let selected = selected_id == Some(activity.id);
                                     ui.horizontal(|ui| {
                                         ui.spacing_mut().item_spacing.x = spacing;
-                                        ui.add_sized(
-                                            [widths[0], row_height],
-                                            egui::Label::new(
-                                                egui::RichText::new((index + 1).to_string())
-                                                    .monospace()
-                                                    .weak(),
-                                            ),
-                                        );
-                                        if ui
-                                            .add_sized(
-                                                [widths[1], row_height],
-                                                egui::Button::new(activity.name.as_str())
-                                                    .selected(selected)
-                                                    .frame(selected)
-                                                    .truncate(),
-                                            )
-                                            .clicked()
-                                        {
-                                            clicked_activity = Some(activity.id);
+                                        for (col, (key, _label, _w)) in defs.iter().enumerate() {
+                                            match key {
+                                                None => {
+                                                    ui.add_sized(
+                                                        [widths[col], row_height],
+                                                        egui::Label::new(
+                                                            egui::RichText::new(
+                                                                (index + 1).to_string(),
+                                                            )
+                                                            .monospace()
+                                                            .weak(),
+                                                        ),
+                                                    );
+                                                }
+                                                Some(SortKey::Name) => {
+                                                    if ui
+                                                        .add_sized(
+                                                            [widths[col], row_height],
+                                                            egui::Button::new(
+                                                                activity.name.as_str(),
+                                                            )
+                                                            .selected(selected)
+                                                            .frame(selected)
+                                                            .truncate(),
+                                                        )
+                                                        .clicked()
+                                                    {
+                                                        clicked_activity = Some(activity.id);
+                                                    }
+                                                }
+                                                Some(SortKey::Duration) => {
+                                                    ui.add_sized(
+                                                        [widths[col], row_height],
+                                                        egui::Label::new(
+                                                            egui::RichText::new(
+                                                                activity
+                                                                    .original_duration
+                                                                    .to_string(),
+                                                            )
+                                                            .monospace(),
+                                                        ),
+                                                    );
+                                                }
+                                                Some(SortKey::Start) => {
+                                                    ui.add_sized(
+                                                        [widths[col], row_height],
+                                                        egui::Label::new(
+                                                            egui::RichText::new(
+                                                                result.scheduled_start.to_string(),
+                                                            )
+                                                            .monospace(),
+                                                        ),
+                                                    );
+                                                }
+                                                Some(SortKey::Finish) => {
+                                                    ui.add_sized(
+                                                        [widths[col], row_height],
+                                                        egui::Label::new(
+                                                            egui::RichText::new(
+                                                                result.scheduled_finish.to_string(),
+                                                            )
+                                                            .monospace(),
+                                                        ),
+                                                    );
+                                                }
+                                                Some(SortKey::Float) => {
+                                                    ui.add_sized(
+                                                        [widths[col], row_height],
+                                                        egui::Label::new(
+                                                            egui::RichText::new(
+                                                                result.total_float.to_string(),
+                                                            )
+                                                            .monospace(),
+                                                        ),
+                                                    );
+                                                }
+                                                Some(SortKey::Critical) => {
+                                                    ui.add_sized(
+                                                        [widths[col], row_height],
+                                                        egui::Label::new(if result.critical {
+                                                            "Yes"
+                                                        } else {
+                                                            "No"
+                                                        }),
+                                                    );
+                                                }
+                                            }
                                         }
-                                        ui.add_sized(
-                                            [widths[2], row_height],
-                                            egui::Label::new(
-                                                egui::RichText::new(
-                                                    activity.original_duration.to_string(),
-                                                )
-                                                .monospace(),
-                                            ),
-                                        );
-                                        ui.add_sized(
-                                            [widths[3], row_height],
-                                            egui::Label::new(
-                                                egui::RichText::new(
-                                                    result.scheduled_start.to_string(),
-                                                )
-                                                .monospace(),
-                                            ),
-                                        );
-                                        ui.add_sized(
-                                            [widths[4], row_height],
-                                            egui::Label::new(
-                                                egui::RichText::new(
-                                                    result.scheduled_finish.to_string(),
-                                                )
-                                                .monospace(),
-                                            ),
-                                        );
-                                        ui.add_sized(
-                                            [widths[5], row_height],
-                                            egui::Label::new(
-                                                egui::RichText::new(result.total_float.to_string())
-                                                    .monospace(),
-                                            ),
-                                        );
-                                        ui.add_sized(
-                                            [widths[6], row_height],
-                                            egui::Label::new(if result.critical {
-                                                "Yes"
-                                            } else {
-                                                "No"
-                                            }),
-                                        );
                                     });
                                 }
                             });

@@ -146,6 +146,10 @@ Progress-driven rescheduling remains queued in v0.3.x below.
       rows follow the table's sort order. Reference behaviour matrix for MS
       Project, P6, Asta Powerproject, ProjectLibre and Aphex recorded in
       `docs/ui-patterns.md`.
+- [x] Activity table column chooser: `Columns` menu in the toolbar lets users
+      pick which columns show in the table (row number always first, Activity
+      column flexes to fill) — MS Project column customization / P6 layouts
+      behaviour, original UI.
 - [ ] Remaining Aphex lookahead stages: published snapshots, the daily
       diary/huddle briefing, production tracking, location clash detection.
 
