@@ -226,6 +226,11 @@ pub struct CadenceApp {
     owner_buffer: String,
     promised_buffer: bool,
     delay_reason_buffer: String,
+    sorted_cache: Vec<Activity>,
+    sorted_edit_version: u64,
+    sorted_key: SortKey,
+    sorted_ascending: bool,
+    show_split_gantt: bool,
 }
 
 impl CadenceApp {
@@ -295,6 +300,11 @@ impl CadenceApp {
             owner_buffer: String::new(),
             promised_buffer: false,
             delay_reason_buffer: String::new(),
+            sorted_cache: Vec::new(),
+            sorted_edit_version: u64::MAX,
+            sorted_key: SortKey::Name,
+            sorted_ascending: true,
+            show_split_gantt: true,
         }
     }
 
@@ -980,11 +990,25 @@ impl CadenceApp {
         }
     }
 
-    fn sorted_activities(&self) -> Vec<Activity> {
+    /// Rebuild the sorted snapshot only when the data or sort order changed.
+    ///
+    /// The table used to clone and sort the whole programme every frame; on a
+    /// 10,000-activity programme that alone dominated the frame time. The
+    /// snapshot is now rebuilt on edits and sort changes only.
+    fn refresh_sorted(&mut self) {
+        if self.sorted_edit_version == self.edit_version
+            && self.sorted_key == self.sort_key
+            && self.sorted_ascending == self.sort_ascending
+            && self.sorted_cache.len() == self.project.activities.len()
+        {
+            return;
+        }
         let mut activities = self.project.activities.clone();
         let schedule = self.schedule.as_ref().ok();
+        let sort_key = self.sort_key;
+        let ascending = self.sort_ascending;
         activities.sort_by(|left, right| {
-            let ordering = match self.sort_key {
+            let ordering = match sort_key {
                 SortKey::Name => left.name.cmp(&right.name),
                 SortKey::Duration => left.original_duration.cmp(&right.original_duration),
                 SortKey::Start => {
@@ -1024,13 +1048,21 @@ impl CadenceApp {
                     left_critical.cmp(&right_critical)
                 }
             };
-            if self.sort_ascending {
+            if ascending {
                 ordering
             } else {
                 ordering.reverse()
             }
         });
-        activities
+        self.sorted_cache = activities;
+        self.sorted_edit_version = self.edit_version;
+        self.sorted_key = self.sort_key;
+        self.sorted_ascending = self.sort_ascending;
+    }
+
+    /// The cached sorted activities.
+    fn sorted(&self) -> &[Activity] {
+        &self.sorted_cache
     }
 }
 
@@ -1078,6 +1110,9 @@ impl eframe::App for CadenceApp {
             let _ = self.stack.redo(&mut self.project);
             self.recompute();
         }
+
+        // Refresh the cached sort order once per edit, not once per frame.
+        self.refresh_sorted();
 
         // Ctrl+1..Ctrl+5: switch views without reaching for the mouse.
         let (ctrl_held, pressed_view) = ctx.input(|input| {
@@ -1158,7 +1193,7 @@ impl eframe::App for CadenceApp {
                 )
             });
             if previous || next {
-                let activities = self.sorted_activities();
+                let activities = self.sorted();
                 if !activities.is_empty() {
                     let current = self
                         .selected
@@ -1218,26 +1253,39 @@ impl eframe::App for CadenceApp {
                 ui.heading("Cadence");
                 ui.separator();
                 ui.label(&self.project.name);
-                if ui.button("Table").clicked() {
-                    self.view_mode = ViewMode::Table;
+                // View tabs: one tab per workspace, MS Project / P6 style.
+                // Selected tab keeps its fill so the active workspace is obvious.
+                let first = &mut true;
+                for (mode, label) in [
+                    (ViewMode::Table, "Table"),
+                    (ViewMode::Gantt, "Gantt"),
+                    (ViewMode::Resources, "Resources"),
+                    (ViewMode::Baselines, "Baselines"),
+                    (ViewMode::Calendars, "Calendars"),
+                    (ViewMode::Audit, "Audit"),
+                    (ViewMode::Lookahead, "Lookahead"),
+                ] {
+                    let selected = self.view_mode == mode;
+                    if *first {
+                        *first = false;
+                    } else {
+                        ui.separator();
+                    }
+                    if ui.button(label).selected(selected).frame(selected).clicked() {
+                        self.view_mode = mode;
+                    }
                 }
-                if ui.button("Gantt").clicked() {
-                    self.view_mode = ViewMode::Gantt;
-                }
-                if ui.button("Resources").clicked() {
-                    self.view_mode = ViewMode::Resources;
-                }
-                if ui.button("Baselines").clicked() {
-                    self.view_mode = ViewMode::Baselines;
-                }
-                if ui.button("Calendars").clicked() {
-                    self.view_mode = ViewMode::Calendars;
-                }
-                if ui.button("Audit").clicked() {
-                    self.view_mode = ViewMode::Audit;
-                }
-                if ui.button("Lookahead").clicked() {
-                    self.view_mode = ViewMode::Lookahead;
+
+                ui.separator();
+                if ui
+                    .button(if self.show_split_gantt {
+                        "Split Gantt: on"
+                    } else {
+                        "Split Gantt: off"
+                    })
+                    .clicked()
+                {
+                    self.show_split_gantt = !self.show_split_gantt;
                 }
                 if ui
                     .button("Save report")
@@ -1568,74 +1616,192 @@ impl eframe::App for CadenceApp {
                             });
                     });
 
-                let schedule = self.schedule.clone();
+                if self.show_split_gantt {
+                    let activities = self.sorted();
+                    egui::Panel::right("workbench_gantt")
+                        .default_size(420.0)
+                        .min_width(300.0)
+                        .resizable(true)
+                        .show(ui, |ui| {
+                            render_gantt(
+                                ui,
+                                &mut self.project,
+                                &mut self.schedule,
+                                &mut self.stack,
+                                &mut self.drag_start,
+                                &mut self.status_message,
+                                activities,
+                                self.pixels_per_day,
+                                &mut self.pixels_per_day,
+                                self.dark,
+                            );
+                        });
+                }
+
+                let schedule = self.schedule.as_ref();
+                let sorted = self.sorted();
+                let selected_id = self.selected;
+                let scroll_to_selection = self.scroll_to_selection;
+                let mut clicked_activity = None;
+                let mut header_clicked = None;
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
                         ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
                     }
                     Ok(schedule) => {
-                        ui.label(format!(
-                            "Project start: {}   Project finish: {}",
-                            schedule.project_start, schedule.project_finish
-                        ));
-                        ui.separator();
-                        ScrollArea::vertical().show(ui, |ui| {
-                            let mut header_clicked = None;
-                            Grid::new("schedule_header")
-                                .spacing([12.0, 4.0])
-                                .show(ui, |ui| {
-                                    for (label, key) in [
-                                        ("Activity", SortKey::Name),
-                                        ("Dur", SortKey::Duration),
-                                        ("Start", SortKey::Start),
-                                        ("Finish", SortKey::Finish),
-                                        ("Float", SortKey::Float),
-                                        ("Critical", SortKey::Critical),
-                                    ] {
-                                        if ui.button(label).clicked() {
-                                            header_clicked = Some(key);
-                                        }
-                                    }
-                                    ui.end_row();
-                                });
+                        let row_height = 20.0;
+                        let spacing = 12.0;
+                        let fixed = 36.0 + 60.0 + 96.0 + 96.0 + 56.0 + 64.0 + spacing * 6.0;
+                        let activity_width = (ui.available_width() - fixed).max(180.0);
+                        let widths = [
+                            36.0,
+                            activity_width,
+                            60.0,
+                            96.0,
+                            96.0,
+                            56.0,
+                            64.0,
+                        ];
 
-                            if let Some(key) = header_clicked {
-                                if self.sort_key == key {
-                                    self.sort_ascending = !self.sort_ascending;
-                                } else {
-                                    self.sort_key = key;
-                                    self.sort_ascending = true;
+                        // Sticky header: a fixed row of sort buttons above the
+                        // virtualised body, so it stays visible while scrolling.
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = spacing;
+                            ui.add_sized(
+                                [widths[0], 22.0],
+                                egui::Label::new(egui::RichText::new("#").weak()),
+                            );
+                            for (index, (label, key)) in [
+                                ("Activity", SortKey::Name),
+                                ("Dur", SortKey::Duration),
+                                ("Start", SortKey::Start),
+                                ("Finish", SortKey::Finish),
+                                ("Float", SortKey::Float),
+                                ("Critical", SortKey::Critical),
+                            ]
+                            .into_iter()
+                            .enumerate()
+                            {
+                                if ui
+                                    .add_sized(
+                                        [widths[index + 1], 22.0],
+                                        egui::Button::new(label).frame(false),
+                                    )
+                                    .clicked()
+                                {
+                                    header_clicked = Some(key);
                                 }
                             }
-
-                            Grid::new("schedule_rows")
-                                .striped(true)
-                                .spacing([12.0, 4.0])
-                                .show(ui, |ui| {
-                                    for activity in self.sorted_activities() {
-                                        if let Some(result) = schedule.activity(activity.id) {
-                                            let selected = self.selected == Some(activity.id);
-                                            let response =
-                                                ui.selectable_label(selected, &activity.name);
-                                            if response.clicked() {
-                                                self.select(activity.id);
-                                            }
-                                            if selected && self.scroll_to_selection {
-                                                response.scroll_to_me(Some(egui::Align::Center));
-                                            }
-                                            ui.label(activity.original_duration.to_string());
-                                            ui.label(result.scheduled_start.to_string());
-                                            ui.label(result.scheduled_finish.to_string());
-                                            ui.label(result.total_float.to_string());
-                                            ui.label(if result.critical { "Yes" } else { "No" });
-                                            ui.end_row();
-                                        }
-                                    }
-                                });
-                            self.scroll_to_selection = false;
                         });
+                        ui.separator();
+
+                        if sorted.is_empty() {
+                            ui.label("No activities yet.");
+                        } else {
+                            let selected_index = selected_id.and_then(|id| {
+                                sorted.iter().position(|activity| activity.id == id)
+                            });
+                            let mut area = ScrollArea::vertical();
+                            if scroll_to_selection {
+                                if let Some(index) = selected_index {
+                                    let offset =
+                                        (index as f32 * row_height - 120.0).max(0.0);
+                                    area = area.vertical_scroll_offset(offset);
+                                }
+                            }
+                            area.show_rows(ui, row_height, sorted.len(), |ui, range| {
+                                ui.spacing_mut().item_spacing.y = 0.0;
+                                for index in range {
+                                    let activity = &sorted[index];
+                                    let Some(result) = schedule.activity(activity.id) else {
+                                        continue;
+                                    };
+                                    let selected = selected_id == Some(activity.id);
+                                    ui.horizontal(|ui| {
+                                        ui.spacing_mut().item_spacing.x = spacing;
+                                        ui.add_sized(
+                                            [widths[0], row_height],
+                                            egui::Label::new(
+                                                egui::RichText::new((index + 1).to_string())
+                                                    .monospace()
+                                                    .weak(),
+                                            ),
+                                        );
+                                        if ui
+                                            .add_sized(
+                                                [widths[1], row_height],
+                                                egui::Button::new(activity.name.as_str())
+                                                    .selected(selected)
+                                                    .frame(selected)
+                                                    .truncate(),
+                                            )
+                                            .clicked()
+                                        {
+                                            clicked_activity = Some(activity.id);
+                                        }
+                                        ui.add_sized(
+                                            [widths[2], row_height],
+                                            egui::Label::new(
+                                                egui::RichText::new(
+                                                    activity.original_duration.to_string(),
+                                                )
+                                                .monospace(),
+                                            ),
+                                        );
+                                        ui.add_sized(
+                                            [widths[3], row_height],
+                                            egui::Label::new(
+                                                egui::RichText::new(
+                                                    result.scheduled_start.to_string(),
+                                                )
+                                                .monospace(),
+                                            ),
+                                        );
+                                        ui.add_sized(
+                                            [widths[4], row_height],
+                                            egui::Label::new(
+                                                egui::RichText::new(
+                                                    result.scheduled_finish.to_string(),
+                                                )
+                                                .monospace(),
+                                            ),
+                                        );
+                                        ui.add_sized(
+                                            [widths[5], row_height],
+                                            egui::Label::new(
+                                                egui::RichText::new(
+                                                    result.total_float.to_string(),
+                                                )
+                                                .monospace(),
+                                            ),
+                                        );
+                                        ui.add_sized(
+                                            [widths[6], row_height],
+                                            egui::Label::new(if result.critical {
+                                                "Yes"
+                                            } else {
+                                                "No"
+                                            }),
+                                        );
+                                    });
+                                }
+                            });
+                        }
                     }
                 });
+                if let Some(key) = header_clicked {
+                    if self.sort_key == key {
+                        self.sort_ascending = !self.sort_ascending;
+                    } else {
+                        self.sort_key = key;
+                        self.sort_ascending = true;
+                    }
+                    self.refresh_sorted();
+                }
+                if let Some(id) = clicked_activity {
+                    self.select(id);
+                }
+                self.scroll_to_selection = false;
             }
             ViewMode::Gantt => {
                 egui::CentralPanel::default().show(ui, |ui| {
@@ -1647,6 +1813,7 @@ impl eframe::App for CadenceApp {
                         &mut self.stack,
                         &mut self.drag_start,
                         &mut self.status_message,
+                        self.sorted(),
                         px,
                         &mut self.pixels_per_day,
                         self.dark,
@@ -1707,7 +1874,7 @@ impl eframe::App for CadenceApp {
                     .map(|schedule| resource_conflicts(&self.project, schedule))
                     .unwrap_or_default();
                 let resources = self.project.resources.clone();
-                let activities = self.sorted_activities();
+                let activities = self.sorted().to_vec();
                 let selected_resource = self.selected_resource;
 
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
@@ -2419,6 +2586,64 @@ impl eframe::App for CadenceApp {
                 self.show_shortcuts_dialog = false;
             }
         }
+
+        // Status bar: project dates and counts, critical count, zoom,
+        // and the most recent status message — MS Project-style footer.
+        egui::TopBottomPanel::bottom("status_bar")
+            .show(ui, |ui| {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 16.0;
+                    let schedule_ok = self.schedule.as_ref().is_ok();
+                    let critical_count = if let Ok(schedule) = self.schedule.as_ref() {
+                        self.project
+                            .activities
+                            .iter()
+                            .filter(|activity| {
+                                schedule
+                                    .activity(activity.id)
+                                    .map_or(false, |result| result.critical)
+                            })
+                            .count()
+                    } else {
+                        0
+                    };
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{}   {} activities   {} critical   Zoom {:.0}%",
+                            if schedule_ok {
+                                format!(
+                                    "{} to {}",
+                                    self.schedule.as_ref().unwrap().project_start,
+                                    self.schedule.as_ref().unwrap().project_finish
+                                )
+                            } else {
+                                "Cannot schedule".to_string()
+                            },
+                            self.project.activities.len(),
+                            critical_count,
+                            self.pixels_per_day / 14.0 * 100.0,
+                        ))
+                        .weak()
+                        .small(),
+                    );
+                    if let Some(message) = &self.status_message {
+                        ui.label("   ·   ");
+                        ui.label(
+                            egui::RichText::new(message).weak().small().color(
+                                egui::Color32::from_rgb(0xC0, 0x39, 0x2B),
+                            ),
+                        );
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("Toggle theme").clicked() {
+                            self.dark = !self.dark;
+                            apply_theme(&ctx, self.dark);
+                        }
+                    });
+                });
+                ui.separator();
+            });
     }
 }
 
@@ -2646,12 +2871,13 @@ fn render_gantt(
     stack: &mut CommandStack,
     drag_start: &mut Option<usize>,
     status_message: &mut Option<String>,
+    activities: &[Activity],
     pixels_per_day: f32,
     pixels_per_day_out: &mut f32,
     dark: bool,
 ) {
     let current_schedule = match schedule.as_ref() {
-        Ok(schedule) => schedule.clone(),
+        Ok(schedule) => schedule,
         Err(error) => {
             ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
             return;
@@ -2662,9 +2888,9 @@ fn render_gantt(
     let total_days = (finish.to_julian_day() - origin.to_julian_day()).max(1) as f32 + 2.0;
     let row_height = 20.0;
     let header_height = 24.0;
-    let total_height = project.activities.len() as f32 * row_height + header_height;
+    let total_height = activities.len() as f32 * row_height + header_height;
     let timeline_width = total_days * pixels_per_day + 40.0;
-    let summary = gantt_summary(&current_schedule);
+    let summary = gantt_summary(current_schedule);
     ui.label(&summary);
     ui.horizontal(|ui| {
         ui.label("Zoom");
@@ -2692,6 +2918,7 @@ fn render_gantt(
         ui.label(format!("{:.0}%", *pixels_per_day_out / 14.0 * 100.0));
     });
 
+    let mut pending_link = None;
     ScrollArea::both().show(ui, |ui| {
         let (rect, response) = ui.allocate_exact_size(
             Vec2::new(timeline_width, total_height),
@@ -2743,7 +2970,7 @@ fn render_gantt(
         if response.drag_started() {
             if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
                 let row = ((pos.y - rect.min.y - header_height) / row_height).floor() as usize;
-                if row < project.activities.len() {
+                if row < activities.len() {
                     *drag_start = Some(row);
                 }
             }
@@ -2753,7 +2980,7 @@ fn render_gantt(
             if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
                 let start_y =
                     rect.min.y + header_height + start_row as f32 * row_height + row_height / 2.0;
-                let start_activity = &project.activities[start_row];
+                let start_activity = &activities[start_row];
                 if let Some(result) = current_schedule.activity(start_activity.id) {
                     let start_days =
                         (result.scheduled_finish.to_julian_day() - origin.to_julian_day()) as f32;
@@ -2771,27 +2998,8 @@ fn render_gantt(
                 if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
                     let end_row =
                         ((pos.y - rect.min.y - header_height) / row_height).floor() as usize;
-                    if end_row < project.activities.len() && end_row != start_row {
-                        let predecessor = project.activities[start_row].id;
-                        let successor = project.activities[end_row].id;
-                        let id = project.next_relationship_id();
-                        let command =
-                            CreateRelationship::new(id, predecessor, successor, LinkType::Fs, 0);
-                        if stack.execute(project, Box::new(command)).is_ok() {
-                            *schedule =
-                                cadence_core::engine::schedule(project).map_err(|e| e.to_string());
-                            if schedule.is_err() {
-                                let _ = stack.undo(project);
-                                *schedule = cadence_core::engine::schedule(project)
-                                    .map_err(|e| e.to_string());
-                                *status_message =
-                                    Some("Cannot add link: cycle detected".to_string());
-                            } else {
-                                *status_message = None;
-                            }
-                        } else {
-                            *status_message = Some("Cannot add link".to_string());
-                        }
+                    if end_row < activities.len() && end_row != start_row {
+                        pending_link = Some((start_row, end_row));
                     }
                 }
             }
@@ -2843,10 +3051,10 @@ fn render_gantt(
             .ceil()
             .max(0.0) as usize
             + 1;
-        let last_row = last_row.min(project.activities.len());
+        let last_row = last_row.min(activities.len());
 
         for row in first_row..last_row {
-            let activity = &project.activities[row];
+            let activity = &activities[row];
             let y = rect.min.y + header_height + row as f32 * row_height;
             if let Some(result) = current_schedule.activity(activity.id) {
                 let start_days =
@@ -2898,24 +3106,24 @@ fn render_gantt(
             }
         }
 
-        // Dependency arrows.
+        // Dependency arrows. Build the id→row index once per frame so the
+        // relationship pass is O(relationships) instead of O(activities ×
+        // relationships) — the latter froze the canvas on large programmes.
+        let row_of: BTreeMap<ActivityId, usize> = activities
+            .iter()
+            .enumerate()
+            .map(|(row, activity)| (activity.id, row))
+            .collect();
         for relationship in &project.relationships {
-            let pred_activity = project
-                .activities
-                .iter()
-                .position(|a| a.id == relationship.predecessor);
-            let succ_activity = project
-                .activities
-                .iter()
-                .position(|a| a.id == relationship.successor);
-            let (Some(pred_row), Some(succ_row)) = (pred_activity, succ_activity) else {
+            let (Some(&pred_row), Some(&succ_row)) = (
+                row_of.get(&relationship.predecessor),
+                row_of.get(&relationship.successor),
+            ) else {
                 continue;
             };
-            if pred_row < first_row && pred_row >= last_row {
-                // skip fully off-screen predecessors
-            }
-            if succ_row < first_row || succ_row >= last_row {
-                // skip off-screen successors
+            let pred_visible = pred_row >= first_row && pred_row < last_row;
+            let succ_visible = succ_row >= first_row && succ_row < last_row;
+            if !pred_visible && !succ_visible {
                 continue;
             }
             let Some(pred_result) = current_schedule.activity(relationship.predecessor) else {
@@ -2939,6 +3147,28 @@ fn render_gantt(
             painter.line_segment([Pos2::new(mid_x, y1), Pos2::new(x1, y1)], stroke);
         }
     });
+
+    if let Some((start_row, end_row)) = pending_link {
+        if start_row < activities.len() && end_row < activities.len() {
+            let predecessor = activities[start_row].id;
+            let successor = activities[end_row].id;
+            let id = project.next_relationship_id();
+            let command = CreateRelationship::new(id, predecessor, successor, LinkType::Fs, 0);
+            if stack.execute(project, Box::new(command)).is_ok() {
+                *schedule = cadence_core::engine::schedule(project).map_err(|e| e.to_string());
+                if schedule.is_err() {
+                    let _ = stack.undo(project);
+                    *schedule =
+                        cadence_core::engine::schedule(project).map_err(|e| e.to_string());
+                    *status_message = Some("Cannot add link: cycle detected".to_string());
+                } else {
+                    *status_message = None;
+                }
+            } else {
+                *status_message = Some("Cannot add link".to_string());
+            }
+        }
+    }
 }
 
 /// Run the Cadence GUI with the given project.

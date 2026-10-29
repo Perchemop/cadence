@@ -134,12 +134,20 @@ Progress-driven rescheduling remains queued in v0.3.x below.
       a documented token palette and type scale (`docs/design/brand.md`,
       `cadence-ui-egui::design`), professional widget styling in both themes,
       and a Gantt with a weekly grid and today line.
-- [ ] Data-density and interaction performance: virtualised table columns,
-      Gantt repaint cost on 10k-row programmes, and perceived-latency pass
-      (no per-frame recomputation on hot paths).
-- [ ] Remaining Aphex lookahead stages (below): published snapshots, the
-      daily diary/huddle briefing, production tracking, location clash
-      detection.
+- [x] Data-density and interaction performance: cached sorted activity list
+      keyed on `edit_version`, borrowed schedule in table and Gantt,
+      O(relationships) dependency arrows via a cached id→row index, and
+      virtualised table rows (`ScrollArea::show_rows`) — no per-frame
+      recomputation on the hot paths.
+- [x] Workbench shell: view tabs across the top (MS Project / P6 style), a
+      status bar with project dates, activity and critical counts, zoom and
+      the last status message, and an optional split Gantt panel on the right
+      of the Table view giving the combined task sheet + Gantt layout; Gantt
+      rows follow the table's sort order. Reference behaviour matrix for MS
+      Project, P6, Asta Powerproject, ProjectLibre and Aphex recorded in
+      `docs/ui-patterns.md`.
+- [ ] Remaining Aphex lookahead stages: published snapshots, the daily
+      diary/huddle briefing, production tracking, location clash detection.
 
 ### Human-gated (recorded, not decided)
 
