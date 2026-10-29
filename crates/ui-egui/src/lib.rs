@@ -2593,7 +2593,7 @@ impl eframe::App for CadenceApp {
                         .filter(|activity| {
                             schedule
                                 .activity(activity.id)
-                                .map_or(false, |result| result.critical)
+                                .is_some_and(|result| result.critical)
                         })
                         .count()
                 } else {
@@ -3045,8 +3045,8 @@ fn render_gantt(
             + 1;
         let last_row = last_row.min(activities.len());
 
-        for row in first_row..last_row {
-            let activity = &activities[row];
+        for (row, activity) in activities.iter().enumerate().take(last_row).skip(first_row)
+        {
             let y = rect.min.y + header_height + row as f32 * row_height;
             if let Some(result) = current_schedule.activity(activity.id) {
                 let start_days =
