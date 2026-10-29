@@ -23,12 +23,11 @@ use cadence_core::calendar_set::CalendarId;
 use cadence_core::engine::schedule;
 use cadence_core::engine::Schedule;
 use cadence_core::engine::{evm_metrics, level_resources, resource_conflicts, resource_histogram};
-use cadence_core::lookahead::lookahead;
+use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType,
     LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind,
 };
-use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
 use time::{Date, Month};
 
@@ -2550,23 +2549,22 @@ impl eframe::App for CadenceApp {
                                     Some("Snapshot name must not be empty.".to_string());
                             } else {
                                 let weeks = [2usize, 4, 6, 12][self.lookahead_weeks.min(3)];
-                                let from = parse_date(self.lookahead_start_buffer.trim())
-                                    .expect("start date already validated");
+                                let from =
+                                    parse_date(self.lookahead_start_buffer.trim())
+                                        .expect("start date already validated");
                                 let id = self.project.next_lookahead_snapshot_id();
-                                let command =
-                                    cadence_commands::CaptureLookaheadSnapshot {
-                                        name: name.to_string(),
-                                        created_at: today(),
-                                        window_start: from,
-                                        window_weeks: weeks as u32,
-                                    };
+                                let command = cadence_commands::CaptureLookaheadSnapshot {
+                                    name: name.to_string(),
+                                    created_at: today(),
+                                    window_start: from,
+                                    window_weeks: weeks as u32,
+                                };
                                 if self.stack.execute(&mut self.project, Box::new(command)).is_ok()
                                 {
                                     self.recompute();
                                     self.lookahead_snapshot_name_buffer.clear();
-                                    self.status_message = Some(
-                                        "Lookahead snapshot published.".to_string(),
-                                    );
+                                    self.status_message =
+                                        Some("Lookahead snapshot published.".to_string());
                                 } else {
                                     self.status_message =
                                         Some("Cannot publish snapshot.".to_string());
@@ -2583,10 +2581,7 @@ impl eframe::App for CadenceApp {
                         for snapshot in &self.project.lookahead_snapshots {
                             let selected = self.selected_lookahead_snapshot == Some(snapshot.id);
                             ui.horizontal(|ui| {
-                                if ui
-                                    .selectable_label(selected, &snapshot.name)
-                                    .clicked()
-                                {
+                                if ui.selectable_label(selected, &snapshot.name).clicked() {
                                     self.selected_lookahead_snapshot = Some(snapshot.id);
                                 }
                                 ui.label(format!(
@@ -2607,8 +2602,10 @@ impl eframe::App for CadenceApp {
                                 ui.heading("Compare with snapshot");
                                 ui.label(format!(
                                     "Snapshot '{}' captured {} ({} weeks from {})",
-                                    snapshot.name, snapshot.created_at, snapshot.window_weeks,
-                                    snapshot.window_start
+                                    snapshot.name,
+                                    snapshot.created_at,
+                                    snapshot.window_weeks,
+                                    snapshot.window_start,
                                 ));
                                 let snapshot_entries: Vec<&LookaheadSnapshotEntry> =
                                     snapshot.entries.iter().collect();

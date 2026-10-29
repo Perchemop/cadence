@@ -1130,7 +1130,16 @@ fn read_lookahead_snapshot_entries(
     )?;
 
     let mut entries = Vec::with_capacity(rows.len());
-    for (snapshot_id, activity_id, name, scheduled_start, scheduled_finish, owner, promised, percent_complete) in rows
+    for (
+        snapshot_id,
+        activity_id,
+        name,
+        scheduled_start,
+        scheduled_finish,
+        owner,
+        promised,
+        percent_complete,
+    ) in rows
     {
         let promised = promised != 0;
         entries.push(LookaheadSnapshotEntryRow {
