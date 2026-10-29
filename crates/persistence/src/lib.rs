@@ -807,13 +807,13 @@ fn read_project(connection: &Connection) -> Result<Project> {
     let daily_notes = read_daily_notes(connection)?;
     project.daily_notes = daily_notes
         .into_iter()
-        .map(|row| DailyNote {
-            id: row.id,
-            date: row.date,
-            content: row.content,
-            activity_id: row.activity_id,
-            lookahead_window_start: row.lookahead_window_start,
-        })
+        .map(|row| DailyNote::new(
+            DailyNoteId(row.id),
+            row.date,
+            row.content,
+            row.activity_id,
+            row.lookahead_window_start,
+        ))
         .collect();
     project.daily_notes.sort_by_key(|note| note.id.0);
     Ok(project)
@@ -1307,7 +1307,7 @@ fn read_daily_notes(connection: &Connection) -> Result<Vec<DailyNoteRow>> {
             .map(parse_date)
             .transpose()?;
         notes.push(DailyNoteRow {
-            id: DailyNoteId(from_sql_id(id, "daily_note")?),
+            id: from_sql_id(id, "daily_note")?,
             date: parse_date(&date)?,
             content,
             activity_id,
