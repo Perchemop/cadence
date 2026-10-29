@@ -2589,61 +2589,60 @@ impl eframe::App for CadenceApp {
 
         // Status bar: project dates and counts, critical count, zoom,
         // and the most recent status message — MS Project-style footer.
-        egui::TopBottomPanel::bottom("status_bar")
-            .show(ui, |ui| {
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 16.0;
-                    let schedule_ok = self.schedule.as_ref().is_ok();
-                    let critical_count = if let Ok(schedule) = self.schedule.as_ref() {
-                        self.project
-                            .activities
-                            .iter()
-                            .filter(|activity| {
-                                schedule
-                                    .activity(activity.id)
-                                    .map_or(false, |result| result.critical)
-                            })
-                            .count()
-                    } else {
-                        0
-                    };
+        egui::TopBottomPanel::bottom("status_bar").show(ui, |ui| {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 16.0;
+                let schedule_ok = self.schedule.as_ref().is_ok();
+                let critical_count = if let Ok(schedule) = self.schedule.as_ref() {
+                    self.project
+                        .activities
+                        .iter()
+                        .filter(|activity| {
+                            schedule
+                                .activity(activity.id)
+                                .map_or(false, |result| result.critical)
+                        })
+                        .count()
+                } else {
+                    0
+                };
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{}   {} activities   {} critical   Zoom {:.0}%",
+                        if schedule_ok {
+                            format!(
+                                "{} to {}",
+                                self.schedule.as_ref().unwrap().project_start,
+                                self.schedule.as_ref().unwrap().project_finish
+                            )
+                        } else {
+                            "Cannot schedule".to_string()
+                        },
+                        self.project.activities.len(),
+                        critical_count,
+                        self.pixels_per_day / 14.0 * 100.0,
+                    ))
+                    .weak()
+                    .small(),
+                );
+                if let Some(message) = &self.status_message {
+                    ui.label("   ·   ");
                     ui.label(
-                        egui::RichText::new(format!(
-                            "{}   {} activities   {} critical   Zoom {:.0}%",
-                            if schedule_ok {
-                                format!(
-                                    "{} to {}",
-                                    self.schedule.as_ref().unwrap().project_start,
-                                    self.schedule.as_ref().unwrap().project_finish
-                                )
-                            } else {
-                                "Cannot schedule".to_string()
-                            },
-                            self.project.activities.len(),
-                            critical_count,
-                            self.pixels_per_day / 14.0 * 100.0,
-                        ))
-                        .weak()
-                        .small(),
+                        egui::RichText::new(message).weak().small().color(
+                            egui::Color32::from_rgb(0xC0, 0x39, 0x2B),
+                        ),
                     );
-                    if let Some(message) = &self.status_message {
-                        ui.label("   ·   ");
-                        ui.label(
-                            egui::RichText::new(message).weak().small().color(
-                                egui::Color32::from_rgb(0xC0, 0x39, 0x2B),
-                            ),
-                        );
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("Toggle theme").clicked() {
+                        self.dark = !self.dark;
+                        apply_theme(&ctx, self.dark);
                     }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Toggle theme").clicked() {
-                            self.dark = !self.dark;
-                            apply_theme(&ctx, self.dark);
-                        }
-                    });
                 });
-                ui.separator();
             });
+            ui.separator();
+        });
     }
 }
 
@@ -3158,8 +3157,7 @@ fn render_gantt(
                 *schedule = cadence_core::engine::schedule(project).map_err(|e| e.to_string());
                 if schedule.is_err() {
                     let _ = stack.undo(project);
-                    *schedule =
-                        cadence_core::engine::schedule(project).map_err(|e| e.to_string());
+                    *schedule = cadence_core::engine::schedule(project).map_err(|e| e.to_string());
                     *status_message = Some("Cannot add link: cycle detected".to_string());
                 } else {
                     *status_message = None;
