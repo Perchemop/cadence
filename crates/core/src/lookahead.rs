@@ -44,6 +44,8 @@ pub struct LookaheadEntry {
     pub owner: Option<String>,
     /// True when the activity is a promised near-term task.
     pub promised: bool,
+    /// Percent complete in basis points at the time of extraction.
+    pub percent_complete: i64,
 }
 
 /// Extract the lookahead window: activities scheduled to work between `from`
@@ -84,6 +86,7 @@ pub fn lookahead(
                 in_progress: scheduled.scheduled_start < window_start,
                 owner: activity.owner.clone(),
                 promised: activity.promised,
+                percent_complete: activity.percent_complete.unwrap_or_default(),
             })
         })
         .collect();
