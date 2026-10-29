@@ -1134,14 +1134,14 @@ fn read_lookahead_snapshots(connection: &Connection) -> Result<Vec<LookaheadSnap
                 "lookahead snapshot {id} has invalid window_weeks {window_weeks}"
             ))
         })?;
-        snapshots.push(LookaheadSnapshot {
-            id: LookaheadSnapshotId(from_sql_id(id, "lookahead_snapshot")?),
+        snapshots.push(LookaheadSnapshot::from_entries(
+            LookaheadSnapshotId(from_sql_id(id, "lookahead_snapshot")?),
             name,
-            created_at: parse_date(&created_at)?,
-            window_start: parse_date(&window_start)?,
+            parse_date(&created_at)?,
+            parse_date(&window_start)?,
             window_weeks,
-            entries: Vec::new(),
-        });
+            Vec::new(),
+        ));
     }
     Ok(snapshots)
 }
