@@ -1759,7 +1759,7 @@ impl eframe::App for CadenceApp {
                                     )
                                     .clicked()
                                 {
-                                    header_clicked = Some(*key);
+                                    header_clicked = Some(key);
                                 }
                             }
                         });
