@@ -253,7 +253,25 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                  ALTER TABLE activities ADD COLUMN owner TEXT;
                  ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
                  ALTER TABLE activities ADD COLUMN delay_reason TEXT;
-                 PRAGMA user_version = 5;",
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+                     id          INTEGER PRIMARY KEY,
+                     name        TEXT    NOT NULL,
+                     created_at  TEXT    NOT NULL,
+                     window_start TEXT   NOT NULL,
+                     window_weeks INTEGER NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+                     snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     name            TEXT    NOT NULL,
+                     scheduled_start TEXT    NOT NULL,
+                     scheduled_finish TEXT   NOT NULL,
+                     owner           TEXT,
+                     promised        INTEGER NOT NULL DEFAULT 0,
+                     percent_complete INTEGER NOT NULL DEFAULT 0,
+                     PRIMARY KEY (snapshot_id, activity_id)
+                 );
+                 PRAGMA user_version = 6;",
             )?;
             Ok(())
         }
@@ -295,7 +313,25 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                  ALTER TABLE activities ADD COLUMN owner TEXT;
                  ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
                  ALTER TABLE activities ADD COLUMN delay_reason TEXT;
-                 PRAGMA user_version = 5;",
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+                     id          INTEGER PRIMARY KEY,
+                     name        TEXT    NOT NULL,
+                     created_at  TEXT    NOT NULL,
+                     window_start TEXT   NOT NULL,
+                     window_weeks INTEGER NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+                     snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     name            TEXT    NOT NULL,
+                     scheduled_start TEXT    NOT NULL,
+                     scheduled_finish TEXT   NOT NULL,
+                     owner           TEXT,
+                     promised        INTEGER NOT NULL DEFAULT 0,
+                     percent_complete INTEGER NOT NULL DEFAULT 0,
+                     PRIMARY KEY (snapshot_id, activity_id)
+                 );
+                 PRAGMA user_version = 6;",
             )?;
             Ok(())
         }
@@ -307,7 +343,25 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                  ALTER TABLE activities ADD COLUMN owner TEXT;
                  ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
                  ALTER TABLE activities ADD COLUMN delay_reason TEXT;
-                 PRAGMA user_version = 5;",
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+                     id          INTEGER PRIMARY KEY,
+                     name        TEXT    NOT NULL,
+                     created_at  TEXT    NOT NULL,
+                     window_start TEXT   NOT NULL,
+                     window_weeks INTEGER NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+                     snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     name            TEXT    NOT NULL,
+                     scheduled_start TEXT    NOT NULL,
+                     scheduled_finish TEXT   NOT NULL,
+                     owner           TEXT,
+                     promised        INTEGER NOT NULL DEFAULT 0,
+                     percent_complete INTEGER NOT NULL DEFAULT 0,
+                     PRIMARY KEY (snapshot_id, activity_id)
+                 );
+                 PRAGMA user_version = 6;",
             )?;
             Ok(())
         }
@@ -319,7 +373,25 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                 "ALTER TABLE activities ADD COLUMN owner TEXT;
                  ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
                  ALTER TABLE activities ADD COLUMN delay_reason TEXT;
-                 PRAGMA user_version = 5;",
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+                     id          INTEGER PRIMARY KEY,
+                     name        TEXT    NOT NULL,
+                     created_at  TEXT    NOT NULL,
+                     window_start TEXT   NOT NULL,
+                     window_weeks INTEGER NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+                     snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     name            TEXT    NOT NULL,
+                     scheduled_start TEXT    NOT NULL,
+                     scheduled_finish TEXT   NOT NULL,
+                     owner           TEXT,
+                     promised        INTEGER NOT NULL DEFAULT 0,
+                     percent_complete INTEGER NOT NULL DEFAULT 0,
+                     PRIMARY KEY (snapshot_id, activity_id)
+                 );
+                 PRAGMA user_version = 6;",
             )?;
             Ok(())
         }
