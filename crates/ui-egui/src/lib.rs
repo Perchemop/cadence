@@ -2549,9 +2549,8 @@ impl eframe::App for CadenceApp {
                                     Some("Snapshot name must not be empty.".to_string());
                             } else {
                                 let weeks = [2usize, 4, 6, 12][self.lookahead_weeks.min(3)];
-                                let from =
-                                    parse_date(self.lookahead_start_buffer.trim())
-                                        .expect("start date already validated");
+                                let from = parse_date(self.lookahead_start_buffer.trim())
+                                    .expect("start date already validated");
                                 let id = self.project.next_lookahead_snapshot_id();
                                 let command = cadence_commands::CaptureLookaheadSnapshot {
                                     name: name.to_string(),
@@ -2559,7 +2558,10 @@ impl eframe::App for CadenceApp {
                                     window_start: from,
                                     window_weeks: weeks as u32,
                                 };
-                                if self.stack.execute(&mut self.project, Box::new(command)).is_ok()
+                                if self
+                                    .stack
+                                    .execute(&mut self.project, Box::new(command))
+                                    .is_ok()
                                 {
                                     self.recompute();
                                     self.lookahead_snapshot_name_buffer.clear();
