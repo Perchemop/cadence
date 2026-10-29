@@ -745,15 +745,15 @@ fn read_project(connection: &Connection) -> Result<Project> {
             .iter_mut()
             .find(|candidate| candidate.id == LookaheadSnapshotId(row.snapshot_id))
         {
-            snapshot.entries.push(LookaheadSnapshotEntry {
-                activity_id: ActivityId(row.activity_id),
-                name: row.name,
-                scheduled_start: row.scheduled_start,
-                scheduled_finish: row.scheduled_finish,
-                owner: row.owner,
-                promised: row.promised,
-                percent_complete: row.percent_complete,
-            });
+            snapshot.entries.push(LookaheadSnapshotEntry::new(
+                ActivityId(row.activity_id),
+                row.name,
+                row.scheduled_start,
+                row.scheduled_finish,
+                row.owner,
+                row.promised,
+                row.percent_complete,
+            ));
         }
     }
     project
