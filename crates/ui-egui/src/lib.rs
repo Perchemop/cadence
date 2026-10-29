@@ -28,12 +28,11 @@ use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, Project,
     ResourceId, ResourceKind,
 };
-use egui::{
-    Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2, Visuals,
-};
+use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
 use time::{Date, Month};
 
 pub mod crash;
+pub mod design;
 pub mod update_check;
 
 /// Accent colour used for selection and highlights in both themes.
@@ -71,14 +70,7 @@ impl DesignTokens {
 
 /// Apply a theme to an egui context.
 pub fn apply_theme(ctx: &Context, dark: bool) {
-    let mut visuals = if dark {
-        Visuals::dark()
-    } else {
-        Visuals::light()
-    };
-    visuals.selection.bg_fill = ACCENT;
-    visuals.hyperlink_color = ACCENT;
-    ctx.set_visuals(visuals);
+    design::apply(ctx, dark);
 }
 
 /// Sort key for the activity table.
@@ -1657,6 +1649,7 @@ impl eframe::App for CadenceApp {
                         &mut self.status_message,
                         px,
                         &mut self.pixels_per_day,
+                        self.dark,
                     );
                 });
             }
@@ -2655,6 +2648,7 @@ fn render_gantt(
     status_message: &mut Option<String>,
     pixels_per_day: f32,
     pixels_per_day_out: &mut f32,
+    dark: bool,
 ) {
     let current_schedule = match schedule.as_ref() {
         Ok(schedule) => schedule.clone(),
@@ -2709,6 +2703,41 @@ fn render_gantt(
         let mut painter = ui.painter_at(rect);
         let clip = ui.clip_rect().intersect(rect);
         painter.set_clip_rect(clip);
+
+        // Weekly hairlines and the today line: structure in low-contrast
+        // strokes, so colour stays reserved for meaning.
+        let grid_color = if dark {
+            Color32::from_rgb(0x2A, 0x2E, 0x36)
+        } else {
+            Color32::from_rgb(0xE5, 0xE7, 0xEB)
+        };
+        let mut week_origin = origin;
+        while week_origin < finish {
+            if week_origin > origin {
+                let x = rect.min.x
+                    + (week_origin.to_julian_day() - origin.to_julian_day()) as f32
+                        * pixels_per_day;
+                if x >= rect.min.x && x <= rect.max.x {
+                    painter.line_segment(
+                        [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
+                        egui::Stroke::new(1.0, grid_color),
+                    );
+                }
+            }
+            week_origin = project
+                .calendar
+                .add_working_days(week_origin, 5)
+                .unwrap_or(week_origin);
+        }
+        let now = today();
+        if now >= origin && now <= finish {
+            let x =
+                rect.min.x + (now.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
+            painter.line_segment(
+                [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
+                egui::Stroke::new(1.5, ACCENT),
+            );
+        }
 
         // Drag-to-create dependency links.
         if response.drag_started() {
@@ -2919,6 +2948,7 @@ pub fn run(project: Project) -> Result<(), String> {
         "Cadence",
         options,
         Box::new(|cc| {
+            design::install_fonts(&cc.egui_ctx);
             apply_theme(&cc.egui_ctx, true);
             Ok(Box::new(CadenceApp::new(project)))
         }),

@@ -128,6 +128,19 @@ touches the scheduling engine. See D18 for the decisions and
 
 Progress-driven rescheduling remains queued in v0.3.x below.
 
+### Next slice (decided 2026-10-28, owner request: "looks and performs nothing like a paid application")
+
+- [x] Design system foundation: the UI ships the Inter typeface (SIL OFL 1.1),
+      a documented token palette and type scale (`docs/design/brand.md`,
+      `cadence-ui-egui::design`), professional widget styling in both themes,
+      and a Gantt with a weekly grid and today line.
+- [ ] Data-density and interaction performance: virtualised table columns,
+      Gantt repaint cost on 10k-row programmes, and perceived-latency pass
+      (no per-frame recomputation on hot paths).
+- [ ] Remaining Aphex lookahead stages (below): published snapshots, the
+      daily diary/huddle briefing, production tracking, location clash
+      detection.
+
 ### Human-gated (recorded, not decided)
 
 - [ ] Name conflict check and trademark search for "Cadence"; reserve the
