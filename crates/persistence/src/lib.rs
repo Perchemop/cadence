@@ -1040,20 +1040,6 @@ fn read_baseline_snapshots(connection: &Connection) -> Result<Vec<BaselineSnapsh
     Ok(snapshots)
 }
 
-/// One lookahead snapshot row as stored in the database.
-struct LookaheadSnapshotRow {
-    /// Snapshot the row belongs to.
-    snapshot_id: u64,
-    /// Human-readable name.
-    name: String,
-    /// Date the snapshot was captured.
-    created_at: Date,
-    /// First day of the published window.
-    window_start: Date,
-    /// Length of the window in calendar weeks.
-    window_weeks: u32,
-}
-
 fn read_lookahead_snapshots(connection: &Connection) -> Result<Vec<LookaheadSnapshot>> {
     let rows = collect_rows(
         connection,
