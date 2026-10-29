@@ -2551,7 +2551,6 @@ impl eframe::App for CadenceApp {
                                 let weeks = [2usize, 4, 6, 12][self.lookahead_weeks.min(3)];
                                 let from = parse_date(self.lookahead_start_buffer.trim())
                                     .expect("start date already validated");
-                                let id = self.project.next_lookahead_snapshot_id();
                                 let command = cadence_commands::CaptureLookaheadSnapshot {
                                     name: name.to_string(),
                                     created_at: today(),
