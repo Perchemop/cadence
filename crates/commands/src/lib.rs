@@ -1180,11 +1180,10 @@ impl Command for CaptureLookaheadSnapshot {
     }
 
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
-        let schedule = cadence_core::engine::schedule(project).map_err(|error| error.to_string())?;
         let id = project.next_lookahead_snapshot_id();
         let snapshot = capture_lookahead_snapshot(
             project,
-            &schedule,
+            &cadence_core::engine::schedule(project).map_err(|error| error.to_string())?,
             id,
             self.name.clone(),
             self.created_at,
