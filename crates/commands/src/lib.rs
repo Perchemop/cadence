@@ -1271,13 +1271,13 @@ impl Command for CreateDailyNote {
             }
         }
         let id = project.next_daily_note_id();
-        let note = DailyNote {
+        let note = DailyNote::new(
             id,
-            date: self.date,
-            content: self.content.clone(),
-            activity_id: self.activity_id,
-            lookahead_window_start: self.lookahead_window_start,
-        };
+            self.date,
+            self.content.clone(),
+            self.activity_id,
+            self.lookahead_window_start,
+        );
         project.daily_notes.push(note);
         Ok(Box::new(DeleteDailyNote { id }))
     }

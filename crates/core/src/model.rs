@@ -1184,6 +1184,25 @@ pub struct DailyNote {
     pub lookahead_window_start: Option<Date>,
 }
 
+impl DailyNote {
+    /// Construct a new daily note.
+    pub fn new(
+        id: DailyNoteId,
+        date: Date,
+        content: String,
+        activity_id: Option<ActivityId>,
+        lookahead_window_start: Option<Date>,
+    ) -> Self {
+        Self {
+            id,
+            date,
+            content,
+            activity_id,
+            lookahead_window_start,
+        }
+    }
+}
+
 /// Earned value metrics for a project or activity.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EvmMetrics {

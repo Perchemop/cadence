@@ -16,8 +16,8 @@ use std::path::Path;
 use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
-    LinkType, LookaheadSnapshot, LookaheadSnapshotEntry, LookaheadSnapshotId, Project,
-    Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
+    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    LookaheadSnapshotId, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsTree};
 use rusqlite::{params, Connection};
@@ -1277,7 +1277,7 @@ struct DailyNoteRow {
     /// Note content.
     content: String,
     /// Optional activity the note concerns.
-    activity_id: Option<u64>,
+    activity_id: Option<ActivityId>,
     /// Optional lookahead window start the note concerns.
     lookahead_window_start: Option<Date>,
 }
@@ -1299,7 +1299,9 @@ fn read_daily_notes(connection: &Connection) -> Result<Vec<DailyNoteRow>> {
 
     let mut notes = Vec::with_capacity(rows.len());
     for (id, date, content, activity_id, lookahead_window_start) in rows {
-        let activity_id = activity_id.map(|id| ActivityId(from_sql_id(id, "activity")?));
+        let activity_id = activity_id
+            .map(|id| from_sql_id(id, "activity").map(ActivityId))
+            .transpose()?;
         let lookahead_window_start = lookahead_window_start
             .as_deref()
             .map(parse_date)
