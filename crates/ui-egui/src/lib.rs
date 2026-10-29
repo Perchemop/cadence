@@ -1739,11 +1739,7 @@ impl eframe::App for CadenceApp {
                             (available - fixed_sum - spacing * (defs.len() as f32 - 1.0)).max(0.0);
                         let mut widths: Vec<f32> = Vec::with_capacity(defs.len());
                         for (_, _, w) in &defs {
-                            widths.push(if *w == 0.0 {
-                                flexible_budget
-                            } else {
-                                *w
-                            });
+                            widths.push(if *w == 0.0 { flexible_budget } else { *w });
                         }
 
                         // Sticky header: a fixed row of sort buttons above the
@@ -1754,7 +1750,8 @@ impl eframe::App for CadenceApp {
                                 [widths[0], 22.0],
                                 egui::Label::new(egui::RichText::new("#").weak()),
                             );
-                            for (index, (Some(key), _label, _w)) in defs.iter().enumerate().skip(1) {
+                            for (index, col) in defs.iter().enumerate().skip(1) {
+                                let Some(key) = col.0 else { continue; };
                                 if ui
                                     .add_sized(
                                         [widths[index], 22.0],
