@@ -538,14 +538,7 @@ pub fn capture_lookahead_snapshot(
             percent_complete: entry.percent_complete,
         })
         .collect();
-    LookaheadSnapshot::from_entries(
-        id,
-        name,
-        created_at,
-        window_start,
-        window_weeks,
-        entries,
-    )
+    LookaheadSnapshot::from_entries(id, name, created_at, window_start, window_weeks, entries)
 }
 
 /// Compute earned value metrics for the whole project against a baseline.

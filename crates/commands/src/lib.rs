@@ -1216,10 +1216,7 @@ impl Command for RemoveLookaheadSnapshot {
             return Err(format!("lookahead snapshot {} does not exist", self.id));
         };
         let snapshot = project.lookahead_snapshots.remove(position);
-        Ok(Box::new(RestoreLookaheadSnapshot {
-            snapshot,
-            position,
-        }))
+        Ok(Box::new(RestoreLookaheadSnapshot { snapshot, position }))
     }
 }
 
