@@ -2631,8 +2631,8 @@ impl eframe::App for CadenceApp {
                                                 ));
                                                 ui.label(format!(
                                                     "start {:+}d / finish {:+}d",
-                                                    start_variance.num_days(),
-                                                    finish_variance.num_days()
+                                                    start_variance.whole_days(),
+                                                    finish_variance.whole_days()
                                                 ));
                                             });
                                         }
