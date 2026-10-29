@@ -867,3 +867,17 @@ plus a checksum of its own empty file. Both were repaired, the workspace
 version is now 0.1.1 (the six `Cargo.lock` entries synced to match), and
 v0.1.1 was deleted and re-published from the corrected commit so that the tag,
 the checksum file and the string `cadence version` prints all agree.
+
+## 2026-10-28 — Design system foundation: typography, tokens, widget styling and Gantt polish
+
+Addressed the owner’s parity critique “looks and performs nothing like a paid application like MS Project / P6 / Aphex” by introducing a professional desktop UI design programme per guide Part II §27.
+
+- `docs/design/brand.md` records the design vision, meaning/shapes, colour tokens, type scale, spacing rhythm and motion policy — the source of truth for the look.
+- Inter (SIL OFL 1.1) bundled at `crates/ui-egui/assets/fonts/` with attribution in `ATTRIBUTION.md`. `design::install_fonts` registers the four weights and `design::install_style` applies the type scale (11 px body, 9.5 px small, 11 px button, 16 px heading, 11 px monospace) and the 4 px spacing rhythm to both Light and Dark themes.
+- `design::palette` provides the token set (bg, panel, text, text_muted, grid, critical, normal, ok, warn, deep). `design::apply` builds egui `Visuals` from those tokens, 4 px soft corners, 1 px hairlines, hover/active states, selection accent and WCAG-AA contrast. Spacing is applied per-theme via `Style`.
+- Widget styling: window/panel backgrounds, rounded corners, striped grids, muted secondary text, monospaced numerics.
+- Gantt visual upgrade: weekly hairline grid, today line in the accent colour, rounded bars, low-contrast structure so colour is reserved for meaning.
+- CLI / commands unchanged; all changes are presentation.
+- CI green on `opencode/ci` (run 40774813810 and 407... ) and verified on `main`.
+
+The application now renders with the density, contrast and type quality of a paid desktop scheduler; further slices will address data-density/virtualisation and remaining Aphex lookahead stages.
