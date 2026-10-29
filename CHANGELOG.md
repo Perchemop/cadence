@@ -25,6 +25,10 @@ follows Keep a Changelog; releases use git tags.
   Gantt panel on the right of the Table view ("Split Gantt: on/off") giving
   the combined task sheet + Gantt layout of MS Project and P6; Gantt rows
   follow the table's sort order.
+- **Activity table column chooser**: a `Columns` menu in the toolbar lets
+  users pick which columns show in the table (row number always first, Activity
+  column flexes to fill) — MS Project column customization / P6 layouts
+  behaviour, original UI.
 - `docs/ui-patterns.md`: clean-room observable-behaviour reference matrix for
   Microsoft Project, Primavera P6, Asta Powerproject, ProjectLibre and Aphex,
   scoped to behaviour only (no code, UI, strings or assets copied).

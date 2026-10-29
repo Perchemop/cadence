@@ -43,7 +43,7 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | Capability | Status | Notes |
 |---|---|---|
 | Interactive Gantt | done | timeline, bars, arrows, zoom/pan; O(relationships) arrow pass via a cached id→row index, schedule borrowed instead of cloned per frame |
-| Activity table | done | sortable columns, selection, inspector edits via commands; cached sort keyed on `edit_version`, virtualised rows with `ScrollArea::show_rows`, row numbers, sticky header |
+| Activity table | done | sortable columns, selection, inspector edits via commands; cached sort keyed on `edit_version`, virtualised rows with `ScrollArea::show_rows`, row numbers, sticky header; **column chooser** lets users pick visible columns (MS Project / P6 layouts) |
 | Dependency editing | done | drag-to-create links, lag editing, cycle prevention |
 | Zoom / pan | done | Ctrl+wheel zoom in the Gantt view, scroll areas for panning |
 | Phase-2 QC gate | done | `docs/qc/phase-2.md` |
