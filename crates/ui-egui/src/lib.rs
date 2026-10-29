@@ -1271,7 +1271,10 @@ impl eframe::App for CadenceApp {
                     } else {
                         ui.separator();
                     }
-                    if ui.add(egui::Button::new(label).selected(selected).frame(selected)).clicked() {
+                    if ui
+                        .add(egui::Button::new(label).selected(selected).frame(selected))
+                        .clicked()
+                    {
                         self.view_mode = mode;
                     }
                 }
@@ -1653,15 +1656,7 @@ impl eframe::App for CadenceApp {
                         let spacing = 12.0;
                         let fixed = 36.0 + 60.0 + 96.0 + 96.0 + 56.0 + 64.0 + spacing * 6.0;
                         let activity_width = (ui.available_width() - fixed).max(180.0);
-                        let widths = [
-                            36.0,
-                            activity_width,
-                            60.0,
-                            96.0,
-                            96.0,
-                            56.0,
-                            64.0,
-                        ];
+                        let widths = [36.0, activity_width, 60.0, 96.0, 96.0, 56.0, 64.0];
 
                         // Sticky header: a fixed row of sort buttons above the
                         // virtualised body, so it stays visible while scrolling.
@@ -1704,8 +1699,7 @@ impl eframe::App for CadenceApp {
                             let mut area = ScrollArea::vertical();
                             if scroll_to_selection {
                                 if let Some(index) = selected_index {
-                                    let offset =
-                                        (index as f32 * row_height - 120.0).max(0.0);
+                                    let offset = (index as f32 * row_height - 120.0).max(0.0);
                                     area = area.vertical_scroll_offset(offset);
                                 }
                             }
@@ -1769,10 +1763,8 @@ impl eframe::App for CadenceApp {
                                         ui.add_sized(
                                             [widths[5], row_height],
                                             egui::Label::new(
-                                                egui::RichText::new(
-                                                    result.total_float.to_string(),
-                                                )
-                                                .monospace(),
+                                                egui::RichText::new(result.total_float.to_string())
+                                                    .monospace(),
                                             ),
                                         );
                                         ui.add_sized(
@@ -2629,9 +2621,10 @@ impl eframe::App for CadenceApp {
                 if let Some(message) = &self.status_message {
                     ui.label("   ·   ");
                     ui.label(
-                        egui::RichText::new(message).weak().small().color(
-                            egui::Color32::from_rgb(0xC0, 0x39, 0x2B),
-                        ),
+                        egui::RichText::new(message)
+                            .weak()
+                            .small()
+                            .color(egui::Color32::from_rgb(0xC0, 0x39, 0x2B)),
                     );
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
