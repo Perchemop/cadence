@@ -150,8 +150,16 @@ Progress-driven rescheduling remains queued in v0.3.x below.
       pick which columns show in the table (row number always first, Activity
       column flexes to fill) — MS Project column customization / P6 layouts
       behaviour, original UI.
-- [ ] Remaining Aphex lookahead stages: published snapshots, the daily
-      diary/huddle briefing, production tracking, location clash detection.
+- [x] Published lookahead snapshots: capture a rolling lookahead window as a
+      named, read-only snapshot (`CaptureLookaheadSnapshot` command, undoable),
+      compare a later window against it to detect start/finish variance, and
+      persist snapshots in the project file (schema v6). `LookaheadSnapshotId`,
+      `LookaheadSnapshotEntry`, `LookaheadSnapshot` types in `cadence-core`;
+      `capture_lookahead_snapshot` in `cadence-core::engine`; GUI **Publish
+      snapshot** button and snapshot comparison view in the Lookahead tab
+      (`Ctrl+7`).
+- [ ] Remaining Aphex lookahead stages: the daily diary/huddle briefing,
+      production tracking, location clash detection.
 
 ### Human-gated (recorded, not decided)
 

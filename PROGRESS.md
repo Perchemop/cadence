@@ -913,3 +913,27 @@ behaviour matrix).
   `ordered_columns`/`all_columns`/`label`/`width` helpers.
 - Pending: CI verification (heavy toolchain runs in GitHub Actions only).
 
+## 2026-10-30 — Lookahead published snapshots
+
+Published a rolling lookahead window as a named, read-only snapshot, compared
+a later window against it to detect start/finish variance, and persisted
+snapshots in the project file (schema v6) — first stage of the remaining
+Aphex lookahead stages.
+
+- `crates/core/src/model.rs`: `LookaheadSnapshotId`, `LookaheadSnapshotEntry`,
+  `LookaheadSnapshot` types; `Project::lookahead_snapshots` and
+  `Project::next_lookahead_snapshot_id()`; `LookaheadSnapshot::from_entries()`
+  constructor and `entry()` lookup.
+- `crates/core/src/engine.rs`: `capture_lookahead_snapshot()` derives entries
+  from the lookahead window via `cadence_core::lookahead::lookahead()`.
+- `crates/commands/src/lib.rs`: `CaptureLookaheadSnapshot`, `RemoveLookaheadSnapshot`,
+  `RestoreLookaheadSnapshot` commands — all undoable through the command stack.
+- `crates/persistence/src/lib.rs`: schema v6 with `lookahead_snapshots` and
+  `lookahead_snapshot_entries` tables; migrations from v1-v4 go straight to v6;
+  round-trip read/write for snapshots and entries.
+- `crates/ui-egui/src/lib.rs`: **Publish snapshot** button in the Lookahead
+  view (`Ctrl+7`), snapshot list, start/finish variance comparison against a
+  selected snapshot, and clear comparison.
+- Workspace version bumped to 0.4.0 (semver-minor: new pub types and fields).
+- CI green on all required checks; PR #53 merged to `main`.
+

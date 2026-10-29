@@ -32,6 +32,14 @@ follows Keep a Changelog; releases use git tags.
 - `docs/ui-patterns.md`: clean-room observable-behaviour reference matrix for
   Microsoft Project, Primavera P6, Asta Powerproject, ProjectLibre and Aphex,
   scoped to behaviour only (no code, UI, strings or assets copied).
+- **Lookahead published snapshots**: capture a rolling lookahead window as a
+  named, read-only snapshot, compare a later window against it to detect
+  start/finish variance, and persist snapshots in the project file (schema v6).
+  `LookaheadSnapshotId`, `LookaheadSnapshotEntry`, `LookaheadSnapshot` in
+  `cadence-core::model`; `capture_lookahead_snapshot` in `cadence-core::engine`;
+  `CaptureLookaheadSnapshot`, `RemoveLookaheadSnapshot`, `RestoreLookaheadSnapshot`
+  commands in `cadence-commands`; GUI **Publish snapshot** button and snapshot
+  comparison view in the **Lookahead** view (`Ctrl+7`).
 
 ## [0.3.0] — 2026-10-28
 
