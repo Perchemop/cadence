@@ -26,6 +26,7 @@ use crate::model::{Activity, ActivityId, Project};
 
 /// One activity in the lookahead window.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct LookaheadEntry {
     /// Activity identifier.
     pub id: ActivityId,

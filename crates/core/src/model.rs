@@ -1036,6 +1036,7 @@ impl std::fmt::Display for LookaheadSnapshotId {
 /// A snapshot of one activity's values at the time a lookahead window is
 /// published.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct LookaheadSnapshotEntry {
     /// Activity identifier.
     pub activity_id: ActivityId,
@@ -1056,6 +1057,7 @@ pub struct LookaheadSnapshotEntry {
 /// A published lookahead window: a named, read-only snapshot of the near-term
 /// plan that can be compared against later windows to detect drift.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct LookaheadSnapshot {
     /// Stable identifier.
     pub id: LookaheadSnapshotId,
