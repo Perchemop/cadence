@@ -881,3 +881,30 @@ Addressed the owner’s parity critique “looks and performs nothing like a pai
 - CI green on `opencode/ci` (run 40774813810 and 407... ) and verified on `main`.
 
 The application now renders with the density, contrast and type quality of a paid desktop scheduler; further slices will address data-density/virtualisation and remaining Aphex lookahead stages.
+
+## 2026-10-29 — Table and Gantt performance pass; workbench shell
+
+Addressed the owner's parity critique on the performance side and broadened
+the UI reference set beyond Aphex to MS Project, Primavera P6, Asta
+Powerproject and ProjectLibre (`docs/ui-patterns.md` records the clean-room
+behaviour matrix).
+
+- `CadenceApp` now caches the sorted activity list (`sorted_cache`) keyed on
+  `edit_version`/sort key/direction instead of cloning and sorting the whole
+  programme every frame; `refresh_sorted()` runs once per edit.
+- The activity table uses `ScrollArea::show_rows` (fixed row height, fixed
+  column widths, row numbers, truncated names, sticky sortable header) so only
+  visible rows are laid out each frame.
+- `render_gantt` borrows the schedule instead of cloning it per frame and
+  builds a cached activity id→row index once per frame, so dependency arrows
+  are O(relationships) instead of O(activities × relationships).
+- New workbench shell: view tabs across the top (MS Project / P6 style),
+  a status bar with project start/finish, activity count, critical count,
+  zoom and the last status message, and an optional split Gantt panel on the
+  right of the Table view ("Split Gantt: on/off") matching the combined
+  task-sheet + Gantt layout of MS Project and P6.
+- Gantt rows follow the table's sort order so table and canvas stay aligned.
+- `docs/ui-patterns.md`: clean-room observable-behaviour matrix for MS
+  Project, P6, Asta Powerproject, ProjectLibre and Aphex.
+- Pending: CI verification (heavy toolchain runs in GitHub Actions only).
+

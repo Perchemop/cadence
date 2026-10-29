@@ -42,8 +42,8 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 
 | Capability | Status | Notes |
 |---|---|---|
-| Interactive Gantt | done | timeline, bars, arrows, zoom/pan, virtualised rows |
-| Activity table | done | sortable columns, selection, inspector edits via commands |
+| Interactive Gantt | done | timeline, bars, arrows, zoom/pan; O(relationships) arrow pass via a cached id→row index, schedule borrowed instead of cloned per frame |
+| Activity table | done | sortable columns, selection, inspector edits via commands; cached sort keyed on `edit_version`, virtualised rows with `ScrollArea::show_rows`, row numbers, sticky header |
 | Dependency editing | done | drag-to-create links, lag editing, cycle prevention |
 | Zoom / pan | done | Ctrl+wheel zoom in the Gantt view, scroll areas for panning |
 | Phase-2 QC gate | done | `docs/qc/phase-2.md` |
@@ -84,7 +84,7 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | Calendar management in the UI | done | Calendars view: list, create, rename, delete, working-day and holiday editing, per-activity assignment |
 | Keyboard map | done | Ctrl+Z/Y undo-redo, Ctrl+1..5 view switching, Ctrl+D theme, Up/Down table selection, Ctrl+Plus/Minus/0 Gantt zoom, F1 shortcut window; every view reviewed for pointer-only paths |
 | Accessibility audit | done for the code-level scope | AccessKit is enabled by eframe's defaults; standard widgets expose labels/roles, the Gantt canvas has a `WidgetInfo` summary, and WCAG AA contrast is tested (`accessibility_tests`); per-bar Gantt nodes, live-region status text and manual screen-reader passes are recorded in `ACCESSIBILITY.md` |
-| Performance pass | in progress | 10k-activity schedule, 10k-day resource analysis and 200-activity leveling all time-budgeted in CI; smooth-interaction profiling pending |
+| Performance pass | done for the hot paths | cached sorted activity list, borrowed schedule in table and Gantt, O(relationships) dependency arrows, virtualised table rows; table + Gantt workbench split, view tabs and status bar added |
 | Documentation, example projects, first tagged release | in progress | `docs/usage.md` and the `bridge_report` example added; tagging is a release decision |
 
 ## Future expansion (approved 2026-10-27, queued)
