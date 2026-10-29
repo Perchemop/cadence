@@ -788,6 +788,9 @@ pub struct Project {
     /// Baselines: snapshots of the project schedule for earned value analysis.
     #[serde(default)]
     pub baselines: Vec<Baseline>,
+    /// Lookahead snapshots: published, read-only views of the near-term plan.
+    #[serde(default)]
+    pub lookahead_snapshots: Vec<LookaheadSnapshot>,
 }
 
 impl Project {
@@ -803,6 +806,7 @@ impl Project {
             wbs: WbsTree::new(),
             resources: Vec::new(),
             baselines: Vec::new(),
+            lookahead_snapshots: Vec::new(),
         }
     }
 
@@ -850,6 +854,18 @@ impl Project {
             self.baselines
                 .iter()
                 .map(|baseline| baseline.id.0)
+                .max()
+                .unwrap_or_default()
+                .saturating_add(1),
+        )
+    }
+
+    /// Next unused lookahead snapshot identifier.
+    pub fn next_lookahead_snapshot_id(&self) -> LookaheadSnapshotId {
+        LookaheadSnapshotId(
+            self.lookahead_snapshots
+                .iter()
+                .map(|snapshot| snapshot.id.0)
                 .max()
                 .unwrap_or_default()
                 .saturating_add(1),
@@ -996,6 +1012,95 @@ impl Baseline {
         self.snapshots
             .iter()
             .find(|snapshot| snapshot.activity_id == activity_id)
+    }
+}
+
+/// Stable identifier for a [`LookaheadSnapshot`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct LookaheadSnapshotId(pub u64);
+
+impl LookaheadSnapshotId {
+    /// Construct a lookahead snapshot identifier from a raw value.
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+impl std::fmt::Display for LookaheadSnapshotId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+/// A snapshot of one activity's values at the time a lookahead window is
+/// published.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LookaheadSnapshotEntry {
+    /// Activity identifier.
+    pub activity_id: ActivityId,
+    /// Activity name, copied for display.
+    pub name: String,
+    /// Scheduled start at publish time.
+    pub scheduled_start: Date,
+    /// Scheduled finish at publish time.
+    pub scheduled_finish: Date,
+    /// Field-planning owner at publish time.
+    pub owner: Option<String>,
+    /// True when the activity was promised at publish time.
+    pub promised: bool,
+    /// Percent complete in basis points at publish time.
+    pub percent_complete: i64,
+}
+
+/// A published lookahead window: a named, read-only snapshot of the near-term
+/// plan that can be compared against later windows to detect drift.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LookaheadSnapshot {
+    /// Stable identifier.
+    pub id: LookaheadSnapshotId,
+    /// Human-readable name (e.g. "Week 1-2", "Pre-mobilisation").
+    pub name: String,
+    /// Date the snapshot was captured.
+    pub created_at: Date,
+    /// First day of the window that was published.
+    pub window_start: Date,
+    /// Length of the window in calendar weeks.
+    pub window_weeks: u32,
+    /// Activity snapshots, in activity order.
+    #[serde(default)]
+    pub entries: Vec<LookaheadSnapshotEntry>,
+}
+
+impl LookaheadSnapshot {
+    /// Create a lookahead snapshot from explicit activity entries.
+    ///
+    /// The entries are stored in ascending activity order so that a snapshot
+    /// written twice compares equal.
+    pub fn from_entries(
+        id: LookaheadSnapshotId,
+        name: impl Into<String>,
+        created_at: Date,
+        window_start: Date,
+        window_weeks: u32,
+        mut entries: Vec<LookaheadSnapshotEntry>,
+    ) -> Self {
+        entries.sort_by_key(|entry| entry.activity_id);
+        Self {
+            id,
+            name: name.into(),
+            created_at,
+            window_start,
+            window_weeks,
+            entries,
+        }
+    }
+
+    /// Look up the snapshot entry recorded for an activity.
+    pub fn entry(&self, activity_id: ActivityId) -> Option<&LookaheadSnapshotEntry> {
+        self.entries
+            .iter()
+            .find(|entry| entry.activity_id == activity_id)
     }
 }
 

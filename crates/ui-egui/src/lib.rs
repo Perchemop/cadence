@@ -25,9 +25,10 @@ use cadence_core::engine::Schedule;
 use cadence_core::engine::{evm_metrics, level_resources, resource_conflicts, resource_histogram};
 use cadence_core::lookahead::lookahead;
 use cadence_core::model::{
-    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, Project,
-    ResourceId, ResourceKind,
+    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType,
+    LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind,
 };
+use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
 use time::{Date, Month};
 
@@ -267,6 +268,8 @@ pub struct CadenceApp {
     edit_version: u64,
     lookahead_start_buffer: String,
     lookahead_weeks: usize,
+    lookahead_snapshot_name_buffer: String,
+    selected_lookahead_snapshot: Option<LookaheadSnapshotId>,
     owner_buffer: String,
     promised_buffer: bool,
     delay_reason_buffer: String,
@@ -342,6 +345,8 @@ impl CadenceApp {
             edit_version: 0,
             lookahead_start_buffer: today().to_string(),
             lookahead_weeks: 2,
+            lookahead_snapshot_name_buffer: String::new(),
+            selected_lookahead_snapshot: None,
             owner_buffer: String::new(),
             promised_buffer: false,
             delay_reason_buffer: String::new(),
@@ -2530,6 +2535,140 @@ impl eframe::App for CadenceApp {
                                 ui.end_row();
                             }
                         });
+                    ui.separator();
+
+                    // Publish the current window as a named snapshot so it can
+                    // be compared against later windows.
+                    ui.heading("Publish snapshot");
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Name");
+                        ui.text_edit_singleline(&mut self.lookahead_snapshot_name_buffer);
+                        if ui.button("Publish").clicked() {
+                            let name = self.lookahead_snapshot_name_buffer.trim();
+                            if name.is_empty() {
+                                self.status_message =
+                                    Some("Snapshot name must not be empty.".to_string());
+                            } else {
+                                let weeks = [2usize, 4, 6, 12][self.lookahead_weeks.min(3)];
+                                let from = parse_date(self.lookahead_start_buffer.trim())
+                                    .expect("start date already validated");
+                                let id = self.project.next_lookahead_snapshot_id();
+                                let command =
+                                    cadence_commands::CaptureLookaheadSnapshot {
+                                        name: name.to_string(),
+                                        created_at: today(),
+                                        window_start: from,
+                                        window_weeks: weeks as u32,
+                                    };
+                                if self.stack.execute(&mut self.project, Box::new(command)).is_ok()
+                                {
+                                    self.recompute();
+                                    self.lookahead_snapshot_name_buffer.clear();
+                                    self.status_message = Some(
+                                        "Lookahead snapshot published.".to_string(),
+                                    );
+                                } else {
+                                    self.status_message =
+                                        Some("Cannot publish snapshot.".to_string());
+                                }
+                            }
+                        }
+                    });
+
+                    ui.separator();
+                    ui.heading("Published snapshots");
+                    if self.project.lookahead_snapshots.is_empty() {
+                        ui.label("No snapshots published yet.");
+                    } else {
+                        for snapshot in &self.project.lookahead_snapshots {
+                            let selected = self.selected_lookahead_snapshot == Some(snapshot.id);
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .selectable_label(selected, &snapshot.name)
+                                    .clicked()
+                                {
+                                    self.selected_lookahead_snapshot = Some(snapshot.id);
+                                }
+                                ui.label(format!(
+                                    "{} weeks from {}",
+                                    snapshot.window_weeks, snapshot.window_start
+                                ));
+                                ui.label(format!("captured {}", snapshot.created_at));
+                            });
+                        }
+                        if let Some(snapshot_id) = self.selected_lookahead_snapshot {
+                            if let Some(snapshot) = self
+                                .project
+                                .lookahead_snapshots
+                                .iter()
+                                .find(|s| s.id == snapshot_id)
+                            {
+                                ui.separator();
+                                ui.heading("Compare with snapshot");
+                                ui.label(format!(
+                                    "Snapshot '{}' captured {} ({} weeks from {})",
+                                    snapshot.name, snapshot.created_at, snapshot.window_weeks,
+                                    snapshot.window_start
+                                ));
+                                let snapshot_entries: Vec<&LookaheadSnapshotEntry> =
+                                    snapshot.entries.iter().collect();
+                                let current_entries: Vec<&LookaheadEntry> = entries
+                                    .iter()
+                                    .collect();
+                                // Compare by activity id.
+                                for entry in &snapshot_entries {
+                                    let current = current_entries.iter().find(|current| {
+                                        current.id == entry.activity_id
+                                    });
+                                    match current {
+                                        Some(current) => {
+                                            let start_variance =
+                                                current.scheduled_start
+                                                    - entry.scheduled_start;
+                                            let finish_variance =
+                                                current.scheduled_finish
+                                                    - entry.scheduled_finish;
+                                            ui.horizontal(|ui| {
+                                                ui.label(format!("{} ({})", entry.name, entry.activity_id));
+                                                ui.label(format!(
+                                                    "start {:+}d / finish {:+}d",
+                                                    start_variance.num_days(),
+                                                    finish_variance.num_days()
+                                                ));
+                                            });
+                                        }
+                                        None => {
+                                            ui.horizontal(|ui| {
+                                                ui.label(format!(
+                                                    "{} ({}) — no longer in window",
+                                                    entry.name, entry.activity_id
+                                                ));
+                                                ui.label("removed");
+                                            });
+                                        }
+                                    }
+                                }
+                                for entry in &current_entries {
+                                    let in_snapshot = snapshot_entries.iter().any(|snapshot| {
+                                        snapshot.activity_id == entry.id
+                                    });
+                                    if !in_snapshot {
+                                        ui.horizontal(|ui| {
+                                            ui.label(format!(
+                                                "{} ({}) — new in window",
+                                                entry.name, entry.id
+                                            ));
+                                            ui.label("added");
+                                        });
+                                    }
+                                }
+                                ui.separator();
+                                if ui.button("Clear comparison").clicked() {
+                                    self.selected_lookahead_snapshot = None;
+                                }
+                            }
+                        }
+                    }
                     ui.separator();
                     ui.label(
                         "Select an entry to open the activity in the table. The \

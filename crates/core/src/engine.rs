@@ -57,7 +57,8 @@ use time::{Date, Duration};
 use crate::calendar_set::CalendarId;
 use crate::model::{
     ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, CalendarError,
-    Constraint, EvmMetrics, LinkType, Project, RelationshipId, ResourceId,
+    Constraint, EvmMetrics, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    LookaheadSnapshotId, Project, RelationshipId, ResourceId,
 };
 use crate::wbs::WbsId;
 
@@ -510,6 +511,41 @@ pub fn capture_baseline(
         })
         .collect();
     Baseline::from_snapshots(id, name, created_at, snapshots)
+}
+
+/// Capture a lookahead window as a named, read-only snapshot.
+///
+/// Records the lookahead entries for `window_start`..`window_start + window_weeks`
+/// so that a later window can be compared against it to detect plan drift.
+pub fn capture_lookahead_snapshot(
+    project: &Project,
+    schedule: &Schedule,
+    id: LookaheadSnapshotId,
+    name: impl Into<String>,
+    created_at: Date,
+    window_start: Date,
+    window_weeks: u32,
+) -> LookaheadSnapshot {
+    let entries = crate::lookahead::lookahead(project, schedule, window_start, window_weeks)
+        .into_iter()
+        .map(|entry| LookaheadSnapshotEntry {
+            activity_id: entry.id,
+            name: entry.name,
+            scheduled_start: entry.scheduled_start,
+            scheduled_finish: entry.scheduled_finish,
+            owner: entry.owner.clone(),
+            promised: entry.promised,
+            percent_complete: entry.percent_complete,
+        })
+        .collect();
+    LookaheadSnapshot::from_entries(
+        id,
+        name,
+        created_at,
+        window_start,
+        window_weeks,
+        entries,
+    )
 }
 
 /// Compute earned value metrics for the whole project against a baseline.
