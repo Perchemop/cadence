@@ -1617,7 +1617,7 @@ impl eframe::App for CadenceApp {
                     });
 
                 if self.show_split_gantt {
-                    let activities = self.sorted();
+                    let activities = &self.sorted_cache;
                     egui::Panel::right("workbench_gantt")
                         .default_size(420.0)
                         .min_size(300.0)
@@ -1813,7 +1813,7 @@ impl eframe::App for CadenceApp {
                         &mut self.stack,
                         &mut self.drag_start,
                         &mut self.status_message,
-                        self.sorted(),
+                        &self.sorted_cache,
                         px,
                         &mut self.pixels_per_day,
                         self.dark,
