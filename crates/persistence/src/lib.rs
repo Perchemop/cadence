@@ -679,7 +679,7 @@ fn read_project(connection: &Connection) -> Result<Project> {
                 scheduled_start: row.scheduled_start,
                 scheduled_finish: row.scheduled_finish,
                 owner: row.owner,
-                promised: row.promised != 0,
+                promised: row.promised,
                 percent_complete: row.percent_complete,
             });
         }
