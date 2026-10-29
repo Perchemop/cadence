@@ -10,10 +10,10 @@
 //! never need to inspect project state heuristically.
 
 use cadence_core::calendar_set::{CalendarId, NamedCalendar};
-use cadence_core::engine::{capture_baseline, schedule};
+use cadence_core::engine::{capture_baseline, capture_lookahead_snapshot, schedule};
 use cadence_core::model::{
-    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, Project,
-    Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
+    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, LookaheadSnapshot,
+    LookaheadSnapshotId, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsNode};
 use time::Date;
@@ -1151,6 +1151,94 @@ impl Command for RestoreBaseline {
         let position = self.position.min(project.baselines.len());
         project.baselines.insert(position, baseline);
         Ok(Box::new(RemoveBaseline { id }))
+    }
+}
+
+/// Publish a lookahead window as a named, read-only snapshot.
+///
+/// The snapshot captures the current lookahead entries for the given window
+/// so that a later window can be compared against it to detect drift.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaptureLookaheadSnapshot {
+    /// Name of the snapshot (e.g. "Week 1-2", "Pre-mobilisation").
+    pub name: String,
+    /// Date the snapshot is captured as of.
+    pub created_at: time::Date,
+    /// First day of the window that was published.
+    pub window_start: time::Date,
+    /// Length of the window in calendar weeks.
+    pub window_weeks: u32,
+}
+
+impl Command for CaptureLookaheadSnapshot {
+    fn description(&self) -> String {
+        format!(
+            "capture lookahead snapshot '{}' ({} weeks from {})",
+            self.name, self.window_weeks, self.window_start
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let id = project.next_lookahead_snapshot_id();
+        let snapshot = capture_lookahead_snapshot(
+            project,
+            &cadence_core::engine::schedule(project).map_err(|error| error.to_string())?,
+            id,
+            self.name.clone(),
+            self.created_at,
+            self.window_start,
+            self.window_weeks,
+        );
+        project.lookahead_snapshots.push(snapshot);
+        Ok(Box::new(RemoveLookaheadSnapshot { id }))
+    }
+}
+
+/// Remove a lookahead snapshot from the project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoveLookaheadSnapshot {
+    /// Snapshot to remove.
+    pub id: LookaheadSnapshotId,
+}
+
+impl Command for RemoveLookaheadSnapshot {
+    fn description(&self) -> String {
+        format!("remove lookahead snapshot {}", self.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(position) = project
+            .lookahead_snapshots
+            .iter()
+            .position(|item| item.id == self.id)
+        else {
+            return Err(format!("lookahead snapshot {} does not exist", self.id));
+        };
+        let snapshot = project.lookahead_snapshots.remove(position);
+        Ok(Box::new(RestoreLookaheadSnapshot { snapshot, position }))
+    }
+}
+
+/// Put a previously removed lookahead snapshot back where it was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreLookaheadSnapshot {
+    /// The snapshot to restore.
+    pub snapshot: LookaheadSnapshot,
+    /// Index the snapshot occupied before it was removed.
+    pub position: usize,
+}
+
+impl Command for RestoreLookaheadSnapshot {
+    fn description(&self) -> String {
+        format!("restore lookahead snapshot {}", self.snapshot.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let id = self.snapshot.id;
+        let snapshot = self.snapshot.clone();
+        let position = self.position.min(project.lookahead_snapshots.len());
+        project.lookahead_snapshots.insert(position, snapshot);
+        Ok(Box::new(RemoveLookaheadSnapshot { id }))
     }
 }
 

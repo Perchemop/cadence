@@ -16,7 +16,8 @@ use std::path::Path;
 use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
-    LinkType, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
+    LinkType, LookaheadSnapshot, LookaheadSnapshotEntry, LookaheadSnapshotId, Project,
+    Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsTree};
 use rusqlite::{params, Connection};
@@ -24,7 +25,7 @@ use thiserror::Error;
 use time::{Date, Month};
 
 /// Project-file schema version written by this build.
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 6;
 
 const SCHEMA: &str = r#"
 CREATE TABLE project (
@@ -112,6 +113,26 @@ CREATE TABLE IF NOT EXISTS baseline_snapshots (
     baseline_start  TEXT,
     baseline_finish TEXT,
     PRIMARY KEY (baseline_id, activity_id)
+);
+
+CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL,
+    window_start TEXT   NOT NULL,
+    window_weeks INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+    snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+    activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    name            TEXT    NOT NULL,
+    scheduled_start TEXT    NOT NULL,
+    scheduled_finish TEXT   NOT NULL,
+    owner           TEXT,
+    promised        INTEGER NOT NULL DEFAULT 0,
+    percent_complete INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (snapshot_id, activity_id)
 );
 "#;
 
@@ -232,7 +253,25 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                  ALTER TABLE activities ADD COLUMN owner TEXT;
                  ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
                  ALTER TABLE activities ADD COLUMN delay_reason TEXT;
-                 PRAGMA user_version = 5;",
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+                     id          INTEGER PRIMARY KEY,
+                     name        TEXT    NOT NULL,
+                     created_at  TEXT    NOT NULL,
+                     window_start TEXT   NOT NULL,
+                     window_weeks INTEGER NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+                     snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     name            TEXT    NOT NULL,
+                     scheduled_start TEXT    NOT NULL,
+                     scheduled_finish TEXT   NOT NULL,
+                     owner           TEXT,
+                     promised        INTEGER NOT NULL DEFAULT 0,
+                     percent_complete INTEGER NOT NULL DEFAULT 0,
+                     PRIMARY KEY (snapshot_id, activity_id)
+                 );
+                 PRAGMA user_version = 6;",
             )?;
             Ok(())
         }
@@ -274,7 +313,25 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                  ALTER TABLE activities ADD COLUMN owner TEXT;
                  ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
                  ALTER TABLE activities ADD COLUMN delay_reason TEXT;
-                 PRAGMA user_version = 5;",
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+                     id          INTEGER PRIMARY KEY,
+                     name        TEXT    NOT NULL,
+                     created_at  TEXT    NOT NULL,
+                     window_start TEXT   NOT NULL,
+                     window_weeks INTEGER NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+                     snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     name            TEXT    NOT NULL,
+                     scheduled_start TEXT    NOT NULL,
+                     scheduled_finish TEXT   NOT NULL,
+                     owner           TEXT,
+                     promised        INTEGER NOT NULL DEFAULT 0,
+                     percent_complete INTEGER NOT NULL DEFAULT 0,
+                     PRIMARY KEY (snapshot_id, activity_id)
+                 );
+                 PRAGMA user_version = 6;",
             )?;
             Ok(())
         }
@@ -286,7 +343,25 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                  ALTER TABLE activities ADD COLUMN owner TEXT;
                  ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
                  ALTER TABLE activities ADD COLUMN delay_reason TEXT;
-                 PRAGMA user_version = 5;",
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+                     id          INTEGER PRIMARY KEY,
+                     name        TEXT    NOT NULL,
+                     created_at  TEXT    NOT NULL,
+                     window_start TEXT   NOT NULL,
+                     window_weeks INTEGER NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+                     snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     name            TEXT    NOT NULL,
+                     scheduled_start TEXT    NOT NULL,
+                     scheduled_finish TEXT   NOT NULL,
+                     owner           TEXT,
+                     promised        INTEGER NOT NULL DEFAULT 0,
+                     percent_complete INTEGER NOT NULL DEFAULT 0,
+                     PRIMARY KEY (snapshot_id, activity_id)
+                 );
+                 PRAGMA user_version = 6;",
             )?;
             Ok(())
         }
@@ -298,7 +373,51 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                 "ALTER TABLE activities ADD COLUMN owner TEXT;
                  ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
                  ALTER TABLE activities ADD COLUMN delay_reason TEXT;
-                 PRAGMA user_version = 5;",
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+                     id          INTEGER PRIMARY KEY,
+                     name        TEXT    NOT NULL,
+                     created_at  TEXT    NOT NULL,
+                     window_start TEXT   NOT NULL,
+                     window_weeks INTEGER NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+                     snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     name            TEXT    NOT NULL,
+                     scheduled_start TEXT    NOT NULL,
+                     scheduled_finish TEXT   NOT NULL,
+                     owner           TEXT,
+                     promised        INTEGER NOT NULL DEFAULT 0,
+                     percent_complete INTEGER NOT NULL DEFAULT 0,
+                     PRIMARY KEY (snapshot_id, activity_id)
+                 );
+                 PRAGMA user_version = 6;",
+            )?;
+            Ok(())
+        }
+        5 => {
+            // Version 6 adds lookahead snapshots: published, read-only views
+            // of the near-term plan.
+            connection.execute_batch(
+                "CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+                    id          INTEGER PRIMARY KEY,
+                    name        TEXT    NOT NULL,
+                    created_at  TEXT    NOT NULL,
+                    window_start TEXT   NOT NULL,
+                    window_weeks INTEGER NOT NULL
+                );
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+                    snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+                    activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                    name            TEXT    NOT NULL,
+                    scheduled_start TEXT    NOT NULL,
+                    scheduled_finish TEXT   NOT NULL,
+                    owner           TEXT,
+                    promised        INTEGER NOT NULL DEFAULT 0,
+                    percent_complete INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (snapshot_id, activity_id)
+                );
+                 PRAGMA user_version = 6;",
             )?;
             Ok(())
         }
@@ -526,6 +645,36 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
         }
     }
 
+    for snapshot in &project.lookahead_snapshots {
+        transaction.execute(
+            "INSERT INTO lookahead_snapshots (id, name, created_at, window_start, window_weeks)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                to_sql_id(snapshot.id.0, "lookahead_snapshot")?,
+                snapshot.name,
+                snapshot.created_at.to_string(),
+                snapshot.window_start.to_string(),
+                i64::from(snapshot.window_weeks),
+            ],
+        )?;
+        for entry in &snapshot.entries {
+            transaction.execute(
+                "INSERT INTO lookahead_snapshot_entries (snapshot_id, activity_id, name, scheduled_start, scheduled_finish, owner, promised, percent_complete)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    to_sql_id(snapshot.id.0, "lookahead_snapshot")?,
+                    to_sql_id(entry.activity_id.0, "activity")?,
+                    entry.name,
+                    entry.scheduled_start.to_string(),
+                    entry.scheduled_finish.to_string(),
+                    entry.owner,
+                    i64::from(entry.promised),
+                    entry.percent_complete,
+                ],
+            )?;
+        }
+    }
+
     Ok(())
 }
 
@@ -585,6 +734,33 @@ fn read_project(connection: &Connection) -> Result<Project> {
                 baseline_finish: row.finish,
             });
         }
+    }
+
+    let lookahead_snapshots = read_lookahead_snapshots(connection)?;
+    let lookahead_snapshot_entries = read_lookahead_snapshot_entries(connection)?;
+    project.lookahead_snapshots = lookahead_snapshots;
+    for row in lookahead_snapshot_entries {
+        if let Some(snapshot) = project
+            .lookahead_snapshots
+            .iter_mut()
+            .find(|candidate| candidate.id == LookaheadSnapshotId(row.snapshot_id))
+        {
+            snapshot.entries.push(LookaheadSnapshotEntry::new(
+                ActivityId(row.activity_id),
+                row.name,
+                row.scheduled_start,
+                row.scheduled_finish,
+                row.owner,
+                row.promised,
+                row.percent_complete,
+            ));
+        }
+    }
+    project
+        .lookahead_snapshots
+        .sort_by_key(|snapshot| snapshot.id.0);
+    for snapshot in &mut project.lookahead_snapshots {
+        snapshot.entries.sort_by_key(|entry| entry.activity_id);
     }
     Ok(project)
 }
@@ -934,6 +1110,108 @@ fn read_baseline_snapshots(connection: &Connection) -> Result<Vec<BaselineSnapsh
         });
     }
     Ok(snapshots)
+}
+
+fn read_lookahead_snapshots(connection: &Connection) -> Result<Vec<LookaheadSnapshot>> {
+    let rows = collect_rows(
+        connection,
+        "SELECT id, name, created_at, window_start, window_weeks FROM lookahead_snapshots ORDER BY id",
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
+        },
+    )?;
+
+    let mut snapshots = Vec::with_capacity(rows.len());
+    for (id, name, created_at, window_start, window_weeks) in rows {
+        let window_weeks = u32::try_from(window_weeks).map_err(|_| {
+            PersistenceError::InvalidData(format!(
+                "lookahead snapshot {id} has invalid window_weeks {window_weeks}"
+            ))
+        })?;
+        snapshots.push(LookaheadSnapshot::from_entries(
+            LookaheadSnapshotId(from_sql_id(id, "lookahead_snapshot")?),
+            name,
+            parse_date(&created_at)?,
+            parse_date(&window_start)?,
+            window_weeks,
+            Vec::new(),
+        ));
+    }
+    Ok(snapshots)
+}
+
+/// One lookahead snapshot entry row as stored in the database.
+struct LookaheadSnapshotEntryRow {
+    /// Snapshot the entry belongs to.
+    snapshot_id: u64,
+    /// Activity the entry describes.
+    activity_id: u64,
+    /// Activity name at publish time.
+    name: String,
+    /// Scheduled start date.
+    scheduled_start: Date,
+    /// Scheduled finish date.
+    scheduled_finish: Date,
+    /// Field-planning owner at publish time.
+    owner: Option<String>,
+    /// True when the activity was promised at publish time.
+    promised: bool,
+    /// Percent complete in basis points at publish time.
+    percent_complete: i64,
+}
+
+fn read_lookahead_snapshot_entries(
+    connection: &Connection,
+) -> Result<Vec<LookaheadSnapshotEntryRow>> {
+    let rows = collect_rows(
+        connection,
+        "SELECT snapshot_id, activity_id, name, scheduled_start, scheduled_finish, owner, promised, percent_complete
+         FROM lookahead_snapshot_entries ORDER BY snapshot_id, activity_id",
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, i64>(6)?,
+                row.get::<_, i64>(7)?,
+            ))
+        },
+    )?;
+
+    let mut entries = Vec::with_capacity(rows.len());
+    for (
+        snapshot_id,
+        activity_id,
+        name,
+        scheduled_start,
+        scheduled_finish,
+        owner,
+        promised,
+        percent_complete,
+    ) in rows
+    {
+        let promised = promised != 0;
+        entries.push(LookaheadSnapshotEntryRow {
+            snapshot_id: from_sql_id(snapshot_id, "lookahead_snapshot")?,
+            activity_id: from_sql_id(activity_id, "activity")?,
+            name,
+            scheduled_start: parse_date(&scheduled_start)?,
+            scheduled_finish: parse_date(&scheduled_finish)?,
+            owner,
+            promised,
+            percent_complete,
+        });
+    }
+    Ok(entries)
 }
 
 fn read_holidays(connection: &Connection, query: &str) -> Result<BTreeSet<Date>> {
