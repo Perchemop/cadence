@@ -1054,6 +1054,29 @@ pub struct LookaheadSnapshotEntry {
     pub percent_complete: i64,
 }
 
+impl LookaheadSnapshotEntry {
+    /// Construct a new lookahead snapshot entry.
+    pub fn new(
+        activity_id: ActivityId,
+        name: String,
+        scheduled_start: Date,
+        scheduled_finish: Date,
+        owner: Option<String>,
+        promised: bool,
+        percent_complete: i64,
+    ) -> Self {
+        Self {
+            activity_id,
+            name,
+            scheduled_start,
+            scheduled_finish,
+            owner,
+            promised,
+            percent_complete,
+        }
+    }
+}
+
 /// A published lookahead window: a named, read-only snapshot of the near-term
 /// plan that can be compared against later windows to detect drift.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
