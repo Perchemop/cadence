@@ -12,8 +12,8 @@
 use cadence_core::calendar_set::{CalendarId, NamedCalendar};
 use cadence_core::engine::{capture_baseline, capture_lookahead_snapshot, schedule};
 use cadence_core::model::{
-    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, LookaheadSnapshotId,
-    Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
+    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType,
+    LookaheadSnapshotId, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsNode};
 use time::Date;
