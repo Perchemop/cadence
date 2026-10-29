@@ -12,6 +12,22 @@ follows Keep a Changelog; releases use git tags.
   rhythm (`docs/design/brand.md`, `cadence-ui-egui::design`), professional
   widget styling across both themes, and a Gantt with weekly grid lines and a
   today line — closing the gap to paid desktop schedulers on look and feel.
+- Table performance: the sorted activity list is cached keyed on
+  `edit_version`/sort key/direction instead of being cloned and sorted every
+  frame, and the table is virtualised with `ScrollArea::show_rows` (fixed row
+  height, fixed column widths, row numbers, truncated names, sticky sortable
+  header).
+- Gantt performance: the schedule is borrowed instead of cloned per frame and
+  dependency arrows use a cached activity id→row index, making the arrow pass
+  O(relationships) instead of O(activities × relationships).
+- Workbench shell: view tabs across the top, a status bar (project dates,
+  activity and critical counts, zoom, status message), and an optional split
+  Gantt panel on the right of the Table view ("Split Gantt: on/off") giving
+  the combined task sheet + Gantt layout of MS Project and P6; Gantt rows
+  follow the table's sort order.
+- `docs/ui-patterns.md`: clean-room observable-behaviour reference matrix for
+  Microsoft Project, Primavera P6, Asta Powerproject, ProjectLibre and Aphex,
+  scoped to behaviour only (no code, UI, strings or assets copied).
 
 ## [0.3.0] — 2026-10-28
 
