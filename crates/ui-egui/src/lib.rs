@@ -1271,7 +1271,7 @@ impl eframe::App for CadenceApp {
                     } else {
                         ui.separator();
                     }
-                    if ui.button(label).selected(selected).frame(selected).clicked() {
+                    if ui.add(egui::Button::new(label).selected(selected).frame(selected)).clicked() {
                         self.view_mode = mode;
                     }
                 }
@@ -1620,7 +1620,7 @@ impl eframe::App for CadenceApp {
                     let activities = self.sorted();
                     egui::Panel::right("workbench_gantt")
                         .default_size(420.0)
-                        .min_width(300.0)
+                        .min_size(300.0)
                         .resizable(true)
                         .show(ui, |ui| {
                             render_gantt(
@@ -2589,7 +2589,7 @@ impl eframe::App for CadenceApp {
 
         // Status bar: project dates and counts, critical count, zoom,
         // and the most recent status message — MS Project-style footer.
-        egui::TopBottomPanel::bottom("status_bar").show(ui, |ui| {
+        egui::Panel::bottom("status_bar").show(ui, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
