@@ -67,6 +67,7 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | Variance views | done | Baselines view: per-activity duration/start/finish variance against the selected baseline, coloured by sign |
 | EVM metrics | done | `engine::evm_metrics`: PV, EV, AC, SV, CV, SPI, CPI shown against an editable status date (D13) |
 | Progress updating (percent complete, actual dates) | done | inspector edits via undoable commands; Gantt bars show a progress overlay; schema v4 records actual dates |
+| Lookahead published snapshots | done | named, read-only snapshot of a rolling lookahead window; start/finish variance comparison against a selected snapshot; persisted in project file (schema v6); undoable capture/remove/restore commands |
 
 ## Phase 5 — Polish & interop
 
