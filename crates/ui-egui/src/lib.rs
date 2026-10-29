@@ -2612,24 +2612,24 @@ impl eframe::App for CadenceApp {
                                 ));
                                 let snapshot_entries: Vec<&LookaheadSnapshotEntry> =
                                     snapshot.entries.iter().collect();
-                                let current_entries: Vec<&LookaheadEntry> = entries
-                                    .iter()
-                                    .collect();
+                                let current_entries: Vec<&LookaheadEntry> =
+                                    entries.iter().collect();
                                 // Compare by activity id.
                                 for entry in &snapshot_entries {
-                                    let current = current_entries.iter().find(|current| {
-                                        current.id == entry.activity_id
-                                    });
+                                    let current = current_entries
+                                        .iter()
+                                        .find(|current| current.id == entry.activity_id);
                                     match current {
                                         Some(current) => {
                                             let start_variance =
-                                                current.scheduled_start
-                                                    - entry.scheduled_start;
+                                                current.scheduled_start - entry.scheduled_start;
                                             let finish_variance =
-                                                current.scheduled_finish
-                                                    - entry.scheduled_finish;
+                                                current.scheduled_finish - entry.scheduled_finish;
                                             ui.horizontal(|ui| {
-                                                ui.label(format!("{} ({})", entry.name, entry.activity_id));
+                                                ui.label(format!(
+                                                    "{} ({})",
+                                                    entry.name, entry.activity_id
+                                                ));
                                                 ui.label(format!(
                                                     "start {:+}d / finish {:+}d",
                                                     start_variance.num_days(),
@@ -2649,9 +2649,9 @@ impl eframe::App for CadenceApp {
                                     }
                                 }
                                 for entry in &current_entries {
-                                    let in_snapshot = snapshot_entries.iter().any(|snapshot| {
-                                        snapshot.activity_id == entry.id
-                                    });
+                                    let in_snapshot = snapshot_entries
+                                        .iter()
+                                        .any(|snapshot| snapshot.activity_id == entry.id);
                                     if !in_snapshot {
                                         ui.horizontal(|ui| {
                                             ui.label(format!(
