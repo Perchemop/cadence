@@ -5,6 +5,14 @@ follows Keep a Changelog; releases use git tags.
 
 ## [Unreleased]
 
+### Added
+
+- Design system foundation: the UI now ships the Inter typeface (SIL OFL 1.1)
+  with a documented type scale, a token-driven colour palette and spacing
+  rhythm (`docs/design/brand.md`, `cadence-ui-egui::design`), professional
+  widget styling across both themes, and a Gantt with weekly grid lines and a
+  today line — closing the gap to paid desktop schedulers on look and feel.
+
 ## [0.3.0] — 2026-10-28
 
 A programme audit tool, lookahead planning, and field planning — the first

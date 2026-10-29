@@ -28,13 +28,16 @@ All visual design in Cadence is original — original shapes drawn with the GUI
 toolkit's own primitives and original colour choices. No commercial product's
 icons, string tables or trade dress have been copied, and none will be.
 
-Fonts are the GUI toolkit's bundled defaults: the `epaint_default_fonts` crate
-(embedded by `eframe`) ships third-party font assets, and they carry their own
-licences, which are separate from the code licence:
+Fonts are bundled with the application. The UI face is Inter (SIL OFL 1.1),
+shipped as `crates/ui-egui/assets/fonts/Inter-{Regular,Medium,SemiBold,Bold}.ttf`
+and registered by `cadence-ui-egui::design::install_fonts`. The GUI toolkit's
+own `epaint_default_fonts` crate (embedded by `eframe`) also ships third-party
+font assets used as fallback, and they carry their own licences:
 
 | Asset | Licence | Source |
 |---|---|---|
-| Ubuntu (default proportional font) | Ubuntu Font Licence 1.0 | embedded by `epaint_default_fonts` |
+| Inter (Regular/Medium/SemiBold/Bold) | SIL Open Font License 1.1 | https://github.com/rsms/inter (v4.1) |
+| Ubuntu (fallback proportional font) | Ubuntu Font Licence 1.0 | embedded by `epaint_default_fonts` |
 | Noto Emoji | SIL Open Font License 1.1 | embedded by `epaint_default_fonts` |
 
 Both are permissive, OSI-approved font licences, allow-listed in `deny.toml`
