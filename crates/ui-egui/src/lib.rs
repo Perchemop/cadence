@@ -74,8 +74,6 @@ pub fn apply_theme(ctx: &Context, dark: bool) {
 }
 
 /// Sort key for the activity table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Sort key for the activity table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum SortKey {
     Name,
@@ -1338,7 +1336,7 @@ impl eframe::App for CadenceApp {
                 {
                     self.show_split_gantt = !self.show_split_gantt;
                 }
-                ui.menu_button("Columns", |ui| {
+                let columns_menu = ui.menu_button("Columns", |ui| {
                     ui.heading("Visible columns");
                     for key in SortKey::ordered_columns() {
                         let mut visible = self.visible_columns.contains(&key);
@@ -1354,8 +1352,8 @@ impl eframe::App for CadenceApp {
                     if ui.button("Reset to default").clicked() {
                         self.visible_columns = SortKey::all_columns();
                     }
-                })
-                .on_hover_text("Choose which columns show in the activity table (MS Project / P6 column chooser)");
+                });
+                columns_menu.response.on_hover_text("Choose which columns show in the activity table (MS Project / P6 column chooser)");
                 if ui
                     .button("Save report")
                     .on_hover_text("Write a Markdown report next to the working directory")
@@ -1737,10 +1735,8 @@ impl eframe::App for CadenceApp {
                             .map(|(_, _, w)| *w)
                             .sum();
                         let available = ui.available_width();
-                        let flexible_budget = (available
-                            - fixed_sum
-                            - spacing * (defs.len() as f32 - 1.0))
-                        .max(0.0);
+                        let flexible_budget =
+                            (available - fixed_sum - spacing * (defs.len() as f32 - 1.0)).max(0.0);
                         let mut widths: Vec<f32> = Vec::with_capacity(defs.len());
                         for (_, _, w) in &defs {
                             widths.push(if *w == 0.0 {
@@ -1758,7 +1754,7 @@ impl eframe::App for CadenceApp {
                                 [widths[0], 22.0],
                                 egui::Label::new(egui::RichText::new("#").weak()),
                             );
-                            for (index, (key, _label, _w)) in defs.iter().enumerate().skip(1) {
+                            for (index, (Some(key), _label, _w)) in defs.iter().enumerate().skip(1) {
                                 if ui
                                     .add_sized(
                                         [widths[index], 22.0],
@@ -1766,7 +1762,7 @@ impl eframe::App for CadenceApp {
                                     )
                                     .clicked()
                                 {
-                                    header_clicked = *key;
+                                    header_clicked = Some(*key);
                                 }
                             }
                         });
@@ -1795,8 +1791,7 @@ impl eframe::App for CadenceApp {
                                     let selected = selected_id == Some(activity.id);
                                     ui.horizontal(|ui| {
                                         ui.spacing_mut().item_spacing.x = spacing;
-                                        for (col, (key, _label, _w)) in defs.iter().enumerate()
-                                        {
+                                        for (col, (key, _label, _w)) in defs.iter().enumerate() {
                                             match key {
                                                 None => {
                                                     ui.add_sized(
@@ -1814,10 +1809,12 @@ impl eframe::App for CadenceApp {
                                                     if ui
                                                         .add_sized(
                                                             [widths[col], row_height],
-                                                            egui::Button::new(activity.name.as_str())
-                                                                .selected(selected)
-                                                                .frame(selected)
-                                                                .truncate(),
+                                                            egui::Button::new(
+                                                                activity.name.as_str(),
+                                                            )
+                                                            .selected(selected)
+                                                            .frame(selected)
+                                                            .truncate(),
                                                         )
                                                         .clicked()
                                                     {
@@ -1829,7 +1826,9 @@ impl eframe::App for CadenceApp {
                                                         [widths[col], row_height],
                                                         egui::Label::new(
                                                             egui::RichText::new(
-                                                                activity.original_duration.to_string(),
+                                                                activity
+                                                                    .original_duration
+                                                                    .to_string(),
                                                             )
                                                             .monospace(),
                                                         ),
