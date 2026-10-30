@@ -506,10 +506,10 @@ fn escape_field(field: &str) -> String {
 /// the apostrophe is stripped so the original value is recovered.
 fn unguard_field(field: &str) -> &str {
     let mut chars = field.chars();
-    if chars.next() == Some('\'') {
-        if matches!(chars.next(), Some('=' | '+' | '-' | '@')) {
-            return &field[1..];
-        }
+    if chars.next() == Some('\'')
+        && matches!(chars.next(), Some('=' | '+' | '-' | '@'))
+    {
+        return &field[1..];
     }
     field
 }
