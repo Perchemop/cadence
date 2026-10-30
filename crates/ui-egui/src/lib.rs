@@ -1699,10 +1699,7 @@ impl eframe::App for CadenceApp {
                             })
                             .count();
                         (
-                            format!(
-                                "{} to {}",
-                                schedule.project_start, schedule.project_finish
-                            ),
+                            format!("{} to {}", schedule.project_start, schedule.project_finish),
                             critical,
                         )
                     }
@@ -3277,7 +3274,6 @@ impl eframe::App for CadenceApp {
                 self.show_shortcuts_dialog = false;
             }
         }
-
     }
 }
 

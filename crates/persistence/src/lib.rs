@@ -1984,14 +1984,16 @@ mod tests {
             None,
             Some(date(5)),
         ));
-        project.lookahead_snapshots.push(LookaheadSnapshot::from_entries(
-            LookaheadSnapshotId(1),
-            "Week 1-2",
-            date(5),
-            date(5),
-            2,
-            Vec::new(),
-        ));
+        project
+            .lookahead_snapshots
+            .push(LookaheadSnapshot::from_entries(
+                LookaheadSnapshotId(1),
+                "Week 1-2",
+                date(5),
+                date(5),
+                2,
+                Vec::new(),
+            ));
 
         let dir = TempDir::new();
         let path = dir.file("diary.cadence");
