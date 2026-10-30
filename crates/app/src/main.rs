@@ -65,14 +65,18 @@ fn main() -> ExitCode {
         [command, path] if command == "save" => save_demo(path),
         [command, path] if command == "load" => load_and_print(path, json),
         [command, path] if command == "audit" => audit_command(path, json, None),
-        [command, path, flag, value]
-            if command == "audit"
-                && flag == "--status-date"
-                && parse_status_date(value).is_some() =>
-        {
-            audit_command(path, json, parse_status_date(value))
+        [command, path, flag, value] if command == "audit" && flag == "--status-date" => {
+            match parse_status_date(value) {
+                Ok(status_date) => audit_command(path, json, Some(status_date)),
+                Err(message) => {
+                    usage_error = true;
+                    Err(usage_failure(&message))
+                }
+            }
         }
-        [command, input, output] if command == "audit-compare" => {
+        [command, input, output]
+            if command == "audit-compare" && input != "--json" && output != "--json" =>
+        {
             compare_command(input, output, json)
         }
         [command, path] if command == "report" => print_report(path, None),
@@ -108,9 +112,7 @@ fn main() -> ExitCode {
         }
         _ => {
             usage_error = true;
-            eprint!("{USAGE}");
-            eprintln!("Run 'cadence --help' for the command reference.");
-            Err("invalid arguments".to_string())
+            Err(usage_failure("invalid arguments"))
         }
     };
 
@@ -129,28 +131,49 @@ fn main() -> ExitCode {
 
 /// Split the optional `--json` flag off the command-line arguments.
 ///
-/// The flag is accepted only where a schedule is printed — `cadence --json`
-/// for the demo and `cadence load <file> --json` — and it comes last, so any
-/// other placement of `--json` stays in the arguments and reaches the
-/// ordinary usage error explaining the command forms.
+/// The flag is accepted by the commands that print a machine-readable
+/// document — the bare demo, `load`, `audit` and `audit-compare` — and in any
+/// position among their arguments, so the documented
+/// `audit <file> --json --status-date <date>` works as written. A `--json` in
+/// a slot that belongs to a file name is misplaced: it stays in the
+/// arguments, where the command is rejected as a usage error rather than
+/// reading the flag as a file name. Commands that print no JSON document
+/// never have the flag split off, so a `--json` there reaches the ordinary
+/// usage error too.
 fn split_json_flag(arguments: Vec<String>) -> (Vec<String>, bool) {
-    let mut arguments = arguments;
-    if let Some(last) = arguments.last() {
-        if last == "--json" {
-            let is_valid = match arguments.len() {
-                1 => true,
-                3 if arguments[0] == "load" || arguments[0] == "audit" => true,
-                4 if arguments[0] == "audit-compare" => true,
-                5 if arguments[0] == "audit" && arguments[2] == "--status-date" => true,
-                _ => false,
-            };
-            if is_valid {
-                arguments.pop();
-                return (arguments, true);
+    // The file-name argument positions of the command in `arguments[0]`,
+    // for the commands that accept `--json` at all.
+    let file_slots = match arguments.first().map(String::as_str) {
+        Some("load") | Some("audit") => Some(1..=1),
+        Some("audit-compare") => Some(1..=2),
+        _ => None,
+    };
+    match file_slots {
+        Some(slots) => {
+            let mut json = false;
+            let mut kept = Vec::with_capacity(arguments.len());
+            for (index, argument) in arguments.into_iter().enumerate() {
+                if argument == "--json" && !slots.contains(&index) {
+                    json = true;
+                } else {
+                    kept.push(argument);
+                }
             }
+            (kept, json)
         }
+        // The bare demo takes no file name: `--json` is the flag when it is
+        // the whole command line.
+        None if arguments.first().map(String::as_str) == Some("--json") => (Vec::new(), true),
+        None => (arguments, false),
     }
-    (arguments, false)
+}
+
+/// Print the command reference that accompanies a usage error and hand back
+/// the message for the stderr diagnostic line.
+fn usage_failure(message: &str) -> String {
+    eprint!("{USAGE}");
+    eprintln!("Run 'cadence --help' for the command reference.");
+    message.to_string()
 }
 
 /// Write one diagnostic line to stderr, labelled with a severity and the
@@ -196,7 +219,33 @@ impl Format {
     }
 }
 
+/// Refuse to read and write the same file in one command.
+///
+/// The interchange commands, `report <file> <out>` and `print <file>
+/// <out.pdf>` each read one path and write another. When the two resolve to
+/// the same file — the same spelling, or two spellings of one file — the
+/// write would destroy the project the command just read, so the command
+/// stops before touching either file.
+fn ensure_distinct_files(input: &str, output: &str) -> Result<(), String> {
+    let same = input == output
+        || match (
+            std::path::Path::new(input).canonicalize(),
+            std::path::Path::new(output).canonicalize(),
+        ) {
+            (Ok(input), Ok(output)) => input == output,
+            _ => false,
+        };
+    if same {
+        Err(format!(
+            "input {input} and output {output} are the same file; refusing to overwrite the source"
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 fn export_interchange(input: &str, output: &str, format: Format) -> Result<(), String> {
+    ensure_distinct_files(input, output)?;
     let project = cadence_persistence::load_project(input).map_err(|error| error.to_string())?;
     let document = match format {
         Format::Mspdi => cadence_interchange::mspdi::export(&project),
@@ -215,6 +264,7 @@ fn export_interchange(input: &str, output: &str, format: Format) -> Result<(), S
 }
 
 fn import_interchange(input: &str, output: &str, format: Format) -> Result<(), String> {
+    ensure_distinct_files(input, output)?;
     let document =
         std::fs::read_to_string(input).map_err(|error| format!("cannot read {input}: {error}"))?;
     let project = match format {
@@ -257,10 +307,13 @@ fn load_and_print(path: &str, json: bool) -> Result<(), String> {
 /// Findings are data, not errors: the command succeeds whenever the audit ran,
 /// even when checks fail, because the report itself carries the bad news. The
 /// most recent baseline, if any, drives the baseline checks — the same
-/// convention the earned-value panel uses.
+/// convention the earned-value panel uses. When `--json` asked for a
+/// machine-readable report, a load or schedule failure still writes the
+/// `kind: "error"` document to stdout, the way `print_schedule_output` does.
 fn audit_command(path: &str, json: bool, status_date: Option<Date>) -> Result<(), String> {
-    let project = cadence_persistence::load_project(path).map_err(|error| error.to_string())?;
-    let schedule = schedule(&project).map_err(|error| error.to_string())?;
+    let project = cadence_persistence::load_project(path)
+        .map_err(|error| json_error(error.to_string(), json))?;
+    let schedule = schedule(&project).map_err(|error| json_error(error.to_string(), json))?;
     let config = AuditConfig {
         status_date,
         ..AuditConfig::default()
@@ -328,10 +381,13 @@ fn print_audit(report: &AuditReport) {
 /// Both files are scheduled with the ordinary engine; structural changes are
 /// always reported and date movement only when both sides schedule. Like the
 /// audit, findings are data: the command succeeds when the comparison ran.
+/// When `--json` asked for a machine-readable report, a failed load still
+/// writes the `kind: "error"` document to stdout.
 fn compare_command(before_path: &str, after_path: &str, json: bool) -> Result<(), String> {
-    let before =
-        cadence_persistence::load_project(before_path).map_err(|error| error.to_string())?;
-    let after = cadence_persistence::load_project(after_path).map_err(|error| error.to_string())?;
+    let before = cadence_persistence::load_project(before_path)
+        .map_err(|error| json_error(error.to_string(), json))?;
+    let after = cadence_persistence::load_project(after_path)
+        .map_err(|error| json_error(error.to_string(), json))?;
     let comparison = compare(&before, &after);
     if json {
         print!(
@@ -426,13 +482,28 @@ fn print_comparison(before_path: &str, after_path: &str, comparison: &Comparison
 }
 
 /// Parse an ISO-8601 date for the audit status date.
-fn parse_status_date(value: &str) -> Option<Date> {
-    let (year, rest) = value.split_once('-')?;
-    let (month, day) = rest.split_once('-')?;
-    let year = year.parse::<i32>().ok()?;
-    let month = month.parse::<u8>().ok()?;
-    let day = day.parse::<u8>().ok()?;
-    Date::from_calendar_date(year, Month::try_from(month).ok()?, day).ok()
+///
+/// The interchange crate already reads `YYYY-MM-DD` for every import format;
+/// its parser is the one authority for dates here too, and a rejected value
+/// is named in the error so the operator can see which argument was wrong.
+fn parse_status_date(value: &str) -> Result<Date, String> {
+    cadence_interchange::parse_date(value)
+        .ok_or_else(|| format!("invalid --status-date {value:?}: expected YYYY-MM-DD"))
+}
+
+/// Print the `kind: "error"` JSON document for `message` when `--json` asked
+/// for machine-readable output, and return the message so the caller can
+/// still report it on stderr.
+///
+/// A command that promised a JSON document owes its reader an answer even
+/// when it fails: a script reading only stdout would otherwise see an empty
+/// stream. This mirrors how `print_schedule_output` reports a schedule that
+/// cannot be produced.
+fn json_error(message: String, json: bool) -> String {
+    if json {
+        print!("{}", cadence_interchange::schedule::schedule_error(&message));
+    }
+    message
 }
 
 /// Schedule a project and print the result: the aligned plain-text table by
@@ -472,6 +543,9 @@ fn print_schedule_output(project: &Project, json: bool) -> Result<(), String> {
 
 /// Write a Markdown project report to stdout or to a file.
 fn print_report(path: &str, output: Option<&str>) -> Result<(), String> {
+    if let Some(output) = output {
+        ensure_distinct_files(path, output)?;
+    }
     let project = cadence_persistence::load_project(path).map_err(|error| error.to_string())?;
     let report = cadence_core::report::project_report(&project, today());
     match output {
@@ -487,6 +561,7 @@ fn print_report(path: &str, output: Option<&str>) -> Result<(), String> {
 
 /// Print a project report to a PDF file.
 fn print_report_pdf(path: &str, output: &str) -> Result<(), String> {
+    ensure_distinct_files(path, output)?;
     let project = cadence_persistence::load_project(path).map_err(|error| error.to_string())?;
     let pdf = cadence_core::report::project_report_pdf(&project, today());
     std::fs::write(output, &pdf).map_err(|error| format!("cannot write {output}: {error}"))?;

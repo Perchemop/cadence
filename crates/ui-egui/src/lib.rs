@@ -51,20 +51,14 @@ pub struct DesignTokens {
 }
 
 impl DesignTokens {
-    /// Tokens for the requested theme.
+    /// Tokens for the requested theme, sourced from the design palette so
+    /// both themes keep their WCAG AA verified contrast.
     pub fn for_dark(dark: bool) -> Self {
-        if dark {
-            Self {
-                accent: ACCENT,
-                critical: Color32::from_rgb(0xFF, 0x6B, 0x6B),
-                normal: Color32::from_rgb(0x9B, 0xC1, 0xFF),
-            }
-        } else {
-            Self {
-                accent: ACCENT,
-                critical: Color32::from_rgb(0xC0, 0x39, 0x2B),
-                normal: Color32::from_rgb(0x1F, 0x3B, 0x73),
-            }
+        let palette = design::palette(dark);
+        Self {
+            accent: ACCENT,
+            critical: palette.critical,
+            normal: palette.normal,
         }
     }
 }
@@ -2054,10 +2048,20 @@ impl eframe::App for CadenceApp {
                                 let Some(key) = col.0 else {
                                     continue;
                                 };
+                                // The active sort column shows its direction.
+                                let label = if self.sort_key == key {
+                                    format!(
+                                        "{} {}",
+                                        key.label(),
+                                        if self.sort_ascending { "▲" } else { "▼" }
+                                    )
+                                } else {
+                                    key.label().to_owned()
+                                };
                                 if ui
                                     .add_sized(
                                         [widths[index], 22.0],
-                                        egui::Button::new(key.label()).frame(false),
+                                        egui::Button::new(label).frame(false),
                                     )
                                     .clicked()
                                 {
@@ -2090,6 +2094,22 @@ impl eframe::App for CadenceApp {
                                     let selected = selected_id == Some(activity.id);
                                     ui.horizontal(|ui| {
                                         ui.spacing_mut().item_spacing.x = spacing;
+                                        // The whole row is a click target, so
+                                        // activities stay selectable no matter
+                                        // which columns are visible. The Name
+                                        // button is drawn after it and keeps
+                                        // its own hit area on top.
+                                        let row_rect = Rect::from_min_size(
+                                            ui.cursor().min,
+                                            Vec2::new(ui.available_width(), row_height),
+                                        );
+                                        let row_clicked = ui
+                                            .interact(
+                                                row_rect,
+                                                egui::Id::new(("activity_row", activity.id)),
+                                                Sense::click(),
+                                            )
+                                            .clicked();
                                         for (col, (key, _label, _w)) in defs.iter().enumerate() {
                                             match key {
                                                 None => {
@@ -2177,6 +2197,9 @@ impl eframe::App for CadenceApp {
                                                     );
                                                 }
                                             }
+                                        }
+                                        if row_clicked {
+                                            clicked_activity = Some(activity.id);
                                         }
                                     });
                                 }
@@ -3505,7 +3528,7 @@ fn gantt_summary(schedule: &Schedule) -> String {
     let noun = if count == 1 { "activity" } else { "activities" };
     format!(
         "Gantt chart: {count} {noun}, {} critical, {} to {}. \
-         Red bars (marked !) are critical; the darker fill is recorded progress. \
+         Red bars (marked !) are critical; the accent fill is recorded progress. \
          The Table view lists the same data as text.",
         schedule.critical_path.len(),
         schedule.project_start,
@@ -3526,10 +3549,11 @@ fn render_gantt(
     pixels_per_day_out: &mut f32,
     dark: bool,
 ) -> bool {
+    let tokens = DesignTokens::for_dark(dark);
     let current_schedule = match schedule.as_ref() {
         Ok(schedule) => schedule,
         Err(error) => {
-            ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
+            ui.colored_label(tokens.critical, format!("Schedule error: {error}"));
             return false;
         }
     };
@@ -3715,15 +3739,12 @@ fn render_gantt(
                 let x1 = x0 + width;
                 let bar =
                     Rect::from_min_max(Pos2::new(x0, y + 2.0), Pos2::new(x1, y + row_height - 2.0));
-                let color = if result.critical {
-                    Color32::from_rgb(0xFF, 0x6B, 0x6B)
-                } else {
-                    Color32::from_rgb(0x9B, 0xC1, 0xFF)
-                };
+                let color = if result.critical { tokens.critical } else { tokens.normal };
                 painter.rect_filled(bar, 2.0, color);
 
                 // Progress overlay: the completed share of the bar is drawn in
-                // a stronger tone so that recorded progress is visible.
+                // the accent so recorded progress stays visible over either
+                // bar colour in both themes.
                 if let Some(percent) = activity.percent_complete {
                     if percent > 0 {
                         let fraction = percent.clamp(0, 10_000) as f32 / 10_000.0;
@@ -3731,12 +3752,7 @@ fn render_gantt(
                             bar.min,
                             Pos2::new(bar.min.x + bar.width() * fraction, bar.max.y),
                         );
-                        let progress_color = if result.critical {
-                            Color32::from_rgb(0xC0, 0x39, 0x2B)
-                        } else {
-                            Color32::from_rgb(0x2F, 0x6F, 0xED)
-                        };
-                        painter.rect_filled(progress, 2.0, progress_color);
+                        painter.rect_filled(progress, 2.0, tokens.accent);
                     }
                 }
 
@@ -3781,12 +3797,33 @@ fn render_gantt(
             let Some(succ_result) = current_schedule.activity(relationship.successor) else {
                 continue;
             };
-            let pred_days =
-                (pred_result.scheduled_finish.to_julian_day() - origin.to_julian_day()) as f32;
-            let succ_days =
-                (succ_result.scheduled_start.to_julian_day() - origin.to_julian_day()) as f32;
-            let x0 = rect.min.x + (pred_days + 1.0) * pixels_per_day;
-            let x1 = rect.min.x + succ_days * pixels_per_day;
+            // Anchor the arrow at the dates the link drives: finish-to-start
+            // and finish-to-finish leave the predecessor finish edge;
+            // start-to-start and start-to-finish leave the predecessor start
+            // edge. The successor end lands on its start or finish edge
+            // respectively. Finish edges sit one day right of the date.
+            let (pred_from_start, succ_at_finish) = match relationship.link_type {
+                LinkType::Fs => (false, false),
+                LinkType::Ss => (true, false),
+                LinkType::Ff => (false, true),
+                LinkType::Sf => (true, true),
+            };
+            let pred_date = if pred_from_start {
+                pred_result.scheduled_start
+            } else {
+                pred_result.scheduled_finish
+            };
+            let succ_date = if succ_at_finish {
+                succ_result.scheduled_finish
+            } else {
+                succ_result.scheduled_start
+            };
+            let pred_days = (pred_date.to_julian_day() - origin.to_julian_day()) as f32;
+            let succ_days = (succ_date.to_julian_day() - origin.to_julian_day()) as f32;
+            let pred_offset = if pred_from_start { 0.0 } else { 1.0 };
+            let succ_offset = if succ_at_finish { 1.0 } else { 0.0 };
+            let x0 = rect.min.x + (pred_days + pred_offset) * pixels_per_day;
+            let x1 = rect.min.x + (succ_days + succ_offset) * pixels_per_day;
             let y0 = rect.min.y + header_height + pred_row as f32 * row_height + row_height / 2.0;
             let y1 = rect.min.y + header_height + succ_row as f32 * row_height + row_height / 2.0;
             let mid_x = (x0 + x1) / 2.0;

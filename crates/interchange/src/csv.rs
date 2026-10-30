@@ -115,7 +115,7 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
         let text = |index: Option<usize>| -> Option<&str> {
             index
                 .and_then(|index| record.get(index))
-                .map(|value| value.trim())
+                .map(|value| unguard_field(value.trim()))
         };
 
         let id = text(Some(id_column))
@@ -489,11 +489,29 @@ fn render_csv(rows: &[Vec<String>]) -> String {
 }
 
 fn escape_field(field: &str) -> String {
+    let field = if matches!(field.chars().next(), Some('=' | '+' | '-' | '@')) {
+        format!("'{field}")
+    } else {
+        field.to_string()
+    };
     if field.contains(',') || field.contains('"') || field.contains('\n') || field.contains('\r') {
         format!("\"{}\"", field.replace('"', "\"\""))
     } else {
-        field.to_string()
+        field
     }
+}
+
+/// Remove the apostrophe prefix a spreadsheet-safe export adds before a formula.
+/// If the field begins with a leading apostrophe followed by a formula trigger,
+/// the apostrophe is stripped so the original value is recovered.
+fn unguard_field(field: &str) -> &str {
+    let mut chars = field.chars();
+    if chars.next() == Some('\'') {
+        if matches!(chars.next(), Some('=' | '+' | '-' | '@')) {
+            return &field[1..];
+        }
+    }
+    field
 }
 
 /// Split a list cell on `separator`, treating `\` as an escape character.
@@ -754,5 +772,32 @@ ID,Name,Duration,Actual start,Actual finish
         assert_eq!(from_csv.activities, from_xml.activities);
         assert_eq!(from_csv.start_date, from_xml.start_date);
         assert_eq!(from_csv.relationships.len(), from_xml.relationships.len());
+    }
+
+    #[test]
+    fn formula_like_names_are_neutralised_and_round_trip() {
+        let start = date(2026, Month::January, 5);
+        let mut project = Project::new("Formulas", start);
+        project.activities.push(Activity::new(ActivityId(1), "=SUM(A1:A2)", 1));
+        project.activities.push(Activity::new(ActivityId(2), "+cmd", 1));
+        project.activities.push(Activity::new(ActivityId(3), "-danger", 1));
+        project.activities.push(Activity::new(ActivityId(4), "@import", 1));
+        let mut activity = Activity::new(ActivityId(5), "Neg cost", 1);
+        activity.actual_cost = Some(-12345);
+        project.activities.push(activity);
+
+        let text = export(&project).expect("export");
+        assert!(text.contains("'=SUM(A1:A2)"));
+        assert!(text.contains("'+cmd"));
+        assert!(text.contains("'-danger"));
+        assert!(text.contains("'@import"));
+        assert!(text.contains("'-123.45"));
+
+        let loaded = import(&text).expect("import");
+        assert_eq!(loaded.activities[0].name, "=SUM(A1:A2)");
+        assert_eq!(loaded.activities[1].name, "+cmd");
+        assert_eq!(loaded.activities[2].name, "-danger");
+        assert_eq!(loaded.activities[3].name, "@import");
+        assert_eq!(loaded.activities[4].actual_cost, Some(-12345));
     }
 }

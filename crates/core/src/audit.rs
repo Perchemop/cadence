@@ -454,22 +454,23 @@ fn check_leads(project: &Project) -> CheckResult {
 }
 
 fn check_lags(project: &Project, config: &AuditConfig) -> CheckResult {
+    // Both the numerator and the denominator are every relationship in the
+    // programme: the DCMA convention assesses the share of all relationships
+    // that carry a lag, so the two populations must match rather than
+    // comparing lagged open successors against all relationships.
     let mut findings = Vec::new();
     for relationship in &project.relationships {
         if relationship.lag <= 0 {
             continue;
         }
-        if let Some(successor) = activity(project, relationship.successor) {
-            if is_open(successor) {
-                findings.push(Finding::Relationship {
-                    id: relationship.id,
-                    detail: format!(
-                        "lag of {} working days into {}",
-                        relationship.lag, successor.name
-                    ),
-                });
-            }
-        }
+        let detail = match activity(project, relationship.successor) {
+            Some(successor) => format!(
+                "lag of {} working days into {}",
+                relationship.lag, successor.name
+            ),
+            None => format!("lag of {} working days", relationship.lag),
+        };
+        findings.push(Finding::Relationship { id: relationship.id, detail });
     }
     let total = project.relationships.len();
     let bp = ratio_bp(findings.len(), total);
@@ -484,7 +485,7 @@ fn check_lags(project: &Project, config: &AuditConfig) -> CheckResult {
             percent(config.percentage_limit_bp)
         )),
         format!(
-            "{} of {total} relationships carry a lag ({}).",
+            "{} of {total} relationships carry a lag ({}); the share is counted over all relationships in the programme.",
             findings.len(),
             percent(bp)
         ),
@@ -619,8 +620,12 @@ fn check_negative_float(project: &Project, schedule: &Schedule) -> CheckResult {
             "No activities to check.",
         );
     }
+    // Negative float only matters for work still to be done: a completed
+    // activity cannot be forecast to miss a date, so the check covers open
+    // activities only, the same population as the high-float check.
+    let open = open_activities(project);
     let mut findings = Vec::new();
-    for activity in &project.activities {
+    for activity in &open {
         if let Some(result) = schedule.activity(activity.id) {
             if result.total_float < 0 {
                 findings.push(Finding::Activity {
@@ -640,11 +645,16 @@ fn check_negative_float(project: &Project, schedule: &Schedule) -> CheckResult {
         CheckId::NegativeFloat,
         CheckCategory::Float,
         outcome,
-        Some(format!("{} activities with negative float", findings.len())),
+        Some(format!(
+            "{} of {} open activities with negative float",
+            findings.len(),
+            open.len()
+        )),
         Some("none allowed".to_string()),
         format!(
-            "{} activities have negative float; the programme is forecast to miss a fixed date.",
-            findings.len()
+            "{} of {} open activities have negative float; the programme is forecast to miss a fixed date.",
+            findings.len(),
+            open.len()
         ),
         findings,
     )
@@ -723,13 +733,32 @@ fn check_invalid_dates(
         }
         if is_open(activity) {
             if let Some(result) = schedule.activity(activity.id) {
-                if result.scheduled_start < status {
+                // An activity that has started is legitimately in the past, so
+                // its forecast start never counts as invalid. Only an activity
+                // with no progress behind it must not be forecast to start
+                // before the status date.
+                let started =
+                    activity.actual_start.is_some() || activity.percent_complete.unwrap_or(0) > 0;
+                if !started && result.scheduled_start < status {
                     findings.push(Finding::Activity {
                         id: activity.id,
                         name: activity.name.clone(),
                         detail: format!(
                             "forecast start {} is before the status date",
                             result.scheduled_start
+                        ),
+                    });
+                }
+                // An open activity whose forecast finish has already slipped
+                // behind the status date is stale regardless of progress
+                // (DCMA point #9 also tests the forecast finish).
+                if result.scheduled_finish < status {
+                    findings.push(Finding::Activity {
+                        id: activity.id,
+                        name: activity.name.clone(),
+                        detail: format!(
+                            "forecast finish {} is before the status date",
+                            result.scheduled_finish
                         ),
                     });
                 }
@@ -1260,6 +1289,19 @@ mod tests {
     }
 
     #[test]
+    fn a_completed_activity_with_negative_float_does_not_fail_the_float_check() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A", 2);
+        project.activities[0].percent_complete = Some(10_000);
+        let mut schedule = schedule(&project).expect("schedule succeeds");
+        schedule.activities[0].total_float = -3;
+
+        let check = check_negative_float(&project, &schedule);
+
+        assert_eq!(check.outcome, CheckOutcome::Pass);
+    }
+
+    #[test]
     fn a_long_activity_fails_the_duration_check() {
         let mut project = project();
         add_activity(&mut project, 1, "A", 50);
@@ -1323,6 +1365,50 @@ mod tests {
             outcome(&report, CheckId::InvalidDates),
             CheckOutcome::NotApplicable
         );
+    }
+
+    #[test]
+    fn an_in_progress_programme_passes_the_invalid_dates_check() {
+        let mut project = project();
+        // A duration-10 activity started on the project start (Monday 5
+        // January) is still running at the status date (Thursday 8 January):
+        // its forecast start is behind the status date only because the engine
+        // ignores actual dates, so it must not be flagged.
+        add_activity(&mut project, 1, "A", 10);
+        project.activities[0].actual_start = Some(jan(5));
+        project.activities[0].percent_complete = Some(5_000);
+        let config = AuditConfig {
+            status_date: Some(jan(8)),
+            ..AuditConfig::default()
+        };
+
+        let report = run_with(&project, None, &config);
+
+        assert_eq!(outcome(&report, CheckId::InvalidDates), CheckOutcome::Pass);
+    }
+
+    #[test]
+    fn a_stale_forecast_finish_fails_the_invalid_dates_check() {
+        let mut project = project();
+        // A duration-2 activity started on 5 January finishes on 6 January but
+        // is still open at the status date of 20 January: its forecast finish
+        // is stale and must be flagged even though it has started.
+        add_activity(&mut project, 1, "A", 2);
+        project.activities[0].actual_start = Some(jan(5));
+        project.activities[0].percent_complete = Some(5_000);
+        let config = AuditConfig {
+            status_date: Some(jan(20)),
+            ..AuditConfig::default()
+        };
+
+        let report = run_with(&project, None, &config);
+
+        assert_eq!(outcome(&report, CheckId::InvalidDates), CheckOutcome::Fail);
+        let check = report.check(CheckId::InvalidDates).expect("check present");
+        assert!(check.findings.iter().any(|finding| matches!(
+            finding,
+            Finding::Activity { detail, .. } if detail.contains("forecast finish")
+        )));
     }
 
     #[test]

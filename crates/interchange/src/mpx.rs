@@ -108,6 +108,12 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
                 .value(record, "id")
                 .and_then(|value| value.parse::<u64>().ok())
                 .ok_or_else(|| InterchangeError::MissingField("tasks/ID".to_string()))?;
+            if project.activities.iter().any(|a| a.id == ActivityId(id)) {
+                return Err(InterchangeError::InvalidField {
+                    field: "tasks/ID".to_string(),
+                    value: id.to_string(),
+                });
+            }
             let activity_name = tasks.value(record, "name").unwrap_or_default().to_string();
             let duration = tasks
                 .value(record, "duration")
@@ -183,8 +189,17 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
             }
             let kind = match resources.value(record, "type").unwrap_or("1") {
                 "0" => ResourceKind::Material,
+                "1" => ResourceKind::Labour,
                 "2" => ResourceKind::Equipment,
-                _ => ResourceKind::Labour,
+                // MPX Type codes are 0=Material, 1=Work, 2=Cost. Cadence maps 2 to Equipment
+                // as the closest available representation; this is a documented limitation.
+                // Unknown codes are rejected rather than silently mislabelled.
+                other => {
+                    return Err(InterchangeError::InvalidField {
+                        field: "resources/Type".to_string(),
+                        value: other.to_string(),
+                    })
+                }
             };
             let capacity = resources
                 .value(record, "maxunits")
@@ -636,5 +651,34 @@ TaskID\tResourceID\tUnits
         let document = export(&project).expect("export");
         let loaded = import(&document).expect("import");
         assert_eq!(loaded.activities[0].name, "Line break tab");
+    }
+
+    #[test]
+    fn duplicate_activity_ids_are_rejected() {
+        let document = "\
+[mpx]\n
+[project]\n
+StartDate=2026-01-05\n
+[tasks]\n
+ID\tName\n
+1\tA\n
+1\tB\n
+";
+        let error = import(document).expect_err("duplicate ID");
+        assert!(matches!(error, InterchangeError::InvalidField { .. }));
+    }
+
+    #[test]
+    fn unknown_resource_type_is_rejected() {
+        let document = "\
+[mpx]\n
+[project]\n
+StartDate=2026-01-05\n
+[resources]\n
+ID\tName\tType\n
+1\tR\t3\n
+";
+        let error = import(document).expect_err("unknown type");
+        assert!(matches!(error, InterchangeError::InvalidField { field, .. } if field == "resources/Type"));
     }
 }

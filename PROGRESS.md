@@ -998,3 +998,9 @@ Open findings are catalogued in the two audit docs; the highest are the EVM
 interchange dropping `location`/snapshots/notes, CSV formula injection, and the
 baseline-comparison false relationship diff.
 
+A third document, `docs/qc/capability-audit.md`, compares Cadence against every
+capability named in the reference-product inventories (MS Project, P6, Asta
+Powerproject, ProjectLibre, Aphex, the DCMA/GAO/AACE audit tools, the optional
+AI tools): 273 capabilities, 130 shipped / 37 partial / 86 missing / 20
+out-of-scope. A second parallel fix pass addresses the open findings.
+

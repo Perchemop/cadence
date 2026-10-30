@@ -22,50 +22,49 @@ or wrong result; **MEDIUM** = UX, accessibility or consistency bug; **LOW/NIT** 
 | HIGH | `lib.rs` `apply_field_planning` | Always pushed two commands even when nothing changed, and ignored errors. | Only push on change; report errors. |
 | MEDIUM | `lib.rs` toolbar | The toolbar was a non-wrapping `ui.horizontal`, so controls fell off-screen on a narrow window. | `horizontal_wrapped`. |
 | MEDIUM | `lib.rs` diary | A non-numeric activity id silently attached the note to no activity. | Still open (see below) — noted, not yet fixed. |
+| HIGH | `lib.rs` `render_gantt` | Gantt dependency arrows ignored link type and always drew finish→start, contradicting SS/FF/SF logic. | Arrow geometry now branches on `relationship.link_type`. |
+| MEDIUM | `lib.rs` Gantt | Bar colours, progress overlay and error text were hardcoded literals that ignored the theme and diverged from the token palette. | Sourced from `design::palette(dark)` / `DesignTokens`; the progress overlay now uses the accent. |
+| MEDIUM | `lib.rs` table headers | Sort headers gave no direction cue. | The active column label now shows ▲ / ▼. |
+| MEDIUM | `lib.rs` table | Hiding the Name column removed the only pointer selection target. | Each row is now a full-width click target that selects the activity regardless of visible columns. |
 
 ## Open findings (ranked)
 
-1. **HIGH — Gantt dependency arrows ignore link type** (`lib.rs:3543`): arrows are
-   always drawn finish→start regardless of `SS`/`FF`/`SF`, contradicting the data.
-   Fix: branch the geometry on `relationship.link_type`.
-2. **HIGH — Gantt drag-to-create is always FS** (same block): acceptable default but
+1. **HIGH — Gantt drag-to-create is always FS** (same block): acceptable default but
    worth a modifier for other types.
-3. **MEDIUM — Resources view recomputes and clones per frame** (`lib.rs:1986-2051,
+2. **MEDIUM — Resources view recomputes and clones per frame** (`lib.rs:1986-2051,
    3242`): `resource_conflicts`, `resource_histogram`, `project.resources.clone()`
    and `sorted().to_vec()` run every frame. Cache on `edit_version`.
-4. **MEDIUM — Lookahead recomputes per frame with an O(n²) snapshot compare**
+3. **MEDIUM — Lookahead recomputes per frame with an O(n²) snapshot compare**
    (`lib.rs:2507,2633-2679`): cache the window; compare with a `BTreeMap`.
-5. **MEDIUM — Status bar recounts critical activities every frame** (`lib.rs:3129`):
+4. **MEDIUM — Status bar recounts critical activities every frame** (`lib.rs:3129`):
    O(activities) with a schedule lookup per row. Compute alongside `recompute()`.
-6. **MEDIUM — Gantt bar colours are hardcoded** (`lib.rs:3473`) and ignore the theme;
-   they diverge from `design::palette`. Source them from the palette.
-7. **MEDIUM — `egui::Color32::RED` / `0xC0392B` error text bypasses the token
-   palette** (`lib.rs:1737,1998,2040,2186,3287`); pure red on the light panel is
-   below WCAG AA 4.5:1. Use `palette.critical`.
-8. **MEDIUM — Text fields have no AccessKit label association** (`lib.rs:1476-1577`):
+5. **MEDIUM — Non-token red error text outside the Gantt** (`lib.rs:1737,1998,2040,
+   2186,3287`): the Gantt now uses `palette.critical`; the top-bar status message and
+   the Table/Resources/Baselines/Audit views still hardcode reds that fall below
+   WCAG AA on the light panel.
+6. **MEDIUM — Text fields have no AccessKit label association** (`lib.rs:1476-1577`):
    `ui.label("Name")` + `text_edit_singleline` is not linked. Pass `labelled_by`.
-9. **MEDIUM — Hiding the Name column removes the only pointer selection target**
-   (`lib.rs:1828`): make the whole row clickable regardless of columns.
-10. **MEDIUM — Sort headers show no direction** (`lib.rs:1778`): append ▲/▼.
-11. **MEDIUM — GUI cannot create or delete activities** (`lib.rs:1317-1460`):
+7. **MEDIUM — GUI cannot create or delete activities** (`lib.rs:1317-1460`):
     `CreateActivity`/`DeleteActivity` are unused here. Add toolbar controls.
-12. **MEDIUM — Leveling applies N undo entries** (`lib.rs:958`): wrap in one composite
+8. **MEDIUM — Leveling applies N undo entries** (`lib.rs:958`): wrap in one composite
     command so a mid-batch failure cannot leave a partial state.
-13. **MEDIUM — Ctrl+wheel zooms and scrolls at once** (`lib.rs:3414`): consume the
+9. **MEDIUM — Ctrl+wheel zooms and scrolls at once** (`lib.rs:3414`): consume the
     scroll delta for zoom.
-14. **MEDIUM — `select()` rewrites the link form** (`lib.rs:451`): clicking a row sets
+10. **MEDIUM — `select()` rewrites the link form** (`lib.rs:451`): clicking a row sets
     `link_predecessor` and may clear `link_successor`. Separate selection from form.
-15. **MEDIUM — Gantt zoom is one frame behind** (`lib.rs:3280`): apply the new
+11. **MEDIUM — Gantt zoom is one frame behind** (`lib.rs:3280`): apply the new
     `pixels_per_day` before drawing.
-16. **LOW — `DesignTokens` is dead code** (`lib.rs:43`) duplicating `design::Palette`.
-17. **LOW — `status_message` is never cleared** (`lib.rs:544`): stale errors linger.
-18. **LOW — Crash "Open GitHub issue" clears the log before the browser opens**
+12. **MEDIUM — Diary activity id** (`lib.rs:2760`): a non-numeric id silently attaches
+    the note to no activity; report a parse error.
+13. **LOW — `status_message` is never cleared** (`lib.rs:544`): stale errors linger.
+14. **LOW — Crash "Open GitHub issue" clears the log before the browser opens**
     (`lib.rs:2876`); crash preview clones the whole log every frame (`lib.rs:2869`).
-19. **LOW — Doc drift**: `ACCESSIBILITY.md:19` says Ctrl+1–5 (app has Ctrl+1–8);
-    `ACCESSIBILITY.md:43` claims a GUI project file dialog that did not exist before
-    this audit (now true); `docs/ui-patterns.md:61` marks Diary/clash `planned` (they
-    ship).
-20. **LOW — Duplicate "Toggle theme"** in toolbar and status bar (`lib.rs:1449,3044`).
+15. **LOW — Doc drift**: `ACCESSIBILITY.md:19` says Ctrl+1–5 (app has Ctrl+1–8);
+    `ACCESSIBILITY.md:43` claimed a GUI project file dialog before this audit (now
+    true); `docs/ui-patterns.md` Diary/clash rows are corrected.
+16. **LOW — Duplicate "Toggle theme"** in toolbar and status bar (`lib.rs:1449,3044`).
+17. **LOW — Gantt week-grid loop** (`lib.rs:3347`): `unwrap_or(week_origin)` would spin
+    forever on a zero-working-day calendar; advance by a day or break on error.
 
 ## Accessibility and design consistency
 

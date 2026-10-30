@@ -89,6 +89,12 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
     if let Some(tasks) = root.child("Tasks") {
         for task in tasks.children_named("Task") {
             let uid = task_uid(task)?;
+            if project.activities.iter().any(|a| a.id == ActivityId(uid)) {
+                return Err(InterchangeError::InvalidField {
+                    field: "Task/UID".to_string(),
+                    value: uid.to_string(),
+                });
+            }
             let activity_name = task.text_of("Name").unwrap_or_default().to_string();
             let duration = match task.text_of("Duration") {
                 Some(text) => parse_duration(text)?,
@@ -175,7 +181,16 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
             let kind = match resource.parse_of::<i64>("Type").unwrap_or(1) {
                 0 => ResourceKind::Material,
                 1 => ResourceKind::Labour,
-                _ => ResourceKind::Equipment,
+                2 => ResourceKind::Equipment,
+                // MSPDI Type codes are 0=Material, 1=Work, 2=Cost. Cadence maps 2 to Equipment
+                // as the closest available representation; this is a documented limitation.
+                // Unknown codes are rejected rather than silently mislabelled.
+                other => {
+                    return Err(InterchangeError::InvalidField {
+                        field: "Resource/Type".to_string(),
+                        value: other.to_string(),
+                    })
+                }
             };
             let capacity = resource
                 .parse_of::<f64>("MaxUnits")
@@ -858,5 +873,30 @@ mod tests {
         assert_eq!(parse_money("oops"), None);
         assert_eq!(format_money(150_000), "1500.00");
         assert_eq!(format_money(-1_234), "-12.34");
+    }
+
+    #[test]
+    fn duplicate_activity_ids_are_rejected() {
+        let document = r#"<Project>
+            <StartDate>2026-01-05</StartDate>
+            <Tasks>
+              <Task><UID>1</UID><Name>A</Name></Task>
+              <Task><UID>1</UID><Name>B</Name></Task>
+            </Tasks>
+        </Project>"#;
+        let error = import(document).expect_err("duplicate UID");
+        assert!(matches!(error, InterchangeError::InvalidField { .. }));
+    }
+
+    #[test]
+    fn unknown_resource_type_is_rejected() {
+        let document = r#"<Project>
+            <StartDate>2026-01-05</StartDate>
+            <Resources>
+              <Resource><UID>1</UID><Name>R</Name><Type>3</Type></Resource>
+            </Resources>
+        </Project>"#;
+        let error = import(document).expect_err("unknown type");
+        assert!(matches!(error, InterchangeError::InvalidField { field, .. } if field == "Resource/Type"));
     }
 }
