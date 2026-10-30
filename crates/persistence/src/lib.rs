@@ -1,8 +1,8 @@
 //! SQLite project files for Cadence.
 //!
 //! A Cadence project file is an ordinary SQLite database. The schema is
-//! versioned with `PRAGMA user_version`; this build reads and writes version 5
-//! and migrates version 1, 2 and 3 files in place.
+//! versioned with `PRAGMA user_version`; this build reads and writes version 7
+//! and migrates version 1 and later files in place.
 //!
 //! Saving runs in a single transaction that replaces the previous contents, so
 //! a failed save never corrupts an existing project.
@@ -279,7 +279,14 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL DEFAULT 0,
                      PRIMARY KEY (snapshot_id, activity_id)
                  );
-                 PRAGMA user_version = 6;",
+                 CREATE TABLE IF NOT EXISTS daily_notes (
+                     id                   INTEGER PRIMARY KEY,
+                     date                 TEXT    NOT NULL,
+                     content              TEXT    NOT NULL,
+                     activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                     lookahead_window_start TEXT
+                 );
+                 PRAGMA user_version = 7;",
             )?;
             Ok(())
         }
@@ -339,7 +346,14 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL DEFAULT 0,
                      PRIMARY KEY (snapshot_id, activity_id)
                  );
-                 PRAGMA user_version = 6;",
+                 CREATE TABLE IF NOT EXISTS daily_notes (
+                     id                   INTEGER PRIMARY KEY,
+                     date                 TEXT    NOT NULL,
+                     content              TEXT    NOT NULL,
+                     activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                     lookahead_window_start TEXT
+                 );
+                 PRAGMA user_version = 7;",
             )?;
             Ok(())
         }
@@ -369,7 +383,14 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL DEFAULT 0,
                      PRIMARY KEY (snapshot_id, activity_id)
                  );
-                 PRAGMA user_version = 6;",
+                 CREATE TABLE IF NOT EXISTS daily_notes (
+                     id                   INTEGER PRIMARY KEY,
+                     date                 TEXT    NOT NULL,
+                     content              TEXT    NOT NULL,
+                     activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                     lookahead_window_start TEXT
+                 );
+                 PRAGMA user_version = 7;",
             )?;
             Ok(())
         }
@@ -399,7 +420,14 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL DEFAULT 0,
                      PRIMARY KEY (snapshot_id, activity_id)
                  );
-                 PRAGMA user_version = 6;",
+                 CREATE TABLE IF NOT EXISTS daily_notes (
+                     id                   INTEGER PRIMARY KEY,
+                     date                 TEXT    NOT NULL,
+                     content              TEXT    NOT NULL,
+                     activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                     lookahead_window_start TEXT
+                 );
+                 PRAGMA user_version = 7;",
             )?;
             Ok(())
         }
@@ -425,7 +453,14 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                     percent_complete INTEGER NOT NULL DEFAULT 0,
                     PRIMARY KEY (snapshot_id, activity_id)
                 );
-                 PRAGMA user_version = 6;",
+                 CREATE TABLE IF NOT EXISTS daily_notes (
+                    id                   INTEGER PRIMARY KEY,
+                    date                 TEXT    NOT NULL,
+                    content              TEXT    NOT NULL,
+                    activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                    lookahead_window_start TEXT
+                );
+                 PRAGMA user_version = 7;",
             )?;
             Ok(())
         }
@@ -1894,6 +1929,32 @@ mod tests {
         );
         assert_eq!(loaded.activities[1].owner, None);
         assert!(!loaded.activities[1].promised);
+    }
+
+    #[test]
+    fn daily_notes_round_trip() {
+        let mut project = sample_project();
+        project.daily_notes.push(DailyNote::new(
+            DailyNoteId(1),
+            date(6),
+            "Crane late; resequenced pour".to_string(),
+            Some(ActivityId(1)),
+            None,
+        ));
+        project.daily_notes.push(DailyNote::new(
+            DailyNoteId(2),
+            date(7),
+            "Week 1 huddle briefed".to_string(),
+            None,
+            Some(date(5)),
+        ));
+
+        let dir = TempDir::new();
+        let path = dir.file("diary.cadence");
+        save_project(&project, &path).expect("save");
+        let loaded = load_project(&path).expect("load");
+
+        assert_eq!(loaded.daily_notes, project.daily_notes);
     }
 
     #[test]
