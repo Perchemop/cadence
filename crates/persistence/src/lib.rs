@@ -215,8 +215,12 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
     let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
     match version {
         0 => {
-            connection.execute_batch(SCHEMA)?;
-            connection.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            // Create the schema and stamp the version in one transaction so an
+            // interrupted save can never leave a half-created file behind.
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(SCHEMA)?;
+            transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            transaction.commit()?;
             Ok(())
         }
         1 => {
@@ -226,7 +230,8 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
             // used by earned value management, and baselines.
             // Version 4 adds the recorded actual dates. Migrate straight
             // through to the current schema version.
-            connection.execute_batch(
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
                 "ALTER TABLE activities ADD COLUMN constraint_kind TEXT NOT NULL DEFAULT 'asap';
                  ALTER TABLE activities ADD COLUMN constraint_date TEXT;
                  ALTER TABLE activities ADD COLUMN budget_at_completion INTEGER;
@@ -290,6 +295,7 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                  ALTER TABLE activities ADD COLUMN location TEXT;
                  PRAGMA user_version = 8;",
             )?;
+            transaction.commit()?;
             Ok(())
         }
         2 => {
@@ -297,7 +303,8 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
             // assignments, the activity cost fields used by earned value
             // management, and baselines.
             // Version 4 adds the recorded actual dates.
-            connection.execute_batch(
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
                 "ALTER TABLE activities ADD COLUMN budget_at_completion INTEGER;
                  ALTER TABLE activities ADD COLUMN actual_cost INTEGER;
                  ALTER TABLE activities ADD COLUMN percent_complete INTEGER;
@@ -358,11 +365,13 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                  ALTER TABLE activities ADD COLUMN location TEXT;
                  PRAGMA user_version = 8;",
             )?;
+            transaction.commit()?;
             Ok(())
         }
         3 => {
             // Version 4 adds the recorded actual start and finish dates.
-            connection.execute_batch(
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
                 "ALTER TABLE activities ADD COLUMN actual_start TEXT;
                  ALTER TABLE activities ADD COLUMN actual_finish TEXT;
                  ALTER TABLE activities ADD COLUMN owner TEXT;
@@ -396,13 +405,15 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                  ALTER TABLE activities ADD COLUMN location TEXT;
                  PRAGMA user_version = 8;",
             )?;
+            transaction.commit()?;
             Ok(())
         }
         4 => {
             // Version 5 adds field-planning fields: the activity owner, the
             // promised flag, and the delay reason recorded against a
             // promised activity.
-            connection.execute_batch(
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
                 "ALTER TABLE activities ADD COLUMN owner TEXT;
                  ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
                  ALTER TABLE activities ADD COLUMN delay_reason TEXT;
@@ -434,12 +445,14 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                  ALTER TABLE activities ADD COLUMN location TEXT;
                  PRAGMA user_version = 8;",
             )?;
+            transaction.commit()?;
             Ok(())
         }
         5 => {
             // Version 6 adds lookahead snapshots: published, read-only views
             // of the near-term plan.
-            connection.execute_batch(
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
                 "CREATE TABLE IF NOT EXISTS lookahead_snapshots (
                     id          INTEGER PRIMARY KEY,
                     name        TEXT    NOT NULL,
@@ -468,13 +481,15 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                  ALTER TABLE activities ADD COLUMN location TEXT;
                  PRAGMA user_version = 8;",
             )?;
+            transaction.commit()?;
             Ok(())
         }
         6 => {
             // Version 7 adds daily notes: dated diary entries linked to
             // activities or lookahead windows. Version 8 adds the optional
             // work location. Migrate straight through to the current version.
-            connection.execute_batch(
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
                 "CREATE TABLE IF NOT EXISTS daily_notes (
                     id                   INTEGER PRIMARY KEY,
                     date                 TEXT    NOT NULL,
@@ -485,14 +500,17 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                  ALTER TABLE activities ADD COLUMN location TEXT;
                  PRAGMA user_version = 8;",
             )?;
+            transaction.commit()?;
             Ok(())
         }
         7 => {
             // Version 8 adds the optional activity work location.
-            connection.execute_batch(
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
                 "ALTER TABLE activities ADD COLUMN location TEXT;
                  PRAGMA user_version = 8;",
             )?;
+            transaction.commit()?;
             Ok(())
         }
         SCHEMA_VERSION => Ok(()),
@@ -544,12 +562,45 @@ fn validate(project: &Project) -> Result<()> {
             )));
         }
     }
+    for note in &project.daily_notes {
+        if let Some(activity) = note.activity_id {
+            if project.activity(activity).is_none() {
+                return Err(PersistenceError::InvalidData(format!(
+                    "daily note {} references missing activity {activity}",
+                    note.id
+                )));
+            }
+        }
+    }
+    for baseline in &project.baselines {
+        for snapshot in &baseline.snapshots {
+            if project.activity(snapshot.activity_id).is_none() {
+                return Err(PersistenceError::InvalidData(format!(
+                    "baseline {} snapshot references missing activity {}",
+                    baseline.id, snapshot.activity_id
+                )));
+            }
+        }
+    }
+    for snapshot in &project.lookahead_snapshots {
+        for entry in &snapshot.entries {
+            if project.activity(entry.activity_id).is_none() {
+                return Err(PersistenceError::InvalidData(format!(
+                    "lookahead snapshot {} references missing activity {}",
+                    snapshot.id, entry.activity_id
+                )));
+            }
+        }
+    }
     Ok(())
 }
 
 fn clear_project(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
     transaction.execute_batch(
-        "DELETE FROM baseline_snapshots;
+        "DELETE FROM lookahead_snapshot_entries;
+         DELETE FROM lookahead_snapshots;
+         DELETE FROM daily_notes;
+         DELETE FROM baseline_snapshots;
          DELETE FROM baselines;
          DELETE FROM activity_resources;
          DELETE FROM resources;
@@ -1921,6 +1972,42 @@ mod tests {
     }
 
     #[test]
+    fn daily_notes_with_missing_activities_are_rejected_on_save() {
+        let dir = TempDir::new();
+        let path = dir.file("dangling-note.cadence");
+
+        let mut broken = sample_project();
+        broken.daily_notes.push(DailyNote::new(
+            DailyNoteId(1),
+            date(6),
+            "Note about a removed activity".to_string(),
+            Some(ActivityId(999)),
+            None,
+        ));
+
+        match save_project(&broken, &path) {
+            Err(PersistenceError::InvalidData(message)) => {
+                assert!(message.contains("missing activity"), "{message}");
+            }
+            other => panic!("expected InvalidData, got {other:?}"),
+        }
+
+        // A normal project with a note linked to a real activity is unaffected
+        // and still round-trips.
+        let mut healthy = sample_project();
+        healthy.daily_notes.push(DailyNote::new(
+            DailyNoteId(1),
+            date(6),
+            "Crane late; resequenced pour".to_string(),
+            Some(ActivityId(1)),
+            None,
+        ));
+        save_project(&healthy, &path).expect("save healthy project");
+        let loaded = load_project(&path).expect("load healthy project");
+        assert_eq!(loaded, healthy);
+    }
+
+    #[test]
     fn workweek_masks_round_trip() {
         for mask in 0..=0b111_1111 {
             assert_eq!(encode_week(decode_week(mask).expect("valid mask")), mask);
@@ -1981,13 +2068,30 @@ mod tests {
             None,
             Some(date(5)),
         ));
+        project
+            .lookahead_snapshots
+            .push(LookaheadSnapshot::from_entries(
+                LookaheadSnapshotId(1),
+                "Week 1-2",
+                date(5),
+                date(5),
+                2,
+                Vec::new(),
+            ));
 
         let dir = TempDir::new();
         let path = dir.file("diary.cadence");
-        save_project(&project, &path).expect("save");
+        save_project(&project, &path).expect("first save");
         let loaded = load_project(&path).expect("load");
-
         assert_eq!(loaded.daily_notes, project.daily_notes);
+        assert_eq!(loaded.lookahead_snapshots, project.lookahead_snapshots);
+
+        // Saving a second time must replace the snapshot and note rows rather
+        // than colliding with them.
+        save_project(&loaded, &path).expect("re-save");
+        let reloaded = load_project(&path).expect("reload");
+        assert_eq!(reloaded.daily_notes, project.daily_notes);
+        assert_eq!(reloaded.lookahead_snapshots, project.lookahead_snapshots);
     }
 
     #[test]

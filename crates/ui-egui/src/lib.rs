@@ -51,20 +51,14 @@ pub struct DesignTokens {
 }
 
 impl DesignTokens {
-    /// Tokens for the requested theme.
+    /// Tokens for the requested theme, sourced from the design palette so
+    /// both themes keep their WCAG AA verified contrast.
     pub fn for_dark(dark: bool) -> Self {
-        if dark {
-            Self {
-                accent: ACCENT,
-                critical: Color32::from_rgb(0xFF, 0x6B, 0x6B),
-                normal: Color32::from_rgb(0x9B, 0xC1, 0xFF),
-            }
-        } else {
-            Self {
-                accent: ACCENT,
-                critical: Color32::from_rgb(0xC0, 0x39, 0x2B),
-                normal: Color32::from_rgb(0x1F, 0x3B, 0x73),
-            }
+        let palette = design::palette(dark);
+        Self {
+            accent: ACCENT,
+            critical: palette.critical,
+            normal: palette.normal,
         }
     }
 }
@@ -219,6 +213,8 @@ fn resource_kind_from_index(index: usize) -> ResourceKind {
 /// The Cadence application state.
 pub struct CadenceApp {
     project: Project,
+    /// Path the project was loaded from or last saved to, if any.
+    project_path: Option<PathBuf>,
     schedule: Result<Schedule, String>,
     dark: bool,
     stack: CommandStack,
@@ -293,6 +289,11 @@ pub struct CadenceApp {
 impl CadenceApp {
     /// Build the application from a loaded project.
     pub fn new(project: Project) -> Self {
+        Self::with_path(project, None)
+    }
+
+    /// Build the application from a loaded project and the file it came from.
+    pub fn with_path(project: Project, path: Option<PathBuf>) -> Self {
         let schedule = schedule(&project).map_err(|error| error.to_string());
         let crash_log = crash::read_log().unwrap_or_default();
         let show_crash_dialog = !crash_log.is_empty();
@@ -300,6 +301,7 @@ impl CadenceApp {
             update_check::cached_status().unwrap_or(update_check::UpdateStatus::NotChecked);
         Self {
             project,
+            project_path: path,
             schedule,
             dark: true,
             stack: CommandStack::new(),
@@ -390,6 +392,15 @@ impl CadenceApp {
         self.schedule = schedule(&self.project).map_err(|error| error.to_string());
     }
 
+    /// Reload the inspector buffers for the selected activity after an undo or
+    /// redo, so the fields never show a value that is no longer in the model.
+    fn refresh_selection(&mut self) {
+        match self.selected {
+            Some(id) if self.project.activity(id).is_some() => self.select(id),
+            _ => self.selected = None,
+        }
+    }
+
     /// Run the programme audit with the applied status date.
     ///
     /// The audit is pure and cheap, but it is not free on a 10,000-activity
@@ -466,29 +477,46 @@ impl CadenceApp {
     /// for the reason in the delay-reason field, which the promise command
     /// records.
     fn apply_field_planning(&mut self, id: ActivityId) {
-        let owner = self.owner_buffer.trim();
-        let owner = if owner.is_empty() {
+        let Some(activity) = self.project.activity(id).cloned() else {
+            return;
+        };
+        let owner_text = self.owner_buffer.trim();
+        let owner = if owner_text.is_empty() {
             None
         } else {
-            Some(owner.to_string())
+            Some(owner_text.to_string())
         };
-        let _ = self
-            .stack
-            .execute(&mut self.project, Box::new(SetActivityOwner { id, owner }));
         let reason = self.delay_reason_buffer.trim();
         let delay_reason = if reason.is_empty() {
             None
         } else {
             Some(reason.to_string())
         };
-        let _ = self.stack.execute(
-            &mut self.project,
-            Box::new(SetActivityPromise {
-                id,
-                promised: self.promised_buffer,
-                delay_reason,
-            }),
-        );
+
+        // Only push history for the fields that actually changed, and report a
+        // rejected command instead of dropping it silently.
+        if owner != activity.owner {
+            if let Err(error) = self
+                .stack
+                .execute(&mut self.project, Box::new(SetActivityOwner { id, owner }))
+            {
+                self.status_message = Some(error);
+                return;
+            }
+        }
+        if self.promised_buffer != activity.promised || delay_reason != activity.delay_reason {
+            if let Err(error) = self.stack.execute(
+                &mut self.project,
+                Box::new(SetActivityPromise {
+                    id,
+                    promised: self.promised_buffer,
+                    delay_reason,
+                }),
+            ) {
+                self.status_message = Some(error);
+                return;
+            }
+        }
         self.recompute();
     }
 
@@ -552,94 +580,162 @@ impl CadenceApp {
             return;
         };
 
-        if self.name_buffer != activity.name && !self.name_buffer.trim().is_empty() {
-            let _ = self.stack.execute(
+        if self.name_buffer.trim().is_empty() {
+            self.status_message = Some("The activity name must not be empty.".to_string());
+            return;
+        }
+        if self.name_buffer != activity.name {
+            if let Err(error) = self.stack.execute(
                 &mut self.project,
                 Box::new(RenameActivity {
                     id,
                     name: self.name_buffer.clone(),
                 }),
-            );
+            ) {
+                self.status_message = Some(error);
+                return;
+            }
         }
 
-        if let Ok(duration) = self.duration_buffer.trim().parse::<u32>() {
-            if duration != activity.original_duration {
-                let _ = self.stack.execute(
-                    &mut self.project,
-                    Box::new(SetActivityDuration { id, duration }),
-                );
-            }
+        match self.duration_buffer.trim() {
+            "" => {}
+            text => match text.parse::<u32>() {
+                Ok(duration) => {
+                    if duration != activity.original_duration {
+                        if let Err(error) = self.stack.execute(
+                            &mut self.project,
+                            Box::new(SetActivityDuration { id, duration }),
+                        ) {
+                            self.status_message = Some(error);
+                            return;
+                        }
+                    }
+                }
+                Err(_) => {
+                    self.status_message =
+                        Some("Duration must be a whole number of working days.".to_string());
+                    return;
+                }
+            },
         }
 
         let constraint = match self.constraint_kind {
             0 => Constraint::AsSoonAsPossible,
             1 => Constraint::AsLateAsPossible,
-            2 => parse_date(self.constraint_date_buffer.trim())
-                .map(Constraint::StartNoEarlierThan)
-                .unwrap_or(activity.constraint),
-            3 => parse_date(self.constraint_date_buffer.trim())
-                .map(Constraint::StartNoLaterThan)
-                .unwrap_or(activity.constraint),
-            4 => parse_date(self.constraint_date_buffer.trim())
-                .map(Constraint::FinishNoEarlierThan)
-                .unwrap_or(activity.constraint),
-            _ => parse_date(self.constraint_date_buffer.trim())
-                .map(Constraint::FinishNoLaterThan)
-                .unwrap_or(activity.constraint),
+            kind => {
+                let Some(date) = parse_date(self.constraint_date_buffer.trim()) else {
+                    self.status_message =
+                        Some("A date constraint needs a date in YYYY-MM-DD format.".to_string());
+                    return;
+                };
+                match kind {
+                    2 => Constraint::StartNoEarlierThan(date),
+                    3 => Constraint::StartNoLaterThan(date),
+                    4 => Constraint::FinishNoEarlierThan(date),
+                    _ => Constraint::FinishNoLaterThan(date),
+                }
+            }
         };
 
         if constraint != activity.constraint {
-            let _ = self.stack.execute(
+            if let Err(error) = self.stack.execute(
                 &mut self.project,
                 Box::new(SetActivityConstraint { id, constraint }),
-            );
-        }
-
-        if let Some(percent) = parse_percent(self.progress_buffer.trim()) {
-            if percent != activity.percent_complete {
-                let _ = self.stack.execute(
-                    &mut self.project,
-                    Box::new(SetActivityProgress {
-                        id,
-                        percent_complete: percent,
-                    }),
-                );
+            ) {
+                self.status_message = Some(error);
+                return;
             }
         }
 
-        let budget = parse_money(self.budget_buffer.trim());
+        let percent = match parse_percent(self.progress_buffer.trim()) {
+            Some(percent) => percent,
+            None => {
+                self.status_message =
+                    Some("Progress must be a percentage between 0 and 100.".to_string());
+                return;
+            }
+        };
+        if percent != activity.percent_complete {
+            if let Err(error) = self.stack.execute(
+                &mut self.project,
+                Box::new(SetActivityProgress {
+                    id,
+                    percent_complete: percent,
+                }),
+            ) {
+                self.status_message = Some(error);
+                return;
+            }
+        }
+
+        let budget = match parse_optional_money(self.budget_buffer.trim()) {
+            Some(value) => value,
+            None => {
+                self.status_message = Some("Budget must be a number.".to_string());
+                return;
+            }
+        };
         if budget != activity.budget_at_completion {
-            let _ = self.stack.execute(
+            if let Err(error) = self.stack.execute(
                 &mut self.project,
                 Box::new(SetActivityBudget {
                     id,
                     budget_at_completion: budget,
                 }),
-            );
+            ) {
+                self.status_message = Some(error);
+                return;
+            }
         }
 
-        let cost = parse_money(self.actual_cost_buffer.trim());
+        let cost = match parse_optional_money(self.actual_cost_buffer.trim()) {
+            Some(value) => value,
+            None => {
+                self.status_message = Some("Actual cost must be a number.".to_string());
+                return;
+            }
+        };
         if cost != activity.actual_cost {
-            let _ = self.stack.execute(
+            if let Err(error) = self.stack.execute(
                 &mut self.project,
                 Box::new(SetActivityActualCost {
                     id,
                     actual_cost: cost,
                 }),
-            );
+            ) {
+                self.status_message = Some(error);
+                return;
+            }
         }
 
-        let actual_start = parse_date(self.actual_start_buffer.trim());
-        let actual_finish = parse_date(self.actual_finish_buffer.trim());
+        let actual_start = match parse_optional_date(self.actual_start_buffer.trim()) {
+            Some(date) => date,
+            None => {
+                self.status_message =
+                    Some("Actual start must be a date in YYYY-MM-DD format.".to_string());
+                return;
+            }
+        };
+        let actual_finish = match parse_optional_date(self.actual_finish_buffer.trim()) {
+            Some(date) => date,
+            None => {
+                self.status_message =
+                    Some("Actual finish must be a date in YYYY-MM-DD format.".to_string());
+                return;
+            }
+        };
         if actual_start != activity.actual_start || actual_finish != activity.actual_finish {
-            let _ = self.stack.execute(
+            if let Err(error) = self.stack.execute(
                 &mut self.project,
                 Box::new(SetActivityActualDates {
                     id,
                     actual_start,
                     actual_finish,
                 }),
-            );
+            ) {
+                self.status_message = Some(error);
+                return;
+            }
         }
 
         self.recompute();
@@ -775,6 +871,7 @@ impl CadenceApp {
             return;
         };
 
+        let mut changed = false;
         let name = self.calendar_name_buffer.trim().to_string();
         if !name.is_empty() && name != named.name {
             if let Err(error) = self
@@ -782,6 +879,8 @@ impl CadenceApp {
                 .execute(&mut self.project, Box::new(RenameCalendar { id, name }))
             {
                 self.status_message = Some(error);
+            } else {
+                changed = true;
             }
         }
 
@@ -794,9 +893,16 @@ impl CadenceApp {
                 Box::new(SetCalendarDefinition { id, calendar }),
             ) {
                 self.status_message = Some(error);
+            } else {
+                changed = true;
             }
         }
 
+        if changed {
+            // A working-day change moves every activity that uses the
+            // calendar, so the schedule must be recomputed.
+            self.recompute();
+        }
         self.select_calendar(id);
     }
 
@@ -1028,6 +1134,75 @@ impl CadenceApp {
     ///
     /// The report itself needs no dialog; "Print report…" is the one that
     /// opens one, for choosing where a PDF goes.
+    /// Save the project to its known path, or prompt for one.
+    fn save_or_prompt(&mut self) {
+        match self.project_path.clone() {
+            Some(path) => self.save_to(path),
+            None => self.save_as_dialog(),
+        }
+    }
+
+    /// Write the project to `path` and remember it as the current file.
+    fn save_to(&mut self, path: PathBuf) {
+        match cadence_persistence::save_project(&self.project, &path) {
+            Ok(()) => {
+                self.status_message = Some(format!("Saved to {}", path.display()));
+                self.project_path = Some(path);
+            }
+            Err(error) => {
+                self.status_message = Some(format!("Cannot save: {error}"));
+            }
+        }
+    }
+
+    /// Prompt for a path and save there.
+    fn save_as_dialog(&mut self) {
+        let file_name = self
+            .project_path
+            .as_ref()
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| format!("{}.cadence", file_stem(&self.project.name)));
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Cadence project", &["cadence"])
+            .set_file_name(file_name)
+            .save_file()
+        {
+            self.save_to(path);
+        }
+    }
+
+    /// Prompt for a project file and open it.
+    fn open_dialog(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Cadence project", &["cadence"])
+            .pick_file()
+        {
+            self.open_from(path);
+        }
+    }
+
+    /// Load a project from `path`, replacing the current one.
+    fn open_from(&mut self, path: PathBuf) {
+        match cadence_persistence::load_project(&path) {
+            Ok(project) => {
+                self.project = project;
+                self.project_path = Some(path.clone());
+                self.stack = CommandStack::new();
+                self.selected = None;
+                self.selected_relationship = None;
+                self.selected_resource = None;
+                self.selected_baseline = None;
+                self.selected_lookahead_snapshot = None;
+                self.recompute();
+                self.status_message = Some(format!("Opened {}", path.display()));
+            }
+            Err(error) => {
+                self.status_message = Some(format!("Cannot open: {error}"));
+            }
+        }
+    }
+
     fn save_report(&mut self) {
         let path = format!("{}.report.md", file_stem(&self.project.name));
         let report = cadence_core::report::project_report(&self.project, today());
@@ -1156,23 +1331,37 @@ impl eframe::App for CadenceApp {
             apply_theme(&ctx, self.dark);
         }
 
-        // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y: undo and redo from any view.
-        let undo_requested = ctx.input(|input| {
-            input.key_pressed(egui::Key::Z) && input.modifiers.ctrl && !input.modifiers.shift
-        });
-        let redo_requested = ctx.input(|input| {
-            (input.key_pressed(egui::Key::Y) && input.modifiers.ctrl)
-                || (input.key_pressed(egui::Key::Z)
-                    && input.modifiers.ctrl
-                    && input.modifiers.shift)
-        });
+        // Ctrl+S saves, Ctrl+O opens. These act everywhere, including while a
+        // text field has focus (a save never touches the focused text).
+        if ctx.input(|input| input.key_pressed(egui::Key::S) && input.modifiers.ctrl) {
+            self.save_or_prompt();
+        }
+        if ctx.input(|input| input.key_pressed(egui::Key::O) && input.modifiers.ctrl) {
+            self.open_dialog();
+        }
+
+        // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y: undo and redo from any view. Skip
+        // while a text field is focused, where the field's own undo applies.
+        let undo_requested = !ctx.text_edit_focused()
+            && ctx.input(|input| {
+                input.key_pressed(egui::Key::Z) && input.modifiers.ctrl && !input.modifiers.shift
+            });
+        let redo_requested = !ctx.text_edit_focused()
+            && ctx.input(|input| {
+                (input.key_pressed(egui::Key::Y) && input.modifiers.ctrl)
+                    || (input.key_pressed(egui::Key::Z)
+                        && input.modifiers.ctrl
+                        && input.modifiers.shift)
+            });
         if undo_requested {
             let _ = self.stack.undo(&mut self.project);
             self.recompute();
+            self.refresh_selection();
         }
         if redo_requested {
             let _ = self.stack.redo(&mut self.project);
             self.recompute();
+            self.refresh_selection();
         }
 
         // Refresh the cached sort order once per edit, not once per frame.
@@ -1315,10 +1504,32 @@ impl eframe::App for CadenceApp {
         }
 
         egui::Panel::top("toolbar").show(ui, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.heading("Cadence");
                 ui.separator();
                 ui.label(&self.project.name);
+                if ui
+                    .button("Open…")
+                    .on_hover_text("Open a Cadence project file (Ctrl+O)")
+                    .clicked()
+                {
+                    self.open_dialog();
+                }
+                if ui
+                    .button("Save")
+                    .on_hover_text("Save the project (Ctrl+S)")
+                    .clicked()
+                {
+                    self.save_or_prompt();
+                }
+                if ui
+                    .button("Save as…")
+                    .on_hover_text("Save the project to a new file")
+                    .clicked()
+                {
+                    self.save_as_dialog();
+                }
+                ui.separator();
                 // View tabs: one tab per workspace, MS Project / P6 style.
                 // Selected tab keeps its fill so the active workspace is obvious.
                 let first = &mut true;
@@ -1459,6 +1670,62 @@ impl eframe::App for CadenceApp {
                     }
                 });
             });
+        });
+
+        // Status bar: project dates and counts, critical count, zoom, and the
+        // most recent status message. It is a bottom panel, so it must be added
+        // before the per-view `CentralPanel` (which claims the remaining
+        // space).
+        egui::Panel::bottom("status_bar").show(ui, |ui| {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 16.0;
+                let (range, critical_count) = match self.schedule.as_ref() {
+                    Ok(schedule) => {
+                        let critical = self
+                            .project
+                            .activities
+                            .iter()
+                            .filter(|activity| {
+                                schedule
+                                    .activity(activity.id)
+                                    .is_some_and(|result| result.critical)
+                            })
+                            .count();
+                        (
+                            format!("{} to {}", schedule.project_start, schedule.project_finish),
+                            critical,
+                        )
+                    }
+                    Err(_) => ("Cannot schedule".to_string(), 0),
+                };
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{range}   {} activities   {} critical   Zoom {:.0}%",
+                        self.project.activities.len(),
+                        critical_count,
+                        self.pixels_per_day / 14.0 * 100.0,
+                    ))
+                    .weak()
+                    .small(),
+                );
+                if let Some(message) = &self.status_message {
+                    ui.label("   ·   ");
+                    ui.label(
+                        egui::RichText::new(message)
+                            .weak()
+                            .small()
+                            .color(egui::Color32::from_rgb(0xC0, 0x39, 0x2B)),
+                    );
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("Toggle theme").clicked() {
+                        self.dark = !self.dark;
+                        apply_theme(&ctx, self.dark);
+                    }
+                });
+            });
+            ui.separator();
         });
 
         match self.view_mode {
@@ -1706,12 +1973,13 @@ impl eframe::App for CadenceApp {
 
                 if self.show_split_gantt {
                     let activities = &self.sorted_cache;
+                    let mut gantt_changed = false;
                     egui::Panel::right("workbench_gantt")
                         .default_size(420.0)
                         .min_size(300.0)
                         .resizable(true)
                         .show(ui, |ui| {
-                            render_gantt(
+                            gantt_changed = render_gantt(
                                 ui,
                                 &mut self.project,
                                 &mut self.schedule,
@@ -1724,6 +1992,11 @@ impl eframe::App for CadenceApp {
                                 self.dark,
                             );
                         });
+                    if gantt_changed {
+                        // A drag-created link changes the schedule; bump the
+                        // edit version so cached sort and audit results refresh.
+                        self.recompute();
+                    }
                 }
 
                 let schedule = self.schedule.as_ref();
@@ -1775,10 +2048,20 @@ impl eframe::App for CadenceApp {
                                 let Some(key) = col.0 else {
                                     continue;
                                 };
+                                // The active sort column shows its direction.
+                                let label = if self.sort_key == key {
+                                    format!(
+                                        "{} {}",
+                                        key.label(),
+                                        if self.sort_ascending { "▲" } else { "▼" }
+                                    )
+                                } else {
+                                    key.label().to_owned()
+                                };
                                 if ui
                                     .add_sized(
                                         [widths[index], 22.0],
-                                        egui::Button::new(key.label()).frame(false),
+                                        egui::Button::new(label).frame(false),
                                     )
                                     .clicked()
                                 {
@@ -1811,6 +2094,22 @@ impl eframe::App for CadenceApp {
                                     let selected = selected_id == Some(activity.id);
                                     ui.horizontal(|ui| {
                                         ui.spacing_mut().item_spacing.x = spacing;
+                                        // The whole row is a click target, so
+                                        // activities stay selectable no matter
+                                        // which columns are visible. The Name
+                                        // button is drawn after it and keeps
+                                        // its own hit area on top.
+                                        let row_rect = Rect::from_min_size(
+                                            ui.cursor().min,
+                                            Vec2::new(ui.available_width(), row_height),
+                                        );
+                                        let row_clicked = ui
+                                            .interact(
+                                                row_rect,
+                                                egui::Id::new(("activity_row", activity.id)),
+                                                Sense::click(),
+                                            )
+                                            .clicked();
                                         for (col, (key, _label, _w)) in defs.iter().enumerate() {
                                             match key {
                                                 None => {
@@ -1899,6 +2198,9 @@ impl eframe::App for CadenceApp {
                                                 }
                                             }
                                         }
+                                        if row_clicked {
+                                            clicked_activity = Some(activity.id);
+                                        }
                                     });
                                 }
                             });
@@ -1920,9 +2222,10 @@ impl eframe::App for CadenceApp {
                 self.scroll_to_selection = false;
             }
             ViewMode::Gantt => {
+                let mut gantt_changed = false;
                 egui::CentralPanel::default().show(ui, |ui| {
                     let px = self.pixels_per_day;
-                    render_gantt(
+                    gantt_changed = render_gantt(
                         ui,
                         &mut self.project,
                         &mut self.schedule,
@@ -1935,6 +2238,9 @@ impl eframe::App for CadenceApp {
                         self.dark,
                     );
                 });
+                if gantt_changed {
+                    self.recompute();
+                }
             }
             ViewMode::Resources => {
                 egui::Panel::right("resource_inspector")
@@ -2991,64 +3297,6 @@ impl eframe::App for CadenceApp {
                 self.show_shortcuts_dialog = false;
             }
         }
-
-        // Status bar: project dates and counts, critical count, zoom,
-        // and the most recent status message — MS Project-style footer.
-        egui::Panel::bottom("status_bar").show(ui, |ui| {
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 16.0;
-                let schedule_ok = self.schedule.as_ref().is_ok();
-                let critical_count = if let Ok(schedule) = self.schedule.as_ref() {
-                    self.project
-                        .activities
-                        .iter()
-                        .filter(|activity| {
-                            schedule
-                                .activity(activity.id)
-                                .is_some_and(|result| result.critical)
-                        })
-                        .count()
-                } else {
-                    0
-                };
-                ui.label(
-                    egui::RichText::new(format!(
-                        "{}   {} activities   {} critical   Zoom {:.0}%",
-                        if schedule_ok {
-                            format!(
-                                "{} to {}",
-                                self.schedule.as_ref().unwrap().project_start,
-                                self.schedule.as_ref().unwrap().project_finish
-                            )
-                        } else {
-                            "Cannot schedule".to_string()
-                        },
-                        self.project.activities.len(),
-                        critical_count,
-                        self.pixels_per_day / 14.0 * 100.0,
-                    ))
-                    .weak()
-                    .small(),
-                );
-                if let Some(message) = &self.status_message {
-                    ui.label("   ·   ");
-                    ui.label(
-                        egui::RichText::new(message)
-                            .weak()
-                            .small()
-                            .color(egui::Color32::from_rgb(0xC0, 0x39, 0x2B)),
-                    );
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Toggle theme").clicked() {
-                        self.dark = !self.dark;
-                        apply_theme(&ctx, self.dark);
-                    }
-                });
-            });
-            ui.separator();
-        });
     }
 }
 
@@ -3160,6 +3408,26 @@ fn parse_money(text: &str) -> Option<i64> {
     Some((value * 100.0).round() as i64)
 }
 
+/// Parse an optional money field: `Some(None)` for empty (clear the value),
+/// `Some(Some(v))` for a value, `None` when text is present but not a number.
+fn parse_optional_money(text: &str) -> Option<Option<i64>> {
+    if text.is_empty() {
+        Some(None)
+    } else {
+        parse_money(text).map(Some)
+    }
+}
+
+/// Parse an optional date field: `Some(None)` for empty, `Some(Some(date))` for
+/// a value, `None` when text is present but not a date.
+fn parse_optional_date(text: &str) -> Option<Option<Date>> {
+    if text.is_empty() {
+        Some(None)
+    } else {
+        parse_date(text).map(Some)
+    }
+}
+
 /// Parse a percentage into basis points (0 to 10000).
 ///
 /// An empty string means "not recorded".
@@ -3260,7 +3528,7 @@ fn gantt_summary(schedule: &Schedule) -> String {
     let noun = if count == 1 { "activity" } else { "activities" };
     format!(
         "Gantt chart: {count} {noun}, {} critical, {} to {}. \
-         Red bars (marked !) are critical; the darker fill is recorded progress. \
+         Red bars (marked !) are critical; the accent fill is recorded progress. \
          The Table view lists the same data as text.",
         schedule.critical_path.len(),
         schedule.project_start,
@@ -3280,12 +3548,13 @@ fn render_gantt(
     pixels_per_day: f32,
     pixels_per_day_out: &mut f32,
     dark: bool,
-) {
+) -> bool {
+    let tokens = DesignTokens::for_dark(dark);
     let current_schedule = match schedule.as_ref() {
         Ok(schedule) => schedule,
         Err(error) => {
-            ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
-            return;
+            ui.colored_label(tokens.critical, format!("Schedule error: {error}"));
+            return false;
         }
     };
     let origin = project.start_date;
@@ -3471,14 +3740,15 @@ fn render_gantt(
                 let bar =
                     Rect::from_min_max(Pos2::new(x0, y + 2.0), Pos2::new(x1, y + row_height - 2.0));
                 let color = if result.critical {
-                    Color32::from_rgb(0xFF, 0x6B, 0x6B)
+                    tokens.critical
                 } else {
-                    Color32::from_rgb(0x9B, 0xC1, 0xFF)
+                    tokens.normal
                 };
                 painter.rect_filled(bar, 2.0, color);
 
                 // Progress overlay: the completed share of the bar is drawn in
-                // a stronger tone so that recorded progress is visible.
+                // the accent so recorded progress stays visible over either
+                // bar colour in both themes.
                 if let Some(percent) = activity.percent_complete {
                     if percent > 0 {
                         let fraction = percent.clamp(0, 10_000) as f32 / 10_000.0;
@@ -3486,12 +3756,7 @@ fn render_gantt(
                             bar.min,
                             Pos2::new(bar.min.x + bar.width() * fraction, bar.max.y),
                         );
-                        let progress_color = if result.critical {
-                            Color32::from_rgb(0xC0, 0x39, 0x2B)
-                        } else {
-                            Color32::from_rgb(0x2F, 0x6F, 0xED)
-                        };
-                        painter.rect_filled(progress, 2.0, progress_color);
+                        painter.rect_filled(progress, 2.0, tokens.accent);
                     }
                 }
 
@@ -3536,12 +3801,33 @@ fn render_gantt(
             let Some(succ_result) = current_schedule.activity(relationship.successor) else {
                 continue;
             };
-            let pred_days =
-                (pred_result.scheduled_finish.to_julian_day() - origin.to_julian_day()) as f32;
-            let succ_days =
-                (succ_result.scheduled_start.to_julian_day() - origin.to_julian_day()) as f32;
-            let x0 = rect.min.x + (pred_days + 1.0) * pixels_per_day;
-            let x1 = rect.min.x + succ_days * pixels_per_day;
+            // Anchor the arrow at the dates the link drives: finish-to-start
+            // and finish-to-finish leave the predecessor finish edge;
+            // start-to-start and start-to-finish leave the predecessor start
+            // edge. The successor end lands on its start or finish edge
+            // respectively. Finish edges sit one day right of the date.
+            let (pred_from_start, succ_at_finish) = match relationship.link_type {
+                LinkType::Fs => (false, false),
+                LinkType::Ss => (true, false),
+                LinkType::Ff => (false, true),
+                LinkType::Sf => (true, true),
+            };
+            let pred_date = if pred_from_start {
+                pred_result.scheduled_start
+            } else {
+                pred_result.scheduled_finish
+            };
+            let succ_date = if succ_at_finish {
+                succ_result.scheduled_finish
+            } else {
+                succ_result.scheduled_start
+            };
+            let pred_days = (pred_date.to_julian_day() - origin.to_julian_day()) as f32;
+            let succ_days = (succ_date.to_julian_day() - origin.to_julian_day()) as f32;
+            let pred_offset = if pred_from_start { 0.0 } else { 1.0 };
+            let succ_offset = if succ_at_finish { 1.0 } else { 0.0 };
+            let x0 = rect.min.x + (pred_days + pred_offset) * pixels_per_day;
+            let x1 = rect.min.x + (succ_days + succ_offset) * pixels_per_day;
             let y0 = rect.min.y + header_height + pred_row as f32 * row_height + row_height / 2.0;
             let y1 = rect.min.y + header_height + succ_row as f32 * row_height + row_height / 2.0;
             let mid_x = (x0 + x1) / 2.0;
@@ -3552,6 +3838,7 @@ fn render_gantt(
         }
     });
 
+    let mut changed = false;
     if let Some((start_row, end_row)) = pending_link {
         if start_row < activities.len() && end_row < activities.len() {
             let predecessor = activities[start_row].id;
@@ -3566,24 +3853,31 @@ fn render_gantt(
                     *status_message = Some("Cannot add link: cycle detected".to_string());
                 } else {
                     *status_message = None;
+                    changed = true;
                 }
             } else {
                 *status_message = Some("Cannot add link".to_string());
             }
         }
     }
+    changed
 }
 
 /// Run the Cadence GUI with the given project.
 pub fn run(project: Project) -> Result<(), String> {
+    run_with_path(project, None)
+}
+
+/// Run the Cadence GUI for a project loaded from `path` (if known).
+pub fn run_with_path(project: Project, path: Option<PathBuf>) -> Result<(), String> {
     let options = eframe::NativeOptions::default();
     eframe::run_native(
         "Cadence",
         options,
-        Box::new(|cc| {
+        Box::new(move |cc| {
             design::install_fonts(&cc.egui_ctx);
             apply_theme(&cc.egui_ctx, true);
-            Ok(Box::new(CadenceApp::new(project)))
+            Ok(Box::new(CadenceApp::with_path(project, path)))
         }),
     )
     .map_err(|error| error.to_string())

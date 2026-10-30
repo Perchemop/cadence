@@ -173,32 +173,46 @@ pub fn compare(before: &Project, after: &Project) -> Comparison {
 
 /// Compare the current programme against a captured baseline.
 ///
-/// The baseline's snapshots stand in for the "before" programme: durations and
-/// baseline dates are compared, activities missing from either side are added
-/// or removed, and constraint/relationship sections stay empty because a
-/// baseline snapshot does not record them.
+/// The baseline's snapshots stand in for the "before" programme, seeded from
+/// the snapshots themselves: every snapshot becomes a before-activity with
+/// its baseline duration and dates, so an activity deleted since the capture
+/// is reported as removed and one added since is reported as added (a
+/// deleted activity's name is rebuilt from its identifier). A snapshot
+/// records neither constraints nor relationships, so those sections stay
+/// empty: the current values are carried over, leaving the structural pass
+/// nothing to misread as a change.
 pub fn compare_baseline(project: &Project, baseline: &crate::model::Baseline) -> Comparison {
     let schedule = schedule(project).ok();
     let mut before: Project = project.clone();
-    before.activities = project
-        .activities
+    before.activities = baseline
+        .snapshots
         .iter()
-        .filter_map(|activity| {
-            let snapshot = baseline
-                .snapshots
+        .map(|snapshot| {
+            let current = project
+                .activities
                 .iter()
-                .find(|snapshot| snapshot.activity_id == activity.id)?;
+                .find(|activity| activity.id == snapshot.activity_id);
             let mut rebuilt = Activity::new(
-                activity.id,
-                activity.name.clone(),
+                snapshot.activity_id,
+                current.map_or_else(
+                    || format!("Activity {}", snapshot.activity_id),
+                    |activity| activity.name.clone(),
+                ),
                 snapshot.baseline_duration,
             );
             rebuilt.scheduled_start = snapshot.baseline_start;
             rebuilt.scheduled_finish = snapshot.baseline_finish;
-            Some(rebuilt)
+            // A snapshot records no constraint, so carry the current one:
+            // there is no baseline value to compare against.
+            if let Some(activity) = current {
+                rebuilt.constraint = activity.constraint;
+            }
+            rebuilt
         })
         .collect();
-    before.relationships.clear();
+    // A snapshot records no relationships either; keeping the current ones
+    // on both sides leaves the relationship section empty instead of
+    // reporting every relationship as added.
     compare_with(&before, project, None, schedule.as_ref())
 }
 
@@ -600,6 +614,46 @@ mod tests {
         // The snapshot's activity 1 was rebuilt with activity 2 missing from
         // the baseline, so activity 2 and the new activity 3 are both "added".
         assert_eq!(comparison.added_activities.len(), 2);
+    }
+
+    #[test]
+    fn a_baseline_comparison_reports_a_removal_and_nothing_unrecorded() {
+        let project = chain();
+        let schedule = schedule(&project).expect("schedule succeeds");
+        let snapshots = project
+            .activities
+            .iter()
+            .filter_map(|activity| {
+                let scheduled = schedule.activity(activity.id)?;
+                Some(ActivityBaselineSnapshot {
+                    activity_id: activity.id,
+                    baseline_duration: activity.original_duration,
+                    baseline_start: Some(scheduled.scheduled_start),
+                    baseline_finish: Some(scheduled.scheduled_finish),
+                })
+            })
+            .collect();
+        let baseline = Baseline::from_snapshots(BaselineId::new(1), "Baseline", jan(5), snapshots);
+
+        let mut current = chain();
+        // Since the baseline was captured: a constraint was set (a baseline
+        // records none) and the excavate was deleted, leaving its
+        // relationship dangling — so the current programme cannot even be
+        // scheduled, which the structural sections do not depend on.
+        current.activities[0].constraint = Constraint::FinishNoLaterThan(jan(30));
+        current.activities.remove(1);
+
+        let comparison = compare_baseline(&current, &baseline);
+
+        // The surviving relationship is identical on both sides and a
+        // baseline records no constraints: neither section may invent
+        // changes the baseline has no evidence for.
+        assert!(comparison.relationship_changes.is_empty());
+        assert!(comparison.constraint_changes.is_empty());
+        // The deleted excavate is still in the baseline, so it is removed.
+        assert!(comparison.added_activities.is_empty());
+        assert_eq!(comparison.removed_activities.len(), 1);
+        assert_eq!(comparison.removed_activities[0].id, ActivityId::new(2));
     }
 
     #[test]

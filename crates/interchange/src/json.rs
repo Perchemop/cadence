@@ -2,28 +2,39 @@
 //!
 //! JSON is Cadence's own open interchange schema: unlike MSPDI, MPX and CSV it
 //! is not modelled on another application's dialect, so it can carry exactly
-//! what Cadence models — the project settings, the WBS tree, named calendars,
-//! the activity list with constraints, progress and calendar/WBS membership,
-//! relationships with lag, the resource dictionary with capacities,
-//! assignments and baselines — without lossy unit conversions. It is the only
-//! interchange format that is complete in this sense; the others deliberately
-//! carry subsets.
+//! what Cadence models — the project settings, the default calendar and the
+//! named calendars, the WBS tree, the activity list with constraints, progress,
+//! calendar/WBS membership and location, relationships with lag, the resource
+//! dictionary with capacities, assignments, baselines, lookahead snapshots and
+//! daily notes — without lossy unit conversions. It is the only interchange
+//! format that is complete in this sense; the others deliberately carry
+//! subsets.
 //!
 //! Schema version **2** added `wbs`, `calendars` and the per-activity `wbs`
-//! and `calendar` members. Version 1 documents still load, with an empty WBS
-//! (just its root) and no named calendars, because version 1 had no way to
-//! express them; the version is checked so an older build refuses a newer
-//! document instead of silently dropping the tree. Unknown members are
-//! ignored, so the schema can keep growing.
+//! and `calendar` members. Version **3** added the project default `calendar`,
+//! the per-activity `location`, and the `lookahead_snapshots` and `daily_notes`
+//! lists. Version 1 and 2 documents still load, with defaults for the members
+//! those versions could not express; the version is checked so an older build
+//! refuses a newer document instead of silently dropping data. Unknown members
+//! are ignored, so the schema can keep growing.
+//!
+//! The one remaining loss is deliberate: the derived schedule fields
+//! (`early_start`, `late_finish`, `total_float` and the like) are not written
+//! (D9), because the engine recomputes them from logic, calendars and
+//! constraints.
 //!
 //! The document looks like this (`cadence` is the schema version):
 //!
 //! ```json
 //! {
-//!   "cadence": 2,
+//!   "cadence": 3,
 //!   "project": {
 //!     "name": "Bridge & Road",
 //!     "start_date": "2026-01-05",
+//!     "calendar": {
+//!       "workweek": [true, true, true, true, true, false, false],
+//!       "holidays": []
+//!     },
 //!     "wbs": [
 //!       {"id": 1, "name": "Bridge & Road", "parent": null},
 //!       {"id": 2, "name": "Design", "parent": 1}
@@ -42,7 +53,8 @@
 //!         "percent_complete": 50.0,
 //!         "budget_at_completion": 1500.00, "actual_cost": 750.50,
 //!         "actual_start": "2026-01-05", "actual_finish": "2026-01-06",
-//!         "wbs": 2, "calendar": 1, "resources": [1]
+//!         "wbs": 2, "calendar": 1, "resources": [1],
+//!         "location": "Level 2"
 //!       }
 //!     ],
 //!     "relationships": [
@@ -59,6 +71,21 @@
 //!            "start": "2026-01-05", "finish": "2026-01-06"}
 //!         ]
 //!       }
+//!     ],
+//!     "lookahead_snapshots": [
+//!       {
+//!         "id": 1, "name": "Week 1", "created_at": "2026-01-05",
+//!         "window_start": "2026-01-05", "window_weeks": 1,
+//!         "entries": [
+//!           {"activity_id": 1, "name": "Survey",
+//!            "scheduled_start": "2026-01-05", "scheduled_finish": "2026-01-06",
+//!            "owner": null, "promised": false, "percent_complete": 0.5}
+//!         ]
+//!       }
+//!     ],
+//!     "daily_notes": [
+//!       {"id": 1, "date": "2026-01-05", "content": "Mobilised",
+//!        "activity_id": 1, "lookahead_window_start": null}
 //!     ]
 //!   }
 //! }
@@ -83,7 +110,8 @@ use std::str::Chars;
 use cadence_core::calendar_set::{CalendarId, CalendarSet, NamedCalendar};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
-    LinkType, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
+    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    LookaheadSnapshotId, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsTree};
 use time::Date;
@@ -91,7 +119,7 @@ use time::Date;
 use crate::{default_start_date, format_date, parse_date, InterchangeError};
 
 /// The schema version this build reads and writes.
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 /// The oldest schema version this build still reads.
 const OLDEST_SCHEMA_VERSION: i64 = 1;
@@ -146,6 +174,11 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
     let mut imported = Project::new(name, start_date);
     imported.wbs = import_wbs(project.get("wbs"))?;
     imported.calendars = import_calendars(project.get("calendars"))?;
+    // The default calendar is distinct from the named `calendars` set. A
+    // document without it (version 1 or 2) keeps the built-in default.
+    if let Some(calendar) = project.get("calendar") {
+        imported.calendar = read_calendar(calendar, "calendar")?;
+    }
 
     if let Some(activities) = project.get("activities").and_then(Value::as_array) {
         for activity in activities {
@@ -183,6 +216,9 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
             imported.baselines.push(import_baseline(baseline)?);
         }
     }
+
+    imported.lookahead_snapshots = import_lookahead_snapshots(project.get("lookahead_snapshots"))?;
+    imported.daily_notes = import_daily_notes(project.get("daily_notes"))?;
 
     // Membership is validated here rather than left for the project file to
     // reject later, so an import either produces a usable project or explains
@@ -288,57 +324,65 @@ fn import_calendars(value: Option<&Value>) -> Result<CalendarSet, InterchangeErr
             .and_then(Value::as_str)
             .unwrap_or("Calendar")
             .to_string();
-
-        let weekdays = entry
-            .get("workweek")
-            .and_then(Value::as_array)
-            .filter(|days| days.len() == 7)
-            .ok_or_else(|| {
-                missing_reference(
-                    "calendar/workweek",
-                    format!("calendar {id} needs seven Monday-first booleans"),
-                )
-            })?;
-        let mut workweek = [false; 7];
-        for (index, working) in weekdays.iter().enumerate() {
-            workweek[index] = match working {
-                Value::Bool(working) => *working,
-                _ => {
-                    return Err(missing_reference(
-                        "calendar/workweek",
-                        format!("calendar {id} has a non-boolean weekday"),
-                    ))
-                }
-            };
-        }
-        let mut calendar = Calendar::new(workweek)
-            .map_err(|error| missing_reference("calendar/workweek", error.to_string()))?;
-
-        if let Some(days) = entry.get("holidays").and_then(Value::as_array) {
-            let mut holidays = Vec::with_capacity(days.len());
-            for day in days {
-                let text = day.as_str().ok_or_else(|| {
-                    missing_reference(
-                        "calendar/holidays",
-                        format!("calendar {id} has a non-string holiday"),
-                    )
-                })?;
-                let date = parse_date(text).ok_or_else(|| {
-                    missing_reference(
-                        "calendar/holidays",
-                        format!("calendar {id} has an invalid holiday \"{text}\""),
-                    )
-                })?;
-                holidays.push(date);
-            }
-            calendar = calendar.with_holidays(holidays);
-        }
-
+        let calendar = read_calendar(entry, &format!("calendar {id}"))?;
         set.add(id, name, calendar)
             .map_err(|error| missing_reference("calendar", error.to_string()))?;
     }
 
     Ok(set)
+}
+
+/// Read a calendar's Monday-first working week and holiday exceptions from an
+/// object. The same members carry the project's default calendar and each
+/// named calendar, so both readers share this. `context` names the calendar in
+/// any error message (e.g. `calendar 3`, or just `calendar` for the default).
+fn read_calendar(value: &Value, context: &str) -> Result<Calendar, InterchangeError> {
+    let weekdays = value
+        .get("workweek")
+        .and_then(Value::as_array)
+        .filter(|days| days.len() == 7)
+        .ok_or_else(|| {
+            missing_reference(
+                "calendar/workweek",
+                format!("{context} needs seven Monday-first booleans"),
+            )
+        })?;
+    let mut workweek = [false; 7];
+    for (index, working) in weekdays.iter().enumerate() {
+        workweek[index] = match working {
+            Value::Bool(working) => *working,
+            _ => {
+                return Err(missing_reference(
+                    "calendar/workweek",
+                    format!("{context} has a non-boolean weekday"),
+                ))
+            }
+        };
+    }
+    let mut calendar = Calendar::new(workweek)
+        .map_err(|error| missing_reference("calendar/workweek", error.to_string()))?;
+
+    if let Some(days) = value.get("holidays").and_then(Value::as_array) {
+        let mut holidays = Vec::with_capacity(days.len());
+        for day in days {
+            let text = day.as_str().ok_or_else(|| {
+                missing_reference(
+                    "calendar/holidays",
+                    format!("{context} has a non-string holiday"),
+                )
+            })?;
+            let date = parse_date(text).ok_or_else(|| {
+                missing_reference(
+                    "calendar/holidays",
+                    format!("{context} has an invalid holiday \"{text}\""),
+                )
+            })?;
+            holidays.push(date);
+        }
+        calendar = calendar.with_holidays(holidays);
+    }
+
+    Ok(calendar)
 }
 
 /// Export a project as Cadence JSON.
@@ -359,6 +403,10 @@ pub fn export(project: &Project) -> String {
                 (
                     "start_date".to_string(),
                     Value::String(project.start_date.to_string()),
+                ),
+                (
+                    "calendar".to_string(),
+                    default_calendar_json(&project.calendar),
                 ),
                 (
                     "wbs".to_string(),
@@ -402,6 +450,20 @@ pub fn export(project: &Project) -> String {
                 (
                     "baselines".to_string(),
                     Value::Array(project.baselines.iter().map(baseline_json).collect()),
+                ),
+                (
+                    "lookahead_snapshots".to_string(),
+                    Value::Array(
+                        project
+                            .lookahead_snapshots
+                            .iter()
+                            .map(lookahead_snapshot_json)
+                            .collect(),
+                    ),
+                ),
+                (
+                    "daily_notes".to_string(),
+                    Value::Array(project.daily_notes.iter().map(daily_note_json).collect()),
                 ),
             ]),
         ),
@@ -455,6 +517,10 @@ fn import_activity(value: &Value) -> Result<Activity, InterchangeError> {
         .get("calendar")
         .and_then(Value::as_u64)
         .map(CalendarId);
+    activity.location = match value.get("location") {
+        Some(Value::String(location)) => Some(location.clone()),
+        _ => None,
+    };
     if let Some(resources) = value.get("resources").and_then(Value::as_array) {
         for resource in resources {
             let resource_id =
@@ -593,6 +659,129 @@ fn import_baseline(value: &Value) -> Result<Baseline, InterchangeError> {
     Ok(Baseline::from_snapshots(id, name, created_at, snapshots))
 }
 
+fn import_lookahead_snapshots(
+    value: Option<&Value>,
+) -> Result<Vec<LookaheadSnapshot>, InterchangeError> {
+    let mut snapshots = Vec::new();
+    let Some(rows) = value.and_then(Value::as_array) else {
+        return Ok(snapshots);
+    };
+    for row in rows {
+        snapshots.push(import_lookahead_snapshot(row)?);
+    }
+    Ok(snapshots)
+}
+
+fn import_lookahead_snapshot(value: &Value) -> Result<LookaheadSnapshot, InterchangeError> {
+    let id = LookaheadSnapshotId(require_u64(value, "id", "lookahead snapshot")?);
+    let name = value
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("Lookahead")
+        .to_string();
+    let created_at = value
+        .get("created_at")
+        .and_then(Value::as_str)
+        .and_then(parse_date)
+        .unwrap_or_else(default_start_date);
+    let window_start = value
+        .get("window_start")
+        .and_then(Value::as_str)
+        .and_then(parse_date)
+        .unwrap_or_else(default_start_date);
+    let window_weeks = value
+        .get("window_weeks")
+        .and_then(Value::as_u64)
+        .unwrap_or(0)
+        .min(u64::from(u32::MAX)) as u32;
+
+    let mut entries = Vec::new();
+    if let Some(rows) = value.get("entries").and_then(Value::as_array) {
+        for row in rows {
+            let activity_id = ActivityId(require_u64(row, "activity_id", "lookahead entry")?);
+            let entry_name = row
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let scheduled_start = row
+                .get("scheduled_start")
+                .and_then(Value::as_str)
+                .and_then(parse_date)
+                .unwrap_or(window_start);
+            let scheduled_finish = row
+                .get("scheduled_finish")
+                .and_then(Value::as_str)
+                .and_then(parse_date)
+                .unwrap_or(window_start);
+            let owner = match row.get("owner") {
+                Some(Value::String(owner)) => Some(owner.clone()),
+                _ => None,
+            };
+            let promised = matches!(row.get("promised"), Some(Value::Bool(true)));
+            let percent_complete = row
+                .get("percent_complete")
+                .and_then(Value::as_f64)
+                .map(|p| (p * 100.0).round() as i64)
+                .unwrap_or(0);
+            entries.push(LookaheadSnapshotEntry::new(
+                activity_id,
+                entry_name,
+                scheduled_start,
+                scheduled_finish,
+                owner,
+                promised,
+                percent_complete,
+            ));
+        }
+    }
+
+    Ok(LookaheadSnapshot::from_entries(
+        id,
+        name,
+        created_at,
+        window_start,
+        window_weeks,
+        entries,
+    ))
+}
+
+fn import_daily_notes(value: Option<&Value>) -> Result<Vec<DailyNote>, InterchangeError> {
+    let mut notes = Vec::new();
+    let Some(rows) = value.and_then(Value::as_array) else {
+        return Ok(notes);
+    };
+    for row in rows {
+        let id = DailyNoteId(require_u64(row, "id", "daily note")?);
+        let date = row
+            .get("date")
+            .and_then(Value::as_str)
+            .and_then(parse_date)
+            .unwrap_or_else(default_start_date);
+        let content = row
+            .get("content")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let activity_id = row
+            .get("activity_id")
+            .and_then(Value::as_u64)
+            .map(ActivityId);
+        let lookahead_window_start = row
+            .get("lookahead_window_start")
+            .and_then(Value::as_str)
+            .and_then(parse_date);
+        notes.push(DailyNote::new(
+            id,
+            date,
+            content,
+            activity_id,
+            lookahead_window_start,
+        ));
+    }
+    Ok(notes)
+}
+
 fn money_from_json(value: &Value) -> Option<i64> {
     let amount = value.as_f64()?;
     if !amount.is_finite() {
@@ -677,6 +866,13 @@ fn activity_json(activity: &Activity) -> Value {
             "calendar".to_string(),
             identifier_json(activity.calendar.map(|calendar| calendar.0)),
         ),
+        (
+            "location".to_string(),
+            match &activity.location {
+                Some(location) => Value::String(location.clone()),
+                None => Value::Null,
+            },
+        ),
     ])
 }
 
@@ -711,17 +907,27 @@ fn wbs_node_json(node: &cadence_core::wbs::WbsNode) -> Value {
 }
 
 fn calendar_json(named: &NamedCalendar) -> Value {
-    Value::Object(vec![
+    let mut members = vec![
         (
             "id".to_string(),
             Value::Number(Number::Int(named.id.0 as i64)),
         ),
         ("name".to_string(), Value::String(named.name.clone())),
+    ];
+    members.extend(calendar_members(&named.calendar));
+    Value::Object(members)
+}
+
+fn default_calendar_json(calendar: &Calendar) -> Value {
+    Value::Object(calendar_members(calendar))
+}
+
+fn calendar_members(calendar: &Calendar) -> Vec<(String, Value)> {
+    vec![
         (
             "workweek".to_string(),
             Value::Array(
-                named
-                    .calendar
+                calendar
                     .working_weekdays()
                     .into_iter()
                     .map(Value::Bool)
@@ -731,15 +937,14 @@ fn calendar_json(named: &NamedCalendar) -> Value {
         (
             "holidays".to_string(),
             Value::Array(
-                named
-                    .calendar
+                calendar
                     .holidays()
                     .iter()
                     .map(|date| Value::String(format_date(*date)))
                     .collect(),
             ),
         ),
-    ])
+    ]
 }
 
 fn identifier_json(value: Option<u64>) -> Value {
@@ -842,6 +1047,81 @@ fn baseline_json(baseline: &Baseline) -> Value {
                     })
                     .collect(),
             ),
+        ),
+    ])
+}
+
+fn lookahead_snapshot_json(snapshot: &LookaheadSnapshot) -> Value {
+    Value::Object(vec![
+        (
+            "id".to_string(),
+            Value::Number(Number::Int(snapshot.id.0 as i64)),
+        ),
+        ("name".to_string(), Value::String(snapshot.name.clone())),
+        (
+            "created_at".to_string(),
+            Value::String(snapshot.created_at.to_string()),
+        ),
+        (
+            "window_start".to_string(),
+            Value::String(snapshot.window_start.to_string()),
+        ),
+        (
+            "window_weeks".to_string(),
+            Value::Number(Number::Int(i64::from(snapshot.window_weeks))),
+        ),
+        (
+            "entries".to_string(),
+            Value::Array(snapshot.entries.iter().map(lookahead_entry_json).collect()),
+        ),
+    ])
+}
+
+fn lookahead_entry_json(entry: &LookaheadSnapshotEntry) -> Value {
+    Value::Object(vec![
+        (
+            "activity_id".to_string(),
+            Value::Number(Number::Int(entry.activity_id.0 as i64)),
+        ),
+        ("name".to_string(), Value::String(entry.name.clone())),
+        (
+            "scheduled_start".to_string(),
+            Value::String(entry.scheduled_start.to_string()),
+        ),
+        (
+            "scheduled_finish".to_string(),
+            Value::String(entry.scheduled_finish.to_string()),
+        ),
+        (
+            "owner".to_string(),
+            match &entry.owner {
+                Some(owner) => Value::String(owner.clone()),
+                None => Value::Null,
+            },
+        ),
+        ("promised".to_string(), Value::Bool(entry.promised)),
+        (
+            "percent_complete".to_string(),
+            Value::Number(Number::Float(entry.percent_complete as f64 / 100.0)),
+        ),
+    ])
+}
+
+fn daily_note_json(note: &DailyNote) -> Value {
+    Value::Object(vec![
+        (
+            "id".to_string(),
+            Value::Number(Number::Int(note.id.0 as i64)),
+        ),
+        ("date".to_string(), Value::String(note.date.to_string())),
+        ("content".to_string(), Value::String(note.content.clone())),
+        (
+            "activity_id".to_string(),
+            identifier_json(note.activity_id.map(|id| id.0)),
+        ),
+        (
+            "lookahead_window_start".to_string(),
+            date_json(note.lookahead_window_start),
         ),
     ])
 }
@@ -1351,6 +1631,68 @@ mod tests {
     }
 
     #[test]
+    fn json_round_trips_location_lookahead_and_daily_notes() {
+        let start = date(2026, Month::January, 5);
+        let mut project = Project::new("Round-trip", start);
+
+        // Make the default calendar non-default to prove it is carried.
+        let mut calendar =
+            Calendar::new([true, true, true, true, true, true, false]).expect("calendar");
+        calendar = calendar.with_holiday(date(2026, Month::January, 1));
+        project.calendar = calendar;
+
+        let mut act = Activity::new(ActivityId(1), "A", 2);
+        act.location = Some("Level 2".to_string());
+        act.percent_complete = Some(2500);
+        project.activities.push(act);
+
+        let lookahead = LookaheadSnapshot::from_entries(
+            LookaheadSnapshotId(1),
+            "Week 1",
+            start,
+            start,
+            1,
+            vec![LookaheadSnapshotEntry::new(
+                ActivityId(1),
+                "A".to_string(),
+                start,
+                date(2026, Month::January, 6),
+                Some("Bob".to_string()),
+                true,
+                2500,
+            )],
+        );
+        project.lookahead_snapshots.push(lookahead);
+
+        let note = DailyNote::new(
+            DailyNoteId(1),
+            start,
+            "Mobilised".to_string(),
+            Some(ActivityId(1)),
+            Some(start),
+        );
+        project.daily_notes.push(note);
+
+        let text = export(&project);
+        let loaded = import(&text).expect("import");
+
+        assert_eq!(loaded.calendar, project.calendar);
+        assert_eq!(loaded.activities.len(), 1);
+        assert_eq!(loaded.activities[0].location, Some("Level 2".to_string()));
+        assert_eq!(loaded.activities[0].percent_complete, Some(2500));
+        assert_eq!(loaded.lookahead_snapshots.len(), 1);
+        assert_eq!(loaded.lookahead_snapshots[0].name, "Week 1");
+        assert_eq!(loaded.lookahead_snapshots[0].entries.len(), 1);
+        assert_eq!(
+            loaded.lookahead_snapshots[0].entries[0].owner,
+            Some("Bob".to_string())
+        );
+        assert_eq!(loaded.daily_notes.len(), 1);
+        assert_eq!(loaded.daily_notes[0].content, "Mobilised");
+        assert_eq!(loaded.daily_notes[0].activity_id, Some(ActivityId(1)));
+    }
+
+    #[test]
     fn a_minimal_hand_written_document_is_read_with_defaults() {
         let text = r#"{
             "cadence": 1,
@@ -1646,7 +1988,7 @@ mod tests {
     fn the_writer_produces_indented_output() {
         let project = Project::new("Demo", date(2026, Month::January, 5));
         let text = export(&project);
-        assert!(text.starts_with("{\n  \"cadence\": 2,\n  \"project\": {"));
+        assert!(text.starts_with("{\n  \"cadence\": 3,\n  \"project\": {"));
         assert!(text.contains("\"activities\": []"));
         assert!(text.contains("\"resources\": []"));
         assert!(text.contains("\"calendars\": []"));

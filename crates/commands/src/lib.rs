@@ -12,9 +12,9 @@
 use cadence_core::calendar_set::{CalendarId, NamedCalendar};
 use cadence_core::engine::{capture_baseline, capture_lookahead_snapshot, schedule};
 use cadence_core::model::{
-    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNote, DailyNoteId,
-    LinkType, LookaheadSnapshot, LookaheadSnapshotId, Project, Relationship, RelationshipId,
-    Resource, ResourceId, ResourceKind,
+    Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
+    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    LookaheadSnapshotId, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsNode};
 use time::Date;
@@ -199,6 +199,9 @@ impl Command for CreateActivity {
     }
 
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if self.name.trim().is_empty() {
+            return Err("activity name must not be empty".to_string());
+        }
         if project.activity(self.id).is_some() {
             return Err(format!("activity {} already exists", self.id));
         }
@@ -243,10 +246,47 @@ impl Command for DeleteActivity {
         }
         project.relationships = kept;
 
+        // Remove references to the activity from baselines, lookahead
+        // snapshots and daily notes, so a deleted activity never leaves a
+        // dangling foreign key that would block a later save. The removed
+        // references are captured for undo.
+        let mut baseline_snapshots = Vec::new();
+        for baseline in &mut project.baselines {
+            if let Some(snapshot_position) = baseline
+                .snapshots
+                .iter()
+                .position(|snapshot| snapshot.activity_id == self.id)
+            {
+                let snapshot = baseline.snapshots.remove(snapshot_position);
+                baseline_snapshots.push((baseline.id, snapshot_position, snapshot));
+            }
+        }
+        let mut lookahead_entries = Vec::new();
+        for snapshot in &mut project.lookahead_snapshots {
+            if let Some(entry_position) = snapshot
+                .entries
+                .iter()
+                .position(|entry| entry.activity_id == self.id)
+            {
+                let entry = snapshot.entries.remove(entry_position);
+                lookahead_entries.push((snapshot.id, entry_position, entry));
+            }
+        }
+        let mut note_links = Vec::new();
+        for note in &mut project.daily_notes {
+            if note.activity_id == Some(self.id) {
+                note_links.push((note.id, note.activity_id));
+                note.activity_id = None;
+            }
+        }
+
         Ok(Box::new(RestoreActivity {
             activity,
             position,
             relationships,
+            baseline_snapshots,
+            lookahead_entries,
+            note_links,
         }))
     }
 }
@@ -261,6 +301,14 @@ pub struct RestoreActivity {
     /// Relationships removed with the activity, in removal order with the
     /// position each occupied when it was removed.
     pub relationships: Vec<(usize, Relationship)>,
+    /// Baseline snapshots removed with the activity, with their positions.
+    pub baseline_snapshots: Vec<(BaselineId, usize, ActivityBaselineSnapshot)>,
+    /// Lookahead snapshots entries removed with the activity, with their
+    /// positions.
+    pub lookahead_entries: Vec<(LookaheadSnapshotId, usize, LookaheadSnapshotEntry)>,
+    /// Daily-note activity links cleared with the activity, so they can be
+    /// restored on undo.
+    pub note_links: Vec<(DailyNoteId, Option<ActivityId>)>,
 }
 
 impl Command for RestoreActivity {
@@ -304,6 +352,29 @@ impl Command for RestoreActivity {
             project
                 .relationships
                 .insert(position, (*relationship).clone());
+        }
+
+        // Restore the references removed with the activity.
+        for (baseline_id, position, snapshot) in &self.baseline_snapshots {
+            if let Some(baseline) = project.baselines.iter_mut().find(|b| b.id == *baseline_id) {
+                let position = (*position).min(baseline.snapshots.len());
+                baseline.snapshots.insert(position, snapshot.clone());
+            }
+        }
+        for (snapshot_id, position, entry) in &self.lookahead_entries {
+            if let Some(snapshot) = project
+                .lookahead_snapshots
+                .iter_mut()
+                .find(|candidate| candidate.id == *snapshot_id)
+            {
+                let position = (*position).min(snapshot.entries.len());
+                snapshot.entries.insert(position, entry.clone());
+            }
+        }
+        for (note_id, link) in &self.note_links {
+            if let Some(note) = project.daily_notes.iter_mut().find(|n| n.id == *note_id) {
+                note.activity_id = *link;
+            }
         }
 
         Ok(Box::new(DeleteActivity { id }))
@@ -1340,12 +1411,35 @@ impl Command for DeleteDailyNote {
             return Err(format!("daily note {} does not exist", self.id));
         };
         let note = project.daily_notes.remove(position);
-        Ok(Box::new(CreateDailyNote {
-            date: note.date,
-            content: note.content,
-            activity_id: note.activity_id,
-            lookahead_window_start: note.lookahead_window_start,
-        }))
+        // Restore the note with its original identifier and position, so an
+        // undo does not renumber it or move it to the end of the list.
+        Ok(Box::new(RestoreDailyNote { note, position }))
+    }
+}
+
+/// Put a previously deleted daily note back where it was, with its original
+/// identifier.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreDailyNote {
+    /// The note to restore.
+    pub note: DailyNote,
+    /// Index the note occupied before it was removed.
+    pub position: usize,
+}
+
+impl Command for RestoreDailyNote {
+    fn description(&self) -> String {
+        format!("restore daily note {}", self.note.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let id = self.note.id;
+        if project.daily_notes.iter().any(|item| item.id == id) {
+            return Err(format!("daily note {} already exists", id));
+        }
+        let position = self.position.min(project.daily_notes.len());
+        project.daily_notes.insert(position, self.note.clone());
+        Ok(Box::new(DeleteDailyNote { id }))
     }
 }
 
@@ -1397,6 +1491,9 @@ impl Command for RenameActivity {
     }
 
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if self.name.trim().is_empty() {
+            return Err("activity name must not be empty".to_string());
+        }
         let Some(activity) = project.activity_mut(self.id) else {
             return Err(format!("activity {} does not exist", self.id));
         };
@@ -1719,8 +1816,9 @@ pub struct SetActivityCalendar {
 /// Replace a named calendar's working-time definition.
 ///
 /// Activities referencing the calendar keep their reference — only the
-/// definition (working weekdays and holidays) changes. The identifier and name
-/// are untouched.
+/// definition (working weekdays and holidays) changes. The identifier, name
+/// and position in the calendar list are untouched, and cached schedules of
+/// the activities using the calendar are cleared.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetCalendarDefinition {
     /// Calendar to update.
@@ -1745,11 +1843,12 @@ impl Command for SetCalendarDefinition {
             .calendars
             .remove(self.id)
             .map_err(|error| error.to_string())?;
-        if let Err(error) =
-            project
-                .calendars
-                .add(self.id, previous.name.clone(), self.calendar.clone())
-        {
+        let replacement = NamedCalendar {
+            id: previous.id,
+            name: previous.name.clone(),
+            calendar: self.calendar.clone(),
+        };
+        if let Err(error) = project.calendars.restore(replacement, position) {
             // Put the old definition back at its position so a failed command
             // changes nothing.
             project
@@ -1757,6 +1856,13 @@ impl Command for SetCalendarDefinition {
                 .restore(previous, position)
                 .map_err(|rollback| format!("{error}; rollback also failed: {rollback}"))?;
             return Err(error.to_string());
+        }
+        // The working days changed, so cached dates and floats of every
+        // activity using this calendar are stale.
+        for activity in &mut project.activities {
+            if activity.calendar == Some(self.id) {
+                activity.clear_schedule();
+            }
         }
         Ok(Box::new(SetCalendarDefinition {
             id: self.id,
@@ -1785,6 +1891,9 @@ impl Command for SetActivityCalendar {
             .activity_mut(self.activity)
             .ok_or_else(|| format!("activity {} does not exist", self.activity))?;
         let previous = std::mem::replace(&mut activity.calendar, self.calendar);
+        // The activity's working days may have changed, so its cached dates
+        // and floats are stale until the schedule is recomputed.
+        activity.clear_schedule();
         Ok(Box::new(SetActivityCalendar {
             activity: self.activity,
             calendar: previous,
@@ -2147,6 +2256,37 @@ mod tests {
         assert_eq!(
             project.activity(a).map(|activity| activity.name.as_str()),
             Some("Old")
+        );
+    }
+
+    #[test]
+    fn activity_names_must_not_be_blank() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(CreateActivity::new(ActivityId(1), "", 1)),
+            )
+            .expect_err("empty create name must be rejected");
+        assert!(error.contains("must not be empty"));
+        assert!(project.activity(ActivityId(1)).is_none());
+
+        let a = add_activity(&mut stack, &mut project, 1, "A", 1);
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(RenameActivity {
+                    id: a,
+                    name: "   ".to_string(),
+                }),
+            )
+            .expect_err("blank rename name must be rejected");
+        assert!(error.contains("must not be empty"));
+        assert_eq!(
+            project.activity(a).map(|activity| activity.name.as_str()),
+            Some("A")
         );
     }
 
@@ -2528,6 +2668,165 @@ mod tests {
 
         stack.undo(&mut project).expect("undo delete");
         assert_eq!(project.calendars.calendars()[1].id, CalendarId(2));
+    }
+
+    #[test]
+    fn calendar_definition_preserves_calendar_order() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        add_activity(&mut stack, &mut project, 1, "A", 2);
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateCalendar::new(CalendarId(1), "First", six_day_week())),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateCalendar::new(CalendarId(2), "Second", six_day_week())),
+        );
+
+        // Redefine the first calendar: it must stay in its original position.
+        let redefined = Calendar::new([true, true, true, true, true, true, false])
+            .expect("valid week")
+            .with_holiday(jan(25));
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetCalendarDefinition {
+                id: CalendarId(1),
+                calendar: redefined,
+            }),
+        );
+        assert_eq!(project.calendars.calendars()[0].id, CalendarId(1));
+        assert!(project
+            .calendars
+            .calendar(CalendarId(1))
+            .expect("calendar")
+            .holidays()
+            .contains(&jan(25)));
+
+        // Undo restores the previous definition and keeps the order.
+        stack.undo(&mut project).expect("undo redefine");
+        assert_eq!(project.calendars.calendars()[0].id, CalendarId(1));
+        assert_eq!(project.calendars.calendars()[1].id, CalendarId(2));
+        assert!(!project
+            .calendars
+            .calendar(CalendarId(1))
+            .expect("calendar")
+            .holidays()
+            .contains(&jan(25)));
+
+        // Redo re-applies the new definition, still in place.
+        stack.redo(&mut project).expect("redo redefine");
+        assert_eq!(project.calendars.calendars()[0].id, CalendarId(1));
+        assert_eq!(project.calendars.calendars()[1].id, CalendarId(2));
+        assert!(project
+            .calendars
+            .calendar(CalendarId(1))
+            .expect("calendar")
+            .holidays()
+            .contains(&jan(25)));
+    }
+
+    #[test]
+    fn changing_activity_calendar_clears_cached_schedule() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 2);
+
+        // Seed the cached schedule as the engine would after rescheduling.
+        {
+            let activity = project.activity_mut(a).expect("activity");
+            activity.early_start = Some(jan(5));
+            activity.scheduled_finish = Some(jan(6));
+            activity.total_float = Some(0);
+            activity.critical = true;
+        }
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateCalendar::new(CalendarId(1), "Site", six_day_week())),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityCalendar {
+                activity: a,
+                calendar: Some(CalendarId(1)),
+            }),
+        );
+        let activity = project.activity(a).expect("activity");
+        assert_eq!(activity.calendar, Some(CalendarId(1)));
+        assert_eq!(activity.early_start, None);
+        assert_eq!(activity.scheduled_finish, None);
+        assert_eq!(activity.total_float, None);
+        assert!(!activity.critical);
+
+        // Undo restores the previous selection; the cache stays cleared.
+        stack.undo(&mut project).expect("undo calendar selection");
+        let activity = project.activity(a).expect("activity");
+        assert_eq!(activity.calendar, None);
+        assert_eq!(activity.early_start, None);
+        assert!(!activity.critical);
+    }
+
+    #[test]
+    fn redefining_calendar_clears_cached_schedules_of_its_activities() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 2);
+        let b = add_activity(&mut stack, &mut project, 2, "B", 2);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateCalendar::new(CalendarId(1), "Site", six_day_week())),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityCalendar {
+                activity: a,
+                calendar: Some(CalendarId(1)),
+            }),
+        );
+
+        // Seed cached schedule values for both activities.
+        for id in [a, b] {
+            let activity = project.activity_mut(id).expect("activity");
+            activity.early_start = Some(jan(5));
+            activity.total_float = Some(3);
+            activity.critical = true;
+        }
+
+        let redefined = Calendar::new([true, true, true, true, true, false, false])
+            .expect("valid week")
+            .with_holiday(jan(25));
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetCalendarDefinition {
+                id: CalendarId(1),
+                calendar: redefined,
+            }),
+        );
+
+        // The activity using the calendar has its cache cleared; the
+        // default-calendar activity keeps its cached values.
+        let activity = project.activity(a).expect("activity");
+        assert_eq!(activity.early_start, None);
+        assert_eq!(activity.total_float, None);
+        assert!(!activity.critical);
+        let other = project.activity(b).expect("activity");
+        assert_eq!(other.early_start, Some(jan(5)));
+        assert_eq!(other.total_float, Some(3));
+        assert!(other.critical);
+
+        // Undo keeps the cache of calendar users cleared.
+        stack.undo(&mut project).expect("undo redefine");
+        assert_eq!(project.activity(a).expect("activity").early_start, None);
     }
 
     #[test]

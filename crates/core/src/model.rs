@@ -1228,6 +1228,15 @@ pub struct EvmMetrics {
     pub schedule_performance_index: Option<f64>,
 }
 
+/// Saturate an `i128` value into the `i64` range used by [`EvmMetrics`].
+///
+/// Earned-value arithmetic is computed in `i128` so that a large budget cannot
+/// overflow. The public fields stay `i64`, so an out-of-range result is clamped
+/// to the nearest representable value instead of wrapping or panicking.
+pub(crate) fn saturate_i64(value: i128) -> i64 {
+    value.clamp(i128::from(i64::MIN), i128::from(i64::MAX)) as i64
+}
+
 impl EvmMetrics {
     /// Compute earned value metrics for one activity.
     ///
@@ -1242,12 +1251,14 @@ impl EvmMetrics {
     pub fn for_activity(activity: &Activity, planned_fraction: i64) -> Self {
         let bac = activity.budget_at_completion.unwrap_or(0);
         let ac = activity.actual_cost.unwrap_or(0);
-        let pct = activity.percent_complete.unwrap_or(0);
+        let pct = activity.percent_complete.unwrap_or(0).clamp(0, 10_000);
         let fraction = planned_fraction.clamp(0, 10_000);
-        let pv = bac * fraction / 10_000;
-        let ev = bac * pct / 10_000;
-        let cv = ev - ac;
-        let sv = ev - pv;
+        // Compute in `i128`: `bac * 10000` overflows `i64` for any budget above
+        // roughly 9.2e14, which a large project can easily reach.
+        let pv = saturate_i64(i128::from(bac) * i128::from(fraction) / 10_000);
+        let ev = saturate_i64(i128::from(bac) * i128::from(pct) / 10_000);
+        let cv = ev.saturating_sub(ac);
+        let sv = ev.saturating_sub(pv);
         let cpi = if ac != 0 {
             Some(ev as f64 / ac as f64)
         } else {
@@ -1599,6 +1610,22 @@ mod tests {
 
         let under = EvmMetrics::for_activity(&activity, -5_000);
         assert_eq!(under.planned_value, 0);
+    }
+
+    #[test]
+    fn evm_metrics_saturate_on_a_huge_budget_without_panicking() {
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
+        activity.budget_at_completion = Some(i64::MAX);
+        activity.actual_cost = Some(i64::MIN);
+        activity.percent_complete = Some(10_000);
+
+        let metrics = EvmMetrics::for_activity(&activity, 10_000);
+
+        assert_eq!(metrics.planned_value, i64::MAX);
+        assert_eq!(metrics.earned_value, i64::MAX);
+        // Cost variance saturates rather than overflowing.
+        assert_eq!(metrics.cost_variance, i64::MAX);
+        assert!(metrics.cost_performance_index.is_some());
     }
 
     #[test]
