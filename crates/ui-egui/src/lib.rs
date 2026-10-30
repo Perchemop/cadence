@@ -2745,9 +2745,8 @@ impl eframe::App for CadenceApp {
                                     self.diary_content_buffer.clear();
                                     self.status_message = Some("Diary note added.".to_string());
                                 } else {
-                                    self.status_message = Some(
-                                        "Cannot add the note; check the content.".to_string(),
-                                    );
+                                    self.status_message =
+                                        Some("Cannot add the note; check the content.".to_string());
                                 }
                             }
                             _ => {
@@ -2762,20 +2761,26 @@ impl eframe::App for CadenceApp {
                     ui.heading("Notes");
                     // Copy the note fields so the list does not borrow the project
                     // while a delete command mutates it.
-                    let mut notes: Vec<(DailyNoteId, Date, String, Option<ActivityId>, Option<Date>)> =
-                        self.project
-                            .daily_notes
-                            .iter()
-                            .map(|note| {
-                                (
-                                    note.id,
-                                    note.date,
-                                    note.content.clone(),
-                                    note.activity_id,
-                                    note.lookahead_window_start,
-                                )
-                            })
-                            .collect();
+                    let mut notes: Vec<(
+                        DailyNoteId,
+                        Date,
+                        String,
+                        Option<ActivityId>,
+                        Option<Date>,
+                    )> = self
+                        .project
+                        .daily_notes
+                        .iter()
+                        .map(|note| {
+                            (
+                                note.id,
+                                note.date,
+                                note.content.clone(),
+                                note.activity_id,
+                                note.lookahead_window_start,
+                            )
+                        })
+                        .collect();
                     notes.sort_by(|a, b| b.1.cmp(&a.1).then(b.0.cmp(&a.0)));
                     if notes.is_empty() {
                         ui.label("No diary notes yet.");
