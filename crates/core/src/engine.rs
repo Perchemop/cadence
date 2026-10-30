@@ -1969,7 +1969,7 @@ mod tests {
     #[test]
     fn duplicated_resource_ids_are_counted_once() {
         let mut project = project();
-        let a = add_activity(&mut project, 1, "A", 2);
+        add_activity(&mut project, 1, "A", 2);
         let r = add_resource(&mut project, 1, "Crew");
 
         // The same resource is listed twice on one activity – it must still
