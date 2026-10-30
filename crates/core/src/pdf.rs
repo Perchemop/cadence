@@ -547,7 +547,8 @@ mod tests {
     fn an_image_stream_declares_its_filter_and_closes_with_endstream() {
         let mut pdf = Pdf::new();
         pdf.image_page(2, 1, vec![255, 0, 0, 0, 255, 0]);
-        let text = String::from_utf8(pdf.to_bytes()).expect("pdf is bytes");
+        // The PDF header is a binary comment, so the bytes are not UTF-8.
+        let text = String::from_utf8_lossy(&pdf.to_bytes()).into_owned();
         assert!(
             text.contains("/Filter /ASCIIHexDecode"),
             "the image stream must declare its ASCIIHexDecode filter"

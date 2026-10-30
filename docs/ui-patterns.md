@@ -14,7 +14,7 @@ Status values: `adopted` (in Cadence), `planned` (in a roadmap slice),
 
 | Behaviour | Reference product does | Cadence status | Notes |
 |---|---|---|---|
-| Combined task sheet + Gantt in one window | Split view with draggable divider; task table left, Gantt right; both scroll together vertically | planned | Split table + Gantt (the "workbench") in this slice; synced selection is a follow-up |
+| Combined task sheet + Gantt in one window | Split view with draggable divider; task table left, Gantt right; both scroll together vertically | adopted | Split table + Gantt ("Split Gantt" toggle); synced selection is a follow-up |
 | View tabs | Row of named view tabs (Gantt Chart, Task Sheet, Resource Sheet, ...), one active | adopted | Tab strip in the top toolbar replaces the flat button row |
 | Column headers with sorting | Click a column header to sort the task sheet | adopted | Sort buttons above the virtualised table |
 | Row numbers | Implicit task ID numbers in the first column | adopted | `#` column in the virtualised table |
@@ -31,7 +31,7 @@ Status values: `adopted` (in Cadence), `planned` (in a roadmap slice),
 
 | Behaviour | Reference product does | Cadence status | Notes |
 |---|---|---|---|
-| Activity table + Gantt in one workspace | "Layouts" combine a configurable column table with a Gantt canvas | planned | Workbench continues P6's configurable-column idea; column chooser is a later slice |
+| Activity table + Gantt in one workspace | "Layouts" combine a configurable column table with a Gantt canvas | adopted | Split table + Gantt plus the `Columns` chooser |
 | View/tab switching at the top | Tabbed workspaces with a toolbar per workspace | adopted | View tab strip |
 | Groups, sort, filters above the table | Filter/sort/group bar sits over the activity table | considering | Currently sort only; filters/grouping are a later slice |
 | Critical path highlighting | Critical activities flagged in table and Gantt | adopted | `Critical` column + red bars |
@@ -58,9 +58,9 @@ Status values: `adopted` (in Cadence), `planned` (in a roadmap slice),
 | Behaviour | Reference product does | Cadence status | Notes |
 |---|---|---|---|
 | Rolling weekly lookahead window | Window of N weeks with owner + promise per activity | adopted | `Ctrl+7` Lookahead view (PRs #42, #43, #45) |
-| Daily diary / huddle briefing | Day-by-day view of promised work | planned | Remaining lookahead stage |
+| Daily diary / huddle briefing | Day-by-day view of promised work | adopted | **Diary** view (`Ctrl+8`), schema v7 |
 | Production tracking | Percent complete vs plan per activity | planned | Remaining lookahead stage |
-| Location clash detection | Warn when two activities claim the same location | planned | Remaining lookahead stage |
+| Location clash detection | Warn when two activities claim the same location | adopted | `location_clashes`, schema v8, listed in the Lookahead view |
 
 ## Layout direction adopted for Cadence
 
