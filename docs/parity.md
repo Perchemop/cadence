@@ -68,6 +68,7 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | EVM metrics | done | `engine::evm_metrics`: PV, EV, AC, SV, CV, SPI, CPI shown against an editable status date (D13) |
 | Progress updating (percent complete, actual dates) | done | inspector edits via undoable commands; Gantt bars show a progress overlay; schema v4 records actual dates |
 | Lookahead published snapshots | done | named, read-only snapshot of a rolling lookahead window; start/finish variance comparison against a selected snapshot; persisted in project file (schema v6); undoable capture/remove/restore commands |
+| Daily diary / huddle briefing | done (core) | dated diary notes linked to an activity or a lookahead window; undoable create/update/delete commands; persisted in project file (schema v7); GUI view is the next stage |
 
 ## Phase 5 — Polish & interop
 
