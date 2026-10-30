@@ -66,10 +66,9 @@ pub fn location_clashes(project: &Project, schedule: &Schedule) -> Vec<LocationC
             for &right_index in &indices[position + 1..] {
                 let left = &project.activities[left_index];
                 let right = &project.activities[right_index];
-                let (Some(left_schedule), Some(right_schedule)) = (
-                    schedule.activity(left.id),
-                    schedule.activity(right.id),
-                ) else {
+                let (Some(left_schedule), Some(right_schedule)) =
+                    (schedule.activity(left.id), schedule.activity(right.id))
+                else {
                     continue;
                 };
                 // Skip finished work: a clash is about planned or ongoing work.
@@ -79,7 +78,9 @@ pub fn location_clashes(project: &Project, schedule: &Schedule) -> Vec<LocationC
                 let overlap_start = left_schedule
                     .scheduled_start
                     .max(right_schedule.scheduled_start);
-                let overlap_end = left_schedule.scheduled_finish.min(right_schedule.scheduled_finish);
+                let overlap_end = left_schedule
+                    .scheduled_finish
+                    .min(right_schedule.scheduled_finish);
                 if overlap_start > overlap_end {
                     continue;
                 }
