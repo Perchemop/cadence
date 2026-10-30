@@ -953,3 +953,15 @@ follows.
 - Workspace version bumped to 0.5.0 (semver-minor: new pub types and fields).
 - CI green on all required checks; PR #55 merged to `main`.
 
+## 2026-10-30 — Diary view and location clash detection
+
+- **Diary view** (`Ctrl+8`): add and delete dated notes linked to an activity
+  or a lookahead window, through the undoable command layer. View tabs and the
+  shortcuts reference list it. Merged as PR #56.
+- **Location clash detection**: an optional free-text `location` on activities
+  (`SetActivityLocation` command, schema v8) and
+  `cadence-core::clash::location_clashes`, which flags two open activities
+  sharing a location on overlapping working days. The Lookahead view lists the
+  clashes with links to the activities. Workspace version 0.6.0. Merged as
+  PR #57.
+
