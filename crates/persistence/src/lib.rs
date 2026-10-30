@@ -1,7 +1,7 @@
 //! SQLite project files for Cadence.
 //!
 //! A Cadence project file is an ordinary SQLite database. The schema is
-//! versioned with `PRAGMA user_version`; this build reads and writes version 7
+//! versioned with `PRAGMA user_version`; this build reads and writes version 8
 //! and migrates version 1 and later files in place.
 //!
 //! Saving runs in a single transaction that replaces the previous contents, so
@@ -25,7 +25,7 @@ use thiserror::Error;
 use time::{Date, Month};
 
 /// Project-file schema version written by this build.
-pub const SCHEMA_VERSION: i64 = 7;
+pub const SCHEMA_VERSION: i64 = 8;
 
 const SCHEMA: &str = r#"
 CREATE TABLE project (
@@ -75,6 +75,7 @@ CREATE TABLE activities (
     owner TEXT,
     promised INTEGER NOT NULL DEFAULT 0,
     delay_reason TEXT,
+    location TEXT,
     position   INTEGER NOT NULL
 );
 
@@ -286,7 +287,8 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
                      lookahead_window_start TEXT
                  );
-                 PRAGMA user_version = 7;",
+                 ALTER TABLE activities ADD COLUMN location TEXT;
+                 PRAGMA user_version = 8;",
             )?;
             Ok(())
         }
@@ -353,7 +355,8 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
                      lookahead_window_start TEXT
                  );
-                 PRAGMA user_version = 7;",
+                 ALTER TABLE activities ADD COLUMN location TEXT;
+                 PRAGMA user_version = 8;",
             )?;
             Ok(())
         }
@@ -390,7 +393,8 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
                      lookahead_window_start TEXT
                  );
-                 PRAGMA user_version = 7;",
+                 ALTER TABLE activities ADD COLUMN location TEXT;
+                 PRAGMA user_version = 8;",
             )?;
             Ok(())
         }
@@ -427,7 +431,8 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
                      lookahead_window_start TEXT
                  );
-                 PRAGMA user_version = 7;",
+                 ALTER TABLE activities ADD COLUMN location TEXT;
+                 PRAGMA user_version = 8;",
             )?;
             Ok(())
         }
@@ -460,13 +465,15 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                     activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
                     lookahead_window_start TEXT
                 );
-                 PRAGMA user_version = 7;",
+                 ALTER TABLE activities ADD COLUMN location TEXT;
+                 PRAGMA user_version = 8;",
             )?;
             Ok(())
         }
         6 => {
             // Version 7 adds daily notes: dated diary entries linked to
-            // activities or lookahead windows.
+            // activities or lookahead windows. Version 8 adds the optional
+            // work location. Migrate straight through to the current version.
             connection.execute_batch(
                 "CREATE TABLE IF NOT EXISTS daily_notes (
                     id                   INTEGER PRIMARY KEY,
@@ -475,7 +482,16 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                     activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
                     lookahead_window_start TEXT
                 );
-                 PRAGMA user_version = 7;",
+                 ALTER TABLE activities ADD COLUMN location TEXT;
+                 PRAGMA user_version = 8;",
+            )?;
+            Ok(())
+        }
+        7 => {
+            // Version 8 adds the optional activity work location.
+            connection.execute_batch(
+                "ALTER TABLE activities ADD COLUMN location TEXT;
+                 PRAGMA user_version = 8;",
             )?;
             Ok(())
         }
@@ -607,8 +623,8 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
             "INSERT INTO activities
                 (id, name, duration, wbs_id, calendar_id, constraint_kind, constraint_date,
                  budget_at_completion, actual_cost, percent_complete, actual_start,
-                 actual_finish, owner, promised, delay_reason, position)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                 actual_finish, owner, promised, delay_reason, location, position)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
             params![
                 to_sql_id(activity.id.0, "activity")?,
                 activity.name,
@@ -631,6 +647,7 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
                 activity.owner,
                 activity.promised,
                 activity.delay_reason,
+                activity.location,
                 position as i64,
             ],
         )?;
@@ -963,7 +980,7 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
         connection,
         "SELECT id, name, duration, wbs_id, calendar_id, constraint_kind, constraint_date,
                 budget_at_completion, actual_cost, percent_complete, actual_start, actual_finish,
-                owner, promised, delay_reason
+                owner, promised, delay_reason, location
          FROM activities ORDER BY position",
         |row| {
             Ok((
@@ -982,6 +999,7 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
                 row.get::<_, Option<String>>(12)?,
                 row.get::<_, i64>(13)?,
                 row.get::<_, Option<String>>(14)?,
+                row.get::<_, Option<String>>(15)?,
             ))
         },
     )?;
@@ -1003,6 +1021,7 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
         owner,
         promised,
         delay_reason,
+        location,
     ) in rows
     {
         let duration = u32::try_from(duration).map_err(|_| {
@@ -1033,6 +1052,7 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
         activity.owner = owner;
         activity.promised = promised != 0;
         activity.delay_reason = delay_reason;
+        activity.location = location;
         activities.push(activity);
     }
     Ok(activities)
@@ -1744,6 +1764,7 @@ mod tests {
                      ALTER TABLE activities DROP COLUMN owner;
                      ALTER TABLE activities DROP COLUMN promised;
                      ALTER TABLE activities DROP COLUMN delay_reason;
+                     ALTER TABLE activities DROP COLUMN location;
                      PRAGMA user_version = 1;",
                 )
                 .expect("downgrade schema");
@@ -1807,6 +1828,7 @@ mod tests {
                      ALTER TABLE activities DROP COLUMN owner;
                      ALTER TABLE activities DROP COLUMN promised;
                      ALTER TABLE activities DROP COLUMN delay_reason;
+                     ALTER TABLE activities DROP COLUMN location;
                      DROP TABLE baseline_snapshots;
                      DROP TABLE baselines;
                      DROP TABLE activity_resources;
@@ -1923,6 +1945,7 @@ mod tests {
         project.activities[0].owner = Some("Crew 3".to_string());
         project.activities[0].promised = true;
         project.activities[0].delay_reason = Some("waiting on a permit".to_string());
+        project.activities[0].location = Some("Level 1".to_string());
 
         let dir = TempDir::new();
         let path = dir.file("field.cadence");
@@ -1935,8 +1958,10 @@ mod tests {
             loaded.activities[0].delay_reason,
             Some("waiting on a permit".to_string())
         );
+        assert_eq!(loaded.activities[0].location, Some("Level 1".to_string()));
         assert_eq!(loaded.activities[1].owner, None);
         assert!(!loaded.activities[1].promised);
+        assert_eq!(loaded.activities[1].location, None);
     }
 
     #[test]
@@ -1978,6 +2003,7 @@ mod tests {
                 "ALTER TABLE activities DROP COLUMN owner;
                  ALTER TABLE activities DROP COLUMN promised;
                  ALTER TABLE activities DROP COLUMN delay_reason;
+                 ALTER TABLE activities DROP COLUMN location;
                  PRAGMA user_version = 4;",
             )
             .expect("downgrade");
