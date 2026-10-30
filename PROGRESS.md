@@ -965,3 +965,36 @@ follows.
   clashes with links to the activities. Workspace version 0.6.0. Merged as
   PR #57.
 
+## 2026-10-30 — Full GUI and whole-app audit
+
+An exhaustive, read-only audit of every view and every crate, recorded in
+`docs/qc/gui-audit.md` and `docs/qc/app-audit.md`. Findings were verified in
+the source before ranking. The audit fixed four CRITICAL defects and several
+HIGH ones; the rest are listed with precise locations and suggested fixes.
+
+Fixed:
+
+- **CRITICAL** `persistence::clear_project` never deleted `lookahead_snapshots`,
+  `lookahead_snapshot_entries` or `daily_notes`, so any project with a published
+  snapshot or a diary note could not be re-saved (UNIQUE violation on the second
+  save). Regression test saves twice.
+- **CRITICAL** the GUI had no save or open at all — every edit was lost on
+  close. Added Save (Ctrl+S), Save as and Open (Ctrl+O), with the project path
+  wired through `run_with_path`.
+- **CRITICAL** `apply_edits` treated an unparseable money/date field as "clear",
+  silently wiping budget, actual cost and actual dates. Empty is "clear";
+  invalid is now an error that aborts and reports.
+- **CRITICAL** the Gantt-print image XObject declared no `/Filter` while its
+  payload was ASCII-hex encoded and omitted `endstream`, so every image PDF was
+  corrupt.
+- **HIGH** `DeleteActivity` left dangling baseline/lookahead/note references that
+  made the project unsavable; `DeleteDailyNote` undo renumbered and reordered
+  notes; calendar edits never rescheduled; Ctrl+Z/Y fired inside text fields and
+  left the inspector stale; the status bar was added after the `CentralPanel`
+  and rendered collapsed; the Gantt drag-link skipped `edit_version`.
+
+Open findings are catalogued in the two audit docs; the highest are the EVM
+`i64` overflow and reachable date-overflow panics in the engine, the JSON
+interchange dropping `location`/snapshots/notes, CSV formula injection, and the
+baseline-comparison false relationship diff.
+
