@@ -549,7 +549,10 @@ fn validate(project: &Project) -> Result<()> {
 
 fn clear_project(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
     transaction.execute_batch(
-        "DELETE FROM baseline_snapshots;
+        "DELETE FROM lookahead_snapshot_entries;
+         DELETE FROM lookahead_snapshots;
+         DELETE FROM daily_notes;
+         DELETE FROM baseline_snapshots;
          DELETE FROM baselines;
          DELETE FROM activity_resources;
          DELETE FROM resources;
@@ -1981,13 +1984,28 @@ mod tests {
             None,
             Some(date(5)),
         ));
+        project.lookahead_snapshots.push(LookaheadSnapshot::from_entries(
+            LookaheadSnapshotId(1),
+            "Week 1-2",
+            date(5),
+            date(5),
+            2,
+            Vec::new(),
+        ));
 
         let dir = TempDir::new();
         let path = dir.file("diary.cadence");
-        save_project(&project, &path).expect("save");
+        save_project(&project, &path).expect("first save");
         let loaded = load_project(&path).expect("load");
-
         assert_eq!(loaded.daily_notes, project.daily_notes);
+        assert_eq!(loaded.lookahead_snapshots, project.lookahead_snapshots);
+
+        // Saving a second time must replace the snapshot and note rows rather
+        // than colliding with them.
+        save_project(&loaded, &path).expect("re-save");
+        let reloaded = load_project(&path).expect("reload");
+        assert_eq!(reloaded.daily_notes, project.daily_notes);
+        assert_eq!(reloaded.lookahead_snapshots, project.lookahead_snapshots);
     }
 
     #[test]

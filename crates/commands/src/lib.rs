@@ -12,9 +12,9 @@
 use cadence_core::calendar_set::{CalendarId, NamedCalendar};
 use cadence_core::engine::{capture_baseline, capture_lookahead_snapshot, schedule};
 use cadence_core::model::{
-    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNote, DailyNoteId,
-    LinkType, LookaheadSnapshot, LookaheadSnapshotId, Project, Relationship, RelationshipId,
-    Resource, ResourceId, ResourceKind,
+    Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
+    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    LookaheadSnapshotId, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsNode};
 use time::Date;
@@ -243,10 +243,47 @@ impl Command for DeleteActivity {
         }
         project.relationships = kept;
 
+        // Remove references to the activity from baselines, lookahead
+        // snapshots and daily notes, so a deleted activity never leaves a
+        // dangling foreign key that would block a later save. The removed
+        // references are captured for undo.
+        let mut baseline_snapshots = Vec::new();
+        for baseline in &mut project.baselines {
+            if let Some(snapshot_position) = baseline
+                .snapshots
+                .iter()
+                .position(|snapshot| snapshot.activity_id == self.id)
+            {
+                let snapshot = baseline.snapshots.remove(snapshot_position);
+                baseline_snapshots.push((baseline.id, snapshot_position, snapshot));
+            }
+        }
+        let mut lookahead_entries = Vec::new();
+        for snapshot in &mut project.lookahead_snapshots {
+            if let Some(entry_position) = snapshot
+                .entries
+                .iter()
+                .position(|entry| entry.activity_id == self.id)
+            {
+                let entry = snapshot.entries.remove(entry_position);
+                lookahead_entries.push((snapshot.id, entry_position, entry));
+            }
+        }
+        let mut note_links = Vec::new();
+        for note in &mut project.daily_notes {
+            if note.activity_id == Some(self.id) {
+                note_links.push((note.id, note.activity_id));
+                note.activity_id = None;
+            }
+        }
+
         Ok(Box::new(RestoreActivity {
             activity,
             position,
             relationships,
+            baseline_snapshots,
+            lookahead_entries,
+            note_links,
         }))
     }
 }
@@ -261,6 +298,14 @@ pub struct RestoreActivity {
     /// Relationships removed with the activity, in removal order with the
     /// position each occupied when it was removed.
     pub relationships: Vec<(usize, Relationship)>,
+    /// Baseline snapshots removed with the activity, with their positions.
+    pub baseline_snapshots: Vec<(BaselineId, usize, ActivityBaselineSnapshot)>,
+    /// Lookahead snapshots entries removed with the activity, with their
+    /// positions.
+    pub lookahead_entries: Vec<(LookaheadSnapshotId, usize, LookaheadSnapshotEntry)>,
+    /// Daily-note activity links cleared with the activity, so they can be
+    /// restored on undo.
+    pub note_links: Vec<(DailyNoteId, Option<ActivityId>)>,
 }
 
 impl Command for RestoreActivity {
@@ -304,6 +349,29 @@ impl Command for RestoreActivity {
             project
                 .relationships
                 .insert(position, (*relationship).clone());
+        }
+
+        // Restore the references removed with the activity.
+        for (baseline_id, position, snapshot) in &self.baseline_snapshots {
+            if let Some(baseline) = project.baselines.iter_mut().find(|b| b.id == *baseline_id) {
+                let position = (*position).min(baseline.snapshots.len());
+                baseline.snapshots.insert(position, snapshot.clone());
+            }
+        }
+        for (snapshot_id, position, entry) in &self.lookahead_entries {
+            if let Some(snapshot) = project
+                .lookahead_snapshots
+                .iter_mut()
+                .find(|candidate| candidate.id == *snapshot_id)
+            {
+                let position = (*position).min(snapshot.entries.len());
+                snapshot.entries.insert(position, entry.clone());
+            }
+        }
+        for (note_id, link) in &self.note_links {
+            if let Some(note) = project.daily_notes.iter_mut().find(|n| n.id == *note_id) {
+                note.activity_id = *link;
+            }
         }
 
         Ok(Box::new(DeleteActivity { id }))
@@ -1340,12 +1408,35 @@ impl Command for DeleteDailyNote {
             return Err(format!("daily note {} does not exist", self.id));
         };
         let note = project.daily_notes.remove(position);
-        Ok(Box::new(CreateDailyNote {
-            date: note.date,
-            content: note.content,
-            activity_id: note.activity_id,
-            lookahead_window_start: note.lookahead_window_start,
-        }))
+        // Restore the note with its original identifier and position, so an
+        // undo does not renumber it or move it to the end of the list.
+        Ok(Box::new(RestoreDailyNote { note, position }))
+    }
+}
+
+/// Put a previously deleted daily note back where it was, with its original
+/// identifier.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreDailyNote {
+    /// The note to restore.
+    pub note: DailyNote,
+    /// Index the note occupied before it was removed.
+    pub position: usize,
+}
+
+impl Command for RestoreDailyNote {
+    fn description(&self) -> String {
+        format!("restore daily note {}", self.note.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let id = self.note.id;
+        if project.daily_notes.iter().any(|item| item.id == id) {
+            return Err(format!("daily note {} already exists", id));
+        }
+        let position = self.position.min(project.daily_notes.len());
+        project.daily_notes.insert(position, self.note.clone());
+        Ok(Box::new(DeleteDailyNote { id }))
     }
 }
 
