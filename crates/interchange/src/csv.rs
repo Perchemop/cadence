@@ -778,10 +778,18 @@ ID,Name,Duration,Actual start,Actual finish
     fn formula_like_names_are_neutralised_and_round_trip() {
         let start = date(2026, Month::January, 5);
         let mut project = Project::new("Formulas", start);
-        project.activities.push(Activity::new(ActivityId(1), "=SUM(A1:A2)", 1));
-        project.activities.push(Activity::new(ActivityId(2), "+cmd", 1));
-        project.activities.push(Activity::new(ActivityId(3), "-danger", 1));
-        project.activities.push(Activity::new(ActivityId(4), "@import", 1));
+        project
+            .activities
+            .push(Activity::new(ActivityId(1), "=SUM(A1:A2)", 1));
+        project
+            .activities
+            .push(Activity::new(ActivityId(2), "+cmd", 1));
+        project
+            .activities
+            .push(Activity::new(ActivityId(3), "-danger", 1));
+        project
+            .activities
+            .push(Activity::new(ActivityId(4), "@import", 1));
         let mut activity = Activity::new(ActivityId(5), "Neg cost", 1);
         activity.actual_cost = Some(-12345);
         project.activities.push(activity);

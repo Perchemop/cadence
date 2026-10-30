@@ -56,9 +56,9 @@ use time::{Date, Duration};
 
 use crate::calendar_set::CalendarId;
 use crate::model::{
-    ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, CalendarError,
-    Constraint, EvmMetrics, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
-    LookaheadSnapshotId, Project, RelationshipId, ResourceId, saturate_i64,
+    saturate_i64, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar,
+    CalendarError, Constraint, EvmMetrics, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    LookaheadSnapshotId, Project, RelationshipId, ResourceId,
 };
 use crate::wbs::WbsId;
 
@@ -1978,10 +1978,12 @@ mod tests {
 
         let schedule = schedule(&project).expect("schedule");
         let histogram = resource_histogram(&project, &schedule);
-        let assignments = histogram
-            .assignments_on(jan(5))
-            .expect("day has usage");
-        assert_eq!(assignments.len(), 1, "duplicate resource must not be counted twice");
+        let assignments = histogram.assignments_on(jan(5)).expect("day has usage");
+        assert_eq!(
+            assignments.len(),
+            1,
+            "duplicate resource must not be counted twice"
+        );
 
         let conflicts = resource_conflicts(&project, &schedule);
         // One activity using one unit of a resource with the default capacity

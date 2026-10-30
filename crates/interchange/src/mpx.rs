@@ -679,6 +679,8 @@ ID\tName\tType\n
 1\tR\t3\n
 ";
         let error = import(document).expect_err("unknown type");
-        assert!(matches!(error, InterchangeError::InvalidField { field, .. } if field == "resources/Type"));
+        assert!(
+            matches!(error, InterchangeError::InvalidField { field, .. } if field == "resources/Type")
+        );
     }
 }

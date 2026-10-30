@@ -3739,7 +3739,11 @@ fn render_gantt(
                 let x1 = x0 + width;
                 let bar =
                     Rect::from_min_max(Pos2::new(x0, y + 2.0), Pos2::new(x1, y + row_height - 2.0));
-                let color = if result.critical { tokens.critical } else { tokens.normal };
+                let color = if result.critical {
+                    tokens.critical
+                } else {
+                    tokens.normal
+                };
                 painter.rect_filled(bar, 2.0, color);
 
                 // Progress overlay: the completed share of the bar is drawn in

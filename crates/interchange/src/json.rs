@@ -110,8 +110,8 @@ use std::str::Chars;
 use cadence_core::calendar_set::{CalendarId, CalendarSet, NamedCalendar};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
-    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry, LookaheadSnapshotId,
-    Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
+    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    LookaheadSnapshotId, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsTree};
 use time::Date;
@@ -453,7 +453,13 @@ pub fn export(project: &Project) -> String {
                 ),
                 (
                     "lookahead_snapshots".to_string(),
-                    Value::Array(project.lookahead_snapshots.iter().map(lookahead_snapshot_json).collect()),
+                    Value::Array(
+                        project
+                            .lookahead_snapshots
+                            .iter()
+                            .map(lookahead_snapshot_json)
+                            .collect(),
+                    ),
                 ),
                 (
                     "daily_notes".to_string(),
@@ -653,7 +659,9 @@ fn import_baseline(value: &Value) -> Result<Baseline, InterchangeError> {
     Ok(Baseline::from_snapshots(id, name, created_at, snapshots))
 }
 
-fn import_lookahead_snapshots(value: Option<&Value>) -> Result<Vec<LookaheadSnapshot>, InterchangeError> {
+fn import_lookahead_snapshots(
+    value: Option<&Value>,
+) -> Result<Vec<LookaheadSnapshot>, InterchangeError> {
     let mut snapshots = Vec::new();
     let Some(rows) = value.and_then(Value::as_array) else {
         return Ok(snapshots);
@@ -691,7 +699,11 @@ fn import_lookahead_snapshot(value: &Value) -> Result<LookaheadSnapshot, Interch
     if let Some(rows) = value.get("entries").and_then(Value::as_array) {
         for row in rows {
             let activity_id = ActivityId(require_u64(row, "activity_id", "lookahead entry")?);
-            let entry_name = row.get("name").and_then(Value::as_str).unwrap_or_default().to_string();
+            let entry_name = row
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
             let scheduled_start = row
                 .get("scheduled_start")
                 .and_then(Value::as_str)
@@ -896,7 +908,10 @@ fn wbs_node_json(node: &cadence_core::wbs::WbsNode) -> Value {
 
 fn calendar_json(named: &NamedCalendar) -> Value {
     let mut members = vec![
-        ("id".to_string(), Value::Number(Number::Int(named.id.0 as i64))),
+        (
+            "id".to_string(),
+            Value::Number(Number::Int(named.id.0 as i64)),
+        ),
         ("name".to_string(), Value::String(named.name.clone())),
     ];
     members.extend(calendar_members(&named.calendar));
@@ -1043,8 +1058,14 @@ fn lookahead_snapshot_json(snapshot: &LookaheadSnapshot) -> Value {
             Value::Number(Number::Int(snapshot.id.0 as i64)),
         ),
         ("name".to_string(), Value::String(snapshot.name.clone())),
-        ("created_at".to_string(), Value::String(snapshot.created_at.to_string())),
-        ("window_start".to_string(), Value::String(snapshot.window_start.to_string())),
+        (
+            "created_at".to_string(),
+            Value::String(snapshot.created_at.to_string()),
+        ),
+        (
+            "window_start".to_string(),
+            Value::String(snapshot.window_start.to_string()),
+        ),
         (
             "window_weeks".to_string(),
             Value::Number(Number::Int(i64::from(snapshot.window_weeks))),
@@ -1063,8 +1084,14 @@ fn lookahead_entry_json(entry: &LookaheadSnapshotEntry) -> Value {
             Value::Number(Number::Int(entry.activity_id.0 as i64)),
         ),
         ("name".to_string(), Value::String(entry.name.clone())),
-        ("scheduled_start".to_string(), Value::String(entry.scheduled_start.to_string())),
-        ("scheduled_finish".to_string(), Value::String(entry.scheduled_finish.to_string())),
+        (
+            "scheduled_start".to_string(),
+            Value::String(entry.scheduled_start.to_string()),
+        ),
+        (
+            "scheduled_finish".to_string(),
+            Value::String(entry.scheduled_finish.to_string()),
+        ),
         (
             "owner".to_string(),
             match &entry.owner {
@@ -1082,7 +1109,10 @@ fn lookahead_entry_json(entry: &LookaheadSnapshotEntry) -> Value {
 
 fn daily_note_json(note: &DailyNote) -> Value {
     Value::Object(vec![
-        ("id".to_string(), Value::Number(Number::Int(note.id.0 as i64))),
+        (
+            "id".to_string(),
+            Value::Number(Number::Int(note.id.0 as i64)),
+        ),
         ("date".to_string(), Value::String(note.date.to_string())),
         ("content".to_string(), Value::String(note.content.clone())),
         (
@@ -1606,8 +1636,8 @@ mod tests {
         let mut project = Project::new("Round-trip", start);
 
         // Make the default calendar non-default to prove it is carried.
-        let mut calendar = Calendar::new([true, true, true, true, true, true, false])
-            .expect("calendar");
+        let mut calendar =
+            Calendar::new([true, true, true, true, true, true, false]).expect("calendar");
         calendar = calendar.with_holiday(date(2026, Month::January, 1));
         project.calendar = calendar;
 
@@ -1653,7 +1683,10 @@ mod tests {
         assert_eq!(loaded.lookahead_snapshots.len(), 1);
         assert_eq!(loaded.lookahead_snapshots[0].name, "Week 1");
         assert_eq!(loaded.lookahead_snapshots[0].entries.len(), 1);
-        assert_eq!(loaded.lookahead_snapshots[0].entries[0].owner, Some("Bob".to_string()));
+        assert_eq!(
+            loaded.lookahead_snapshots[0].entries[0].owner,
+            Some("Bob".to_string())
+        );
         assert_eq!(loaded.daily_notes.len(), 1);
         assert_eq!(loaded.daily_notes[0].content, "Mobilised");
         assert_eq!(loaded.daily_notes[0].activity_id, Some(ActivityId(1)));

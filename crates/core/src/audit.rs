@@ -470,7 +470,10 @@ fn check_lags(project: &Project, config: &AuditConfig) -> CheckResult {
             ),
             None => format!("lag of {} working days", relationship.lag),
         };
-        findings.push(Finding::Relationship { id: relationship.id, detail });
+        findings.push(Finding::Relationship {
+            id: relationship.id,
+            detail,
+        });
     }
     let total = project.relationships.len();
     let bp = ratio_bp(findings.len(), total);

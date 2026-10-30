@@ -897,6 +897,8 @@ mod tests {
             </Resources>
         </Project>"#;
         let error = import(document).expect_err("unknown type");
-        assert!(matches!(error, InterchangeError::InvalidField { field, .. } if field == "Resource/Type"));
+        assert!(
+            matches!(error, InterchangeError::InvalidField { field, .. } if field == "Resource/Type")
+        );
     }
 }

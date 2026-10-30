@@ -501,7 +501,10 @@ fn parse_status_date(value: &str) -> Result<Date, String> {
 /// cannot be produced.
 fn json_error(message: String, json: bool) -> String {
     if json {
-        print!("{}", cadence_interchange::schedule::schedule_error(&message));
+        print!(
+            "{}",
+            cadence_interchange::schedule::schedule_error(&message)
+        );
     }
     message
 }
