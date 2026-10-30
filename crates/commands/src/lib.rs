@@ -12,8 +12,9 @@
 use cadence_core::calendar_set::{CalendarId, NamedCalendar};
 use cadence_core::engine::{capture_baseline, capture_lookahead_snapshot, schedule};
 use cadence_core::model::{
-    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, LookaheadSnapshot,
-    LookaheadSnapshotId, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
+    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNote, DailyNoteId,
+    LinkType, LookaheadSnapshot, LookaheadSnapshotId, Project, Relationship, RelationshipId,
+    Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsNode};
 use time::Date;
@@ -1239,6 +1240,109 @@ impl Command for RestoreLookaheadSnapshot {
         let position = self.position.min(project.lookahead_snapshots.len());
         project.lookahead_snapshots.insert(position, snapshot);
         Ok(Box::new(RemoveLookaheadSnapshot { id }))
+    }
+}
+
+/// Create a daily diary note linked to an activity or lookahead window.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreateDailyNote {
+    /// Date of the diary entry.
+    pub date: time::Date,
+    /// Note content.
+    pub content: String,
+    /// Optional activity the note concerns.
+    pub activity_id: Option<ActivityId>,
+    /// Optional lookahead window start the note concerns.
+    pub lookahead_window_start: Option<time::Date>,
+}
+
+impl Command for CreateDailyNote {
+    fn description(&self) -> String {
+        format!("create daily note for {}", self.date)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if self.content.trim().is_empty() {
+            return Err("the note content must not be empty".to_string());
+        }
+        if let Some(activity_id) = self.activity_id {
+            if project.activity(activity_id).is_none() {
+                return Err(format!("activity {} does not exist", activity_id));
+            }
+        }
+        let id = project.next_daily_note_id();
+        let note = DailyNote::new(
+            id,
+            self.date,
+            self.content.clone(),
+            self.activity_id,
+            self.lookahead_window_start,
+        );
+        project.daily_notes.push(note);
+        Ok(Box::new(DeleteDailyNote { id }))
+    }
+}
+
+/// Delete a daily note.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeleteDailyNote {
+    /// Note to delete.
+    pub id: DailyNoteId,
+}
+
+impl Command for DeleteDailyNote {
+    fn description(&self) -> String {
+        format!("delete daily note {}", self.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(position) = project
+            .daily_notes
+            .iter()
+            .position(|item| item.id == self.id)
+        else {
+            return Err(format!("daily note {} does not exist", self.id));
+        };
+        let note = project.daily_notes.remove(position);
+        Ok(Box::new(CreateDailyNote {
+            date: note.date,
+            content: note.content,
+            activity_id: note.activity_id,
+            lookahead_window_start: note.lookahead_window_start,
+        }))
+    }
+}
+
+/// Update the content of a daily note.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdateDailyNote {
+    /// Note to update.
+    pub id: DailyNoteId,
+    /// New note content.
+    pub content: String,
+}
+
+impl Command for UpdateDailyNote {
+    fn description(&self) -> String {
+        format!("update daily note {}", self.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if self.content.trim().is_empty() {
+            return Err("the note content must not be empty".to_string());
+        }
+        let Some(note) = project
+            .daily_notes
+            .iter_mut()
+            .find(|item| item.id == self.id)
+        else {
+            return Err(format!("daily note {} does not exist", self.id));
+        };
+        let previous = std::mem::replace(&mut note.content, self.content.clone());
+        Ok(Box::new(UpdateDailyNote {
+            id: self.id,
+            content: previous,
+        }))
     }
 }
 

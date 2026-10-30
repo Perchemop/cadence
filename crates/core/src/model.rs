@@ -791,6 +791,9 @@ pub struct Project {
     /// Lookahead snapshots: published, read-only views of the near-term plan.
     #[serde(default)]
     pub lookahead_snapshots: Vec<LookaheadSnapshot>,
+    /// Daily notes: dated diary entries linked to activities or lookahead windows.
+    #[serde(default)]
+    pub daily_notes: Vec<DailyNote>,
 }
 
 impl Project {
@@ -807,6 +810,7 @@ impl Project {
             resources: Vec::new(),
             baselines: Vec::new(),
             lookahead_snapshots: Vec::new(),
+            daily_notes: Vec::new(),
         }
     }
 
@@ -866,6 +870,18 @@ impl Project {
             self.lookahead_snapshots
                 .iter()
                 .map(|snapshot| snapshot.id.0)
+                .max()
+                .unwrap_or_default()
+                .saturating_add(1),
+        )
+    }
+
+    /// Next unused daily note identifier.
+    pub fn next_daily_note_id(&self) -> DailyNoteId {
+        DailyNoteId(
+            self.daily_notes
+                .iter()
+                .map(|note| note.id.0)
                 .max()
                 .unwrap_or_default()
                 .saturating_add(1),
@@ -1126,6 +1142,64 @@ impl LookaheadSnapshot {
         self.entries
             .iter()
             .find(|entry| entry.activity_id == activity_id)
+    }
+}
+
+/// Stable identifier for a [`DailyNote`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct DailyNoteId(pub u64);
+
+impl DailyNoteId {
+    /// Construct a daily note identifier from a raw value.
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+impl std::fmt::Display for DailyNoteId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+/// A dated diary entry linked to an activity or a lookahead window.
+///
+/// Daily notes are site records — what happened, what was delayed, what needs
+/// escalating — captured against a specific date. They are linked to an
+/// activity when the note concerns that specific task, or to a lookahead
+/// window when the note concerns the window as a whole.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct DailyNote {
+    /// Stable identifier.
+    pub id: DailyNoteId,
+    /// Date of the diary entry.
+    pub date: Date,
+    /// Note content.
+    pub content: String,
+    /// Optional activity the note concerns.
+    pub activity_id: Option<ActivityId>,
+    /// Optional lookahead window start the note concerns.
+    pub lookahead_window_start: Option<Date>,
+}
+
+impl DailyNote {
+    /// Construct a new daily note.
+    pub fn new(
+        id: DailyNoteId,
+        date: Date,
+        content: String,
+        activity_id: Option<ActivityId>,
+        lookahead_window_start: Option<Date>,
+    ) -> Self {
+        Self {
+            id,
+            date,
+            content,
+            activity_id,
+            lookahead_window_start,
+        }
     }
 }
 

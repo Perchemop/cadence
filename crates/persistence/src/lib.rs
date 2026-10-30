@@ -1,8 +1,8 @@
 //! SQLite project files for Cadence.
 //!
 //! A Cadence project file is an ordinary SQLite database. The schema is
-//! versioned with `PRAGMA user_version`; this build reads and writes version 5
-//! and migrates version 1, 2 and 3 files in place.
+//! versioned with `PRAGMA user_version`; this build reads and writes version 7
+//! and migrates version 1 and later files in place.
 //!
 //! Saving runs in a single transaction that replaces the previous contents, so
 //! a failed save never corrupts an existing project.
@@ -16,8 +16,8 @@ use std::path::Path;
 use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
-    LinkType, LookaheadSnapshot, LookaheadSnapshotEntry, LookaheadSnapshotId, Project,
-    Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
+    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    LookaheadSnapshotId, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsTree};
 use rusqlite::{params, Connection};
@@ -25,7 +25,7 @@ use thiserror::Error;
 use time::{Date, Month};
 
 /// Project-file schema version written by this build.
-pub const SCHEMA_VERSION: i64 = 6;
+pub const SCHEMA_VERSION: i64 = 7;
 
 const SCHEMA: &str = r#"
 CREATE TABLE project (
@@ -133,6 +133,14 @@ CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
     promised        INTEGER NOT NULL DEFAULT 0,
     percent_complete INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (snapshot_id, activity_id)
+);
+
+CREATE TABLE IF NOT EXISTS daily_notes (
+    id                   INTEGER PRIMARY KEY,
+    date                 TEXT    NOT NULL,
+    content              TEXT    NOT NULL,
+    activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+    lookahead_window_start TEXT
 );
 "#;
 
@@ -271,7 +279,14 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL DEFAULT 0,
                      PRIMARY KEY (snapshot_id, activity_id)
                  );
-                 PRAGMA user_version = 6;",
+                 CREATE TABLE IF NOT EXISTS daily_notes (
+                     id                   INTEGER PRIMARY KEY,
+                     date                 TEXT    NOT NULL,
+                     content              TEXT    NOT NULL,
+                     activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                     lookahead_window_start TEXT
+                 );
+                 PRAGMA user_version = 7;",
             )?;
             Ok(())
         }
@@ -331,7 +346,14 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL DEFAULT 0,
                      PRIMARY KEY (snapshot_id, activity_id)
                  );
-                 PRAGMA user_version = 6;",
+                 CREATE TABLE IF NOT EXISTS daily_notes (
+                     id                   INTEGER PRIMARY KEY,
+                     date                 TEXT    NOT NULL,
+                     content              TEXT    NOT NULL,
+                     activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                     lookahead_window_start TEXT
+                 );
+                 PRAGMA user_version = 7;",
             )?;
             Ok(())
         }
@@ -361,7 +383,14 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL DEFAULT 0,
                      PRIMARY KEY (snapshot_id, activity_id)
                  );
-                 PRAGMA user_version = 6;",
+                 CREATE TABLE IF NOT EXISTS daily_notes (
+                     id                   INTEGER PRIMARY KEY,
+                     date                 TEXT    NOT NULL,
+                     content              TEXT    NOT NULL,
+                     activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                     lookahead_window_start TEXT
+                 );
+                 PRAGMA user_version = 7;",
             )?;
             Ok(())
         }
@@ -391,7 +420,14 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL DEFAULT 0,
                      PRIMARY KEY (snapshot_id, activity_id)
                  );
-                 PRAGMA user_version = 6;",
+                 CREATE TABLE IF NOT EXISTS daily_notes (
+                     id                   INTEGER PRIMARY KEY,
+                     date                 TEXT    NOT NULL,
+                     content              TEXT    NOT NULL,
+                     activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                     lookahead_window_start TEXT
+                 );
+                 PRAGMA user_version = 7;",
             )?;
             Ok(())
         }
@@ -417,7 +453,29 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                     percent_complete INTEGER NOT NULL DEFAULT 0,
                     PRIMARY KEY (snapshot_id, activity_id)
                 );
-                 PRAGMA user_version = 6;",
+                 CREATE TABLE IF NOT EXISTS daily_notes (
+                    id                   INTEGER PRIMARY KEY,
+                    date                 TEXT    NOT NULL,
+                    content              TEXT    NOT NULL,
+                    activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                    lookahead_window_start TEXT
+                );
+                 PRAGMA user_version = 7;",
+            )?;
+            Ok(())
+        }
+        6 => {
+            // Version 7 adds daily notes: dated diary entries linked to
+            // activities or lookahead windows.
+            connection.execute_batch(
+                "CREATE TABLE IF NOT EXISTS daily_notes (
+                    id                   INTEGER PRIMARY KEY,
+                    date                 TEXT    NOT NULL,
+                    content              TEXT    NOT NULL,
+                    activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                    lookahead_window_start TEXT
+                );
+                 PRAGMA user_version = 7;",
             )?;
             Ok(())
         }
@@ -675,6 +733,24 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
         }
     }
 
+    for note in &project.daily_notes {
+        let activity_id_sql = note
+            .activity_id
+            .map(|id| to_sql_id(id.0, "activity"))
+            .transpose()?;
+        transaction.execute(
+            "INSERT INTO daily_notes (id, date, content, activity_id, lookahead_window_start)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                to_sql_id(note.id.0, "daily_note")?,
+                note.date.to_string(),
+                note.content,
+                activity_id_sql,
+                note.lookahead_window_start.map(|date| date.to_string()),
+            ],
+        )?;
+    }
+
     Ok(())
 }
 
@@ -762,6 +838,21 @@ fn read_project(connection: &Connection) -> Result<Project> {
     for snapshot in &mut project.lookahead_snapshots {
         snapshot.entries.sort_by_key(|entry| entry.activity_id);
     }
+
+    let daily_notes = read_daily_notes(connection)?;
+    project.daily_notes = daily_notes
+        .into_iter()
+        .map(|row| {
+            DailyNote::new(
+                DailyNoteId(row.id),
+                row.date,
+                row.content,
+                row.activity_id,
+                row.lookahead_window_start,
+            )
+        })
+        .collect();
+    project.daily_notes.sort_by_key(|note| note.id.0);
     Ok(project)
 }
 
@@ -1212,6 +1303,55 @@ fn read_lookahead_snapshot_entries(
         });
     }
     Ok(entries)
+}
+
+/// One daily note row as stored in the database.
+struct DailyNoteRow {
+    /// Note identifier.
+    id: u64,
+    /// Date of the diary entry.
+    date: Date,
+    /// Note content.
+    content: String,
+    /// Optional activity the note concerns.
+    activity_id: Option<ActivityId>,
+    /// Optional lookahead window start the note concerns.
+    lookahead_window_start: Option<Date>,
+}
+
+fn read_daily_notes(connection: &Connection) -> Result<Vec<DailyNoteRow>> {
+    let rows = collect_rows(
+        connection,
+        "SELECT id, date, content, activity_id, lookahead_window_start FROM daily_notes ORDER BY date",
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<i64>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
+        },
+    )?;
+
+    let mut notes = Vec::with_capacity(rows.len());
+    for (id, date, content, activity_id, lookahead_window_start) in rows {
+        let activity_id = activity_id
+            .map(|id| from_sql_id(id, "activity").map(ActivityId))
+            .transpose()?;
+        let lookahead_window_start = lookahead_window_start
+            .as_deref()
+            .map(parse_date)
+            .transpose()?;
+        notes.push(DailyNoteRow {
+            id: from_sql_id(id, "daily_note")?,
+            date: parse_date(&date)?,
+            content,
+            activity_id,
+            lookahead_window_start,
+        });
+    }
+    Ok(notes)
 }
 
 fn read_holidays(connection: &Connection, query: &str) -> Result<BTreeSet<Date>> {
@@ -1797,6 +1937,32 @@ mod tests {
         );
         assert_eq!(loaded.activities[1].owner, None);
         assert!(!loaded.activities[1].promised);
+    }
+
+    #[test]
+    fn daily_notes_round_trip() {
+        let mut project = sample_project();
+        project.daily_notes.push(DailyNote::new(
+            DailyNoteId(1),
+            date(6),
+            "Crane late; resequenced pour".to_string(),
+            Some(ActivityId(1)),
+            None,
+        ));
+        project.daily_notes.push(DailyNote::new(
+            DailyNoteId(2),
+            date(7),
+            "Week 1 huddle briefed".to_string(),
+            None,
+            Some(date(5)),
+        ));
+
+        let dir = TempDir::new();
+        let path = dir.file("diary.cadence");
+        save_project(&project, &path).expect("save");
+        let loaded = load_project(&path).expect("load");
+
+        assert_eq!(loaded.daily_notes, project.daily_notes);
     }
 
     #[test]
