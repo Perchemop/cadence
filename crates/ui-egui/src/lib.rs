@@ -20,6 +20,7 @@ use cadence_commands::{
 };
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
 use cadence_core::calendar_set::CalendarId;
+use cadence_core::clash::location_clashes;
 use cadence_core::engine::schedule;
 use cadence_core::engine::Schedule;
 use cadence_core::engine::{evm_metrics, level_resources, resource_conflicts, resource_histogram};
@@ -2681,6 +2682,47 @@ impl eframe::App for CadenceApp {
                                     self.selected_lookahead_snapshot = None;
                                 }
                             }
+                        }
+                    }
+                    ui.separator();
+                    ui.heading("Location clashes");
+                    let clashes = location_clashes(&self.project, &schedule);
+                    if clashes.is_empty() {
+                        ui.label(
+                            "No activities share a location on overlapping days. \
+                             Set a location in the inspector to include an activity \
+                             in the check.",
+                        );
+                    } else {
+                        let mut jump_to = None;
+                        for clash in &clashes {
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new(&clash.location).strong());
+                                ui.label(format!("{}", clash.date));
+                                if ui
+                                    .link(format!(
+                                        "{} ({})",
+                                        clash.first_name, clash.first
+                                    ))
+                                    .clicked()
+                                {
+                                    jump_to = Some(clash.first);
+                                }
+                                ui.label("clashes with");
+                                if ui
+                                    .link(format!(
+                                        "{} ({})",
+                                        clash.second_name, clash.second
+                                    ))
+                                    .clicked()
+                                {
+                                    jump_to = Some(clash.second);
+                                }
+                            });
+                        }
+                        if let Some(id) = jump_to {
+                            self.select(id);
+                            self.view_mode = ViewMode::Table;
                         }
                     }
                     ui.separator();

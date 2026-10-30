@@ -158,12 +158,16 @@ Progress-driven rescheduling remains queued in v0.3.x below.
       `capture_lookahead_snapshot` in `cadence-core::engine`; GUI **Publish
       snapshot** button and snapshot comparison view in the Lookahead tab
       (`Ctrl+7`).
-- [x] Daily diary/huddle briefing (core): dated diary notes linked to an
-      activity or a lookahead window — `DailyNoteId`/`DailyNote` in
-      `cadence-core::model`, `CreateDailyNote`/`DeleteDailyNote`/`UpdateDailyNote`
-      commands, schema v7 `daily_notes` table with round-trip persistence.
-- [ ] Remaining Aphex lookahead stages: production tracking, location clash
-      detection, and the daily-diary GUI view.
+- [x] Daily diary/huddle briefing: dated diary notes linked to an activity or
+      a lookahead window — `DailyNoteId`/`DailyNote` in `cadence-core::model`,
+      `CreateDailyNote`/`DeleteDailyNote`/`UpdateDailyNote` commands, schema v7
+      `daily_notes` table, and the **Diary** view (`Ctrl+8`).
+- [x] Location clash detection: an optional free-text `location` on activities
+      (`SetActivityLocation` command, schema v8) and
+      `cadence-core::clash::location_clashes`, which flags two open activities
+      sharing a location on overlapping working days; the Lookahead view lists
+      them with links to the activities.
+- [ ] Remaining Aphex lookahead stage: production tracking.
 
 ### Human-gated (recorded, not decided)
 

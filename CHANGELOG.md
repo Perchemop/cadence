@@ -44,8 +44,13 @@ follows Keep a Changelog; releases use git tags.
   activity or a lookahead window, so site records sit against planned work.
   `DailyNoteId`/`DailyNote` in `cadence-core::model`;
   `CreateDailyNote`, `DeleteDailyNote`, `UpdateDailyNote` commands; schema v7
-  `daily_notes` table with round-trip persistence. The GUI diary view is the
-  next stage.
+  `daily_notes` table with round-trip persistence; a **Diary** view (`Ctrl+8`)
+  to add and delete notes.
+- **Location clash detection**: an optional free-text `location` on activities
+  (`SetActivityLocation` command, schema v8) and
+  `cadence-core::clash::location_clashes`, which flags two open activities
+  sharing a location on overlapping working days; the Lookahead view lists the
+  clashes with links to the activities.
 
 ## [0.3.0] — 2026-10-28
 
