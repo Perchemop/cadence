@@ -175,22 +175,19 @@ impl Pdf {
                         .into_bytes(),
                     );
                     bodies.push(stream(content.as_bytes()));
-                    bodies.push(
-                        format!(
-                            "<< /Type /XObject /Subtype /Image /Width {width} \
-                             /Height {height} /ColorSpace /DeviceRGB \
-                             /BitsPerComponent 8 /Length {} >>",
-                            rgb.len() * 2 + 2
-                        )
-                        .into_bytes(),
-                    );
-                    // Replace the dictionary above with the dictionary plus its
-                    // payload as one object body.
-                    let dictionary = bodies.pop().expect("just pushed");
-                    let mut image = dictionary;
-                    image.extend_from_slice(b"\nstream\n");
+                    // The image payload is ASCII-hex encoded, so the stream
+                    // must declare `/Filter /ASCIIHexDecode` and close with
+                    // `endstream`, exactly like `stream()` does for text.
+                    let mut image = format!(
+                        "<< /Type /XObject /Subtype /Image /Width {width} \
+                         /Height {height} /ColorSpace /DeviceRGB \
+                         /BitsPerComponent 8 /Filter /ASCIIHexDecode \
+                         /Length {} >>\nstream\n",
+                        rgb.len() * 2 + 2
+                    )
+                    .into_bytes();
                     image.extend_from_slice(&hex_bytes(rgb));
-                    image.extend_from_slice(b">\n");
+                    image.extend_from_slice(b">\nendstream");
                     bodies.push(image);
                     next_object += 3;
                 }
@@ -544,5 +541,21 @@ mod tests {
     fn parentheses_and_backslashes_are_escaped() {
         assert_eq!(escape_pdf("a(b)c\\d"), "a\\(b\\)c\\\\d");
         assert_eq!(escape_pdf("line\nbreak"), "line break");
+    }
+
+    #[test]
+    fn an_image_stream_declares_its_filter_and_closes_with_endstream() {
+        let mut pdf = Pdf::new();
+        pdf.image_page(2, 1, vec![255, 0, 0, 0, 255, 0]);
+        let text = String::from_utf8(pdf.to_bytes()).expect("pdf is bytes");
+        assert!(
+            text.contains("/Filter /ASCIIHexDecode"),
+            "the image stream must declare its ASCIIHexDecode filter"
+        );
+        // The image object must close its stream like every other stream.
+        assert!(
+            text.contains(">\nendstream"),
+            "the image stream must close with endstream"
+        );
     }
 }
