@@ -693,6 +693,42 @@ impl Command for SetActivityOwner {
     }
 }
 
+/// Set the free-text work location of an activity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityLocation {
+    /// Activity to update.
+    pub id: ActivityId,
+    /// The work location or area, or `None` to clear it.
+    pub location: Option<String>,
+}
+
+impl Command for SetActivityLocation {
+    fn description(&self) -> String {
+        match &self.location {
+            Some(location) => format!("set location of activity {id} to {location}", id = self.id),
+            None => format!("clear the location of activity {}", self.id),
+        }
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if self
+            .location
+            .as_ref()
+            .is_some_and(|location| location.trim().is_empty())
+        {
+            return Err("the location must not be empty".to_string());
+        }
+        let Some(activity) = project.activity_mut(self.id) else {
+            return Err(format!("activity {} does not exist", self.id));
+        };
+        let previous = std::mem::replace(&mut activity.location, self.location.clone());
+        Ok(Box::new(SetActivityLocation {
+            id: self.id,
+            location: previous,
+        }))
+    }
+}
+
 /// Promise a near-term activity in the lookahead, optionally recording why its
 /// dates moved.
 #[derive(Debug, Clone, PartialEq, Eq)]

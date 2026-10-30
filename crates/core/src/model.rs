@@ -678,6 +678,9 @@ pub struct Activity {
     /// The reason recorded when a promised activity's dates moved.
     #[serde(default)]
     pub delay_reason: Option<String>,
+    /// Optional free-text work location or area, used for clash detection.
+    #[serde(default)]
+    pub location: Option<String>,
 }
 
 impl Activity {
@@ -708,6 +711,7 @@ impl Activity {
             owner: None,
             promised: false,
             delay_reason: None,
+            location: None,
         }
     }
 
