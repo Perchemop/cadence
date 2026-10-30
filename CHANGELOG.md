@@ -40,6 +40,12 @@ follows Keep a Changelog; releases use git tags.
   `CaptureLookaheadSnapshot`, `RemoveLookaheadSnapshot`, `RestoreLookaheadSnapshot`
   commands in `cadence-commands`; GUI **Publish snapshot** button and snapshot
   comparison view in the **Lookahead** view (`Ctrl+7`).
+- **Daily diary / huddle briefing** (core): dated diary notes linked to an
+  activity or a lookahead window, so site records sit against planned work.
+  `DailyNoteId`/`DailyNote` in `cadence-core::model`;
+  `CreateDailyNote`, `DeleteDailyNote`, `UpdateDailyNote` commands; schema v7
+  `daily_notes` table with round-trip persistence. The GUI diary view is the
+  next stage.
 
 ## [0.3.0] — 2026-10-28
 

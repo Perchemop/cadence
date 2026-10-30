@@ -937,3 +937,19 @@ Aphex lookahead stages.
 - Workspace version bumped to 0.4.0 (semver-minor: new pub types and fields).
 - CI green on all required checks; PR #53 merged to `main`.
 
+## 2026-10-30 — Daily diary / huddle briefing (core)
+
+Added dated diary notes linked to an activity or a lookahead window — the
+first half of the daily diary/huddle briefing lookahead stage. The GUI view
+follows.
+
+- `crates/core/src/model.rs`: `DailyNoteId`, `DailyNote` types;
+  `Project::daily_notes` and `Project::next_daily_note_id()`.
+- `crates/commands/src/lib.rs`: `CreateDailyNote`, `DeleteDailyNote`,
+  `UpdateDailyNote` commands — all undoable.
+- `crates/persistence/src/lib.rs`: schema v7 `daily_notes` table; every
+  migration arm now reaches v7; round-trip read/write and a
+  `daily_notes_round_trip` test.
+- Workspace version bumped to 0.5.0 (semver-minor: new pub types and fields).
+- CI green on all required checks; PR #55 merged to `main`.
+

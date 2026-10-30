@@ -25,7 +25,7 @@ use cadence_core::engine::Schedule;
 use cadence_core::engine::{evm_metrics, level_resources, resource_conflicts, resource_histogram};
 use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use cadence_core::model::{
-    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType,
+    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, LinkType,
     LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind,
 };
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
@@ -138,7 +138,12 @@ enum ViewMode {
     Calendars,
     Audit,
     Lookahead,
+    Diary,
 }
+
+/// One row in the diary view: identifier, date, content, activity link and
+/// lookahead-window link.
+type DiaryRow = (DailyNoteId, Date, String, Option<ActivityId>, Option<Date>);
 
 const CONSTRAINT_LABELS: [&str; 6] = [
     "As soon as possible",
@@ -269,6 +274,10 @@ pub struct CadenceApp {
     lookahead_weeks: usize,
     lookahead_snapshot_name_buffer: String,
     selected_lookahead_snapshot: Option<LookaheadSnapshotId>,
+    diary_date_buffer: String,
+    diary_content_buffer: String,
+    diary_activity_buffer: String,
+    diary_window_buffer: String,
     owner_buffer: String,
     promised_buffer: bool,
     delay_reason_buffer: String,
@@ -346,6 +355,10 @@ impl CadenceApp {
             lookahead_weeks: 2,
             lookahead_snapshot_name_buffer: String::new(),
             selected_lookahead_snapshot: None,
+            diary_date_buffer: today().to_string(),
+            diary_content_buffer: String::new(),
+            diary_activity_buffer: String::new(),
+            diary_window_buffer: String::new(),
             owner_buffer: String::new(),
             promised_buffer: false,
             delay_reason_buffer: String::new(),
@@ -1176,6 +1189,7 @@ impl eframe::App for CadenceApp {
                     egui::Key::Num5,
                     egui::Key::Num6,
                     egui::Key::Num7,
+                    egui::Key::Num8,
                 ]
                 .iter()
                 .position(|key| input.key_pressed(*key))
@@ -1191,7 +1205,8 @@ impl eframe::App for CadenceApp {
                     3 => ViewMode::Baselines,
                     4 => ViewMode::Calendars,
                     5 => ViewMode::Audit,
-                    _ => ViewMode::Lookahead,
+                    6 => ViewMode::Lookahead,
+                    _ => ViewMode::Diary,
                 };
             }
         }
@@ -1314,6 +1329,7 @@ impl eframe::App for CadenceApp {
                     (ViewMode::Calendars, "Calendars"),
                     (ViewMode::Audit, "Audit"),
                     (ViewMode::Lookahead, "Lookahead"),
+                    (ViewMode::Diary, "Diary"),
                 ] {
                     let selected = self.view_mode == mode;
                     if *first {
@@ -2675,6 +2691,127 @@ impl eframe::App for CadenceApp {
                     );
                 });
             }
+            ViewMode::Diary => {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    ui.heading("Daily diary");
+                    ui.label(
+                        "Dated site records linked to the plan: what happened, what \
+                         slipped, what needs escalating. Attach a note to an activity \
+                         or to a lookahead window so it sits against the work it \
+                         concerns.",
+                    );
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Date (YYYY-MM-DD)");
+                        ui.text_edit_singleline(&mut self.diary_date_buffer);
+                        ui.label("Activity id (optional)");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.diary_activity_buffer)
+                                .desired_width(56.0),
+                        );
+                        ui.label("Window start (optional)");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.diary_window_buffer)
+                                .desired_width(96.0),
+                        );
+                    });
+                    ui.label("Note");
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.diary_content_buffer).desired_rows(3),
+                    );
+                    if ui.button("Add note").clicked() {
+                        let date = parse_date(self.diary_date_buffer.trim());
+                        let activity = self
+                            .diary_activity_buffer
+                            .trim()
+                            .parse::<u64>()
+                            .ok()
+                            .map(ActivityId::new);
+                        let window = if self.diary_window_buffer.trim().is_empty() {
+                            Some(None)
+                        } else {
+                            parse_date(self.diary_window_buffer.trim()).map(Some)
+                        };
+                        match (date, window) {
+                            (Some(date), Some(lookahead_window_start)) => {
+                                let command = cadence_commands::CreateDailyNote {
+                                    date,
+                                    content: self.diary_content_buffer.clone(),
+                                    activity_id: activity,
+                                    lookahead_window_start,
+                                };
+                                if self
+                                    .stack
+                                    .execute(&mut self.project, Box::new(command))
+                                    .is_ok()
+                                {
+                                    self.recompute();
+                                    self.diary_content_buffer.clear();
+                                    self.status_message = Some("Diary note added.".to_string());
+                                } else {
+                                    self.status_message =
+                                        Some("Cannot add the note; check the content.".to_string());
+                                }
+                            }
+                            _ => {
+                                self.status_message = Some(
+                                    "The date (and window start, if given) must be YYYY-MM-DD."
+                                        .to_string(),
+                                );
+                            }
+                        }
+                    }
+                    ui.separator();
+                    ui.heading("Notes");
+                    // Copy the note fields so the list does not borrow the project
+                    // while a delete command mutates it.
+                    let mut notes: Vec<DiaryRow> = self
+                        .project
+                        .daily_notes
+                        .iter()
+                        .map(|note| {
+                            (
+                                note.id,
+                                note.date,
+                                note.content.clone(),
+                                note.activity_id,
+                                note.lookahead_window_start,
+                            )
+                        })
+                        .collect();
+                    notes.sort_by(|a, b| b.1.cmp(&a.1).then(b.0.cmp(&a.0)));
+                    if notes.is_empty() {
+                        ui.label("No diary notes yet.");
+                    }
+                    let mut to_delete = None;
+                    for (id, date, content, activity_id, window) in &notes {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(date.to_string()).monospace());
+                            ui.label(content);
+                            if let Some(activity_id) = activity_id {
+                                ui.label(format!("→ activity {activity_id}"));
+                            }
+                            if let Some(window) = window {
+                                ui.label(format!("→ window from {window}"));
+                            }
+                            if ui.button("Delete").clicked() {
+                                to_delete = Some(*id);
+                            }
+                        });
+                    }
+                    if let Some(id) = to_delete {
+                        let command = cadence_commands::DeleteDailyNote { id };
+                        if self
+                            .stack
+                            .execute(&mut self.project, Box::new(command))
+                            .is_ok()
+                        {
+                            self.recompute();
+                            self.status_message = Some("Diary note deleted.".to_string());
+                        }
+                    }
+                });
+            }
         }
 
         if self.show_crash_dialog {
@@ -2784,9 +2921,9 @@ impl eframe::App for CadenceApp {
                                 ("Ctrl+Z", "Undo"),
                                 ("Ctrl+Y or Ctrl+Shift+Z", "Redo"),
                                 (
-                                    "Ctrl+1 … Ctrl+7",
+                                    "Ctrl+1 … Ctrl+8",
                                     "Switch view: Table, Gantt, Resources, Baselines, \
-                                     Calendars, Audit, Lookahead",
+                                     Calendars, Audit, Lookahead, Diary",
                                 ),
                                 ("Ctrl+D", "Toggle light/dark theme"),
                                 (
