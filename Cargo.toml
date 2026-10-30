@@ -35,7 +35,7 @@ serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 thiserror = "2"
 proptest = "1"
-eframe = "0.35"
+eframe = "0.37"
 egui = "0.35"
 ureq = { version = "2.12", default-features = false, features = ["tls"] }
 
