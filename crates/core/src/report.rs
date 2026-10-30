@@ -280,10 +280,8 @@ fn escape_table(value: &str) -> String {
 fn transliterate(text: &str) -> String {
     text.replace('\u{2014}', "--") // em dash
         .replace('\u{2013}', "-") // en dash
-        .replace('\u{2018}', "'") // left single quotation mark
-        .replace('\u{2019}', "'") // right single quotation mark
-        .replace('\u{201C}', "\"") // left double quotation mark
-        .replace('\u{201D}', "\"") // right double quotation mark
+        .replace(['\u{2018}', '\u{2019}'], "'") // single quotation marks
+        .replace(['\u{201C}', '\u{201D}'], "\"") // double quotation marks
         .replace('\u{2026}', "...") // horizontal ellipsis
 }
 
