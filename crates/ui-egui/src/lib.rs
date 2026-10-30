@@ -2700,20 +2700,14 @@ impl eframe::App for CadenceApp {
                                 ui.label(egui::RichText::new(&clash.location).strong());
                                 ui.label(format!("{}", clash.date));
                                 if ui
-                                    .link(format!(
-                                        "{} ({})",
-                                        clash.first_name, clash.first
-                                    ))
+                                    .link(format!("{} ({})", clash.first_name, clash.first))
                                     .clicked()
                                 {
                                     jump_to = Some(clash.first);
                                 }
                                 ui.label("clashes with");
                                 if ui
-                                    .link(format!(
-                                        "{} ({})",
-                                        clash.second_name, clash.second
-                                    ))
+                                    .link(format!("{} ({})", clash.second_name, clash.second))
                                     .clicked()
                                 {
                                     jump_to = Some(clash.second);
