@@ -807,13 +807,7 @@ fn read_project(connection: &Connection) -> Result<Project> {
     let daily_notes = read_daily_notes(connection)?;
     project.daily_notes = daily_notes
         .into_iter()
-        .map(|row| DailyNote::new(
-            DailyNoteId(row.id),
-            row.date,
-            row.content,
-            row.activity_id,
-            row.lookahead_window_start,
-        ))
+        .map(|row| DailyNote::new(DailyNoteId(row.id), row.date, row.content, row.activity_id, row.lookahead_window_start))
         .collect();
     project.daily_notes.sort_by_key(|note| note.id.0);
     Ok(project)
