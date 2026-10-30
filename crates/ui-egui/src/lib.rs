@@ -141,6 +141,10 @@ enum ViewMode {
     Diary,
 }
 
+/// One row in the diary view: identifier, date, content, activity link and
+/// lookahead-window link.
+type DiaryRow = (DailyNoteId, Date, String, Option<ActivityId>, Option<Date>);
+
 const CONSTRAINT_LABELS: [&str; 6] = [
     "As soon as possible",
     "As late as possible",
@@ -2761,13 +2765,7 @@ impl eframe::App for CadenceApp {
                     ui.heading("Notes");
                     // Copy the note fields so the list does not borrow the project
                     // while a delete command mutates it.
-                    let mut notes: Vec<(
-                        DailyNoteId,
-                        Date,
-                        String,
-                        Option<ActivityId>,
-                        Option<Date>,
-                    )> = self
+                    let mut notes: Vec<DiaryRow> = self
                         .project
                         .daily_notes
                         .iter()
