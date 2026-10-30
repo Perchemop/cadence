@@ -556,7 +556,7 @@ fn gui_demo() -> Result<(), String> {
 
 fn gui_file(path: &str) -> Result<(), String> {
     let project = cadence_persistence::load_project(path).map_err(|error| error.to_string())?;
-    cadence_ui_egui::run(project)
+    cadence_ui_egui::run_with_path(project, Some(std::path::PathBuf::from(path)))
 }
 
 fn demo_project() -> Result<Project, String> {
