@@ -1002,5 +1002,18 @@ A third document, `docs/qc/capability-audit.md`, compares Cadence against every
 capability named in the reference-product inventories (MS Project, P6, Asta
 Powerproject, ProjectLibre, Aphex, the DCMA/GAO/AACE audit tools, the optional
 AI tools): 273 capabilities, 130 shipped / 37 partial / 86 missing / 20
-out-of-scope. A second parallel fix pass addresses the open findings.
+out-of-scope.
+
+A second parallel fix pass then cleared the remaining CRITICAL and HIGH
+findings across all crates: the EVM `i64` overflow and the reachable
+date-overflow panics in the engine; non-atomic SQLite migrations and missing
+dangling-reference validation; calendar order lost through
+`SetCalendarDefinition` and stale cached schedules; the JSON interchange now
+carrying the default calendar, activity locations, lookahead snapshots and
+daily notes (schema v3); CSV formula injection, MSPDI/MPX cost-resource mapping
+and duplicate-id rejection, XML size/depth caps; the programme audit's
+invalid-dates, negative-float and lags checks; `compare_baseline` false diffs;
+non-ASCII report text; CLI same-file overwrite protection and `--json`
+handling; and the Gantt arrow geometry, palette tokens, sort-direction cue and
+row selection in the GUI. Workspace version 0.7.0. A second parallel fix pass addresses the open findings.
 
