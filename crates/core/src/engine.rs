@@ -221,6 +221,8 @@ impl ResourceHistogram {
     pub fn assignments_on(&self, date: Date) -> Option<&Vec<ResourceAssignment>> {
         self.entries.get(&date)
     }
+}
+
 /// Distinct resource identifiers of an activity, in first-seen order.
 ///
 /// An activity that lists the same resource more than once still consumes that
