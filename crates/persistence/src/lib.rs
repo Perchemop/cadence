@@ -1054,7 +1054,7 @@ fn read_production_entries(connection: &Connection) -> Result<Vec<ProductionEntr
         .into_iter()
         .map(|(id, activity_id, date_str, percent_complete)| {
             let date: Date = parse_date(&date_str)?;
-            Result::<ProductionEntry, PersistenceError>::Ok(ProductionEntry::new(
+            Ok::<ProductionEntry, PersistenceError>(ProductionEntry::new(
                 id,
                 activity_id,
                 date,
