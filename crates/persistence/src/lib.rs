@@ -1053,10 +1053,15 @@ fn read_production_entries(connection: &Connection) -> Result<Vec<ProductionEntr
     let entries = rows
         .into_iter()
         .map(|(id, activity_id, date_str, percent_complete)| {
-            let date = parse_date(&date_str)?;
-            Ok(ProductionEntry::new(id, activity_id, date, percent_complete))
+            let date: Date = parse_date(&date_str)?;
+            Result::<ProductionEntry, PersistenceError>::Ok(ProductionEntry::new(
+                id,
+                activity_id,
+                date,
+                percent_complete,
+            ))
         })
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(entries)
 }
 
