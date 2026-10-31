@@ -212,6 +212,7 @@ fn resource_kind_from_index(index: usize) -> ResourceKind {
 }
 
 /// The Cadence application state.
+#[allow(dead_code)]
 pub struct CadenceApp {
     project: Project,
     /// Path the project was loaded from or last saved to, if any.
