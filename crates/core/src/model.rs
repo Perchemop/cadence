@@ -1263,7 +1263,12 @@ pub struct ProductionEntry {
 
 impl ProductionEntry {
     /// Construct a new production entry.
-    pub fn new(id: ProductionEntryId, activity_id: ActivityId, date: Date, percent_complete: i64) -> Self {
+    pub fn new(
+        id: ProductionEntryId,
+        activity_id: ActivityId,
+        date: Date,
+        percent_complete: i64,
+    ) -> Self {
         Self {
             id,
             activity_id,

@@ -14,8 +14,8 @@ use cadence_core::engine::{capture_baseline, capture_lookahead_snapshot, schedul
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
     DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
-    LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship,
-    RelationshipId, Resource, ResourceId, ResourceKind,
+    LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship, RelationshipId,
+    Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsNode};
 use time::Date;
@@ -1464,7 +1464,8 @@ impl Command for RecordProduction {
     fn description(&self) -> String {
         format!(
             "record production for activity {} on {}: {percent} basis points complete",
-            self.activity_id, self.date,
+            self.activity_id,
+            self.date,
             percent = self.percent_complete
         )
     }
@@ -1630,9 +1631,7 @@ impl Command for RestoreProduction {
         project
             .production_entries
             .insert(position, self.entry.clone());
-        Ok(Box::new(DeleteProduction {
-            id: self.entry.id,
-        }))
+        Ok(Box::new(DeleteProduction { id: self.entry.id }))
     }
 }
 

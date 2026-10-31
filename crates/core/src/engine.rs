@@ -686,9 +686,15 @@ pub fn production_plan_vs_actual(
 ) -> Vec<ProductionPlanVsActual> {
     let mut rows = Vec::new();
     for entry in &project.production_entries {
-        let Some(activity) = project.activity(entry.activity_id) else { continue; };
-        let Some(scheduled) = schedule.activity(entry.activity_id) else { continue; };
-        let calendar = project.resolve_calendar(activity.calendar).expect("calendar");
+        let Some(activity) = project.activity(entry.activity_id) else {
+            continue;
+        };
+        let Some(scheduled) = schedule.activity(entry.activity_id) else {
+            continue;
+        };
+        let calendar = project
+            .resolve_calendar(activity.calendar)
+            .expect("calendar");
         let planned = if activity.original_duration == 0 {
             if entry.date >= scheduled.scheduled_start {
                 10_000

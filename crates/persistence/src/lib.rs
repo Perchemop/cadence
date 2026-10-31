@@ -17,8 +17,8 @@ use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
     DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
-    LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship,
-    RelationshipId, Resource, ResourceId, ResourceKind,
+    LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship, RelationshipId,
+    Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsTree};
 use rusqlite::{params, Connection};
@@ -1033,9 +1033,8 @@ fn read_project(connection: &Connection) -> Result<Project> {
 }
 
 fn read_production_entries(connection: &Connection) -> Result<Vec<ProductionEntry>> {
-    let mut stmt = connection.prepare(
-        "SELECT id, activity_id, date, percent_complete FROM production_entries",
-    )?;
+    let mut stmt = connection
+        .prepare("SELECT id, activity_id, date, percent_complete FROM production_entries")?;
     let rows = stmt
         .query_map([], |row| {
             let id: i64 = row.get(0)?;
