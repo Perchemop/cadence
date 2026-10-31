@@ -1512,8 +1512,7 @@ impl Command for RecordProduction {
         let activity = project
             .activity_mut(self.activity_id)
             .expect("activity checked above");
-        let previous_percent =
-            std::mem::replace(&mut activity.percent_complete, Some(self.percent_complete));
+        let previous_percent = activity.percent_complete.replace(self.percent_complete);
         if self.percent_complete >= 10_000 && activity.actual_finish.is_none() {
             activity.actual_finish = Some(self.date);
         }
