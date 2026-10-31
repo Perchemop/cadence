@@ -765,8 +765,7 @@ impl Relationship {
 
 /// Root aggregate for a scheduling project.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
-    pub struct Project {
+pub struct Project {
     /// Project name.
     pub name: String,
     /// Calendar date on which the forward pass is anchored.
