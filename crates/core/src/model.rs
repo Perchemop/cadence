@@ -1298,7 +1298,7 @@ impl ProductionEntry {
         let elapsed = calendar
             .working_days_between(scheduled_start, self.date)
             .min(duration);
-        i64::from(elapsed) * 10_000 / duration
+        elapsed * 10_000 / duration
     }
 }
 
