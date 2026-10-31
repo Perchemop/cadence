@@ -1041,9 +1041,8 @@ fn read_production_entries(connection: &Connection) -> Result<Vec<ProductionEntr
             let activity_id = row.get::<_, i64>(1)?;
             let date_str = row.get::<_, String>(2)?;
             let percent_complete = row.get::<_, i64>(3)?;
-            let date = parse_date(&date_str).map_err(|e| {
-                rusqlite::Error::InvalidQuery(format!("invalid date: {e}"))
-            })?;
+            let date = parse_date(&date_str)
+                .map_err(|e| rusqlite::Error::InvalidQuery(format!("invalid date: {e}")))?;
             Ok(ProductionEntry::new(
                 ProductionEntryId(id as u64),
                 ActivityId(activity_id as u64),
