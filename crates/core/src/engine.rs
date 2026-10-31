@@ -56,8 +56,9 @@ use time::{Date, Duration};
 
 use crate::calendar_set::CalendarId;
 use crate::model::{
-    ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, CalendarError,
-    Constraint, EvmMetrics, LinkType, Project, RelationshipId, ResourceId,
+    saturate_i64, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar,
+    CalendarError, Constraint, EvmMetrics, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    LookaheadSnapshotId, Project, RelationshipId, ResourceId,
 };
 use crate::wbs::WbsId;
 
@@ -222,6 +223,21 @@ impl ResourceHistogram {
     }
 }
 
+/// Distinct resource identifiers of an activity, in first-seen order.
+///
+/// An activity that lists the same resource more than once still consumes that
+/// resource only once per working day, so the histogram and conflict passes
+/// must not double-count the duplicate.
+fn distinct_resources(resources: &[ResourceId]) -> Vec<ResourceId> {
+    let mut distinct = Vec::with_capacity(resources.len());
+    for &resource_id in resources {
+        if !distinct.contains(&resource_id) {
+            distinct.push(resource_id);
+        }
+    }
+    distinct
+}
+
 /// Build a resource histogram from a schedule and project.
 ///
 /// For every activity that has scheduled dates and at least one assigned
@@ -243,11 +259,12 @@ pub fn resource_histogram(project: &Project, schedule: &Schedule) -> ResourceHis
             Some(id) => project.calendars.calendar(id).unwrap_or(&project.calendar),
         };
 
+        let resources = distinct_resources(&activity.resources);
         let mut day = result.scheduled_start;
         let finish = result.scheduled_finish;
         while day <= finish {
             if calendar.is_working_day(day) {
-                for &resource_id in &activity.resources {
+                for &resource_id in &resources {
                     histogram
                         .entries
                         .entry(day)
@@ -258,9 +275,13 @@ pub fn resource_histogram(project: &Project, schedule: &Schedule) -> ResourceHis
                         });
                 }
             }
-            day = day
-                .checked_add(Duration::days(1))
-                .expect("resource histogram date overflow");
+            let Some(next) = day.checked_add(Duration::days(1)) else {
+                // Cannot advance further without overflow; the date range is
+                // unbounded by the calendar, so stop processing this activity
+                // rather than crashing the process.
+                break;
+            };
+            day = next;
         }
     }
 
@@ -337,10 +358,11 @@ pub fn resource_conflicts(project: &Project, schedule: &Schedule) -> Vec<Resourc
             Some(id) => project.calendars.calendar(id).unwrap_or(&project.calendar),
         };
 
+        let resources = distinct_resources(&activity.resources);
         let mut day = result.scheduled_start;
         while day <= result.scheduled_finish {
             if calendar.is_working_day(day) {
-                for &resource_id in &activity.resources {
+                for &resource_id in &resources {
                     let entry = usage.entry((day, resource_id)).or_insert((0, Vec::new()));
                     entry.0 += 1;
                     if !entry.1.contains(&result.id) {
@@ -348,9 +370,12 @@ pub fn resource_conflicts(project: &Project, schedule: &Schedule) -> Vec<Resourc
                     }
                 }
             }
-            day = day
-                .checked_add(Duration::days(1))
-                .expect("resource conflict date overflow");
+            let Some(next) = day.checked_add(Duration::days(1)) else {
+                // Date overflow would panic the process; stop the loop and
+                // skip the remainder of the range for this activity.
+                break;
+            };
+            day = next;
         }
     }
 
@@ -512,6 +537,34 @@ pub fn capture_baseline(
     Baseline::from_snapshots(id, name, created_at, snapshots)
 }
 
+/// Capture a lookahead window as a named, read-only snapshot.
+///
+/// Records the lookahead entries for `window_start`..`window_start + window_weeks`
+/// so that a later window can be compared against it to detect plan drift.
+pub fn capture_lookahead_snapshot(
+    project: &Project,
+    schedule: &Schedule,
+    id: LookaheadSnapshotId,
+    name: impl Into<String>,
+    created_at: Date,
+    window_start: Date,
+    window_weeks: u32,
+) -> LookaheadSnapshot {
+    let entries = crate::lookahead::lookahead(project, schedule, window_start, window_weeks)
+        .into_iter()
+        .map(|entry| LookaheadSnapshotEntry {
+            activity_id: entry.id,
+            name: entry.name,
+            scheduled_start: entry.scheduled_start,
+            scheduled_finish: entry.scheduled_finish,
+            owner: entry.owner.clone(),
+            promised: entry.promised,
+            percent_complete: entry.percent_complete,
+        })
+        .collect();
+    LookaheadSnapshot::from_entries(id, name, created_at, window_start, window_weeks, entries)
+}
+
 /// Compute earned value metrics for the whole project against a baseline.
 ///
 /// `status_date` is the "data date": the day progress is measured as of.
@@ -523,10 +576,10 @@ pub fn evm_metrics(
     baseline: Option<&Baseline>,
     status_date: Date,
 ) -> EvmMetrics {
-    let mut total_bac = 0i64;
-    let mut total_pv = 0i64;
-    let mut total_ev = 0i64;
-    let mut total_ac = 0i64;
+    let mut total_bac = 0i128;
+    let mut total_pv = 0i128;
+    let mut total_ev = 0i128;
+    let mut total_ac = 0i128;
 
     for activity in &project.activities {
         let snapshot = baseline.and_then(|candidate| {
@@ -545,10 +598,10 @@ pub fn evm_metrics(
             None => 0,
         };
         let metrics = EvmMetrics::for_activity(activity, planned_fraction);
-        total_bac += metrics.budget_at_completion;
-        total_pv += metrics.planned_value;
-        total_ev += metrics.earned_value;
-        total_ac += metrics.actual_cost;
+        total_bac += i128::from(metrics.budget_at_completion);
+        total_pv += i128::from(metrics.planned_value);
+        total_ev += i128::from(metrics.earned_value);
+        total_ac += i128::from(metrics.actual_cost);
     }
 
     let cv = total_ev - total_ac;
@@ -565,12 +618,12 @@ pub fn evm_metrics(
     };
 
     EvmMetrics {
-        budget_at_completion: total_bac,
-        planned_value: total_pv,
-        earned_value: total_ev,
-        actual_cost: total_ac,
-        cost_variance: cv,
-        schedule_variance: sv,
+        budget_at_completion: saturate_i64(total_bac),
+        planned_value: saturate_i64(total_pv),
+        earned_value: saturate_i64(total_ev),
+        actual_cost: saturate_i64(total_ac),
+        cost_variance: saturate_i64(cv),
+        schedule_variance: saturate_i64(sv),
         cost_performance_index: cpi,
         schedule_performance_index: spi,
     }
@@ -613,13 +666,67 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
     schedule_with_minimum_starts(project, &HashMap::new())
 }
 
+/// Compare recorded production against the current schedule.
+///
+/// For every production entry a planned percent is derived from the scheduled
+/// start and duration of the activity. The function returns one row per entry
+/// with the variance (actual − planned) in basis points, so a positive value
+/// means the activity is ahead of plan.
+pub struct ProductionPlanVsActual {
+    pub activity_id: ActivityId,
+    pub date: time::Date,
+    pub planned_percent: i64,
+    pub actual_percent: i64,
+    pub variance_bp: i64,
+}
+
+pub fn production_plan_vs_actual(
+    project: &Project,
+    schedule: &Schedule,
+) -> Vec<ProductionPlanVsActual> {
+    let mut rows = Vec::new();
+    for entry in &project.production_entries {
+        let Some(activity) = project.activity(entry.activity_id) else {
+            continue;
+        };
+        let Some(scheduled) = schedule.activity(entry.activity_id) else {
+            continue;
+        };
+        let calendar = project
+            .resolve_calendar(activity.calendar)
+            .expect("calendar");
+        let planned = if activity.original_duration == 0 {
+            if entry.date >= scheduled.scheduled_start {
+                10_000
+            } else {
+                0
+            }
+        } else {
+            let elapsed = calendar
+                .working_days_between(scheduled.scheduled_start, entry.date)
+                .clamp(0, i64::from(activity.original_duration));
+            elapsed * 10_000 / i64::from(activity.original_duration)
+        };
+        rows.push(ProductionPlanVsActual {
+            activity_id: entry.activity_id,
+            date: entry.date,
+            planned_percent: planned,
+            actual_percent: entry.percent_complete,
+            variance_bp: entry.percent_complete - planned,
+        });
+    }
+    rows
+}
+
 /// Schedule a project while forcing activities to start no earlier than a
 /// given date.
 ///
 /// The minimum starts behave like a "start no earlier than" constraint that is
 /// never violated: they raise the forward pass and the backward pass is kept
-/// consistent with them.
-fn schedule_with_minimum_starts(
+/// consistent with them. Resource leveling uses this to apply leveled dates,
+/// and the programme audit's critical-path test uses it to nudge one activity
+/// and measure how the finish responds.
+pub fn schedule_with_minimum_starts(
     project: &Project,
     minimum_starts: &HashMap<ActivityId, Date>,
 ) -> Result<Schedule, SchedError> {
@@ -1912,6 +2019,69 @@ mod tests {
     }
 
     #[test]
+    fn duplicated_resource_ids_are_counted_once() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A", 2);
+        let r = add_resource(&mut project, 1, "Crew");
+
+        // The same resource is listed twice on one activity – it must still
+        // consume the resource only once per day.
+        project.activities[0].resources = vec![r, r];
+
+        let schedule = schedule(&project).expect("schedule");
+        let histogram = resource_histogram(&project, &schedule);
+        let assignments = histogram.assignments_on(jan(5)).expect("day has usage");
+        assert_eq!(
+            assignments.len(),
+            1,
+            "duplicate resource must not be counted twice"
+        );
+
+        let conflicts = resource_conflicts(&project, &schedule);
+        // One activity using one unit of a resource with the default capacity
+        // of one must not be reported as a conflict.
+        assert!(
+            conflicts.is_empty(),
+            "duplicate resource should not create a spurious over-allocation"
+        );
+    }
+
+    #[test]
+    fn resource_analysis_survives_the_maximum_date() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 1);
+        let r = add_resource(&mut project, 1, "Crew");
+        project.activities[0].resources.push(r);
+
+        // Use a schedule that ends on the maximum representable `Date`. The
+        // histogram and conflict passes must not panic on overflow.
+        let last = Date::from_calendar_date(9999, Month::December, 31).expect("maximum date");
+        let schedule = Schedule {
+            project_start: last,
+            project_finish: last,
+            activities: vec![ActivitySchedule {
+                id: a,
+                early_start: last,
+                early_finish: last,
+                late_start: last,
+                late_finish: last,
+                scheduled_start: last,
+                scheduled_finish: last,
+                total_float: 0,
+                free_float: 0,
+                critical: true,
+            }],
+            critical_path: vec![a],
+        };
+
+        let histogram = resource_histogram(&project, &schedule);
+        let conflicts = resource_conflicts(&project, &schedule);
+        // The test is about not panicking; the result may be empty if the date
+        // falls on a non-working day.
+        let _ = (histogram, conflicts);
+    }
+
+    #[test]
     fn resource_conflicts_report_every_over_allocated_day() {
         let mut project = project();
         add_activity(&mut project, 1, "A1", 3);
@@ -2155,5 +2325,29 @@ mod tests {
 
         let after = evm_metrics(&project, Some(&baseline), jan(5));
         assert_eq!(after.planned_value, 1_000);
+    }
+
+    #[test]
+    fn evm_metrics_saturate_the_project_total_without_panicking() {
+        let mut project = project();
+        for id in 1..=3 {
+            let mut activity = Activity::new(ActivityId(id), "A", 1);
+            // A budget large enough that the sum over three activities overflows
+            // `i64` when summed, and an actual cost that underflows on the way
+            // down.
+            activity.budget_at_completion = Some(i64::MAX / 2);
+            activity.actual_cost = Some(i64::MIN / 2);
+            activity.percent_complete = Some(10_000);
+            project.activities.push(activity);
+        }
+
+        let metrics = evm_metrics(&project, None, jan(5));
+
+        // Totals are computed in `i128` and then saturated to `i64`,
+        // so the large values are finite and do not panic.
+        assert_eq!(metrics.budget_at_completion, i64::MAX);
+        assert_eq!(metrics.earned_value, i64::MAX);
+        assert_eq!(metrics.actual_cost, i64::MIN);
+        assert_eq!(metrics.cost_variance, i64::MAX);
     }
 }

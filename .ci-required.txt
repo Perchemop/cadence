@@ -21,3 +21,5 @@ Static analysis (actions)
 Bill of materials
 # Reproducible dependency graph (lockfile.yml)
 Lockfile freshness
+# Personal data scan (pii.yml)
+Personal data scan

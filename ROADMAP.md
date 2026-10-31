@@ -31,7 +31,7 @@ clippy with warnings denied, release binary packaged for all three.
 | Reports (Markdown + PDF) and printing | 100% | report + PDF writer tests; dialog hands-on |
 | Interchange MSPDI / MPX / CSV / JSON | 100% of documented subsets | round-trip + property tests |
 | CI: multi-OS verify + release artefacts | 100% | runs on every push; release.yml on tags |
-| Accessibility | ~60% | WCAG AA contrast verified; keyboard map added; screen-reader/keyboard-only audit outstanding |
+| Accessibility | 100% (code-level audit) | WCAG AA contrast tests; AccessKit on through eframe; keyboard-only pass over every view; pointer-free link creation and Gantt zoom; limits recorded in `ACCESSIBILITY.md` |
 | Crash reporting | stub | local panic hook + crash log (guide §6.1 allows a stub) |
 | Update check | stub | version reported; network check deferred to 0.2.x |
 
@@ -81,9 +81,93 @@ touches the scheduling engine. See D18 for the decisions and
 
 ### Next slice (decided 2026-10-24)
 
-- [ ] Machine-readable schedule output (`--json`) from the CLI, so the tool can
+- [x] Machine-readable schedule output (`--json`) from the CLI, so the tool can
       be driven by scripts and assistive technology without parsing the aligned
       plain-text table (guide section 21.5, accessibility of tooling).
+
+### Next slice (decided 2026-10-26)
+
+- [x] Print the Gantt view: capture the rendered view and emit an image page
+      through the existing PDF writer (GUI **Print Gantt…**).
+
+### Next slice (decided 2026-10-26, after Gantt print)
+
+- [x] Crash reporting: GitHub Issue creation with user consent and a UI
+      preview before send (v0.2.0 suite infrastructure, guide §7.1). The GUI
+      opens a pre-filled issue URL in the browser; no token is embedded.
+
+### Next slice (decided 2026-10-26, after crash reporting)
+
+- [x] Update check: query the GitHub Releases API, compare versions, and
+      surface the result in the GUI; fail soft offline (guide §7.2). The check
+      is opt-in (`cadence check-updates` and the GUI **Updates** window), and
+      `cadence version` uses only the cached answer.
+
+### Next slice (decided 2026-10-26, after the update check)
+
+- [x] Accessibility audit: AccessKit integration for screen readers and a
+      keyboard-only operation pass over every view, with the gaps fixed or
+      recorded (v0.2.0 suite infrastructure; guide Part I §9). Added a
+      keyboard-shortcuts window (`F1`), `Up`/`Down` row selection, keyboard
+      Gantt zoom, a pointer-free **Add relationship** form, a scrollable
+      inspector, and an AccessKit summary for the Gantt canvas.
+
+### Next slice (decided 2026-10-27, owner-approved)
+
+- [x] Programme audit tool (research note approved 2026-10-27): audit a
+      construction programme inside Cadence for schedule quality and health,
+      with a GUI **Audit** view and `cadence audit [--json]`. **Done so far:**
+      the core check engine (12 checks, stable ids, configurable thresholds,
+      unit tests), the `cadence audit` CLI with the machine-readable
+      `kind: "audit"` document, the GUI **Audit** view (`Ctrl+6`, findings
+      that jump to the activity, status date + re-run) and the critical-path
+      checks (CPT nudge test and the length index against the baseline
+      deadline) and the forensic comparison (`cadence audit-compare`,
+      baseline comparison, `kind: "comparison"` JSON). Acceptance criteria in
+      [`docs/research/schedule-audit.md`](docs/research/schedule-audit.md).
+
+Progress-driven rescheduling remains queued in v0.3.x below.
+
+### Next slice (decided 2026-10-28, owner request: "looks and performs nothing like a paid application")
+
+- [x] Design system foundation: the UI ships the Inter typeface (SIL OFL 1.1),
+      a documented token palette and type scale (`docs/design/brand.md`,
+      `cadence-ui-egui::design`), professional widget styling in both themes,
+      and a Gantt with a weekly grid and today line.
+- [x] Data-density and interaction performance: cached sorted activity list
+      keyed on `edit_version`, borrowed schedule in table and Gantt,
+      O(relationships) dependency arrows via a cached id→row index, and
+      virtualised table rows (`ScrollArea::show_rows`) — no per-frame
+      recomputation on the hot paths.
+- [x] Workbench shell: view tabs across the top (MS Project / P6 style), a
+      status bar with project dates, activity and critical counts, zoom and
+      the last status message, and an optional split Gantt panel on the right
+      of the Table view giving the combined task sheet + Gantt layout; Gantt
+      rows follow the table's sort order. Reference behaviour matrix for MS
+      Project, P6, Asta Powerproject, ProjectLibre and Aphex recorded in
+      `docs/ui-patterns.md`.
+- [x] Activity table column chooser: `Columns` menu in the toolbar lets users
+      pick which columns show in the table (row number always first, Activity
+      column flexes to fill) — MS Project column customization / P6 layouts
+      behaviour, original UI.
+- [x] Published lookahead snapshots: capture a rolling lookahead window as a
+      named, read-only snapshot (`CaptureLookaheadSnapshot` command, undoable),
+      compare a later window against it to detect start/finish variance, and
+      persist snapshots in the project file (schema v6). `LookaheadSnapshotId`,
+      `LookaheadSnapshotEntry`, `LookaheadSnapshot` types in `cadence-core`;
+      `capture_lookahead_snapshot` in `cadence-core::engine`; GUI **Publish
+      snapshot** button and snapshot comparison view in the Lookahead tab
+      (`Ctrl+7`).
+- [x] Daily diary/huddle briefing: dated diary notes linked to an activity or
+      a lookahead window — `DailyNoteId`/`DailyNote` in `cadence-core::model`,
+      `CreateDailyNote`/`DeleteDailyNote`/`UpdateDailyNote` commands, schema v7
+      `daily_notes` table, and the **Diary** view (`Ctrl+8`).
+- [x] Location clash detection: an optional free-text `location` on activities
+      (`SetActivityLocation` command, schema v8) and
+      `cadence-core::clash::location_clashes`, which flags two open activities
+      sharing a location on overlapping working days; the Lookahead view lists
+      them with links to the activities.
+- [ ] Remaining Aphex lookahead stage: production tracking.
 
 ### Human-gated (recorded, not decided)
 
@@ -96,14 +180,19 @@ touches the scheduling engine. See D18 for the decisions and
 
 ### v0.2.0 — suite infrastructure
 
-- [ ] Crash reporting: GitHub Issue creation with user consent, UI preview
-      before send (guide §7.1); local crash log already in place.
-- [ ] Update check: query GitHub Releases API, compare versions, surface in
-      the GUI; fail soft offline (guide §7.2).
-- [ ] Print the Gantt view: capture the rendered view and emit an image page
-      through the existing PDF writer.
-- [ ] Accessibility: AccessKit integration for screen readers; full
-      keyboard-only operation audit.
+- [x] Crash reporting: GitHub Issue creation with user consent, UI preview
+      before send (guide §7.1); the local log and the pre-filled browser issue
+      flow are in place, no token is embedded.
+- [x] Update check: query GitHub Releases API, compare versions, surface in
+      the GUI; fail soft offline (guide §7.2). Implemented as an opt-in check
+      (`cadence check-updates`, GUI **Updates**) with a six-hour cache.
+- [x] Print the Gantt view: capture the rendered view and emit an image page
+      through the existing PDF writer (GUI **Print Gantt…**, whole-window
+      screenshot; timeline cropping/stitching is a later polish item).
+- [x] Accessibility: AccessKit integration for screen readers; full
+      keyboard-only operation audit. AccessKit is enabled by eframe's default
+      features; every view was reviewed for pointer-only paths, with the
+      remaining toolkit limits recorded in `ACCESSIBILITY.md`.
 
 ### v0.3.x — deeper scheduling
 
@@ -120,6 +209,37 @@ touches the scheduling engine. See D18 for the decisions and
       Resources view — as a table; a bar-chart form is still open polish).
 - [ ] Suite shared crates (`crash-report`, `update-check`) extracted once a
       second application joins the suite (guide §7.3).
+
+### Future expansion (approved 2026-10-27, queued)
+
+The owner approved all three research notes on 2026-10-27, with this order:
+audit tool first (now the next slice), then the Aphex-inspired lookahead /
+field-planning work, then the optional AI integration. Approval lets the
+acceptance criteria drive implementation; it does not promise a release date.
+
+- [ ] **Programme audit tool** — an in-app tool that audits a construction
+      programme for health and quality (open ends, leads/lags, hard
+      constraints, high/negative float, invalid dates, missing resources,
+      missed tasks, critical-path test, CPLI/BEI, forensic comparison), with a
+      GUI Audit view and `cadence audit [--json]`. Inspired by public
+      DCMA 14-point / GAO ten-practices behaviour and the commercial audit
+      tools; research: [`docs/research/schedule-audit.md`](docs/research/schedule-audit.md).
+- [ ] **Optional AI integration** — off-by-default assistant that reads
+      user-supplied PDFs/emails/documents and proposes programme advice,
+      skeleton WBS/activities, activity enrichment and status updates as
+      reviewable, undoable command proposals; bring-your-own provider, no
+      network without consent. Research:
+      [`docs/research/ai-integration.md`](docs/research/ai-integration.md).
+- [ ] **Lookahead / field planning (Aphex-inspired)** — rolling short-interval
+      windows derived from the master schedule, weekly work plans with
+      owner/promise tracking, a daily diary and huddle briefing, production
+      tracking, light location clash detection and published-snapshot
+      comparison. **Done so far:** the window extraction
+      (`cadence-core::lookahead`), the GUI **Lookahead** view (`Ctrl+7`) and
+      owner/promise/delay-reason tracking (schema v5). **Remaining:**
+      published snapshots, the diary, production tracking, clash detection.
+      Research:
+      [`docs/research/aphex-integration.md`](docs/research/aphex-integration.md).
 
 ## Out of scope (recorded in `docs/scope.md`)
 

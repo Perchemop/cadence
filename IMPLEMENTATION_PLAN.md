@@ -51,10 +51,12 @@ are subdivided into slices below.
 - [x] P5-2a: Markdown project reports (schedule, resources, EVM, baselines)
 - [x] P5-2b: Printing and PDF (dependency-free writer, CLI `cadence print`, GUI
       **Print report…** with a native save dialog)
-- [ ] P5-3: Keyboard mastery, accessibility audit, performance pass — the
-      keyboard map (`Ctrl+1`–`Ctrl+5`, undo/redo), WCAG AA contrast checks and
-      the performance gates are done; the screen-reader/keyboard-only audit is
-      the outstanding part
+- [x] P5-3: Keyboard mastery, accessibility audit, performance pass — the
+      keyboard map (`Ctrl+1`–`Ctrl+5`, undo/redo, Up/Down table selection,
+      Gantt zoom, `F1`), WCAG AA contrast checks, performance gates, AccessKit
+      wiring and the full keyboard-only pass are done; manual platform
+      screen-reader passes remain a release check recorded in
+      `ACCESSIBILITY.md`
 - [x] P5-4: Documentation, example projects, first tagged release (`v0.1.0`)
 
 ## Phase 6 — Project health

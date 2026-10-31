@@ -10,6 +10,11 @@
 
 use crate::InterchangeError;
 
+/// Maximum bytes accepted for an XML document before it is rejected.
+const MAX_XML_BYTES: usize = 10 * 1024 * 1024; // 10 MiB
+/// Maximum nesting depth accepted by the XML reader.
+const MAX_XML_DEPTH: usize = 64;
+
 /// One element of a parsed document.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Element {
@@ -58,6 +63,9 @@ impl Element {
 
 /// Parse an XML document and return its root element.
 pub fn parse_document(input: &str) -> Result<Element, InterchangeError> {
+    if input.len() > MAX_XML_BYTES {
+        return Err(malformed("XML document is too large"));
+    }
     build_tree(tokenize(input)?)
 }
 
@@ -184,7 +192,12 @@ fn build_tree(tokens: Vec<Token>) -> Result<Element, InterchangeError> {
 
     for token in tokens {
         match token {
-            Token::Open(name) => stack.push(Element::new(name)),
+            Token::Open(name) => {
+                if stack.len() >= MAX_XML_DEPTH {
+                    return Err(malformed("document is nested too deeply"));
+                }
+                stack.push(Element::new(name))
+            }
             Token::Empty(name) => {
                 let parent = stack
                     .last_mut()
@@ -356,5 +369,26 @@ mod tests {
         let document = format!("<Project><Name>{}</Name></Project>", escape(original));
         let parsed = parse_document(&document).expect("parse");
         assert_eq!(parsed.text_of("Name"), Some(original));
+    }
+
+    #[test]
+    fn document_is_rejected_if_too_large() {
+        let big = "a".repeat(MAX_XML_BYTES + 1);
+        let error = parse_document(&big).expect_err("too large");
+        assert!(matches!(error, InterchangeError::Xml { .. }));
+    }
+
+    #[test]
+    fn document_is_rejected_if_too_deeply_nested() {
+        let mut s = String::from("<root>");
+        for _ in 0..(MAX_XML_DEPTH + 1) {
+            s.push_str("<a>");
+        }
+        for _ in 0..(MAX_XML_DEPTH + 1) {
+            s.push_str("</a>");
+        }
+        s.push_str("</root>");
+        let error = parse_document(&s).expect_err("too deep");
+        assert!(matches!(error, InterchangeError::Xml { .. }));
     }
 }

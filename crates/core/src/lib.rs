@@ -5,8 +5,12 @@
 //! dependencies. The one presentation guest is [`report`], which renders a
 //! project to Markdown text in memory and performs no I/O of its own.
 
+pub mod audit;
 pub mod calendar_set;
+pub mod clash;
+pub mod compare;
 pub mod engine;
+pub mod lookahead;
 pub mod model;
 pub mod pdf;
 pub mod report;
