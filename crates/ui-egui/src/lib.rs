@@ -134,6 +134,7 @@ enum ViewMode {
     Audit,
     Lookahead,
     Diary,
+    Production,
 }
 
 /// One row in the diary view: identifier, date, content, activity link and
@@ -275,6 +276,9 @@ pub struct CadenceApp {
     diary_content_buffer: String,
     diary_activity_buffer: String,
     diary_window_buffer: String,
+    production_activity_buffer: String,
+    production_date_buffer: String,
+    production_percent: i64,
     owner_buffer: String,
     promised_buffer: bool,
     delay_reason_buffer: String,
@@ -362,6 +366,9 @@ impl CadenceApp {
             diary_content_buffer: String::new(),
             diary_activity_buffer: String::new(),
             diary_window_buffer: String::new(),
+            production_activity_buffer: String::new(),
+            production_date_buffer: today().to_string(),
+            production_percent: 0,
             owner_buffer: String::new(),
             promised_buffer: false,
             delay_reason_buffer: String::new(),
@@ -1396,6 +1403,8 @@ impl eframe::App for CadenceApp {
                     4 => ViewMode::Calendars,
                     5 => ViewMode::Audit,
                     6 => ViewMode::Lookahead,
+                    7 => ViewMode::Diary,
+                    8 => ViewMode::Production,
                     _ => ViewMode::Diary,
                 };
             }
@@ -1542,6 +1551,7 @@ impl eframe::App for CadenceApp {
                     (ViewMode::Audit, "Audit"),
                     (ViewMode::Lookahead, "Lookahead"),
                     (ViewMode::Diary, "Diary"),
+                    (ViewMode::Production, "Production"),
                 ] {
                     let selected = self.view_mode == mode;
                     if *first {
@@ -3152,6 +3162,12 @@ impl eframe::App for CadenceApp {
                             self.status_message = Some("Diary note deleted.".to_string());
                         }
                     }
+                });
+            }
+            ViewMode::Production => {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    ui.heading("Production tracking");
+                    ui.label("Record daily actual progress against the schedule.");
                 });
             }
         }
