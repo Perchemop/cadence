@@ -1028,9 +1028,7 @@ fn read_project(connection: &Connection) -> Result<Project> {
     project.daily_notes.sort_by_key(|note| note.id.0);
 
     project.production_entries = read_production_entries(connection)?;
-    project
-        .production_entries
-        .sort_by_key(|entry| entry.id.0);
+    project.production_entries.sort_by_key(|entry| entry.id.0);
     Ok(project)
 }
 
