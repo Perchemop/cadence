@@ -666,6 +666,52 @@ pub fn schedule(project: &Project) -> Result<Schedule, SchedError> {
     schedule_with_minimum_starts(project, &HashMap::new())
 }
 
+/// Compare recorded production against the current schedule.
+///
+/// For every production entry a planned percent is derived from the scheduled
+/// start and duration of the activity. The function returns one row per entry
+/// with the variance (actual − planned) in basis points, so a positive value
+/// means the activity is ahead of plan.
+pub struct ProductionPlanVsActual {
+    pub activity_id: ActivityId,
+    pub date: time::Date,
+    pub planned_percent: i64,
+    pub actual_percent: i64,
+    pub variance_bp: i64,
+}
+
+pub fn production_plan_vs_actual(
+    project: &Project,
+    schedule: &Schedule,
+) -> Vec<ProductionPlanVsActual> {
+    let mut rows = Vec::new();
+    for entry in &project.production_entries {
+        let Some(activity) = project.activity(entry.activity_id) else { continue; };
+        let Some(scheduled) = schedule.activity(entry.activity_id) else { continue; };
+        let calendar = project.resolve_calendar(activity.calendar).expect("calendar");
+        let planned = if activity.original_duration == 0 {
+            if entry.date >= scheduled.scheduled_start {
+                10_000
+            } else {
+                0
+            }
+        } else {
+            let elapsed = calendar
+                .working_days_between(scheduled.scheduled_start, entry.date)
+                .clamp(0, i64::from(activity.original_duration));
+            elapsed * 10_000 / i64::from(activity.original_duration)
+        };
+        rows.push(ProductionPlanVsActual {
+            activity_id: entry.activity_id,
+            date: entry.date,
+            planned_percent: planned,
+            actual_percent: entry.percent_complete,
+            variance_bp: entry.percent_complete - planned,
+        });
+    }
+    rows
+}
+
 /// Schedule a project while forcing activities to start no earlier than a
 /// given date.
 ///
