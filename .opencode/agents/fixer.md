@@ -28,13 +28,13 @@ permissions:
     resource: "git log*"
     effect: allow
   - action: shell
-    resource: "/home/leonardolscinto/.config/opencode/scripts/ci.sh *"
+    resource: "~/.config/opencode/scripts/ci.sh *"
     effect: allow
   - action: shell
     resource: "~/.config/opencode/scripts/ci.sh *"
     effect: allow
   - action: shell
-    resource: "bash /home/leonardolscinto/.config/opencode/scripts/ci.sh *"
+    resource: "bash ~/.config/opencode/scripts/ci.sh *"
     effect: allow
   - action: shell
     resource: "bash ~/.config/opencode/scripts/ci.sh *"

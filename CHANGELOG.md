@@ -5,7 +5,193 @@ follows Keep a Changelog; releases use git tags.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- Design system foundation: the UI now ships the Inter typeface (SIL OFL 1.1)
+  with a documented type scale, a token-driven colour palette and spacing
+  rhythm (`docs/design/brand.md`, `cadence-ui-egui::design`), professional
+  widget styling across both themes, and a Gantt with weekly grid lines and a
+  today line — closing the gap to paid desktop schedulers on look and feel.
+- Table performance: the sorted activity list is cached keyed on
+  `edit_version`/sort key/direction instead of being cloned and sorted every
+  frame, and the table is virtualised with `ScrollArea::show_rows` (fixed row
+  height, fixed column widths, row numbers, truncated names, sticky sortable
+  header).
+- Gantt performance: the schedule is borrowed instead of cloned per frame and
+  dependency arrows use a cached activity id→row index, making the arrow pass
+  O(relationships) instead of O(activities × relationships).
+- Workbench shell: view tabs across the top, a status bar (project dates,
+  activity and critical counts, zoom, status message), and an optional split
+  Gantt panel on the right of the Table view ("Split Gantt: on/off") giving
+  the combined task sheet + Gantt layout of MS Project and P6; Gantt rows
+  follow the table's sort order.
+- **Activity table column chooser**: a `Columns` menu in the toolbar lets
+  users pick which columns show in the table (row number always first, Activity
+  column flexes to fill) — MS Project column customization / P6 layouts
+  behaviour, original UI.
+- `docs/ui-patterns.md`: clean-room observable-behaviour reference matrix for
+  Microsoft Project, Primavera P6, Asta Powerproject, ProjectLibre and Aphex,
+  scoped to behaviour only (no code, UI, strings or assets copied).
+- **Lookahead published snapshots**: capture a rolling lookahead window as a
+  named, read-only snapshot, compare a later window against it to detect
+  start/finish variance, and persist snapshots in the project file (schema v6).
+  `LookaheadSnapshotId`, `LookaheadSnapshotEntry`, `LookaheadSnapshot` in
+  `cadence-core::model`; `capture_lookahead_snapshot` in `cadence-core::engine`;
+  `CaptureLookaheadSnapshot`, `RemoveLookaheadSnapshot`, `RestoreLookaheadSnapshot`
+  commands in `cadence-commands`; GUI **Publish snapshot** button and snapshot
+  comparison view in the **Lookahead** view (`Ctrl+7`).
+- **Daily diary / huddle briefing** (core): dated diary notes linked to an
+  activity or a lookahead window, so site records sit against planned work.
+  `DailyNoteId`/`DailyNote` in `cadence-core::model`;
+  `CreateDailyNote`, `DeleteDailyNote`, `UpdateDailyNote` commands; schema v7
+  `daily_notes` table with round-trip persistence; a **Diary** view (`Ctrl+8`)
+  to add and delete notes.
+- **Location clash detection**: an optional free-text `location` on activities
+  (`SetActivityLocation` command, schema v8) and
+  `cadence-core::clash::location_clashes`, which flags two open activities
+  sharing a location on overlapping working days; the Lookahead view lists the
+  clashes with links to the activities.
+
+## [0.3.0] — 2026-10-28
+
+A programme audit tool, lookahead planning, and field planning — the first
+three owner-approved expansions, plus the reference-product research that
+grounded them.
+
+### Added
+
+- Programme audit tool (all five stages): 14 schedule-quality and health
+  checks in `cadence-core::audit` (open ends with milestone exemption, leads,
+  lags, relationship types, hard constraints, high/negative float, high
+  duration, invalid dates, missing resources, missed tasks, baseline execution
+  index, critical-path test, critical path length index); the GUI **Audit**
+  view (`Ctrl+6`); `cadence audit <file> [--json] [--status-date]`; and the
+  forensic comparison `cadence audit-compare <before> <after> [--json]`
+  (two programmes or a baseline vs current) with a `kind: "comparison"`
+  JSON document
+- Lookahead planning: `cadence-core::lookahead` extracts the rolling
+  short-interval window over the schedule, and the GUI **Lookahead** view
+  (`Ctrl+7`) shows it with a configurable start date and 2/4/6/12-week length
+- Field planning: activities carry an **owner**, a **promised** flag and a
+  **delay reason** (undoable commands, inspector section, Lookahead columns)
+- Capability inventories for Microsoft Project and Primavera P6
+  (`docs/research/`), matching the Aphex research note
+
+### Changed
+
+- SQLite project files are schema version 5; every older file migrates in
+  place (v1/v2/v3/v4 tested)
+- The workspace version moved 0.1.1 -> 0.2.0 -> 0.3.0 across the two
+  public-API-extending slices, per the semver gate
+- Accessibility: keyboard-shortcuts window (`F1`), `Up`/`Down` table
+  selection, keyboard Gantt zoom, pointer-free **Add relationship** form,
+  scrollable inspector, `Status:`-prefixed status text, AccessKit summary for
+  the Gantt canvas, and `!` markers on critical bars
+
+### Fixed
+
+- Update checks are opt-in and cached as designed; `cadence version` no
+  longer claims updates are unwired (it reports the last cached check)
+
+
+- Workspace version bumped to 0.3.0: the field-planning slice adds public
+  fields to `Activity` and `LookaheadEntry`, which the semver gate treats as
+  breaking for exhaustive construction; the bump matches the v0.3.x roadmap
+  section
+- Field planning (third lookahead slice): activities carry an **owner**, a
+  **promised** flag and a **delay reason**; two undoable commands set them,
+  the schema migrates to version 5 (v4 files migrate in place), Cadence JSON
+  stays lossless, the inspector edits them and the Lookahead grid shows them
+- Lookahead planning (first slices, Aphex-inspired): `cadence-core::lookahead`
+  extracts the rolling short-interval window over the scheduled programme, and
+  the GUI **Lookahead** view (`Ctrl+7`) shows it with a configurable start date
+  and 2/4/6/12-week length; entries open the activity in the table. A pure
+  view over the same schedule, never a second plan
+- Capability inventories for the two reference products —
+  `docs/research/ms-project-capabilities.md` and
+  `docs/research/primavera-p6-capabilities.md` (original summaries, public
+  URLs, and a shipped-vs-out-of-scope table for each) — so parity claims are
+  traceable
+- Workspace version bumped to 0.2.0: the audit's critical-path slice extends
+  the public `cadence-core` API in breaking ways for exhaustive construction
+  (new `AuditConfig` fields, new `CheckId` and `CheckCategory` variants), so
+  the semver gate requires the pre-1.0 minor bump; the bump also matches the
+  v0.2.0 milestone
+- New `cadence-core` programme-audit module (`audit.rs`, first slice): twelve
+  schedule-quality and health checks with configurable thresholds and
+  per-activity/per-relationship findings — open ends, leads, lags, relationship
+  types, hard constraints, high float, negative float, high duration, invalid
+  dates, missing resources, missed tasks and the baseline execution index. Pure
+  and deterministic; not yet wired to the CLI or GUI
+- `cadence audit <file> [--json] [--status-date YYYY-MM-DD]` (second slice):
+  prints the audit as plain text (stable check id, outcome in words, measured
+  value, threshold, summary, findings, tally) or as a machine-readable
+  `kind: "audit"` JSON document written by the in-crate JSON machinery
+  (`cadence-interchange/src/audit.rs`); findings are data, so the command
+  succeeds when the audit ran even when checks fail
+- GUI **Audit** view (third slice): toolbar **Audit** button and `Ctrl+6`, a
+  pass/fail/not-applicable tally, one block per check with findings, an
+  optional status date with a **Run audit** button, and activity findings that
+  jump to the activity in the table; the audit re-runs after edits and never
+  per frame
+- Forensic comparison (fifth slice): a pure `cadence-core::compare` module
+  comparing two programmes (activities added/removed, duration, scheduled-date
+  and constraint changes, relationships added/removed/changed/retyped,
+  project-date shift) and a baseline against the current programme;
+  `cadence audit-compare <before> <after> [--json]` prints the report as text
+  or a machine-readable `kind: "comparison"` document
+  (`cadence-interchange/src/compare.rs`). Matching is by id, so CSV-imported
+  before-files (which renumber) show wholesale add/remove — documented
+- Critical-path checks (fourth slice): `AUDIT-CPT` delays the last-finishing
+  critical activity by 600 working days and expects the project finish to move
+  by the same amount (`cadence-core` gained a public
+  `schedule_with_minimum_starts` for the test), and `AUDIT-CPLI` computes the
+  critical path length index against the most recent baseline's deadline; both
+  report not-applicable when they cannot run honestly
+- Research notes (now owner-approved 2026-10-27) for three future-expansion
+  capabilities, with original behavioural summaries and public URLs:
+  `docs/research/schedule-audit.md` (an in-app tool that audits a construction
+  programme against public DCMA/GAO-style checks), `docs/research/ai-integration.md`
+  (optional, off-by-default AI assistance that proposes reviewable changes) and
+  `docs/research/aphex-integration.md` (short-interval/lookahead and field
+  planning inspired by publicly documented Aphex behaviour)
+- `docs/inspiration.md` records Aphex and the audit/AI reference products;
+  `ROADMAP.md`, `docs/scope.md`, `VISION.md` and `docs/parity.md` list the
+  candidates without committing to them
+- Accessibility pass: a **Keyboard shortcuts** window (`F1` or the toolbar
+  **Shortcuts** button), `Up`/`Down` activity selection in the Table view,
+  keyboard Gantt zoom (`Ctrl+Plus`, `Ctrl+Minus`, `Ctrl+0`) with visible zoom
+  buttons, a pointer-free **Add relationship** form in the inspector (the
+  drag-to-link gesture remains a shortcut), a scrollable inspector, and
+  `Status:`-prefixed status text
+- AccessKit summary for the custom-painted Gantt canvas, a text summary and
+  legend above it, and a leading `!` on critical bars; the Table view is the
+  documented per-activity screen-reader alternative
+- `ACCESSIBILITY.md` now records the keyboard pass, the AccessKit behaviour and
+  the remaining toolkit limits; the keyboard map in `docs/usage.md` covers the
+  new shortcuts
+- Machine-readable schedule output: `cadence --json` and
+  `cadence load <file> --json` print the schedule as a JSON document
+  (`cadence-interchange/src/schedule.rs`), written by the existing in-crate
+  JSON machinery; a `kind` field distinguishes a schedule from an error
+  document, stdout carries only the document, diagnostics for humans go to
+  stderr as `ERROR <UTC timestamp> cadence: <message>`, and usage errors now
+  exit with code 2 (the usage screen also documents the exit codes)
+- `docs/usage.md` documents the `--json` forms, the schedule and error
+  document shapes, and the exit codes
+- GUI **Print Gantt…** button: captures the Gantt view through eframe's
+  viewport screenshot command and writes it as a single A4 landscape image
+  page in a PDF via the existing `cadence-core::pdf` writer (no new
+  dependency)
+- GUI crash reporting: a **Crash report** window previews the local crash log,
+  accepts optional notes, and opens a pre-filled GitHub issue in the browser;
+  **Report a bug…** uses the same consent-first flow, and nothing is sent
+  automatically (no token is embedded in the binary)
+- Opt-in update check against the public GitHub Releases API: the new
+  `cadence check-updates` command and the GUI **Updates** window compare the
+  latest release tag with the running version, link to the release page, cache
+  a successful answer for six hours, and fail soft offline (`cadence version`
+  uses only the cached answer and never reaches the network)
 
 ## [0.1.1] — 2026-10-24
 
