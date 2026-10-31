@@ -798,6 +798,9 @@ pub struct Project {
     /// Daily notes: dated diary entries linked to activities or lookahead windows.
     #[serde(default)]
     pub daily_notes: Vec<DailyNote>,
+    /// Production entries: dated actual progress recorded against activities.
+    #[serde(default)]
+    pub production_entries: Vec<ProductionEntry>,
 }
 
 impl Project {
@@ -815,6 +818,7 @@ impl Project {
             baselines: Vec::new(),
             lookahead_snapshots: Vec::new(),
             daily_notes: Vec::new(),
+            production_entries: Vec::new(),
         }
     }
 
@@ -886,6 +890,18 @@ impl Project {
             self.daily_notes
                 .iter()
                 .map(|note| note.id.0)
+                .max()
+                .unwrap_or_default()
+                .saturating_add(1),
+        )
+    }
+
+    /// Next unused production entry identifier.
+    pub fn next_production_entry_id(&self) -> ProductionEntryId {
+        ProductionEntryId(
+            self.production_entries
+                .iter()
+                .map(|entry| entry.id.0)
                 .max()
                 .unwrap_or_default()
                 .saturating_add(1),
@@ -1204,6 +1220,85 @@ impl DailyNote {
             activity_id,
             lookahead_window_start,
         }
+    }
+}
+
+/// Stable identifier for a [`ProductionEntry`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProductionEntryId(pub u64);
+
+impl ProductionEntryId {
+    /// Construct a production entry identifier from a raw value.
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+impl std::fmt::Display for ProductionEntryId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+/// One day of recorded actual progress on an activity.
+///
+/// Production tracking records what was actually achieved each day against the
+/// plan: the percent complete reached on that date, in basis points (0 to
+/// 10 000). Recording an entry for an activity and date replaces any earlier
+/// entry for the same pair, so the latest report for a day wins — matching how
+/// site reports are corrected.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct ProductionEntry {
+    /// Stable identifier.
+    pub id: ProductionEntryId,
+    /// Activity the progress was recorded against.
+    pub activity_id: ActivityId,
+    /// Date the progress was recorded as of.
+    pub date: Date,
+    /// Percent complete reached on that date, in basis points (0 to 10 000).
+    pub percent_complete: i64,
+}
+
+impl ProductionEntry {
+    /// Construct a new production entry.
+    pub fn new(
+        id: ProductionEntryId,
+        activity_id: ActivityId,
+        date: Date,
+        percent_complete: i64,
+    ) -> Self {
+        Self {
+            id,
+            activity_id,
+            date,
+            percent_complete,
+        }
+    }
+
+    /// The planned share of the activity that should have been complete by this
+    /// entry's date, in basis points, from the schedule.
+    ///
+    /// Whole working days between the scheduled start and the entry date,
+    /// divided by the duration, following the same convention as the earned
+    /// value planned percent.
+    pub fn planned_percent(&self, activity: &Activity, calendar: &Calendar) -> i64 {
+        let Some(scheduled_start) = activity.scheduled_start else {
+            return 0;
+        };
+        if activity.original_duration == 0 {
+            return if self.date >= scheduled_start {
+                10_000
+            } else {
+                0
+            };
+        }
+        let duration = i64::from(activity.original_duration);
+        let elapsed = calendar
+            .working_days_between(scheduled_start, self.date)
+            .min(duration);
+        elapsed * 10_000 / duration
     }
 }
 

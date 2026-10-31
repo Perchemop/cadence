@@ -1,7 +1,7 @@
 //! SQLite project files for Cadence.
 //!
 //! A Cadence project file is an ordinary SQLite database. The schema is
-//! versioned with `PRAGMA user_version`; this build reads and writes version 8
+//! versioned with `PRAGMA user_version`; this build reads and writes version 9
 //! and migrates version 1 and later files in place.
 //!
 //! Saving runs in a single transaction that replaces the previous contents, so
@@ -17,7 +17,8 @@ use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
     DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
-    LookaheadSnapshotId, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
+    LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship, RelationshipId,
+    Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsTree};
 use rusqlite::{params, Connection};
@@ -25,7 +26,7 @@ use thiserror::Error;
 use time::{Date, Month};
 
 /// Project-file schema version written by this build.
-pub const SCHEMA_VERSION: i64 = 8;
+pub const SCHEMA_VERSION: i64 = 9;
 
 const SCHEMA: &str = r#"
 CREATE TABLE project (
@@ -142,6 +143,14 @@ CREATE TABLE IF NOT EXISTS daily_notes (
     content              TEXT    NOT NULL,
     activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
     lookahead_window_start TEXT
+);
+
+CREATE TABLE IF NOT EXISTS production_entries (
+    id              INTEGER PRIMARY KEY,
+    activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    date            TEXT    NOT NULL,
+    percent_complete INTEGER NOT NULL,
+    UNIQUE (activity_id, date)
 );
 "#;
 
@@ -293,7 +302,14 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      lookahead_window_start TEXT
                  );
                  ALTER TABLE activities ADD COLUMN location TEXT;
-                 PRAGMA user_version = 8;",
+                 CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
             )?;
             transaction.commit()?;
             Ok(())
@@ -363,7 +379,14 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      lookahead_window_start TEXT
                  );
                  ALTER TABLE activities ADD COLUMN location TEXT;
-                 PRAGMA user_version = 8;",
+                 CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
             )?;
             transaction.commit()?;
             Ok(())
@@ -403,7 +426,14 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      lookahead_window_start TEXT
                  );
                  ALTER TABLE activities ADD COLUMN location TEXT;
-                 PRAGMA user_version = 8;",
+                 CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
             )?;
             transaction.commit()?;
             Ok(())
@@ -443,7 +473,14 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      lookahead_window_start TEXT
                  );
                  ALTER TABLE activities ADD COLUMN location TEXT;
-                 PRAGMA user_version = 8;",
+                 CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
             )?;
             transaction.commit()?;
             Ok(())
@@ -479,7 +516,14 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                     lookahead_window_start TEXT
                 );
                  ALTER TABLE activities ADD COLUMN location TEXT;
-                 PRAGMA user_version = 8;",
+                 CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
             )?;
             transaction.commit()?;
             Ok(())
@@ -498,17 +542,50 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                     lookahead_window_start TEXT
                 );
                  ALTER TABLE activities ADD COLUMN location TEXT;
-                 PRAGMA user_version = 8;",
+                 CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
             )?;
             transaction.commit()?;
             Ok(())
         }
         7 => {
-            // Version 8 adds the optional activity work location.
+            // Version 8 adds the optional activity work location. Version 9
+            // adds production entries. Migrate straight through to the
+            // current schema version.
             let transaction = connection.unchecked_transaction()?;
             transaction.execute_batch(
                 "ALTER TABLE activities ADD COLUMN location TEXT;
-                 PRAGMA user_version = 8;",
+                 CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
+            )?;
+            transaction.commit()?;
+            Ok(())
+        }
+        8 => {
+            // Version 9 adds production entries: dated actual progress
+            // recorded against activities.
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                "CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
             )?;
             transaction.commit()?;
             Ok(())
@@ -592,6 +669,20 @@ fn validate(project: &Project) -> Result<()> {
             }
         }
     }
+    for entry in &project.production_entries {
+        if !(0..=10_000).contains(&entry.percent_complete) {
+            return Err(PersistenceError::InvalidData(format!(
+                "production entry {} has percent complete {} out of range",
+                entry.id, entry.percent_complete
+            )));
+        }
+        if project.activity(entry.activity_id).is_none() {
+            return Err(PersistenceError::InvalidData(format!(
+                "production entry {} references missing activity {}",
+                entry.id, entry.activity_id
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -600,6 +691,7 @@ fn clear_project(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
         "DELETE FROM lookahead_snapshot_entries;
          DELETE FROM lookahead_snapshots;
          DELETE FROM daily_notes;
+         DELETE FROM production_entries;
          DELETE FROM baseline_snapshots;
          DELETE FROM baselines;
          DELETE FROM activity_resources;
@@ -819,6 +911,19 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
         )?;
     }
 
+    for entry in &project.production_entries {
+        transaction.execute(
+            "INSERT INTO production_entries (id, activity_id, date, percent_complete)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![
+                to_sql_id(entry.id.0, "production_entry")?,
+                to_sql_id(entry.activity_id.0, "activity")?,
+                entry.date.to_string(),
+                entry.percent_complete,
+            ],
+        )?;
+    }
+
     Ok(())
 }
 
@@ -921,7 +1026,42 @@ fn read_project(connection: &Connection) -> Result<Project> {
         })
         .collect();
     project.daily_notes.sort_by_key(|note| note.id.0);
+
+    project.production_entries = read_production_entries(connection)?;
+    project.production_entries.sort_by_key(|entry| entry.id.0);
     Ok(project)
+}
+
+fn read_production_entries(connection: &Connection) -> Result<Vec<ProductionEntry>> {
+    let mut stmt = connection
+        .prepare("SELECT id, activity_id, date, percent_complete FROM production_entries")?;
+    let rows = stmt
+        .query_map([], |row| {
+            let id: i64 = row.get(0)?;
+            let activity_id: i64 = row.get(1)?;
+            let date_str: String = row.get(2)?;
+            let percent_complete: i64 = row.get(3)?;
+            Ok((
+                ProductionEntryId(id as u64),
+                ActivityId(activity_id as u64),
+                date_str,
+                percent_complete,
+            ))
+        })?
+        .collect::<std::result::Result<Vec<_>, rusqlite::Error>>()?;
+    let entries = rows
+        .into_iter()
+        .map(|(id, activity_id, date_str, percent_complete)| {
+            let date: Date = parse_date(&date_str)?;
+            std::result::Result::Ok(ProductionEntry::new(
+                id,
+                activity_id,
+                date,
+                percent_complete,
+            ))
+        })
+        .collect::<std::result::Result<Vec<_>, PersistenceError>>()?;
+    Ok(entries)
 }
 
 fn read_default_calendar(connection: &Connection, workweek: i64) -> Result<Calendar> {

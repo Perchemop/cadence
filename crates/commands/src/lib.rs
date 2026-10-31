@@ -14,7 +14,8 @@ use cadence_core::engine::{capture_baseline, capture_lookahead_snapshot, schedul
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
     DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
-    LookaheadSnapshotId, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
+    LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship, RelationshipId,
+    Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsNode};
 use time::Date;
@@ -1440,6 +1441,196 @@ impl Command for RestoreDailyNote {
         let position = self.position.min(project.daily_notes.len());
         project.daily_notes.insert(position, self.note.clone());
         Ok(Box::new(DeleteDailyNote { id }))
+    }
+}
+
+/// Record one day of actual progress on an activity.
+///
+/// Recording an entry for an activity and date replaces any earlier entry for
+/// the same pair (the latest report for a day wins). The command also updates
+/// the activity's `percent_complete` to the recorded value, so the wider
+/// schedule, variance views and audit checks see the reported progress.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordProduction {
+    /// Activity the progress was recorded against.
+    pub activity_id: ActivityId,
+    /// Date the progress was recorded as of.
+    pub date: time::Date,
+    /// Percent complete reached on that date, in basis points (0 to 10 000).
+    pub percent_complete: i64,
+}
+
+impl Command for RecordProduction {
+    fn description(&self) -> String {
+        format!(
+            "record production for activity {} on {}: {percent} basis points complete",
+            self.activity_id,
+            self.date,
+            percent = self.percent_complete
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if !(0..=10_000).contains(&self.percent_complete) {
+            return Err(format!(
+                "percent complete must be between 0 and 10000 basis points, got {}",
+                self.percent_complete
+            ));
+        }
+        if project.activity(self.activity_id).is_none() {
+            return Err(format!("activity {} does not exist", self.activity_id));
+        }
+
+        // Replacing an earlier entry for the same activity and date keeps one
+        // entry per pair; the undo restores both the entry and the activity's
+        // previous percent complete.
+        let replaced = project
+            .production_entries
+            .iter_mut()
+            .find(|entry| entry.activity_id == self.activity_id && entry.date == self.date)
+            .map(|entry| std::mem::replace(&mut entry.percent_complete, self.percent_complete));
+
+        let id = match replaced {
+            Some(_) => project
+                .production_entries
+                .iter()
+                .find(|entry| entry.activity_id == self.activity_id && entry.date == self.date)
+                .map(|entry| entry.id)
+                .expect("entry just found"),
+            None => {
+                let id = project.next_production_entry_id();
+                project.production_entries.push(ProductionEntry::new(
+                    id,
+                    self.activity_id,
+                    self.date,
+                    self.percent_complete,
+                ));
+                id
+            }
+        };
+
+        let activity = project
+            .activity_mut(self.activity_id)
+            .expect("activity checked above");
+        let previous_percent = activity.percent_complete.replace(self.percent_complete);
+        if self.percent_complete >= 10_000 && activity.actual_finish.is_none() {
+            activity.actual_finish = Some(self.date);
+        }
+
+        Ok(Box::new(UndoRecordProduction {
+            activity_id: self.activity_id,
+            date: self.date,
+            percent_complete: self.percent_complete,
+            entry_id: id,
+            replaced_percent_complete: replaced,
+            previous_percent_complete: previous_percent,
+            previous_actual_finish: activity.actual_finish,
+        }))
+    }
+}
+
+/// Undo a production record: restore the replaced entry (or remove the new
+/// one) and the activity's previous percent complete and actual finish.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UndoRecordProduction {
+    /// Activity the production was recorded against.
+    pub activity_id: ActivityId,
+    /// Date of the recorded entry.
+    pub date: time::Date,
+    /// The percent complete that was recorded (for redo).
+    pub percent_complete: i64,
+    /// Identifier of the entry created or updated by the forward command.
+    pub entry_id: ProductionEntryId,
+    /// Percent complete of the replaced entry, if there was one.
+    pub replaced_percent_complete: Option<i64>,
+    /// The activity's percent complete before the command.
+    pub previous_percent_complete: Option<i64>,
+    /// The activity's actual finish before the command.
+    pub previous_actual_finish: Option<time::Date>,
+}
+
+impl Command for UndoRecordProduction {
+    fn description(&self) -> String {
+        format!(
+            "undo the production record for activity {} on {}",
+            self.activity_id, self.date
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        match self.replaced_percent_complete {
+            Some(previous) => {
+                if let Some(entry) = project
+                    .production_entries
+                    .iter_mut()
+                    .find(|entry| entry.id == self.entry_id)
+                {
+                    entry.percent_complete = previous;
+                }
+            }
+            None => {
+                project
+                    .production_entries
+                    .retain(|entry| entry.id != self.entry_id);
+            }
+        }
+        if let Some(activity) = project.activity_mut(self.activity_id) {
+            activity.percent_complete = self.previous_percent_complete;
+            activity.actual_finish = self.previous_actual_finish;
+        }
+        Ok(Box::new(RecordProduction {
+            activity_id: self.activity_id,
+            date: self.date,
+            percent_complete: self.percent_complete,
+        }))
+    }
+}
+
+/// Delete a production entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeleteProduction {
+    /// Entry to delete.
+    pub id: ProductionEntryId,
+}
+
+impl Command for DeleteProduction {
+    fn description(&self) -> String {
+        format!("delete production entry {}", self.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(position) = project
+            .production_entries
+            .iter()
+            .position(|entry| entry.id == self.id)
+        else {
+            return Err(format!("production entry {} does not exist", self.id));
+        };
+        let entry = project.production_entries.remove(position);
+        Ok(Box::new(RestoreProduction { entry, position }))
+    }
+}
+
+/// Put a previously deleted production entry back where it was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreProduction {
+    /// The entry to restore.
+    pub entry: ProductionEntry,
+    /// Index the entry occupied before it was removed.
+    pub position: usize,
+}
+
+impl Command for RestoreProduction {
+    fn description(&self) -> String {
+        format!("restore production entry {}", self.entry.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let position = self.position.min(project.production_entries.len());
+        project
+            .production_entries
+            .insert(position, self.entry.clone());
+        Ok(Box::new(DeleteProduction { id: self.entry.id }))
     }
 }
 
