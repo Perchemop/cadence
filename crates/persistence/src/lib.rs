@@ -1,8 +1,8 @@
 //! SQLite project files for Cadence.
 //!
 //! A Cadence project file is an ordinary SQLite database. The schema is
-//! versioned with `PRAGMA user_version`; this build reads and writes version 4
-//! and migrates version 1, 2 and 3 files in place.
+//! versioned with `PRAGMA user_version`; this build reads and writes version 9
+//! and migrates version 1 and later files in place.
 //!
 //! Saving runs in a single transaction that replaces the previous contents, so
 //! a failed save never corrupts an existing project.
@@ -16,7 +16,9 @@ use std::path::Path;
 use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
-    LinkType, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
+    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship, RelationshipId,
+    Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsTree};
 use rusqlite::{params, Connection};
@@ -24,7 +26,7 @@ use thiserror::Error;
 use time::{Date, Month};
 
 /// Project-file schema version written by this build.
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 9;
 
 const SCHEMA: &str = r#"
 CREATE TABLE project (
@@ -71,6 +73,10 @@ CREATE TABLE activities (
     percent_complete INTEGER,
     actual_start TEXT,
     actual_finish TEXT,
+    owner TEXT,
+    promised INTEGER NOT NULL DEFAULT 0,
+    delay_reason TEXT,
+    location TEXT,
     position   INTEGER NOT NULL
 );
 
@@ -109,6 +115,42 @@ CREATE TABLE IF NOT EXISTS baseline_snapshots (
     baseline_start  TEXT,
     baseline_finish TEXT,
     PRIMARY KEY (baseline_id, activity_id)
+);
+
+CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL,
+    window_start TEXT   NOT NULL,
+    window_weeks INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+    snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+    activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    name            TEXT    NOT NULL,
+    scheduled_start TEXT    NOT NULL,
+    scheduled_finish TEXT   NOT NULL,
+    owner           TEXT,
+    promised        INTEGER NOT NULL DEFAULT 0,
+    percent_complete INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (snapshot_id, activity_id)
+);
+
+CREATE TABLE IF NOT EXISTS daily_notes (
+    id                   INTEGER PRIMARY KEY,
+    date                 TEXT    NOT NULL,
+    content              TEXT    NOT NULL,
+    activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+    lookahead_window_start TEXT
+);
+
+CREATE TABLE IF NOT EXISTS production_entries (
+    id              INTEGER PRIMARY KEY,
+    activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+    date            TEXT    NOT NULL,
+    percent_complete INTEGER NOT NULL,
+    UNIQUE (activity_id, date)
 );
 "#;
 
@@ -182,8 +224,12 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
     let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
     match version {
         0 => {
-            connection.execute_batch(SCHEMA)?;
-            connection.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            // Create the schema and stamp the version in one transaction so an
+            // interrupted save can never leave a half-created file behind.
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(SCHEMA)?;
+            transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            transaction.commit()?;
             Ok(())
         }
         1 => {
@@ -193,7 +239,8 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
             // used by earned value management, and baselines.
             // Version 4 adds the recorded actual dates. Migrate straight
             // through to the current schema version.
-            connection.execute_batch(
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
                 "ALTER TABLE activities ADD COLUMN constraint_kind TEXT NOT NULL DEFAULT 'asap';
                  ALTER TABLE activities ADD COLUMN constraint_date TEXT;
                  ALTER TABLE activities ADD COLUMN budget_at_completion INTEGER;
@@ -226,8 +273,45 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      baseline_finish TEXT,
                      PRIMARY KEY (baseline_id, activity_id)
                  );
-                 PRAGMA user_version = 4;",
+                 ALTER TABLE activities ADD COLUMN owner TEXT;
+                 ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activities ADD COLUMN delay_reason TEXT;
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+                     id          INTEGER PRIMARY KEY,
+                     name        TEXT    NOT NULL,
+                     created_at  TEXT    NOT NULL,
+                     window_start TEXT   NOT NULL,
+                     window_weeks INTEGER NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+                     snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     name            TEXT    NOT NULL,
+                     scheduled_start TEXT    NOT NULL,
+                     scheduled_finish TEXT   NOT NULL,
+                     owner           TEXT,
+                     promised        INTEGER NOT NULL DEFAULT 0,
+                     percent_complete INTEGER NOT NULL DEFAULT 0,
+                     PRIMARY KEY (snapshot_id, activity_id)
+                 );
+                 CREATE TABLE IF NOT EXISTS daily_notes (
+                     id                   INTEGER PRIMARY KEY,
+                     date                 TEXT    NOT NULL,
+                     content              TEXT    NOT NULL,
+                     activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                     lookahead_window_start TEXT
+                 );
+                 ALTER TABLE activities ADD COLUMN location TEXT;
+                 CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
             )?;
+            transaction.commit()?;
             Ok(())
         }
         2 => {
@@ -235,7 +319,8 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
             // assignments, the activity cost fields used by earned value
             // management, and baselines.
             // Version 4 adds the recorded actual dates.
-            connection.execute_batch(
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
                 "ALTER TABLE activities ADD COLUMN budget_at_completion INTEGER;
                  ALTER TABLE activities ADD COLUMN actual_cost INTEGER;
                  ALTER TABLE activities ADD COLUMN percent_complete INTEGER;
@@ -265,17 +350,244 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      baseline_finish TEXT,
                      PRIMARY KEY (baseline_id, activity_id)
                  );
-                 PRAGMA user_version = 4;",
+                 ALTER TABLE activities ADD COLUMN owner TEXT;
+                 ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activities ADD COLUMN delay_reason TEXT;
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+                     id          INTEGER PRIMARY KEY,
+                     name        TEXT    NOT NULL,
+                     created_at  TEXT    NOT NULL,
+                     window_start TEXT   NOT NULL,
+                     window_weeks INTEGER NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+                     snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     name            TEXT    NOT NULL,
+                     scheduled_start TEXT    NOT NULL,
+                     scheduled_finish TEXT   NOT NULL,
+                     owner           TEXT,
+                     promised        INTEGER NOT NULL DEFAULT 0,
+                     percent_complete INTEGER NOT NULL DEFAULT 0,
+                     PRIMARY KEY (snapshot_id, activity_id)
+                 );
+                 CREATE TABLE IF NOT EXISTS daily_notes (
+                     id                   INTEGER PRIMARY KEY,
+                     date                 TEXT    NOT NULL,
+                     content              TEXT    NOT NULL,
+                     activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                     lookahead_window_start TEXT
+                 );
+                 ALTER TABLE activities ADD COLUMN location TEXT;
+                 CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
             )?;
+            transaction.commit()?;
             Ok(())
         }
         3 => {
             // Version 4 adds the recorded actual start and finish dates.
-            connection.execute_batch(
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
                 "ALTER TABLE activities ADD COLUMN actual_start TEXT;
                  ALTER TABLE activities ADD COLUMN actual_finish TEXT;
-                 PRAGMA user_version = 4;",
+                 ALTER TABLE activities ADD COLUMN owner TEXT;
+                 ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activities ADD COLUMN delay_reason TEXT;
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+                     id          INTEGER PRIMARY KEY,
+                     name        TEXT    NOT NULL,
+                     created_at  TEXT    NOT NULL,
+                     window_start TEXT   NOT NULL,
+                     window_weeks INTEGER NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+                     snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     name            TEXT    NOT NULL,
+                     scheduled_start TEXT    NOT NULL,
+                     scheduled_finish TEXT   NOT NULL,
+                     owner           TEXT,
+                     promised        INTEGER NOT NULL DEFAULT 0,
+                     percent_complete INTEGER NOT NULL DEFAULT 0,
+                     PRIMARY KEY (snapshot_id, activity_id)
+                 );
+                 CREATE TABLE IF NOT EXISTS daily_notes (
+                     id                   INTEGER PRIMARY KEY,
+                     date                 TEXT    NOT NULL,
+                     content              TEXT    NOT NULL,
+                     activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                     lookahead_window_start TEXT
+                 );
+                 ALTER TABLE activities ADD COLUMN location TEXT;
+                 CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
             )?;
+            transaction.commit()?;
+            Ok(())
+        }
+        4 => {
+            // Version 5 adds field-planning fields: the activity owner, the
+            // promised flag, and the delay reason recorded against a
+            // promised activity.
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                "ALTER TABLE activities ADD COLUMN owner TEXT;
+                 ALTER TABLE activities ADD COLUMN promised INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activities ADD COLUMN delay_reason TEXT;
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+                     id          INTEGER PRIMARY KEY,
+                     name        TEXT    NOT NULL,
+                     created_at  TEXT    NOT NULL,
+                     window_start TEXT   NOT NULL,
+                     window_weeks INTEGER NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+                     snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     name            TEXT    NOT NULL,
+                     scheduled_start TEXT    NOT NULL,
+                     scheduled_finish TEXT   NOT NULL,
+                     owner           TEXT,
+                     promised        INTEGER NOT NULL DEFAULT 0,
+                     percent_complete INTEGER NOT NULL DEFAULT 0,
+                     PRIMARY KEY (snapshot_id, activity_id)
+                 );
+                 CREATE TABLE IF NOT EXISTS daily_notes (
+                     id                   INTEGER PRIMARY KEY,
+                     date                 TEXT    NOT NULL,
+                     content              TEXT    NOT NULL,
+                     activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                     lookahead_window_start TEXT
+                 );
+                 ALTER TABLE activities ADD COLUMN location TEXT;
+                 CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
+            )?;
+            transaction.commit()?;
+            Ok(())
+        }
+        5 => {
+            // Version 6 adds lookahead snapshots: published, read-only views
+            // of the near-term plan.
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                "CREATE TABLE IF NOT EXISTS lookahead_snapshots (
+                    id          INTEGER PRIMARY KEY,
+                    name        TEXT    NOT NULL,
+                    created_at  TEXT    NOT NULL,
+                    window_start TEXT   NOT NULL,
+                    window_weeks INTEGER NOT NULL
+                );
+                 CREATE TABLE IF NOT EXISTS lookahead_snapshot_entries (
+                    snapshot_id     INTEGER NOT NULL REFERENCES lookahead_snapshots(id) ON DELETE CASCADE,
+                    activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                    name            TEXT    NOT NULL,
+                    scheduled_start TEXT    NOT NULL,
+                    scheduled_finish TEXT   NOT NULL,
+                    owner           TEXT,
+                    promised        INTEGER NOT NULL DEFAULT 0,
+                    percent_complete INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (snapshot_id, activity_id)
+                );
+                 CREATE TABLE IF NOT EXISTS daily_notes (
+                    id                   INTEGER PRIMARY KEY,
+                    date                 TEXT    NOT NULL,
+                    content              TEXT    NOT NULL,
+                    activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                    lookahead_window_start TEXT
+                );
+                 ALTER TABLE activities ADD COLUMN location TEXT;
+                 CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
+            )?;
+            transaction.commit()?;
+            Ok(())
+        }
+        6 => {
+            // Version 7 adds daily notes: dated diary entries linked to
+            // activities or lookahead windows. Version 8 adds the optional
+            // work location. Migrate straight through to the current version.
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                "CREATE TABLE IF NOT EXISTS daily_notes (
+                    id                   INTEGER PRIMARY KEY,
+                    date                 TEXT    NOT NULL,
+                    content              TEXT    NOT NULL,
+                    activity_id          INTEGER REFERENCES activities(id) ON DELETE CASCADE,
+                    lookahead_window_start TEXT
+                );
+                 ALTER TABLE activities ADD COLUMN location TEXT;
+                 CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
+            )?;
+            transaction.commit()?;
+            Ok(())
+        }
+        7 => {
+            // Version 8 adds the optional activity work location. Version 9
+            // adds production entries. Migrate straight through to the
+            // current schema version.
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                "ALTER TABLE activities ADD COLUMN location TEXT;
+                 CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
+            )?;
+            transaction.commit()?;
+            Ok(())
+        }
+        8 => {
+            // Version 9 adds production entries: dated actual progress
+            // recorded against activities.
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                "CREATE TABLE IF NOT EXISTS production_entries (
+                     id              INTEGER PRIMARY KEY,
+                     activity_id     INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+                     date            TEXT    NOT NULL,
+                     percent_complete INTEGER NOT NULL,
+                     UNIQUE (activity_id, date)
+                 );
+                 PRAGMA user_version = 9;",
+            )?;
+            transaction.commit()?;
             Ok(())
         }
         SCHEMA_VERSION => Ok(()),
@@ -327,12 +639,60 @@ fn validate(project: &Project) -> Result<()> {
             )));
         }
     }
+    for note in &project.daily_notes {
+        if let Some(activity) = note.activity_id {
+            if project.activity(activity).is_none() {
+                return Err(PersistenceError::InvalidData(format!(
+                    "daily note {} references missing activity {activity}",
+                    note.id
+                )));
+            }
+        }
+    }
+    for baseline in &project.baselines {
+        for snapshot in &baseline.snapshots {
+            if project.activity(snapshot.activity_id).is_none() {
+                return Err(PersistenceError::InvalidData(format!(
+                    "baseline {} snapshot references missing activity {}",
+                    baseline.id, snapshot.activity_id
+                )));
+            }
+        }
+    }
+    for snapshot in &project.lookahead_snapshots {
+        for entry in &snapshot.entries {
+            if project.activity(entry.activity_id).is_none() {
+                return Err(PersistenceError::InvalidData(format!(
+                    "lookahead snapshot {} references missing activity {}",
+                    snapshot.id, entry.activity_id
+                )));
+            }
+        }
+    }
+    for entry in &project.production_entries {
+        if !(0..=10_000).contains(&entry.percent_complete) {
+            return Err(PersistenceError::InvalidData(format!(
+                "production entry {} has percent complete {} out of range",
+                entry.id, entry.percent_complete
+            )));
+        }
+        if project.activity(entry.activity_id).is_none() {
+            return Err(PersistenceError::InvalidData(format!(
+                "production entry {} references missing activity {}",
+                entry.id, entry.activity_id
+            )));
+        }
+    }
     Ok(())
 }
 
 fn clear_project(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
     transaction.execute_batch(
-        "DELETE FROM baseline_snapshots;
+        "DELETE FROM lookahead_snapshot_entries;
+         DELETE FROM lookahead_snapshots;
+         DELETE FROM daily_notes;
+         DELETE FROM production_entries;
+         DELETE FROM baseline_snapshots;
          DELETE FROM baselines;
          DELETE FROM activity_resources;
          DELETE FROM resources;
@@ -406,8 +766,8 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
             "INSERT INTO activities
                 (id, name, duration, wbs_id, calendar_id, constraint_kind, constraint_date,
                  budget_at_completion, actual_cost, percent_complete, actual_start,
-                 actual_finish, position)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                 actual_finish, owner, promised, delay_reason, location, position)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
             params![
                 to_sql_id(activity.id.0, "activity")?,
                 activity.name,
@@ -427,6 +787,10 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
                 activity.percent_complete,
                 activity.actual_start.map(|date| date.to_string()),
                 activity.actual_finish.map(|date| date.to_string()),
+                activity.owner,
+                activity.promised,
+                activity.delay_reason,
+                activity.location,
                 position as i64,
             ],
         )?;
@@ -499,6 +863,67 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
         }
     }
 
+    for snapshot in &project.lookahead_snapshots {
+        transaction.execute(
+            "INSERT INTO lookahead_snapshots (id, name, created_at, window_start, window_weeks)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                to_sql_id(snapshot.id.0, "lookahead_snapshot")?,
+                snapshot.name,
+                snapshot.created_at.to_string(),
+                snapshot.window_start.to_string(),
+                i64::from(snapshot.window_weeks),
+            ],
+        )?;
+        for entry in &snapshot.entries {
+            transaction.execute(
+                "INSERT INTO lookahead_snapshot_entries (snapshot_id, activity_id, name, scheduled_start, scheduled_finish, owner, promised, percent_complete)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    to_sql_id(snapshot.id.0, "lookahead_snapshot")?,
+                    to_sql_id(entry.activity_id.0, "activity")?,
+                    entry.name,
+                    entry.scheduled_start.to_string(),
+                    entry.scheduled_finish.to_string(),
+                    entry.owner,
+                    i64::from(entry.promised),
+                    entry.percent_complete,
+                ],
+            )?;
+        }
+    }
+
+    for note in &project.daily_notes {
+        let activity_id_sql = note
+            .activity_id
+            .map(|id| to_sql_id(id.0, "activity"))
+            .transpose()?;
+        transaction.execute(
+            "INSERT INTO daily_notes (id, date, content, activity_id, lookahead_window_start)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                to_sql_id(note.id.0, "daily_note")?,
+                note.date.to_string(),
+                note.content,
+                activity_id_sql,
+                note.lookahead_window_start.map(|date| date.to_string()),
+            ],
+        )?;
+    }
+
+    for entry in &project.production_entries {
+        transaction.execute(
+            "INSERT INTO production_entries (id, activity_id, date, percent_complete)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![
+                to_sql_id(entry.id.0, "production_entry")?,
+                to_sql_id(entry.activity_id.0, "activity")?,
+                entry.date.to_string(),
+                entry.percent_complete,
+            ],
+        )?;
+    }
+
     Ok(())
 }
 
@@ -559,7 +984,84 @@ fn read_project(connection: &Connection) -> Result<Project> {
             });
         }
     }
+
+    let lookahead_snapshots = read_lookahead_snapshots(connection)?;
+    let lookahead_snapshot_entries = read_lookahead_snapshot_entries(connection)?;
+    project.lookahead_snapshots = lookahead_snapshots;
+    for row in lookahead_snapshot_entries {
+        if let Some(snapshot) = project
+            .lookahead_snapshots
+            .iter_mut()
+            .find(|candidate| candidate.id == LookaheadSnapshotId(row.snapshot_id))
+        {
+            snapshot.entries.push(LookaheadSnapshotEntry::new(
+                ActivityId(row.activity_id),
+                row.name,
+                row.scheduled_start,
+                row.scheduled_finish,
+                row.owner,
+                row.promised,
+                row.percent_complete,
+            ));
+        }
+    }
+    project
+        .lookahead_snapshots
+        .sort_by_key(|snapshot| snapshot.id.0);
+    for snapshot in &mut project.lookahead_snapshots {
+        snapshot.entries.sort_by_key(|entry| entry.activity_id);
+    }
+
+    let daily_notes = read_daily_notes(connection)?;
+    project.daily_notes = daily_notes
+        .into_iter()
+        .map(|row| {
+            DailyNote::new(
+                DailyNoteId(row.id),
+                row.date,
+                row.content,
+                row.activity_id,
+                row.lookahead_window_start,
+            )
+        })
+        .collect();
+    project.daily_notes.sort_by_key(|note| note.id.0);
+
+    project.production_entries = read_production_entries(connection)?;
+    project.production_entries.sort_by_key(|entry| entry.id.0);
     Ok(project)
+}
+
+fn read_production_entries(connection: &Connection) -> Result<Vec<ProductionEntry>> {
+    let mut stmt = connection
+        .prepare("SELECT id, activity_id, date, percent_complete FROM production_entries")?;
+    let rows = stmt
+        .query_map([], |row| {
+            let id: i64 = row.get(0)?;
+            let activity_id: i64 = row.get(1)?;
+            let date_str: String = row.get(2)?;
+            let percent_complete: i64 = row.get(3)?;
+            Ok((
+                ProductionEntryId(id as u64),
+                ActivityId(activity_id as u64),
+                date_str,
+                percent_complete,
+            ))
+        })?
+        .collect::<std::result::Result<Vec<_>, rusqlite::Error>>()?;
+    let entries = rows
+        .into_iter()
+        .map(|(id, activity_id, date_str, percent_complete)| {
+            let date: Date = parse_date(&date_str)?;
+            std::result::Result::Ok(ProductionEntry::new(
+                id,
+                activity_id,
+                date,
+                percent_complete,
+            ))
+        })
+        .collect::<std::result::Result<Vec<_>, PersistenceError>>()?;
+    Ok(entries)
 }
 
 fn read_default_calendar(connection: &Connection, workweek: i64) -> Result<Calendar> {
@@ -668,7 +1170,8 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
     let rows = collect_rows(
         connection,
         "SELECT id, name, duration, wbs_id, calendar_id, constraint_kind, constraint_date,
-                budget_at_completion, actual_cost, percent_complete, actual_start, actual_finish
+                budget_at_completion, actual_cost, percent_complete, actual_start, actual_finish,
+                owner, promised, delay_reason, location
          FROM activities ORDER BY position",
         |row| {
             Ok((
@@ -684,6 +1187,10 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
                 row.get::<_, Option<i64>>(9)?,
                 row.get::<_, Option<String>>(10)?,
                 row.get::<_, Option<String>>(11)?,
+                row.get::<_, Option<String>>(12)?,
+                row.get::<_, i64>(13)?,
+                row.get::<_, Option<String>>(14)?,
+                row.get::<_, Option<String>>(15)?,
             ))
         },
     )?;
@@ -702,6 +1209,10 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
         percent,
         actual_start,
         actual_finish,
+        owner,
+        promised,
+        delay_reason,
+        location,
     ) in rows
     {
         let duration = u32::try_from(duration).map_err(|_| {
@@ -729,6 +1240,10 @@ fn read_activities(connection: &Connection) -> Result<Vec<Activity>> {
         activity.percent_complete = percent;
         activity.actual_start = actual_start.map(|value| parse_date(&value)).transpose()?;
         activity.actual_finish = actual_finish.map(|value| parse_date(&value)).transpose()?;
+        activity.owner = owner;
+        activity.promised = promised != 0;
+        activity.delay_reason = delay_reason;
+        activity.location = location;
         activities.push(activity);
     }
     Ok(activities)
@@ -897,6 +1412,157 @@ fn read_baseline_snapshots(connection: &Connection) -> Result<Vec<BaselineSnapsh
         });
     }
     Ok(snapshots)
+}
+
+fn read_lookahead_snapshots(connection: &Connection) -> Result<Vec<LookaheadSnapshot>> {
+    let rows = collect_rows(
+        connection,
+        "SELECT id, name, created_at, window_start, window_weeks FROM lookahead_snapshots ORDER BY id",
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
+        },
+    )?;
+
+    let mut snapshots = Vec::with_capacity(rows.len());
+    for (id, name, created_at, window_start, window_weeks) in rows {
+        let window_weeks = u32::try_from(window_weeks).map_err(|_| {
+            PersistenceError::InvalidData(format!(
+                "lookahead snapshot {id} has invalid window_weeks {window_weeks}"
+            ))
+        })?;
+        snapshots.push(LookaheadSnapshot::from_entries(
+            LookaheadSnapshotId(from_sql_id(id, "lookahead_snapshot")?),
+            name,
+            parse_date(&created_at)?,
+            parse_date(&window_start)?,
+            window_weeks,
+            Vec::new(),
+        ));
+    }
+    Ok(snapshots)
+}
+
+/// One lookahead snapshot entry row as stored in the database.
+struct LookaheadSnapshotEntryRow {
+    /// Snapshot the entry belongs to.
+    snapshot_id: u64,
+    /// Activity the entry describes.
+    activity_id: u64,
+    /// Activity name at publish time.
+    name: String,
+    /// Scheduled start date.
+    scheduled_start: Date,
+    /// Scheduled finish date.
+    scheduled_finish: Date,
+    /// Field-planning owner at publish time.
+    owner: Option<String>,
+    /// True when the activity was promised at publish time.
+    promised: bool,
+    /// Percent complete in basis points at publish time.
+    percent_complete: i64,
+}
+
+fn read_lookahead_snapshot_entries(
+    connection: &Connection,
+) -> Result<Vec<LookaheadSnapshotEntryRow>> {
+    let rows = collect_rows(
+        connection,
+        "SELECT snapshot_id, activity_id, name, scheduled_start, scheduled_finish, owner, promised, percent_complete
+         FROM lookahead_snapshot_entries ORDER BY snapshot_id, activity_id",
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, i64>(6)?,
+                row.get::<_, i64>(7)?,
+            ))
+        },
+    )?;
+
+    let mut entries = Vec::with_capacity(rows.len());
+    for (
+        snapshot_id,
+        activity_id,
+        name,
+        scheduled_start,
+        scheduled_finish,
+        owner,
+        promised,
+        percent_complete,
+    ) in rows
+    {
+        let promised = promised != 0;
+        entries.push(LookaheadSnapshotEntryRow {
+            snapshot_id: from_sql_id(snapshot_id, "lookahead_snapshot")?,
+            activity_id: from_sql_id(activity_id, "activity")?,
+            name,
+            scheduled_start: parse_date(&scheduled_start)?,
+            scheduled_finish: parse_date(&scheduled_finish)?,
+            owner,
+            promised,
+            percent_complete,
+        });
+    }
+    Ok(entries)
+}
+
+/// One daily note row as stored in the database.
+struct DailyNoteRow {
+    /// Note identifier.
+    id: u64,
+    /// Date of the diary entry.
+    date: Date,
+    /// Note content.
+    content: String,
+    /// Optional activity the note concerns.
+    activity_id: Option<ActivityId>,
+    /// Optional lookahead window start the note concerns.
+    lookahead_window_start: Option<Date>,
+}
+
+fn read_daily_notes(connection: &Connection) -> Result<Vec<DailyNoteRow>> {
+    let rows = collect_rows(
+        connection,
+        "SELECT id, date, content, activity_id, lookahead_window_start FROM daily_notes ORDER BY date",
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<i64>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
+        },
+    )?;
+
+    let mut notes = Vec::with_capacity(rows.len());
+    for (id, date, content, activity_id, lookahead_window_start) in rows {
+        let activity_id = activity_id
+            .map(|id| from_sql_id(id, "activity").map(ActivityId))
+            .transpose()?;
+        let lookahead_window_start = lookahead_window_start
+            .as_deref()
+            .map(parse_date)
+            .transpose()?;
+        notes.push(DailyNoteRow {
+            id: from_sql_id(id, "daily_note")?,
+            date: parse_date(&date)?,
+            content,
+            activity_id,
+            lookahead_window_start,
+        });
+    }
+    Ok(notes)
 }
 
 fn read_holidays(connection: &Connection, query: &str) -> Result<BTreeSet<Date>> {
@@ -1286,6 +1952,10 @@ mod tests {
                      ALTER TABLE activities DROP COLUMN percent_complete;
                      ALTER TABLE activities DROP COLUMN actual_start;
                      ALTER TABLE activities DROP COLUMN actual_finish;
+                     ALTER TABLE activities DROP COLUMN owner;
+                     ALTER TABLE activities DROP COLUMN promised;
+                     ALTER TABLE activities DROP COLUMN delay_reason;
+                     ALTER TABLE activities DROP COLUMN location;
                      PRAGMA user_version = 1;",
                 )
                 .expect("downgrade schema");
@@ -1346,6 +2016,10 @@ mod tests {
                      ALTER TABLE activities DROP COLUMN percent_complete;
                      ALTER TABLE activities DROP COLUMN actual_start;
                      ALTER TABLE activities DROP COLUMN actual_finish;
+                     ALTER TABLE activities DROP COLUMN owner;
+                     ALTER TABLE activities DROP COLUMN promised;
+                     ALTER TABLE activities DROP COLUMN delay_reason;
+                     ALTER TABLE activities DROP COLUMN location;
                      DROP TABLE baseline_snapshots;
                      DROP TABLE baselines;
                      DROP TABLE activity_resources;
@@ -1438,6 +2112,42 @@ mod tests {
     }
 
     #[test]
+    fn daily_notes_with_missing_activities_are_rejected_on_save() {
+        let dir = TempDir::new();
+        let path = dir.file("dangling-note.cadence");
+
+        let mut broken = sample_project();
+        broken.daily_notes.push(DailyNote::new(
+            DailyNoteId(1),
+            date(6),
+            "Note about a removed activity".to_string(),
+            Some(ActivityId(999)),
+            None,
+        ));
+
+        match save_project(&broken, &path) {
+            Err(PersistenceError::InvalidData(message)) => {
+                assert!(message.contains("missing activity"), "{message}");
+            }
+            other => panic!("expected InvalidData, got {other:?}"),
+        }
+
+        // A normal project with a note linked to a real activity is unaffected
+        // and still round-trips.
+        let mut healthy = sample_project();
+        healthy.daily_notes.push(DailyNote::new(
+            DailyNoteId(1),
+            date(6),
+            "Crane late; resequenced pour".to_string(),
+            Some(ActivityId(1)),
+            None,
+        ));
+        save_project(&healthy, &path).expect("save healthy project");
+        let loaded = load_project(&path).expect("load healthy project");
+        assert_eq!(loaded, healthy);
+    }
+
+    #[test]
     fn workweek_masks_round_trip() {
         for mask in 0..=0b111_1111 {
             assert_eq!(encode_week(decode_week(mask).expect("valid mask")), mask);
@@ -1454,5 +2164,98 @@ mod tests {
         assert!(parse_date("2026-01").is_err());
         assert!(parse_date("2026-01-05-01").is_err());
         assert!(parse_date("not-a-date").is_err());
+    }
+
+    #[test]
+    fn field_planning_fields_round_trip() {
+        let mut project = sample_project();
+        project.activities[0].owner = Some("Crew 3".to_string());
+        project.activities[0].promised = true;
+        project.activities[0].delay_reason = Some("waiting on a permit".to_string());
+        project.activities[0].location = Some("Level 1".to_string());
+
+        let dir = TempDir::new();
+        let path = dir.file("field.cadence");
+        save_project(&project, &path).expect("save");
+        let loaded = load_project(&path).expect("load");
+
+        assert_eq!(loaded.activities[0].owner, Some("Crew 3".to_string()));
+        assert!(loaded.activities[0].promised);
+        assert_eq!(
+            loaded.activities[0].delay_reason,
+            Some("waiting on a permit".to_string())
+        );
+        assert_eq!(loaded.activities[0].location, Some("Level 1".to_string()));
+        assert_eq!(loaded.activities[1].owner, None);
+        assert!(!loaded.activities[1].promised);
+        assert_eq!(loaded.activities[1].location, None);
+    }
+
+    #[test]
+    fn daily_notes_round_trip() {
+        let mut project = sample_project();
+        project.daily_notes.push(DailyNote::new(
+            DailyNoteId(1),
+            date(6),
+            "Crane late; resequenced pour".to_string(),
+            Some(ActivityId(1)),
+            None,
+        ));
+        project.daily_notes.push(DailyNote::new(
+            DailyNoteId(2),
+            date(7),
+            "Week 1 huddle briefed".to_string(),
+            None,
+            Some(date(5)),
+        ));
+        project
+            .lookahead_snapshots
+            .push(LookaheadSnapshot::from_entries(
+                LookaheadSnapshotId(1),
+                "Week 1-2",
+                date(5),
+                date(5),
+                2,
+                Vec::new(),
+            ));
+
+        let dir = TempDir::new();
+        let path = dir.file("diary.cadence");
+        save_project(&project, &path).expect("first save");
+        let loaded = load_project(&path).expect("load");
+        assert_eq!(loaded.daily_notes, project.daily_notes);
+        assert_eq!(loaded.lookahead_snapshots, project.lookahead_snapshots);
+
+        // Saving a second time must replace the snapshot and note rows rather
+        // than colliding with them.
+        save_project(&loaded, &path).expect("re-save");
+        let reloaded = load_project(&path).expect("reload");
+        assert_eq!(reloaded.daily_notes, project.daily_notes);
+        assert_eq!(reloaded.lookahead_snapshots, project.lookahead_snapshots);
+    }
+
+    #[test]
+    fn a_version_4_file_migrates_to_field_planning() {
+        let project = sample_project();
+        let dir = TempDir::new();
+        let path = dir.file("v4.cadence");
+        save_project(&project, &path).expect("save");
+        // Recreate exactly what a v4 writer left: no new columns, user_version 4.
+        let connection = Connection::open(&path).expect("open");
+        connection
+            .execute_batch(
+                "ALTER TABLE activities DROP COLUMN owner;
+                 ALTER TABLE activities DROP COLUMN promised;
+                 ALTER TABLE activities DROP COLUMN delay_reason;
+                 ALTER TABLE activities DROP COLUMN location;
+                 PRAGMA user_version = 4;",
+            )
+            .expect("downgrade");
+        drop(connection);
+
+        let loaded = load_project(&path).expect("migrating load");
+        assert_eq!(loaded.activities.len(), project.activities.len());
+        assert_eq!(loaded.activities[0].owner, None);
+        assert!(!loaded.activities[0].promised);
     }
 }

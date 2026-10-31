@@ -10,10 +10,9 @@ use std::io::Write as _;
 use std::panic::PanicHookInfo;
 use std::path::PathBuf;
 
-/// The crash log location: a fixed file in the system temporary directory, so
-/// a user can find it without documentation.
+/// The crash log location: the shared file the GUI also reads.
 fn crash_log_path() -> PathBuf {
-    std::env::temp_dir().join("cadence-crash.log")
+    cadence_ui_egui::crash::log_path()
 }
 
 /// Install the panic hook. Call once, before anything that can panic.

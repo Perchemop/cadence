@@ -19,7 +19,7 @@ requirement lives.
 | R11 | Constraints (ASAP/ALAP, dates) | `cadence-core/src/model.rs` (`Constraint`), `engine.rs` (constraint-aware passes), `cadence-commands` (`SetActivityConstraint`), persistence schema v2 | engine constraint tests, command undo test, persistence round-trip and v1→v2 migration test | done |
 | R12 | Property-based engine tests | `crates/core/tests/properties.rs` (proptest) | 5 property tests covering calendar invariants, DAG scheduling, ALAP, constraints | done |
 | R13 | Interactive Gantt + activity table | `cadence-ui-egui` (Gantt view, sortable table, inspector, dependency drag) | Phase-2 QC gate in `docs/qc/phase-2.md` | done |
-| R14 | Design system, light/dark, keyboard, a11y | `cadence-ui-egui` (design tokens, themes) | `docs/qc/phase-2.md`; keyboard and a11y audit still pending | in progress |
+| R14 | Design system, light/dark, keyboard, a11y | `cadence-ui-egui` (design tokens, themes, keyboard shortcuts, pointer-free link form, AccessKit summary) | `docs/qc/phase-2.md`; `ACCESSIBILITY.md` records the keyboard pass, AccessKit path, WCAG AA contrast tests and remaining toolkit limits | done |
 | R15 | Resources: dictionary, assignments, histograms, leveling | `cadence-core/src/model.rs` (`Resource`), `engine.rs` (`resource_histogram`, `resource_conflicts`, `level_resources`), `cadence-commands`, `cadence-persistence` (schema v3), `cadence-ui-egui` Resources view | engine tests in `engine.rs`, command tests in `cadence-commands`, persistence round-trip test, `docs/qc/phase-3.md` | done |
 | R16 | Baselines + variance | `cadence-core/src/model.rs` (`Baseline`), `engine.rs` (`capture_baseline`), `cadence-commands`, `cadence-persistence`, `cadence-ui-egui` Baselines view | engine, command and persistence tests; variance table and EVM panel in the Baselines view | done |
 | R17 | Progress updating + EVM | `cadence-core/src/model.rs` (cost/percent/actual-date fields), `engine.rs` (`evm_metrics`), `cadence-commands` (`SetActivityProgress`, `SetActivityActualCost`, `SetActivityBudget`, `SetActivityActualDates`), `cadence-persistence` (schema v4), `cadence-ui-egui` (inspector progress section, Gantt progress overlay) | command tests (undo/redo, range and date validation), persistence round-trip and v3→v4 migration tests, EVM unit tests | done |
@@ -30,6 +30,22 @@ requirement lives.
 | R21 | Security in CI: secret scanning, dependency licence/advisory checks, dependency review, SAST, SBOM | `.github/workflows/security.yml`, `.github/workflows/release.yml`, `deny.toml`, `.github/dependabot.yml` | security workflow runs on `main` and on the pull request | done |
 | R22 | Protected default branch with required status checks | repository settings | state recorded in `docs/qc/project-health.md` | done |
 | R23 | Reproducible dependency graph: current `Cargo.lock`, regenerated in CI | `Cargo.lock`, `.github/workflows/lockfile.yml` | lockfile workflow run + freshness check | in progress (D19) |
+| R24 | Machine-readable schedule output (--json) for scripts and assistive technology | `cadence-interchange/src/schedule.rs`, CLI `cadence [--json]`, `cadence load <file> --json` | unit tests parsing the document in `schedule.rs`; documented in `docs/usage.md` | done |
+| R25 | Crash reporting with consent: local crash log, preview, pre-filled GitHub issue | `cadence-app/src/crash_report.rs` (panic hook), `cadence-ui-egui/src/crash.rs` (preview/URL), GUI **Crash report** and **Report a bug…** | crash module unit tests (title, body, URL encoding); dialog interactive-only; documented in `README.md` and `docs/usage.md` | done |
+| R26 | Opt-in update check against GitHub Releases, fail-soft offline, cached | `cadence-ui-egui/src/update_check.rs`, CLI `cadence check-updates`, GUI **Updates** window | version-comparison, malformed-tag and cache-serialisation tests; network path opt-in and interactive; documented in `README.md`, `docs/usage.md`, D22 | done |
+| R27 | Programme audit tool: schedule-quality checks over a construction programme | `cadence-core/src/audit.rs` (14 checks), `cadence-core/src/compare.rs` (forensic + baseline comparison), `cadence-interchange/src/audit.rs` + `compare.rs` (`kind: "audit"` / `"comparison"` documents), CLI `cadence audit` + `cadence audit-compare`, GUI **Audit** view (`Ctrl+6`), `engine::schedule_with_minimum_starts` | 19 audit + 9 comparison unit tests + interchange document tests; manual GUI hands-on per release | done |
 
 When a slice lands, this table and `docs/parity.md` are updated in the same
 commit.
+
+## Future expansion (approved 2026-10-27, queued)
+
+The owner approved all three notes on 2026-10-27 (audit tool first). They carry
+requirement IDs once their first slice lands; until then they are traceable to
+their research note.
+
+| Candidate | Research note | Status |
+|---|---|---|
+| Programme audit tool (audit a construction programme inside Cadence) | `docs/research/schedule-audit.md` | approved 2026-10-27 — next slice (will become R27) |
+| Lookahead / field planning (Aphex-inspired) | `docs/research/aphex-integration.md` | approved 2026-10-27 — queued |
+| Optional AI integration (document understanding, proposals, advice) | `docs/research/ai-integration.md` | approved 2026-10-27 — queued |

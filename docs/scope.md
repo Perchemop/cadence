@@ -36,3 +36,20 @@
 - Multi-OS CI matrix
 - Longest-path extraction as an alternative to total-float criticality
 - Resource leveling beyond the basic algorithm
+
+### Future expansion (approved 2026-10-27, queued)
+
+The owner approved these on 2026-10-27, in this order, so their research notes
+may now drive implementation; no release date is committed. They remain outside
+the v1 "finished" bar until their first slice lands.
+
+- **Programme audit tool** — audit a construction programme for schedule
+  quality and health (DCMA/GAO-style checks) inside Cadence; see
+  `docs/research/schedule-audit.md`.
+- **Optional AI integration** — off-by-default, consent-gated assistance that
+  reads user-supplied PDFs/emails/documents and proposes advice, skeleton
+  schedules, activity enrichment and status updates; see
+  `docs/research/ai-integration.md`.
+- **Lookahead / field planning** — rolling short-interval windows, weekly work
+  plans, diary and production tracking, inspired by publicly documented Aphex
+  behaviour; see `docs/research/aphex-integration.md`.

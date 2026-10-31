@@ -42,8 +42,8 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 
 | Capability | Status | Notes |
 |---|---|---|
-| Interactive Gantt | done | timeline, bars, arrows, zoom/pan, virtualised rows |
-| Activity table | done | sortable columns, selection, inspector edits via commands |
+| Interactive Gantt | done | timeline, bars, arrows, zoom/pan; O(relationships) arrow pass via a cached id→row index, schedule borrowed instead of cloned per frame |
+| Activity table | done | sortable columns, selection, inspector edits via commands; cached sort keyed on `edit_version`, virtualised rows with `ScrollArea::show_rows`, row numbers, sticky header; **column chooser** lets users pick visible columns (MS Project / P6 layouts) |
 | Dependency editing | done | drag-to-create links, lag editing, cycle prevention |
 | Zoom / pan | done | Ctrl+wheel zoom in the Gantt view, scroll areas for panning |
 | Phase-2 QC gate | done | `docs/qc/phase-2.md` |
@@ -67,6 +67,9 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | Variance views | done | Baselines view: per-activity duration/start/finish variance against the selected baseline, coloured by sign |
 | EVM metrics | done | `engine::evm_metrics`: PV, EV, AC, SV, CV, SPI, CPI shown against an editable status date (D13) |
 | Progress updating (percent complete, actual dates) | done | inspector edits via undoable commands; Gantt bars show a progress overlay; schema v4 records actual dates |
+| Lookahead published snapshots | done | named, read-only snapshot of a rolling lookahead window; start/finish variance comparison against a selected snapshot; persisted in project file (schema v6); undoable capture/remove/restore commands |
+| Daily diary / huddle briefing | done | dated diary notes linked to an activity or a lookahead window; undoable create/update/delete commands; persisted in project file (schema v7); **Diary** view (`Ctrl+8`) |
+| Location clash detection | done | optional free-text activity location; `cadence-core::clash::location_clashes` flags two open activities sharing a location on overlapping days; listed in the Lookahead view with links to the activities |
 
 ## Phase 5 — Polish & interop
 
@@ -76,10 +79,25 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 | MPX import/export | done | `cadence-interchange::mpx` (D14) |
 | CSV activity table import/export | done | `cadence-interchange::csv`: one row per activity with constraints, links, assignments and progress; CLI `export-csv`/`import-csv` |
 | JSON interchange | done | `cadence-interchange::json`: Cadence's own versioned schema and the only format that is lossless — it carries the WBS tree, named calendars and activity membership as well as everything the other formats do; CLI `export-json`/`import-json` |
+| Machine-readable CLI schedule output (`--json`) | done | `cadence-interchange::schedule`, guide §21.5 tooling accessibility |
+| Crash reporting | done | local panic log, GUI preview, opt-in pre-filled GitHub issue; no token embedded |
+| Update check | done | opt-in GitHub Releases check with a six-hour cache, fail-soft offline; `cadence check-updates` and GUI **Updates** |
 | WBS and named calendars in interchange | done for JSON | MSPDI, MPX and CSV cannot express them and import them empty (documented in `interchange::json`) |
 | Printing / PDF and reports | done | Markdown reports (`cadence report`, **Save report**) and PDF printing (`cadence print`, **Print report…** via a native save dialog); D16 reversed |
 | Calendar management in the UI | done | Calendars view: list, create, rename, delete, working-day and holiday editing, per-activity assignment |
-| Keyboard map | in progress | Ctrl+Z/Y undo-redo and Ctrl+1..4 view switching added; full keyboard-only operation audit pending |
-| Accessibility audit | in progress | WCAG AA contrast for theme text verified by tests (`accessibility_tests`); screen-reader (AccessKit) pass pending |
-| Performance pass | in progress | 10k-activity schedule, 10k-day resource analysis and 200-activity leveling all time-budgeted in CI; smooth-interaction profiling pending |
+| Keyboard map | done | Ctrl+Z/Y undo-redo, Ctrl+1..5 view switching, Ctrl+D theme, Up/Down table selection, Ctrl+Plus/Minus/0 Gantt zoom, F1 shortcut window; every view reviewed for pointer-only paths |
+| Accessibility audit | done for the code-level scope | AccessKit is enabled by eframe's defaults; standard widgets expose labels/roles, the Gantt canvas has a `WidgetInfo` summary, and WCAG AA contrast is tested (`accessibility_tests`); per-bar Gantt nodes, live-region status text and manual screen-reader passes are recorded in `ACCESSIBILITY.md` |
+| Performance pass | done for the hot paths | cached sorted activity list, borrowed schedule in table and Gantt, O(relationships) dependency arrows, virtualised table rows; table + Gantt workbench split, view tabs and status bar added |
 | Documentation, example projects, first tagged release | in progress | `docs/usage.md` and the `bridge_report` example added; tagging is a release decision |
+
+## Future expansion (approved 2026-10-27, queued)
+
+The owner approved all three research notes on 2026-10-27 (audit tool first).
+Approval lets the acceptance criteria drive implementation; it does not promise
+a release date.
+
+| Capability | Status | Notes |
+|---|---|---|
+| Programme audit tool | done | All five stages shipped: 14 core checks, `cadence audit [--json] [--status-date]`, the GUI **Audit** view, the critical-path test/CPLI, and the forensic comparison (`cadence audit-compare`, baseline comparison, `kind: "comparison"` JSON). Note: `docs/research/schedule-audit.md` |
+| Optional AI integration | approved — queued | Off-by-default, consent-gated document understanding and reviewable, undoable proposals (advice, skeleton schedules, activity enrichment, status updates). Note: `docs/research/ai-integration.md` |
+| Lookahead / field planning (Aphex-inspired) | in progress | Shipped: the rolling-window extraction, the GUI **Lookahead** view (`Ctrl+7`), owner/promise/delay-reason tracking (schema v5), published snapshots (schema v6), the **Diary** view (`Ctrl+8`, schema v7) and location clash detection (schema v8). Remaining: production tracking. Note: `docs/research/aphex-integration.md` |

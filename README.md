@@ -68,12 +68,14 @@ checksums and a CycloneDX bill of materials.
 
 ## Status
 
-Phases 0–4 are complete and Phase 5 is complete except for two decided
-deferrals (native print dialogs and the screen-reader audit) recorded in
-[`docs/implementation-report.md`](docs/implementation-report.md), which also
-lists the verification evidence. `v0.1.0` is the first functional release;
-[`ROADMAP.md`](ROADMAP.md) carries the living readiness percentages and the
-next milestones.
+Phases 0–4 are complete. Phase 5 is complete apart from manual,
+platform-specific screen-reader passes: the code-level accessibility audit and
+AccessKit wiring are done, and native print dialogs are implemented. The
+remaining checks and the verification evidence are recorded in
+[`docs/implementation-report.md`](docs/implementation-report.md) and
+[`ACCESSIBILITY.md`](ACCESSIBILITY.md). `v0.1.0` was the first functional
+release; [`ROADMAP.md`](ROADMAP.md) carries the living readiness percentages
+and the v0.2.0 infrastructure work.
 
 ## Building and verifying
 
@@ -110,13 +112,18 @@ Accessibility reports are treated as correctness reports, not as opinions.
 
 ## Privacy
 
-Cadence works fully offline and sends nothing anywhere. If it crashes, a
-technical entry (version, operating system, panic message, backtrace) is
-appended to a crash log in your system temporary directory; that file stays on
-your machine and is never uploaded. Update checks make no network requests —
-`cadence version` reports the running version and says so. If crash
-submission or online update checks are added later, they will be opt-in and
-documented here.
+Cadence works fully offline unless you choose to open a crash report in your
+browser. If it crashes, a technical entry (version, operating system, panic
+message, backtrace) is appended to a crash log in your system temporary
+directory; that file stays on your machine and is never uploaded. On the next
+launch the GUI shows the log, lets you add notes, and only opens a pre-filled
+GitHub issue when you press **Open GitHub issue** — nothing is sent
+automatically, and no token is embedded in the application. Update checks are
+opt-in: `cadence version` uses only the last cached answer and never reaches
+the network, while `cadence check-updates` or the GUI's **Updates → Check now**
+sends one GET request to the public GitHub Releases API. The request includes
+no project data, account, identifier or token; the answer is cached for a few
+hours and failures are reported without blocking the application.
 
 Badges do not lie here: nothing in this project measures you. The only metrics
 recorded are the ones GitHub reports publicly (release downloads, clones,

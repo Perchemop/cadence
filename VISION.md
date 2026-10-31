@@ -50,6 +50,31 @@ Explicitly *not* planned, so that "no" stays impersonal (see
 - Reading or writing proprietary/project-file formats that require reverse
   engineering — see the clean-room rule in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
+## Future expansion (approved 2026-10-27, queued)
+
+The owner approved these directions on 2026-10-27, in this order: the programme
+audit tool first, then the Aphex-inspired lookahead/field-planning work, then
+the optional AI integration. Approval lets the research notes' acceptance
+criteria drive implementation; it does not commit a release date. Each has a
+note in `docs/research/`:
+
+- A **programme audit tool**: audit a construction programme inside Cadence for
+  schedule quality and health — logic, float, constraints, dates, resources,
+  baseline performance and critical-path integrity — against public
+  DCMA/GAO-style checks.
+- **Optional AI integration**: an off-by-default assistant that reads
+  user-supplied PDFs, emails and other documents and *proposes* programme
+  advice, skeleton schedules, activity enrichment and status updates as
+  reviewable, undoable changes. The engine stays the source of truth and no
+  data leaves the machine without explicit consent.
+- **Lookahead / field planning**: rolling short-interval windows, weekly work
+  plans, a daily diary and production tracking, inspired by publicly documented
+  Aphex behaviour.
+
+These add capability without weakening the offline, no-account, no-telemetry
+promise; the AI direction in particular must remain optional and never on the
+critical path.
+
 ## Roadmap
 
 [`ROADMAP.md`](ROADMAP.md) is the living plan: stage labels, feature breadth,
