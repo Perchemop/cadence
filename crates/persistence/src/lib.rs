@@ -1061,7 +1061,7 @@ fn read_production_entries(connection: &Connection) -> Result<Vec<ProductionEntr
                 percent_complete,
             ))
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<std::result::Result<Vec<_>, PersistenceError>>()?;
     Ok(entries)
 }
 
