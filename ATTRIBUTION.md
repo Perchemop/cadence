@@ -28,13 +28,16 @@ All visual design in Cadence is original — original shapes drawn with the GUI
 toolkit's own primitives and original colour choices. No commercial product's
 icons, string tables or trade dress have been copied, and none will be.
 
-Fonts are the GUI toolkit's bundled defaults: the `epaint_default_fonts` crate
-(embedded by `eframe`) ships third-party font assets, and they carry their own
-licences, which are separate from the code licence:
+Fonts are bundled with the application. The UI face is Inter (SIL OFL 1.1),
+shipped as `crates/ui-egui/assets/fonts/Inter-{Regular,Medium,SemiBold,Bold}.ttf`
+and registered by `cadence-ui-egui::design::install_fonts`. The GUI toolkit's
+own `epaint_default_fonts` crate (embedded by `eframe`) also ships third-party
+font assets used as fallback, and they carry their own licences:
 
 | Asset | Licence | Source |
 |---|---|---|
-| Ubuntu (default proportional font) | Ubuntu Font Licence 1.0 | embedded by `epaint_default_fonts` |
+| Inter (Regular/Medium/SemiBold/Bold) | SIL Open Font License 1.1 | https://github.com/rsms/inter (v4.1) |
+| Ubuntu (fallback proportional font) | Ubuntu Font Licence 1.0 | embedded by `epaint_default_fonts` |
 | Noto Emoji | SIL Open Font License 1.1 | embedded by `epaint_default_fonts` |
 
 Both are permissive, OSI-approved font licences, allow-listed in `deny.toml`
@@ -48,26 +51,30 @@ Direct dependencies of the workspace crates:
 | Crate | License | Used by | Purpose |
 |-------|---------|---------|---------|
 | `time` | MIT OR Apache-2.0 | core, commands, persistence, interchange, ui-egui, app | Date and calendar arithmetic |
-| `serde` | MIT OR Apache-2.0 | core, commands | Serialisation derives on the model |
+| `serde` | MIT OR Apache-2.0 | core, commands, ui-egui | Serialisation derives on the model and the update-check cache |
+| `serde_json` | MIT OR Apache-2.0 | core (tests), ui-egui | Serde round-trip tests; GitHub release response and update-check cache |
 | `thiserror` | MIT OR Apache-2.0 | core, persistence | Error types |
 | `rusqlite` (bundled SQLite) | MIT (SQLite itself is public domain) | persistence | SQLite project files |
 | `egui` | MIT OR Apache-2.0 | ui-egui | Immediate-mode GUI |
 | `eframe` | MIT OR Apache-2.0 | ui-egui | Windowing and the egui frame |
 | `rfd` | MIT | app, ui-egui | Native save dialog for the PDF report (D16) |
+| `ureq` | MIT OR Apache-2.0 | ui-egui | Opt-in GitHub Releases update check (D22) |
 
 Development-only dependencies (tests, property tests):
 
 | Crate | License | Used by | Purpose |
 |-------|---------|---------|---------|
 | `proptest` | MIT OR Apache-2.0 | core, interchange | Property-based tests |
-| `serde_json` | MIT OR Apache-2.0 | core | Serde round-trip tests |
 
 Transitive dependencies are recorded in `Cargo.lock`; `cargo tree` lists them
 for any crate. None of them are required at runtime beyond the GUI stack
-(`egui`/`eframe` and their platform crates) and SQLite. Two transitive notes,
-recorded because they are the parts of the tree that are not plain MIT/Apache:
-the GUI stack pulls in `MPL-2.0` components (allowed, and used at the library
-boundary only), and the bundled SQLite is public domain.
+(`egui`/`eframe` and their platform crates), SQLite, and the opt-in update
+check. Three transitive notes, recorded because they are the parts of the tree
+that are not plain MIT/Apache: the GUI stack pulls in `MPL-2.0` components
+(allowed, and used at the library boundary only), the bundled SQLite is public
+domain, and `ureq`'s rustls backend pulls in `ring`, `webpki-roots` and
+`rustls` (MIT/Apache-2.0/ISC), so the update check has no OpenSSL runtime
+dependency.
 
 ## Tools, models and services used to build Cadence
 

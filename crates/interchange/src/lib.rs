@@ -23,12 +23,20 @@
 //! it carries everything Cadence models — including the WBS tree, named
 //! calendars and activity membership — and converts nothing. The other three
 //! formats have no way to express the WBS or named calendars and leave them
-//! empty on import.
+//! empty on import. Outside the interchange family, [`schedule`] writes the
+//! *derived* schedule of a project (dates, float, criticality) and [`audit`]
+//! writes the derived *audit* of that schedule (programme-quality checks and
+//! findings) as JSON for scripts and assistive technology; they are the only
+//! documents this crate writes that carry derived results, and neither is ever
+//! read back.
 
+pub mod audit;
+pub mod compare;
 pub mod csv;
 pub mod json;
 pub mod mpx;
 pub mod mspdi;
+pub mod schedule;
 pub mod xml;
 
 use std::fmt;

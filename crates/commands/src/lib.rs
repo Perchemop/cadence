@@ -10,10 +10,12 @@
 //! never need to inspect project state heuristically.
 
 use cadence_core::calendar_set::{CalendarId, NamedCalendar};
-use cadence_core::engine::{capture_baseline, schedule};
+use cadence_core::engine::{capture_baseline, capture_lookahead_snapshot, schedule};
 use cadence_core::model::{
-    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, LinkType, Project,
-    Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
+    Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
+    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship, RelationshipId,
+    Resource, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::{WbsId, WbsNode};
 use time::Date;
@@ -198,6 +200,9 @@ impl Command for CreateActivity {
     }
 
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if self.name.trim().is_empty() {
+            return Err("activity name must not be empty".to_string());
+        }
         if project.activity(self.id).is_some() {
             return Err(format!("activity {} already exists", self.id));
         }
@@ -242,10 +247,47 @@ impl Command for DeleteActivity {
         }
         project.relationships = kept;
 
+        // Remove references to the activity from baselines, lookahead
+        // snapshots and daily notes, so a deleted activity never leaves a
+        // dangling foreign key that would block a later save. The removed
+        // references are captured for undo.
+        let mut baseline_snapshots = Vec::new();
+        for baseline in &mut project.baselines {
+            if let Some(snapshot_position) = baseline
+                .snapshots
+                .iter()
+                .position(|snapshot| snapshot.activity_id == self.id)
+            {
+                let snapshot = baseline.snapshots.remove(snapshot_position);
+                baseline_snapshots.push((baseline.id, snapshot_position, snapshot));
+            }
+        }
+        let mut lookahead_entries = Vec::new();
+        for snapshot in &mut project.lookahead_snapshots {
+            if let Some(entry_position) = snapshot
+                .entries
+                .iter()
+                .position(|entry| entry.activity_id == self.id)
+            {
+                let entry = snapshot.entries.remove(entry_position);
+                lookahead_entries.push((snapshot.id, entry_position, entry));
+            }
+        }
+        let mut note_links = Vec::new();
+        for note in &mut project.daily_notes {
+            if note.activity_id == Some(self.id) {
+                note_links.push((note.id, note.activity_id));
+                note.activity_id = None;
+            }
+        }
+
         Ok(Box::new(RestoreActivity {
             activity,
             position,
             relationships,
+            baseline_snapshots,
+            lookahead_entries,
+            note_links,
         }))
     }
 }
@@ -260,6 +302,14 @@ pub struct RestoreActivity {
     /// Relationships removed with the activity, in removal order with the
     /// position each occupied when it was removed.
     pub relationships: Vec<(usize, Relationship)>,
+    /// Baseline snapshots removed with the activity, with their positions.
+    pub baseline_snapshots: Vec<(BaselineId, usize, ActivityBaselineSnapshot)>,
+    /// Lookahead snapshots entries removed with the activity, with their
+    /// positions.
+    pub lookahead_entries: Vec<(LookaheadSnapshotId, usize, LookaheadSnapshotEntry)>,
+    /// Daily-note activity links cleared with the activity, so they can be
+    /// restored on undo.
+    pub note_links: Vec<(DailyNoteId, Option<ActivityId>)>,
 }
 
 impl Command for RestoreActivity {
@@ -303,6 +353,29 @@ impl Command for RestoreActivity {
             project
                 .relationships
                 .insert(position, (*relationship).clone());
+        }
+
+        // Restore the references removed with the activity.
+        for (baseline_id, position, snapshot) in &self.baseline_snapshots {
+            if let Some(baseline) = project.baselines.iter_mut().find(|b| b.id == *baseline_id) {
+                let position = (*position).min(baseline.snapshots.len());
+                baseline.snapshots.insert(position, snapshot.clone());
+            }
+        }
+        for (snapshot_id, position, entry) in &self.lookahead_entries {
+            if let Some(snapshot) = project
+                .lookahead_snapshots
+                .iter_mut()
+                .find(|candidate| candidate.id == *snapshot_id)
+            {
+                let position = (*position).min(snapshot.entries.len());
+                snapshot.entries.insert(position, entry.clone());
+            }
+        }
+        for (note_id, link) in &self.note_links {
+            if let Some(note) = project.daily_notes.iter_mut().find(|n| n.id == *note_id) {
+                note.activity_id = *link;
+            }
         }
 
         Ok(Box::new(DeleteActivity { id }))
@@ -652,6 +725,122 @@ impl Command for SetActivityActualDates {
             id: self.id,
             actual_start: previous_start,
             actual_finish: previous_finish,
+        }))
+    }
+}
+
+/// Record who is responsible for an activity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityOwner {
+    /// Activity to update.
+    pub id: ActivityId,
+    /// The responsible person or crew, or `None` to clear it.
+    pub owner: Option<String>,
+}
+
+impl Command for SetActivityOwner {
+    fn description(&self) -> String {
+        match &self.owner {
+            Some(owner) => format!("set owner of activity {id} to {owner}", id = self.id),
+            None => format!("clear the owner of activity {}", self.id),
+        }
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.id) else {
+            return Err(format!("activity {} does not exist", self.id));
+        };
+        if self
+            .owner
+            .as_ref()
+            .is_some_and(|owner| owner.trim().is_empty())
+        {
+            return Err("the owner must not be empty".to_string());
+        }
+        let previous = std::mem::replace(&mut activity.owner, self.owner.clone());
+        Ok(Box::new(SetActivityOwner {
+            id: self.id,
+            owner: previous,
+        }))
+    }
+}
+
+/// Set the free-text work location of an activity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityLocation {
+    /// Activity to update.
+    pub id: ActivityId,
+    /// The work location or area, or `None` to clear it.
+    pub location: Option<String>,
+}
+
+impl Command for SetActivityLocation {
+    fn description(&self) -> String {
+        match &self.location {
+            Some(location) => format!("set location of activity {id} to {location}", id = self.id),
+            None => format!("clear the location of activity {}", self.id),
+        }
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if self
+            .location
+            .as_ref()
+            .is_some_and(|location| location.trim().is_empty())
+        {
+            return Err("the location must not be empty".to_string());
+        }
+        let Some(activity) = project.activity_mut(self.id) else {
+            return Err(format!("activity {} does not exist", self.id));
+        };
+        let previous = std::mem::replace(&mut activity.location, self.location.clone());
+        Ok(Box::new(SetActivityLocation {
+            id: self.id,
+            location: previous,
+        }))
+    }
+}
+
+/// Promise a near-term activity in the lookahead, optionally recording why its
+/// dates moved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetActivityPromise {
+    /// Activity to update.
+    pub id: ActivityId,
+    /// True when the activity is a promised near-term task.
+    pub promised: bool,
+    /// The delay reason recorded against a promised activity, if any.
+    pub delay_reason: Option<String>,
+}
+
+impl Command for SetActivityPromise {
+    fn description(&self) -> String {
+        match (self.promised, &self.delay_reason) {
+            (true, Some(reason)) => {
+                format!("promise activity {} (delay: {reason})", self.id)
+            }
+            (true, None) => format!("promise activity {}", self.id),
+            (false, _) => format!("withdraw the promise on activity {}", self.id),
+        }
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.id) else {
+            return Err(format!("activity {} does not exist", self.id));
+        };
+        if let Some(reason) = &self.delay_reason {
+            if reason.trim().is_empty() {
+                return Err("the delay reason must not be empty".to_string());
+            }
+        }
+        let previous_promised = activity.promised;
+        let previous_reason = activity.delay_reason.clone();
+        activity.promised = self.promised;
+        activity.delay_reason = self.delay_reason.clone();
+        Ok(Box::new(SetActivityPromise {
+            id: self.id,
+            promised: previous_promised,
+            delay_reason: previous_reason,
         }))
     }
 }
@@ -1074,6 +1263,410 @@ impl Command for RestoreBaseline {
     }
 }
 
+/// Publish a lookahead window as a named, read-only snapshot.
+///
+/// The snapshot captures the current lookahead entries for the given window
+/// so that a later window can be compared against it to detect drift.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaptureLookaheadSnapshot {
+    /// Name of the snapshot (e.g. "Week 1-2", "Pre-mobilisation").
+    pub name: String,
+    /// Date the snapshot is captured as of.
+    pub created_at: time::Date,
+    /// First day of the window that was published.
+    pub window_start: time::Date,
+    /// Length of the window in calendar weeks.
+    pub window_weeks: u32,
+}
+
+impl Command for CaptureLookaheadSnapshot {
+    fn description(&self) -> String {
+        format!(
+            "capture lookahead snapshot '{}' ({} weeks from {})",
+            self.name, self.window_weeks, self.window_start
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let id = project.next_lookahead_snapshot_id();
+        let snapshot = capture_lookahead_snapshot(
+            project,
+            &cadence_core::engine::schedule(project).map_err(|error| error.to_string())?,
+            id,
+            self.name.clone(),
+            self.created_at,
+            self.window_start,
+            self.window_weeks,
+        );
+        project.lookahead_snapshots.push(snapshot);
+        Ok(Box::new(RemoveLookaheadSnapshot { id }))
+    }
+}
+
+/// Remove a lookahead snapshot from the project.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoveLookaheadSnapshot {
+    /// Snapshot to remove.
+    pub id: LookaheadSnapshotId,
+}
+
+impl Command for RemoveLookaheadSnapshot {
+    fn description(&self) -> String {
+        format!("remove lookahead snapshot {}", self.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(position) = project
+            .lookahead_snapshots
+            .iter()
+            .position(|item| item.id == self.id)
+        else {
+            return Err(format!("lookahead snapshot {} does not exist", self.id));
+        };
+        let snapshot = project.lookahead_snapshots.remove(position);
+        Ok(Box::new(RestoreLookaheadSnapshot { snapshot, position }))
+    }
+}
+
+/// Put a previously removed lookahead snapshot back where it was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreLookaheadSnapshot {
+    /// The snapshot to restore.
+    pub snapshot: LookaheadSnapshot,
+    /// Index the snapshot occupied before it was removed.
+    pub position: usize,
+}
+
+impl Command for RestoreLookaheadSnapshot {
+    fn description(&self) -> String {
+        format!("restore lookahead snapshot {}", self.snapshot.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let id = self.snapshot.id;
+        let snapshot = self.snapshot.clone();
+        let position = self.position.min(project.lookahead_snapshots.len());
+        project.lookahead_snapshots.insert(position, snapshot);
+        Ok(Box::new(RemoveLookaheadSnapshot { id }))
+    }
+}
+
+/// Create a daily diary note linked to an activity or lookahead window.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreateDailyNote {
+    /// Date of the diary entry.
+    pub date: time::Date,
+    /// Note content.
+    pub content: String,
+    /// Optional activity the note concerns.
+    pub activity_id: Option<ActivityId>,
+    /// Optional lookahead window start the note concerns.
+    pub lookahead_window_start: Option<time::Date>,
+}
+
+impl Command for CreateDailyNote {
+    fn description(&self) -> String {
+        format!("create daily note for {}", self.date)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if self.content.trim().is_empty() {
+            return Err("the note content must not be empty".to_string());
+        }
+        if let Some(activity_id) = self.activity_id {
+            if project.activity(activity_id).is_none() {
+                return Err(format!("activity {} does not exist", activity_id));
+            }
+        }
+        let id = project.next_daily_note_id();
+        let note = DailyNote::new(
+            id,
+            self.date,
+            self.content.clone(),
+            self.activity_id,
+            self.lookahead_window_start,
+        );
+        project.daily_notes.push(note);
+        Ok(Box::new(DeleteDailyNote { id }))
+    }
+}
+
+/// Delete a daily note.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeleteDailyNote {
+    /// Note to delete.
+    pub id: DailyNoteId,
+}
+
+impl Command for DeleteDailyNote {
+    fn description(&self) -> String {
+        format!("delete daily note {}", self.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(position) = project
+            .daily_notes
+            .iter()
+            .position(|item| item.id == self.id)
+        else {
+            return Err(format!("daily note {} does not exist", self.id));
+        };
+        let note = project.daily_notes.remove(position);
+        // Restore the note with its original identifier and position, so an
+        // undo does not renumber it or move it to the end of the list.
+        Ok(Box::new(RestoreDailyNote { note, position }))
+    }
+}
+
+/// Put a previously deleted daily note back where it was, with its original
+/// identifier.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreDailyNote {
+    /// The note to restore.
+    pub note: DailyNote,
+    /// Index the note occupied before it was removed.
+    pub position: usize,
+}
+
+impl Command for RestoreDailyNote {
+    fn description(&self) -> String {
+        format!("restore daily note {}", self.note.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let id = self.note.id;
+        if project.daily_notes.iter().any(|item| item.id == id) {
+            return Err(format!("daily note {} already exists", id));
+        }
+        let position = self.position.min(project.daily_notes.len());
+        project.daily_notes.insert(position, self.note.clone());
+        Ok(Box::new(DeleteDailyNote { id }))
+    }
+}
+
+/// Record one day of actual progress on an activity.
+///
+/// Recording an entry for an activity and date replaces any earlier entry for
+/// the same pair (the latest report for a day wins). The command also updates
+/// the activity's `percent_complete` to the recorded value, so the wider
+/// schedule, variance views and audit checks see the reported progress.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordProduction {
+    /// Activity the progress was recorded against.
+    pub activity_id: ActivityId,
+    /// Date the progress was recorded as of.
+    pub date: time::Date,
+    /// Percent complete reached on that date, in basis points (0 to 10 000).
+    pub percent_complete: i64,
+}
+
+impl Command for RecordProduction {
+    fn description(&self) -> String {
+        format!(
+            "record production for activity {} on {}: {percent} basis points complete",
+            self.activity_id,
+            self.date,
+            percent = self.percent_complete
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if !(0..=10_000).contains(&self.percent_complete) {
+            return Err(format!(
+                "percent complete must be between 0 and 10000 basis points, got {}",
+                self.percent_complete
+            ));
+        }
+        if project.activity(self.activity_id).is_none() {
+            return Err(format!("activity {} does not exist", self.activity_id));
+        }
+
+        // Replacing an earlier entry for the same activity and date keeps one
+        // entry per pair; the undo restores both the entry and the activity's
+        // previous percent complete.
+        let replaced = project
+            .production_entries
+            .iter_mut()
+            .find(|entry| entry.activity_id == self.activity_id && entry.date == self.date)
+            .map(|entry| std::mem::replace(&mut entry.percent_complete, self.percent_complete));
+
+        let id = match replaced {
+            Some(_) => project
+                .production_entries
+                .iter()
+                .find(|entry| entry.activity_id == self.activity_id && entry.date == self.date)
+                .map(|entry| entry.id)
+                .expect("entry just found"),
+            None => {
+                let id = project.next_production_entry_id();
+                project.production_entries.push(ProductionEntry::new(
+                    id,
+                    self.activity_id,
+                    self.date,
+                    self.percent_complete,
+                ));
+                id
+            }
+        };
+
+        let activity = project
+            .activity_mut(self.activity_id)
+            .expect("activity checked above");
+        let previous_percent = activity.percent_complete.replace(self.percent_complete);
+        if self.percent_complete >= 10_000 && activity.actual_finish.is_none() {
+            activity.actual_finish = Some(self.date);
+        }
+
+        Ok(Box::new(UndoRecordProduction {
+            activity_id: self.activity_id,
+            date: self.date,
+            percent_complete: self.percent_complete,
+            entry_id: id,
+            replaced_percent_complete: replaced,
+            previous_percent_complete: previous_percent,
+            previous_actual_finish: activity.actual_finish,
+        }))
+    }
+}
+
+/// Undo a production record: restore the replaced entry (or remove the new
+/// one) and the activity's previous percent complete and actual finish.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UndoRecordProduction {
+    /// Activity the production was recorded against.
+    pub activity_id: ActivityId,
+    /// Date of the recorded entry.
+    pub date: time::Date,
+    /// The percent complete that was recorded (for redo).
+    pub percent_complete: i64,
+    /// Identifier of the entry created or updated by the forward command.
+    pub entry_id: ProductionEntryId,
+    /// Percent complete of the replaced entry, if there was one.
+    pub replaced_percent_complete: Option<i64>,
+    /// The activity's percent complete before the command.
+    pub previous_percent_complete: Option<i64>,
+    /// The activity's actual finish before the command.
+    pub previous_actual_finish: Option<time::Date>,
+}
+
+impl Command for UndoRecordProduction {
+    fn description(&self) -> String {
+        format!(
+            "undo the production record for activity {} on {}",
+            self.activity_id, self.date
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        match self.replaced_percent_complete {
+            Some(previous) => {
+                if let Some(entry) = project
+                    .production_entries
+                    .iter_mut()
+                    .find(|entry| entry.id == self.entry_id)
+                {
+                    entry.percent_complete = previous;
+                }
+            }
+            None => {
+                project
+                    .production_entries
+                    .retain(|entry| entry.id != self.entry_id);
+            }
+        }
+        if let Some(activity) = project.activity_mut(self.activity_id) {
+            activity.percent_complete = self.previous_percent_complete;
+            activity.actual_finish = self.previous_actual_finish;
+        }
+        Ok(Box::new(RecordProduction {
+            activity_id: self.activity_id,
+            date: self.date,
+            percent_complete: self.percent_complete,
+        }))
+    }
+}
+
+/// Delete a production entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeleteProduction {
+    /// Entry to delete.
+    pub id: ProductionEntryId,
+}
+
+impl Command for DeleteProduction {
+    fn description(&self) -> String {
+        format!("delete production entry {}", self.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(position) = project
+            .production_entries
+            .iter()
+            .position(|entry| entry.id == self.id)
+        else {
+            return Err(format!("production entry {} does not exist", self.id));
+        };
+        let entry = project.production_entries.remove(position);
+        Ok(Box::new(RestoreProduction { entry, position }))
+    }
+}
+
+/// Put a previously deleted production entry back where it was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreProduction {
+    /// The entry to restore.
+    pub entry: ProductionEntry,
+    /// Index the entry occupied before it was removed.
+    pub position: usize,
+}
+
+impl Command for RestoreProduction {
+    fn description(&self) -> String {
+        format!("restore production entry {}", self.entry.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let position = self.position.min(project.production_entries.len());
+        project
+            .production_entries
+            .insert(position, self.entry.clone());
+        Ok(Box::new(DeleteProduction { id: self.entry.id }))
+    }
+}
+
+/// Update the content of a daily note.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdateDailyNote {
+    /// Note to update.
+    pub id: DailyNoteId,
+    /// New note content.
+    pub content: String,
+}
+
+impl Command for UpdateDailyNote {
+    fn description(&self) -> String {
+        format!("update daily note {}", self.id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if self.content.trim().is_empty() {
+            return Err("the note content must not be empty".to_string());
+        }
+        let Some(note) = project
+            .daily_notes
+            .iter_mut()
+            .find(|item| item.id == self.id)
+        else {
+            return Err(format!("daily note {} does not exist", self.id));
+        };
+        let previous = std::mem::replace(&mut note.content, self.content.clone());
+        Ok(Box::new(UpdateDailyNote {
+            id: self.id,
+            content: previous,
+        }))
+    }
+}
+
 /// Rename an activity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenameActivity {
@@ -1089,6 +1682,9 @@ impl Command for RenameActivity {
     }
 
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if self.name.trim().is_empty() {
+            return Err("activity name must not be empty".to_string());
+        }
         let Some(activity) = project.activity_mut(self.id) else {
             return Err(format!("activity {} does not exist", self.id));
         };
@@ -1411,8 +2007,9 @@ pub struct SetActivityCalendar {
 /// Replace a named calendar's working-time definition.
 ///
 /// Activities referencing the calendar keep their reference — only the
-/// definition (working weekdays and holidays) changes. The identifier and name
-/// are untouched.
+/// definition (working weekdays and holidays) changes. The identifier, name
+/// and position in the calendar list are untouched, and cached schedules of
+/// the activities using the calendar are cleared.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetCalendarDefinition {
     /// Calendar to update.
@@ -1437,11 +2034,12 @@ impl Command for SetCalendarDefinition {
             .calendars
             .remove(self.id)
             .map_err(|error| error.to_string())?;
-        if let Err(error) =
-            project
-                .calendars
-                .add(self.id, previous.name.clone(), self.calendar.clone())
-        {
+        let replacement = NamedCalendar {
+            id: previous.id,
+            name: previous.name.clone(),
+            calendar: self.calendar.clone(),
+        };
+        if let Err(error) = project.calendars.restore(replacement, position) {
             // Put the old definition back at its position so a failed command
             // changes nothing.
             project
@@ -1449,6 +2047,13 @@ impl Command for SetCalendarDefinition {
                 .restore(previous, position)
                 .map_err(|rollback| format!("{error}; rollback also failed: {rollback}"))?;
             return Err(error.to_string());
+        }
+        // The working days changed, so cached dates and floats of every
+        // activity using this calendar are stale.
+        for activity in &mut project.activities {
+            if activity.calendar == Some(self.id) {
+                activity.clear_schedule();
+            }
         }
         Ok(Box::new(SetCalendarDefinition {
             id: self.id,
@@ -1477,6 +2082,9 @@ impl Command for SetActivityCalendar {
             .activity_mut(self.activity)
             .ok_or_else(|| format!("activity {} does not exist", self.activity))?;
         let previous = std::mem::replace(&mut activity.calendar, self.calendar);
+        // The activity's working days may have changed, so its cached dates
+        // and floats are stale until the schedule is recomputed.
+        activity.clear_schedule();
         Ok(Box::new(SetActivityCalendar {
             activity: self.activity,
             calendar: previous,
@@ -1843,6 +2451,37 @@ mod tests {
     }
 
     #[test]
+    fn activity_names_must_not_be_blank() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(CreateActivity::new(ActivityId(1), "", 1)),
+            )
+            .expect_err("empty create name must be rejected");
+        assert!(error.contains("must not be empty"));
+        assert!(project.activity(ActivityId(1)).is_none());
+
+        let a = add_activity(&mut stack, &mut project, 1, "A", 1);
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(RenameActivity {
+                    id: a,
+                    name: "   ".to_string(),
+                }),
+            )
+            .expect_err("blank rename name must be rejected");
+        assert!(error.contains("must not be empty"));
+        assert_eq!(
+            project.activity(a).map(|activity| activity.name.as_str()),
+            Some("A")
+        );
+    }
+
+    #[test]
     fn failed_command_leaves_project_unchanged() {
         let mut project = project();
         let mut stack = CommandStack::new();
@@ -1857,6 +2496,60 @@ mod tests {
         assert!(error.is_err());
         assert_eq!(project, snapshot);
         assert!(stack.can_undo());
+    }
+
+    #[test]
+    fn owner_and_promise_are_recorded_and_reversible() {
+        let mut project = project();
+        project
+            .activities
+            .push(Activity::new(ActivityId::new(1), "A", 3));
+        let id = project.activities[0].id;
+
+        let mut command = SetActivityOwner {
+            id,
+            owner: Some("Crew 3".to_string()),
+        };
+        let mut reverse = command.apply(&mut project).expect("owner applies");
+        assert_eq!(project.activities[0].owner, Some("Crew 3".to_string()));
+        reverse.apply(&mut project).expect("owner undoes");
+        assert_eq!(project.activities[0].owner, None);
+
+        let mut command = SetActivityPromise {
+            id,
+            promised: true,
+            delay_reason: Some("waiting on a permit".to_string()),
+        };
+        let mut reverse = command.apply(&mut project).expect("promise applies");
+        assert!(project.activities[0].promised);
+        assert_eq!(
+            project.activities[0].delay_reason,
+            Some("waiting on a permit".to_string())
+        );
+        reverse.apply(&mut project).expect("promise undoes");
+        assert!(!project.activities[0].promised);
+    }
+
+    #[test]
+    fn an_empty_owner_or_delay_reason_is_rejected() {
+        let mut project = project();
+        project
+            .activities
+            .push(Activity::new(ActivityId::new(1), "A", 3));
+        let id = project.activities[0].id;
+
+        let mut command = SetActivityOwner {
+            id,
+            owner: Some("   ".to_string()),
+        };
+        assert!(command.apply(&mut project).is_err());
+
+        let mut command = SetActivityPromise {
+            id,
+            promised: true,
+            delay_reason: Some("  ".to_string()),
+        };
+        assert!(command.apply(&mut project).is_err());
     }
 
     #[test]
@@ -2166,6 +2859,165 @@ mod tests {
 
         stack.undo(&mut project).expect("undo delete");
         assert_eq!(project.calendars.calendars()[1].id, CalendarId(2));
+    }
+
+    #[test]
+    fn calendar_definition_preserves_calendar_order() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        add_activity(&mut stack, &mut project, 1, "A", 2);
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateCalendar::new(CalendarId(1), "First", six_day_week())),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateCalendar::new(CalendarId(2), "Second", six_day_week())),
+        );
+
+        // Redefine the first calendar: it must stay in its original position.
+        let redefined = Calendar::new([true, true, true, true, true, true, false])
+            .expect("valid week")
+            .with_holiday(jan(25));
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetCalendarDefinition {
+                id: CalendarId(1),
+                calendar: redefined,
+            }),
+        );
+        assert_eq!(project.calendars.calendars()[0].id, CalendarId(1));
+        assert!(project
+            .calendars
+            .calendar(CalendarId(1))
+            .expect("calendar")
+            .holidays()
+            .contains(&jan(25)));
+
+        // Undo restores the previous definition and keeps the order.
+        stack.undo(&mut project).expect("undo redefine");
+        assert_eq!(project.calendars.calendars()[0].id, CalendarId(1));
+        assert_eq!(project.calendars.calendars()[1].id, CalendarId(2));
+        assert!(!project
+            .calendars
+            .calendar(CalendarId(1))
+            .expect("calendar")
+            .holidays()
+            .contains(&jan(25)));
+
+        // Redo re-applies the new definition, still in place.
+        stack.redo(&mut project).expect("redo redefine");
+        assert_eq!(project.calendars.calendars()[0].id, CalendarId(1));
+        assert_eq!(project.calendars.calendars()[1].id, CalendarId(2));
+        assert!(project
+            .calendars
+            .calendar(CalendarId(1))
+            .expect("calendar")
+            .holidays()
+            .contains(&jan(25)));
+    }
+
+    #[test]
+    fn changing_activity_calendar_clears_cached_schedule() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 2);
+
+        // Seed the cached schedule as the engine would after rescheduling.
+        {
+            let activity = project.activity_mut(a).expect("activity");
+            activity.early_start = Some(jan(5));
+            activity.scheduled_finish = Some(jan(6));
+            activity.total_float = Some(0);
+            activity.critical = true;
+        }
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateCalendar::new(CalendarId(1), "Site", six_day_week())),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityCalendar {
+                activity: a,
+                calendar: Some(CalendarId(1)),
+            }),
+        );
+        let activity = project.activity(a).expect("activity");
+        assert_eq!(activity.calendar, Some(CalendarId(1)));
+        assert_eq!(activity.early_start, None);
+        assert_eq!(activity.scheduled_finish, None);
+        assert_eq!(activity.total_float, None);
+        assert!(!activity.critical);
+
+        // Undo restores the previous selection; the cache stays cleared.
+        stack.undo(&mut project).expect("undo calendar selection");
+        let activity = project.activity(a).expect("activity");
+        assert_eq!(activity.calendar, None);
+        assert_eq!(activity.early_start, None);
+        assert!(!activity.critical);
+    }
+
+    #[test]
+    fn redefining_calendar_clears_cached_schedules_of_its_activities() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 2);
+        let b = add_activity(&mut stack, &mut project, 2, "B", 2);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateCalendar::new(CalendarId(1), "Site", six_day_week())),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityCalendar {
+                activity: a,
+                calendar: Some(CalendarId(1)),
+            }),
+        );
+
+        // Seed cached schedule values for both activities.
+        for id in [a, b] {
+            let activity = project.activity_mut(id).expect("activity");
+            activity.early_start = Some(jan(5));
+            activity.total_float = Some(3);
+            activity.critical = true;
+        }
+
+        let redefined = Calendar::new([true, true, true, true, true, false, false])
+            .expect("valid week")
+            .with_holiday(jan(25));
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetCalendarDefinition {
+                id: CalendarId(1),
+                calendar: redefined,
+            }),
+        );
+
+        // The activity using the calendar has its cache cleared; the
+        // default-calendar activity keeps its cached values.
+        let activity = project.activity(a).expect("activity");
+        assert_eq!(activity.early_start, None);
+        assert_eq!(activity.total_float, None);
+        assert!(!activity.critical);
+        let other = project.activity(b).expect("activity");
+        assert_eq!(other.early_start, Some(jan(5)));
+        assert_eq!(other.total_float, Some(3));
+        assert!(other.critical);
+
+        // Undo keeps the cache of calendar users cleared.
+        stack.undo(&mut project).expect("undo redefine");
+        assert_eq!(project.activity(a).expect("activity").early_start, None);
     }
 
     #[test]

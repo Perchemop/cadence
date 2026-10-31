@@ -107,17 +107,21 @@ These are decided, recorded in `DECISIONS.md`, and not defects:
   feed the scheduling inputs, so variance stays meaningful (D15).
 - **Per-assignment resource units and cost rates** — each assignment consumes
   exactly one unit per working day (D11).
-- **Screen-reader audit and full keyboard-only operation** (P5-3) — requires a
-  human with assistive technology; enabling AccessKit would add a dependency
-  tree and is a decision for the maintainer. The **Print report…** save
-  dialog is likewise interactive-only.
+- **Screen-reader audit and full keyboard-only operation** (P5-3) — the
+  code-level audit is complete: eframe's default features enable AccessKit,
+  every view has a pointer-free path, and the Gantt canvas exposes a summary
+  label. A manual pass with a specific screen reader on each release platform
+  still requires a human with assistive technology and is a release check
+  (see `ACCESSIBILITY.md`). The **Print report…** and **Print Gantt…** save
+  dialogs are likewise interactive-only.
 - **Sub-percent progress in MSPDI, fractional lag, non-8-hour days** —
   documented format-level quantisation (D14).
 - **MPX and CSV carry no WBS or named calendars** — those dialects cannot
   express them; JSON can, and does (schema 2).
-- **PDF printing scope** — the report prints as text pages; printing the
-  Gantt view as an image page is supported by the writer (image pages) but
-  not yet wired to a UI action.
+- **PDF printing scope** — the report prints as text pages; the Gantt view
+  prints as a single image page (whole window, not a tagged or cropped
+  timeline). The Markdown report and the Table view are the accessible text
+  alternatives.
 
 ## Next steps (human decisions)
 
@@ -125,6 +129,6 @@ These are decided, recorded in `DECISIONS.md`, and not defects:
 2. Decide whether to cut the first tagged release; the packaging job already
    produces a Linux binary, and the same workflow pattern extends to Windows
    and macOS binaries.
-3. If a premium GUI is wanted: a print dialog (D16 notwithstanding), a
-   screen-reader pass, and the full keyboard-only audit.
+3. If a premium GUI is wanted: a print dialog (D16 notwithstanding) and the
+   manual screen-reader passes on each release platform.
 4. Repeat the Chat → Task → Pull Request cycle for anything else in scope.

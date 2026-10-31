@@ -12,11 +12,14 @@ takes the file path; with no arguments `cadence` runs a built-in demo project.
 
 | Command | Effect |
 |---|---|
-| `cadence` | Run the demo project and print its schedule |
+| `cadence [--json]` | Run the demo project and print its schedule |
 | `cadence save <file>` | Save the demo project to a project file |
-| `cadence load <file>` | Load a project file and print its schedule |
+| `cadence load <file> [--json]` | Load a project file and print its schedule |
+| `cadence audit <file> [--json] [--status-date YYYY-MM-DD]` | Audit the programme's schedule quality |
 | `cadence report <file> [out]` | Write a Markdown report (stdout if no file) |
 | `cadence print <file> <out.pdf>` | Print the report as a PDF |
+| `cadence version` | Show the version and the last cached update check |
+| `cadence check-updates` | Ask GitHub Releases for the latest version |
 | `cadence gui [file]` | Open the project in the GUI (demo if no file) |
 | `cadence export-xml <in> <out>` | Microsoft Project XML (MSPDI) |
 | `cadence import-xml <in> <out>` | Import MSPDI |
@@ -26,6 +29,62 @@ takes the file path; with no arguments `cadence` runs a built-in demo project.
 | `cadence import-csv <in> <out>` | Import CSV |
 | `cadence export-json <in> <out>` | Cadence JSON (lossless) |
 | `cadence import-json <in> <out>` | Import Cadence JSON |
+
+## Machine-readable output
+
+`cadence --json` and `cadence load <file> --json` print the schedule as one
+JSON document, so that scripts and assistive technology (guide section 21.5,
+accessibility of tooling) never have to parse the aligned plain-text table.
+The top-level `cadence` member is the document's own schema version (1), and
+`kind` says which document it is:
+
+* `kind` is `"schedule"` when the engine succeeded. `project` carries the
+  name and the first and last working days; `activities` lists one entry per
+  scheduled activity, in project order — `id`, `name`, `duration_days` (in
+  working days; 0 is a milestone), the `scheduled`, `early` and `late`
+  start/finish dates, `total_float_days` and `free_float_days` in working
+  days, and a `critical` boolean; and `critical_path` lists the critical
+  activity ids.
+* `kind` is `"error"` when the schedule could not be computed; then
+  `error.message` says what went wrong, using the same text the CLI writes
+  to stderr.
+
+stdout carries only the document, with one trailing newline; everything a
+human needs goes to stderr as diagnostics of the form
+`ERROR 2026-10-25T12:34:56Z cadence: <message>`. Exit codes: 0 success,
+1 error, 2 usage error.
+
+## Auditing a programme
+
+`cadence audit <file>` runs the schedule-quality audit (research note
+[`schedule-audit.md`](research/schedule-audit.md), owner-approved) over a
+project file and prints one block per check: the stable check id
+(`AUDIT-LOGIC`, `AUDIT-LEADS`, …), the outcome in words (`pass`, `FAIL`,
+`n/a`), the measured value, the threshold, a plain sentence, and the flagged
+activities or relationships, then a tally. Findings are data, not errors: the
+command succeeds whenever the audit ran, even when checks fail.
+
+* The default thresholds follow the DCMA 14-point assessment; every threshold
+  is configurable in code (`cadence_core::audit::AuditConfig`), and the
+  not-applicable outcome means the check could not run with the data
+  available (no status date, no baseline, or no resources loaded). The
+  critical-path test delays the last-finishing critical activity by 600
+  working days and expects the finish to move by the same amount; the
+  critical path length index measures the path plus its float against the
+  most recent baseline's deadline.
+* `--status-date YYYY-MM-DD` enables the date-sensitive checks (invalid
+  dates, missed tasks, baseline execution index). The most recent baseline in
+  the file, if any, drives the baseline checks.
+* `--json` prints the same report as one machine-readable document (`kind` is
+  `"audit"`) with `project`, `status_date` and one entry per check (`id`,
+  `category`, `title`, `outcome`, `measured`, `threshold`, `summary`,
+  `findings`). stdout carries only the document; diagnostics go to stderr.
+* The GUI **Audit** view (toolbar **Audit** or `Ctrl+6`) shows the same
+  report: a tally, one block per check, and the flagged activities and
+  relationships; selecting an activity finding jumps to it in the table. The
+  view re-runs the audit after edits, and **Run audit** applies the optional
+  status date typed into the field. The audit is offline like everything else
+  in Cadence.
 
 ## Scheduling model
 
@@ -62,8 +121,36 @@ dates, float and criticality; per-resource committed and over-allocated days;
 earned-value metrics against the most recent baseline; and the baseline list.
 `cadence print <file> <out.pdf>` renders the same report as a print-ready PDF
 (heading and body text, wrapped and paginated over A4 pages). In the GUI,
-**Save report** writes the Markdown next to the working directory and
-**Print report…** opens a native save dialog for the PDF.
+**Save report** writes the Markdown next to the working directory,
+**Print report…** opens a native save dialog for the report PDF, and
+**Print Gantt…** (enabled in the Gantt view) captures the current Gantt
+timeline as a single landscape A4 page in a PDF.
+
+## Crash reports
+
+If Cadence panics, the panic hook appends the version, operating system, panic
+message and a backtrace to a local crash log in the system temporary
+directory. Nothing is uploaded. On the next launch the GUI shows the log in a
+**Crash report** window with an optional notes box; **Open GitHub issue** opens
+a pre-filled issue in your browser, **Copy details** copies the preview, and
+**Dismiss** deletes the local log. The **Report a bug…** toolbar button opens
+the same window even when there is no crash log.
+
+## Update checks
+
+Update checks are opt-in. `cadence version` prints the running version and the
+last cached answer but never reaches the network. `cadence check-updates` asks
+the public GitHub Releases API for the latest release and prints whether an
+update is available and where to get it. In the GUI, **Updates** opens a small
+window with the same information and a **Check now** button; when a newer
+release is known, the toolbar button changes to **Update available: `<version>`**
+and the window links to the release page.
+
+The check is one bounded GET request with a `Cadence/<version>` user agent. It
+sends no project data, account, identifier or token. A successful answer is
+cached in the system temporary directory for six hours, so repeated checks do
+not hit the API, and an offline or failed check is reported in the window
+without blocking the application.
 
 ## Keyboard map (GUI)
 
@@ -76,14 +163,26 @@ earned-value metrics against the most recent baseline; and the baseline list.
 | Ctrl+3 | Resources |
 | Ctrl+4 | Baselines |
 | Ctrl+5 | Calendars |
+| Ctrl+6 | Audit |
+| Ctrl+7 | Lookahead |
 | Ctrl+D | Toggle light/dark theme |
+| Ctrl+Plus / Ctrl+Minus | Zoom the Gantt timeline in or out |
+| Ctrl+0 | Reset the Gantt zoom |
+| Up / Down | Select the previous/next activity in the Activity table |
+| Tab / Shift+Tab | Move focus between controls |
+| Space / Enter | Activate the focused control or selectable row |
+| F1 | Open the keyboard-shortcuts window |
 
 ## Views
 
 * **Table** — the sortable activity list and inspector (details, constraint,
-  calendar, progress, resources, relationships).
+  calendar, progress, resources, relationships). The inspector's **Add
+  relationship** form creates dependency links without dragging.
 * **Gantt** — timeline with bars, dependency arrows, zoom and a progress
-  overlay, drag to create dependencies.
+  overlay. Drag between bars to create dependencies, or use the inspector's
+  **Add relationship** form; the zoom buttons and `Ctrl+Plus` / `Ctrl+Minus`
+  work without a pointer. A text summary above the chart names the activity
+  and critical counts, and the Table view lists the same data as text.
 * **Resources** — dictionary, capacity editing, assignments, per-day usage,
   leveling preview and apply.
 * **Baselines** — capture and delete baselines, variance against the selected
@@ -91,6 +190,16 @@ earned-value metrics against the most recent baseline; and the baseline list.
 * **Calendars** — named calendars with working days and holidays, create /
   rename / delete, and per-activity assignment (a calendar cannot be deleted
   while an activity uses it).
+* **Audit** — the schedule-quality audit: a summary tally, one block per check
+  (id, outcome in words, measured value, threshold, plain sentence) and the
+  flagged activities and relationships. Selecting an activity finding jumps to
+  it in the table; the audit re-runs automatically after edits, and
+  **Run audit** applies the optional status date.
+* **Lookahead** — the rolling short-interval window over the master schedule:
+  everything scheduled to work between a start date and a window length of
+  two, four, six or twelve weeks, in start order, flagged in-progress or
+  upcoming and critical. Selecting an entry opens the activity in the table.
+  It is a view of the same schedule, never a second plan.
 
 Reports live outside the views: `cadence report` writes Markdown and
 `cadence print` writes a PDF, both from any project file.

@@ -1,0 +1,87 @@
+name: Personal data scan
+
+# Guide II.29: personal data and secrets must never be committed or released.
+#
+# This job scans the tracked tree of every pull request and every push to
+# main. Secret scanning (gitleaks) lives in security.yml; this job covers the
+# personal-data patterns: maintainer home paths and personal-provider email
+# addresses. A hit is a finding unless the value is obviously synthetic
+# (example.*, *.local, users.noreply) or third-party upstream content.
+#
+# The whole-history scan and the release-artefact scan are release-time
+# duties (guide II.29.2 and II.29.6) and are run before any release is cut.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pii-scan:
+    name: Personal data scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan tracked tree
+        run: |
+          set -euo pipefail
+          fail=0
+
+          # 1. Maintainer home paths. CI images legitimately use
+          #    /home/runner and /home/web_user; anything else publishes an
+          #    OS account name, which is usually a real name (guide II.29.1).
+          hits=$(git grep -n -I -i -E '/home/[a-z0-9_-]+' -- . \
+                 | grep -vE '/home/(runner|web_user)' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::Home path in tracked files (guide II.29.1):"
+            echo "$hits"
+            fail=1
+          fi
+
+          # 2. Windows profile paths.
+          hits=$(git grep -n -I -i -E 'C:\\Users\\[A-Za-z0-9_.-]+' -- . || true)
+          if [ -n "$hits" ]; then
+            echo "::error::Windows profile path in tracked files (guide II.29.1):"
+            echo "$hits"
+            fail=1
+          fi
+
+          # 3. Personal-provider email addresses. Obviously synthetic
+          #    domains (example.*, *.local) and GitHub noreply addresses
+          #    are fine.
+          hits=$(git grep -n -I -i -E \
+                 '[A-Za-z0-9._%+-]+@(gmail|googlemail|outlook|hotmail|live\.com|yahoo|protonmail|proton\.me|icloud|aol|gmx|ymail|qq\.com|163\.com|foxmail)' \
+                 -- . | grep -vE 'example\.|\.local|users\.noreply' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::Personal-provider email address in tracked files (guide II.29.1):"
+            echo "$hits"
+            fail=1
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            echo "Remove the value, or record it in an allowlist with the"
+            echo "reason it is obviously synthetic or third-party upstream"
+            echo "content (guide II.29.2)."
+            exit 1
+          fi
+          echo "pii-scan: tracked tree clean."
+
+      - name: Scan commit metadata (pull-request commits only)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          base="origin/${{ github.base_ref }}"
+          bad=$(git log --format='%ae%n%ce' "$base..HEAD" | sort -u \
+                | grep -iE '@(gmail|googlemail|outlook|hotmail|yahoo|protonmail|proton\.me|icloud|aol|gmx|ymail)' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Commit authored with a personal-provider email address (guide II.29.1):"
+            echo "$bad"
+            exit 1
+          fi
+          echo "pii-scan: commit metadata clean."

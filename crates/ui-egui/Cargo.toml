@@ -15,4 +15,7 @@ cadence-persistence.workspace = true
 eframe.workspace = true
 egui.workspace = true
 rfd = "0.15"
+serde.workspace = true
+serde_json.workspace = true
 time.workspace = true
+ureq.workspace = true
