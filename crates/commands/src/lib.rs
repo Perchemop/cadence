@@ -1520,6 +1520,7 @@ impl Command for RecordProduction {
         Ok(Box::new(UndoRecordProduction {
             activity_id: self.activity_id,
             date: self.date,
+            percent_complete: self.percent_complete,
             entry_id: id,
             replaced_percent_complete: replaced,
             previous_percent_complete: previous_percent,
@@ -1536,6 +1537,8 @@ pub struct UndoRecordProduction {
     pub activity_id: ActivityId,
     /// Date of the recorded entry.
     pub date: time::Date,
+    /// The percent complete that was recorded (for redo).
+    pub percent_complete: i64,
     /// Identifier of the entry created or updated by the forward command.
     pub entry_id: ProductionEntryId,
     /// Percent complete of the replaced entry, if there was one.

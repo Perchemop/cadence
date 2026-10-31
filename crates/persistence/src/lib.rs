@@ -1040,12 +1040,11 @@ fn read_production_entries(connection: &Connection) -> Result<Vec<ProductionEntr
         Ok(ProductionEntry {
             id: ProductionEntryId(row.get::<_, i64>(0)? as u64),
             activity_id: ActivityId(row.get::<_, i64>(1)? as u64),
-            date: from_sql_date(row.get::<_, String>(2)?)?,
+            date: parse_date(&row.get::<_, String>(2)?)?,
             percent_complete: row.get::<_, i64>(3)?,
         })
     })?;
-    let entries: Result<Vec<_>, _> = rows.collect();
-    entries
+    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
 }
 
 fn read_default_calendar(connection: &Connection, workweek: i64) -> Result<Calendar> {
