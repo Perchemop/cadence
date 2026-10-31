@@ -1033,18 +1033,26 @@ fn read_project(connection: &Connection) -> Result<Project> {
 }
 
 fn read_production_entries(connection: &Connection) -> Result<Vec<ProductionEntry>> {
-    let mut stmt = connection.prepare(
+    let rows: Vec<_> = collect_rows(
+        connection,
         "SELECT id, activity_id, date, percent_complete FROM production_entries",
+        |row| {
+            let id = row.get::<_, i64>(0)?;
+            let activity_id = row.get::<_, i64>(1)?;
+            let date_str = row.get::<_, String>(2)?;
+            let percent_complete = row.get::<_, i64>(3)?;
+            let date = parse_date(&date_str).map_err(|e| {
+                rusqlite::Error::InvalidQuery(format!("invalid date: {e}"))
+            })?;
+            Ok(ProductionEntry::new(
+                ProductionEntryId(id as u64),
+                ActivityId(activity_id as u64),
+                date,
+                percent_complete,
+            ))
+        },
     )?;
-    let rows = stmt.query_map([], |row| {
-        Ok(ProductionEntry {
-            id: ProductionEntryId(row.get::<_, i64>(0)? as u64),
-            activity_id: ActivityId(row.get::<_, i64>(1)? as u64),
-            date: parse_date(&row.get::<_, String>(2)?)?,
-            percent_complete: row.get::<_, i64>(3)?,
-        })
-    })?;
-    Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    Ok(rows)
 }
 
 fn read_default_calendar(connection: &Connection, workweek: i64) -> Result<Calendar> {
