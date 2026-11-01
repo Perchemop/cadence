@@ -4199,6 +4199,23 @@ fn render_gantt(
                             painter.rect_filled(progress, 2.0, tokens.accent);
                         }
                     }
+
+                    // Constraint indicator
+                    if let Some(date) = activity.constraint.date() {
+                        let is_start = matches!(
+                            activity.constraint,
+                            cadence_core::model::Constraint::StartNoEarlierThan(_)
+                                | cadence_core::model::Constraint::StartNoLaterThan(_)
+                        );
+                        let cx = if is_start {
+                            bar.min.x
+                        } else {
+                            bar.max.x
+                        };
+                        let cy = bar.center().y;
+                        painter.circle_filled(Pos2::new(cx, cy), 3.0, Color32::YELLOW);
+                        painter.circle_stroke(Pos2::new(cx, cy), 3.0, egui::Stroke::new(1.0, Color32::BLACK));
+                    }
                 }
 
                 let depth = activity
