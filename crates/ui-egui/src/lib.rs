@@ -137,6 +137,58 @@ enum ViewMode {
     Production,
 }
 
+/// Severity of a `status_message`, used to pick its colour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusSeverity {
+    Info,
+    Success,
+    Warning,
+    Error,
+}
+
+impl StatusSeverity {
+    /// Classify a status message by its wording.
+    pub fn from_message(message: &str) -> Self {
+        let lower = message.to_ascii_lowercase();
+        if lower.contains("cannot")
+            || lower.contains("must")
+            || lower.contains("select")
+            || lower.contains("empty")
+            || lower.contains("invalid")
+            || lower.contains("needs")
+            || lower.contains("not a valid")
+        {
+            return Self::Error;
+        }
+        if lower.starts_with("saved")
+            || lower.starts_with("opened")
+            || lower.starts_with("activity created")
+            || lower.starts_with("report")
+            || lower.starts_with("gantt printed")
+            || lower.starts_with("diary note")
+            || lower.starts_with("production entry")
+            || lower.starts_with("activity deleted")
+        {
+            return Self::Success;
+        }
+        if lower.contains("warning") || lower.contains("warn") {
+            return Self::Warning;
+        }
+        Self::Info
+    }
+
+    /// Colour for this severity, taken from the design tokens.
+    pub fn color(self, dark: bool) -> Color32 {
+        let palette = design::palette(dark);
+        match self {
+            Self::Info => palette.text_muted,
+            Self::Success => palette.ok,
+            Self::Warning => palette.warn,
+            Self::Error => palette.critical,
+        }
+    }
+}
+
 /// One row in the diary view: identifier, date, content, activity link and
 /// lookahead-window link.
 type DiaryRow = (DailyNoteId, Date, String, Option<ActivityId>, Option<Date>);
@@ -1414,7 +1466,7 @@ impl eframe::App for CadenceApp {
         // Refresh the cached sort order once per edit, not once per frame.
         self.refresh_sorted();
 
-        // Ctrl+1..Ctrl+5: switch views without reaching for the mouse.
+        // Ctrl+1..Ctrl+9: switch views without reaching for the mouse.
         let (ctrl_held, pressed_view) = ctx.input(|input| {
             (
                 input.modifiers.ctrl,
@@ -1427,6 +1479,7 @@ impl eframe::App for CadenceApp {
                     egui::Key::Num6,
                     egui::Key::Num7,
                     egui::Key::Num8,
+                    egui::Key::Num9,
                 ]
                 .iter()
                 .position(|key| input.key_pressed(*key))
@@ -1578,6 +1631,7 @@ impl eframe::App for CadenceApp {
                 {
                     self.save_as_dialog();
                 }
+                ui.separator();
                 if ui
                     .button("New activity")
                     .on_hover_text("Create a new activity (Ctrl+N)")
@@ -1724,7 +1778,11 @@ impl eframe::App for CadenceApp {
                     self.refresh_selection();
                 }
                 if let Some(message) = &self.status_message {
-                    ui.label(format!("Status: {message}"));
+                    let severity = StatusSeverity::from_message(message);
+                    ui.label(
+                        egui::RichText::new(format!("Status: {message}"))
+                            .color(severity.color(self.dark)),
+                    );
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button("Toggle theme").clicked() {
@@ -1781,11 +1839,12 @@ impl eframe::App for CadenceApp {
                 );
                 if let Some(message) = &self.status_message {
                     ui.label("   ·   ");
+                    let severity = StatusSeverity::from_message(message);
                     ui.label(
                         egui::RichText::new(message)
                             .weak()
                             .small()
-                            .color(egui::Color32::from_rgb(0xC0, 0x39, 0x2B)),
+                            .color(severity.color(self.dark)),
                     );
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -3491,10 +3550,13 @@ impl eframe::App for CadenceApp {
                                 ("Ctrl+Z", "Undo"),
                                 ("Ctrl+Y or Ctrl+Shift+Z", "Redo"),
                                 (
-                                    "Ctrl+1 … Ctrl+8",
+                                    "Ctrl+1 … Ctrl+9",
                                     "Switch view: Table, Gantt, Resources, Baselines, \
-                                     Calendars, Audit, Lookahead, Diary",
+                                     Calendars, Audit, Lookahead, Diary, Production",
                                 ),
+                                ("Ctrl+S", "Save the project"),
+                                ("Ctrl+O", "Open a project file"),
+                                ("Ctrl+N", "Create a new activity"),
                                 ("Ctrl+D", "Toggle light/dark theme"),
                                 (
                                     "Ctrl+Plus / Ctrl+Minus",
