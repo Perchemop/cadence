@@ -31,7 +31,7 @@ use cadence_core::model::{
     LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind,
 };
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
-use time::{Date, Month};
+use time::{Date, Duration, Month};
 
 pub mod crash;
 pub mod design;
@@ -3895,6 +3895,34 @@ fn render_gantt(
         let mut painter = ui.painter_at(rect);
         let clip = ui.clip_rect().intersect(rect);
         painter.set_clip_rect(clip);
+
+        // Non-working day shading.
+        let palette = design::palette(dark);
+        let shade = Color32::from_rgba_unmultiplied(
+            palette.deep.r(),
+            palette.deep.g(),
+            palette.deep.b(),
+            30,
+        );
+        let mut day = origin;
+        while day <= finish {
+            if !project.calendar.is_working_day(day) {
+                let day_index = (day.to_julian_day() - origin.to_julian_day()) as f32;
+                let x0 = rect.min.x + day_index * pixels_per_day;
+                let x1 = x0 + pixels_per_day;
+                if x1 >= rect.min.x && x0 <= rect.max.x {
+                    painter.rect_filled(
+                        Rect::from_min_max(
+                            Pos2::new(x0, rect.min.y),
+                            Pos2::new(x1, rect.max.y),
+                        ),
+                        0.0,
+                        shade,
+                    );
+                }
+            }
+            day = day.checked_add(Duration::days(1)).unwrap_or(day);
+        }
 
         // Weekly hairlines and the today line: structure in low-contrast
         // strokes, so colour stays reserved for meaning.
