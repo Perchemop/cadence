@@ -2119,6 +2119,7 @@ impl eframe::App for CadenceApp {
                                 &mut self.stack,
                                 &mut self.drag_start,
                                 &mut self.status_message,
+                                parse_date(&self.status_date_buffer),
                                 activities,
                                 self.pixels_per_day,
                                 &mut self.pixels_per_day,
@@ -2365,6 +2366,7 @@ impl eframe::App for CadenceApp {
                         &mut self.stack,
                         &mut self.drag_start,
                         &mut self.status_message,
+                        parse_date(&self.status_date_buffer),
                         &self.sorted_cache,
                         px,
                         &mut self.pixels_per_day,
@@ -3835,6 +3837,7 @@ fn render_gantt(
     stack: &mut CommandStack,
     drag_start: &mut Option<usize>,
     status_message: &mut Option<String>,
+    status_date: Option<Date>,
     activities: &[Activity],
     pixels_per_day: f32,
     pixels_per_day_out: &mut f32,
@@ -3929,6 +3932,80 @@ fn render_gantt(
                 [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
                 egui::Stroke::new(1.5, ACCENT),
             );
+        }
+
+        // Status-date line: vertical marker at the status date (from the EVM
+        // status date buffer) with a progress-line treatment.
+        if let Some(status_date) = status_date {
+            if status_date >= origin && status_date <= finish {
+                let sx = rect.min.x
+                    + (status_date.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
+                painter.line_segment(
+                    [
+                        Pos2::new(sx, rect.min.y),
+                        Pos2::new(sx, rect.max.y),
+                    ],
+                    egui::Stroke::new(1.5, Color32::from_rgb(0x9C, 0x27, 0xB0)),
+                );
+                painter.text(
+                    Pos2::new(sx + 4.0, rect.min.y + 2.0),
+                    Align2::LEFT_TOP,
+                    "Status date",
+                    egui::FontId::proportional(9.0),
+                    Color32::from_rgb(0x9C, 0x27, 0xB0),
+                );
+
+                // Progress line: for each in-progress activity whose span covers
+                // the status date, mark the progress point on the bar at the
+                // status date.
+                let header_bottom = rect.min.y + header_height;
+                for activity in activities {
+                    let Some(result) = current_schedule.activity(activity.id) else {
+                        continue;
+                    };
+                    let s = result.scheduled_start;
+                    let f = result.scheduled_finish;
+                    if s <= status_date && status_date <= f {
+                        if let Some(pct) = activity.percent_complete {
+                            let fraction = pct.clamp(0, 10_000) as f32 / 10_000.0;
+                            let row_idx = activities
+                                .iter()
+                                .position(|a| a.id == activity.id)
+                                .unwrap_or(0);
+                            let y = header_bottom + row_idx as f32 * row_height + row_height / 2.0;
+                            let progress_x = rect.min.x
+                                + (status_date.to_julian_day() - origin.to_julian_day()) as f32
+                                    * pixels_per_day;
+                            painter.circle_filled(
+                                Pos2::new(progress_x, y),
+                                3.0,
+                                tokens.accent,
+                            );
+                        }
+                    }
+
+                    // Behind-schedule flag: not started yet but scheduled start
+                    // is after the status date.
+                    if let Some(pct) = activity.percent_complete {
+                        if pct == 0 && s > status_date {
+                            let row_idx = activities
+                                .iter()
+                                .position(|a| a.id == activity.id)
+                                .unwrap_or(0);
+                            let y = header_bottom + row_idx as f32 * row_height + row_height / 2.0;
+                            let sx_bar = rect.min.x
+                                + (s.to_julian_day() - origin.to_julian_day()) as f32
+                                    * pixels_per_day;
+                            painter.triangle_filled(
+                                Pos2::new(sx_bar, y - 4.0),
+                                Pos2::new(sx_bar, y + 4.0),
+                                Pos2::new(sx_bar + 6.0, y),
+                                Color32::from_rgb(0xC0, 0x39, 0x2B),
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         // Drag-to-create dependency links.
