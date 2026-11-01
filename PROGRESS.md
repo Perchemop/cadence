@@ -1017,3 +1017,24 @@ non-ASCII report text; CLI same-file overwrite protection and `--json`
 handling; and the Gantt arrow geometry, palette tokens, sort-direction cue and
 row selection in the GUI. Workspace version 0.7.0. A second parallel fix pass addresses the open findings.
 
+## 2026-11-01 — Gantt polish and production view
+
+Gantt presentation and authoring workflow improvements:
+
+- **Arrowheads and lag labels**: dependency lines now render with arrowheads at
+  successor bars and lag labels (e.g. `+2d`, `-1d`), making link types visible
+  without hover. PR #75.
+- **Milestone diamonds**: zero-duration activities render as diamond-shaped bars,
+  matching MS Project / P6 conventions. PR #72.
+- **WBS summary bars**: parent WBS nodes show summary bars spanning children in
+  a lighter shade, with two-tier timescale (week/month above day grid) and a
+  labelled today line. Baseline dates overlay as translucent ghosts. PR #69.
+- **Authoring blockers and production view**: new **Production** view (`Ctrl+9`)
+  with create/delete blockers and a dirty-guard prompt that warns on exit with
+  unsaved changes. Toolbar grouping and status colour semantics improved. PR #67.
+- Status colour semantics and shortcuts dialog completeness: status messages use
+  more distinct colours and shortcuts are grouped by category. PR #68.
+
+Workspace version bumped to 0.9.0. CI green on all required checks; PRs merged
+to main. Release 0.9.0 to be tagged after PR review.
+

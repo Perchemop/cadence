@@ -7,50 +7,36 @@ follows Keep a Changelog; releases use git tags.
 
 ### Added
 
-- Design system foundation: the UI now ships the Inter typeface (SIL OFL 1.1)
-  with a documented type scale, a token-driven colour palette and spacing
-  rhythm (`docs/design/brand.md`, `cadence-ui-egui::design`), professional
-  widget styling across both themes, and a Gantt with weekly grid lines and a
-  today line — closing the gap to paid desktop schedulers on look and feel.
-- Table performance: the sorted activity list is cached keyed on
-  `edit_version`/sort key/direction instead of being cloned and sorted every
-  frame, and the table is virtualised with `ScrollArea::show_rows` (fixed row
-  height, fixed column widths, row numbers, truncated names, sticky sortable
-  header).
-- Gantt performance: the schedule is borrowed instead of cloned per frame and
-  dependency arrows use a cached activity id→row index, making the arrow pass
-  O(relationships) instead of O(activities × relationships).
-- Workbench shell: view tabs across the top, a status bar (project dates,
-  activity and critical counts, zoom, status message), and an optional split
-  Gantt panel on the right of the Table view ("Split Gantt: on/off") giving
-  the combined task sheet + Gantt layout of MS Project and P6; Gantt rows
-  follow the table's sort order.
-- **Activity table column chooser**: a `Columns` menu in the toolbar lets
-  users pick which columns show in the table (row number always first, Activity
-  column flexes to fill) — MS Project column customization / P6 layouts
-  behaviour, original UI.
-- `docs/ui-patterns.md`: clean-room observable-behaviour reference matrix for
-  Microsoft Project, Primavera P6, Asta Powerproject, ProjectLibre and Aphex,
-  scoped to behaviour only (no code, UI, strings or assets copied).
-- **Lookahead published snapshots**: capture a rolling lookahead window as a
-  named, read-only snapshot, compare a later window against it to detect
-  start/finish variance, and persist snapshots in the project file (schema v6).
-  `LookaheadSnapshotId`, `LookaheadSnapshotEntry`, `LookaheadSnapshot` in
-  `cadence-core::model`; `capture_lookahead_snapshot` in `cadence-core::engine`;
-  `CaptureLookaheadSnapshot`, `RemoveLookaheadSnapshot`, `RestoreLookaheadSnapshot`
-  commands in `cadence-commands`; GUI **Publish snapshot** button and snapshot
-  comparison view in the **Lookahead** view (`Ctrl+7`).
-- **Daily diary / huddle briefing** (core): dated diary notes linked to an
-  activity or a lookahead window, so site records sit against planned work.
-  `DailyNoteId`/`DailyNote` in `cadence-core::model`;
-  `CreateDailyNote`, `DeleteDailyNote`, `UpdateDailyNote` commands; schema v7
-  `daily_notes` table with round-trip persistence; a **Diary** view (`Ctrl+8`)
-  to add and delete notes.
-- **Location clash detection**: an optional free-text `location` on activities
-  (`SetActivityLocation` command, schema v8) and
-  `cadence-core::clash::location_clashes`, which flags two open activities
-  sharing a location on overlapping working days; the Lookahead view lists the
-  clashes with links to the activities.
+## [0.9.0] — 2026-11-02
+
+### Added
+- Gantt dependency arrowheads and lag labels: dependency lines now render with
+  arrowheads at the successor bar and an optional lag label (e.g. `+2d`, `-1d`),
+  making link types and lags visible at a glance without hovering.
+- Milestone diamonds for zero-duration activities: activities with duration zero
+  render as diamond-shaped bars in the Gantt, matching the MS Project / P6
+  convention for milestones.
+- WBS summary bars: WBS parents show a summary bar spanning their children,
+  rendered in a lighter shade so the hierarchy is visible in the Gantt.
+- Two-tier timescale: the Gantt header now shows a coarse week/month scale above
+  the day grid, and a today line marks the current date with a labelled marker.
+- Baseline ghosts: baseline dates are overlaid as translucent bars behind the
+  current schedule bars, so variance is visible without switching views.
+- Authoring blockers and production view: a new **Production** view (`Ctrl+9`)
+  with a dirty-guard prompt (unsaved changes warning on exit), and create/delete
+  activity blockers that prevent invalid edits during a production session.
+- Dirty guard: the application now warns when closing with unsaved changes and
+  offers Save/Discard/Cancel.
+
+### Changed
+- Status colour semantics: status messages use more distinct colours for success/
+  warning/error and the shortcuts dialog groups entries by category for easier
+  scanning.
+- Toolbar grouping: toolbar buttons are now grouped logically with separators
+  for better visual hierarchy.
+
+### Fixed
+- Various UI polish issues found during end-to-end GUI audit.
 
 ## [0.3.0] — 2026-10-28
 
