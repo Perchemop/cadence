@@ -4079,6 +4079,7 @@ fn render_gantt(
                             painter.rect_filled(ghost, 2.0, ghost_color);
                     }
                 }
+                }
                 let start_days =
                     (result.scheduled_start.to_julian_day() - origin.to_julian_day()) as f32;
                 let finish_days =
