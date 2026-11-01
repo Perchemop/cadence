@@ -3844,7 +3844,12 @@ fn render_gantt(
                     bar_rects.push((activity.id, bar, tip, label));
                     // Selection highlight for milestone.
                     if selected == Some(activity.id) {
-                        painter.rect_stroke(bar, 2.0, egui::Stroke::new(1.5, ACCENT), egui::StrokeKind::Middle);
+                        painter.rect_stroke(
+                            bar,
+                            2.0,
+                            egui::Stroke::new(1.5, ACCENT),
+                            egui::StrokeKind::Middle,
+                        );
                     }
                     continue;
                 }
@@ -3931,7 +3936,12 @@ fn render_gantt(
 
                 // Selection highlight.
                 if selected == Some(activity.id) {
-                    painter.rect_stroke(bar, 2.0, egui::Stroke::new(1.5, ACCENT), egui::StrokeKind::Middle);
+                    painter.rect_stroke(
+                        bar,
+                        2.0,
+                        egui::Stroke::new(1.5, ACCENT),
+                        egui::StrokeKind::Middle,
+                    );
                 }
 
                 let tip = format!(
