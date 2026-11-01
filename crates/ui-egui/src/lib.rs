@@ -4069,7 +4069,7 @@ fn render_gantt(
                             );
                             let variance_days =
                                 result.scheduled_finish.to_julian_day() - bf.to_julian_day();
-                            let tint = variance_color(Some(variance_days), dark);
+                            let tint = variance_color(Some(variance_days as i64), dark);
                             let ghost_color = Color32::from_rgba_unmultiplied(
                                 tint.r(),
                                 tint.g(),
@@ -4107,12 +4107,10 @@ fn render_gantt(
                                 continue;
                             }
                             if let Some(res) = current_schedule.activity(other.id) {
-                                if let Some(s) = res.scheduled_start {
-                                    min_start = Some(min_start.map_or(s, |cur: Date| if s < cur { s } else { cur }));
-                                }
-                                if let Some(f) = res.scheduled_finish {
-                                    max_finish = Some(max_finish.map_or(f, |cur: Date| if f > cur { f } else { cur }));
-                                }
+                                let s = res.scheduled_start;
+                                min_start = Some(min_start.map_or(s, |cur: Date| if s < cur { s } else { cur }));
+                                let f = res.scheduled_finish;
+                                max_finish = Some(max_finish.map_or(f, |cur: Date| if f > cur { f } else { cur }));
                             }
                         }
                         let s = min_start.unwrap_or(origin);
