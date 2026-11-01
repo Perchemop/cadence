@@ -30,7 +30,7 @@ use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, LinkType,
     LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind,
 };
-use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
+use egui::{Align2, Color32, ComboBox, Context, Grid, Id, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
 use time::{Date, Month};
 
 pub mod crash;
@@ -278,6 +278,9 @@ pub struct CadenceApp {
     sort_ascending: bool,
     view_mode: ViewMode,
     pixels_per_day: f32,
+    /// Shared vertical scroll offset between the table and Gantt panes so they
+    /// stay aligned (MSP/P6-style linked scroll).
+    gantt_scroll_offset: f32,
     drag_start: Option<usize>,
     status_message: Option<String>,
     dirty: bool,
@@ -372,6 +375,7 @@ impl CadenceApp {
             sort_ascending: true,
             view_mode: ViewMode::Table,
             pixels_per_day: 14.0,
+            gantt_scroll_offset: 0.0,
             drag_start: None,
             status_message: None,
             dirty: false,
@@ -2120,6 +2124,7 @@ impl eframe::App for CadenceApp {
                                 &mut self.drag_start,
                                 &mut self.status_message,
                                 parse_date(&self.status_date_buffer),
+                                &mut self.gantt_scroll_offset,
                                 activities,
                                 self.pixels_per_day,
                                 &mut self.pixels_per_day,
@@ -2211,12 +2216,18 @@ impl eframe::App for CadenceApp {
                             let selected_index = selected_id.and_then(|id| {
                                 sorted.iter().position(|activity| activity.id == id)
                             });
-                            let mut area = ScrollArea::vertical();
+                            let table_scroll_id = Id::new("table_scroll");
+                            let mut area = ScrollArea::vertical().id_source(table_scroll_id);
                             if scroll_to_selection {
                                 if let Some(index) = selected_index {
                                     let offset = (index as f32 * row_height - 120.0).max(0.0);
+                                    self.gantt_scroll_offset = offset;
                                     area = area.vertical_scroll_offset(offset);
+                                } else {
+                                    area = area.vertical_scroll_offset(self.gantt_scroll_offset);
                                 }
+                            } else {
+                                area = area.vertical_scroll_offset(self.gantt_scroll_offset);
                             }
                             area.show_rows(ui, row_height, sorted.len(), |ui, range| {
                                 ui.spacing_mut().item_spacing.y = 0.0;
@@ -2338,6 +2349,12 @@ impl eframe::App for CadenceApp {
                                     });
                                 }
                             });
+                            if let Some(state) = egui::containers::scroll_area::State::load(
+                                ui.ctx(),
+                                table_scroll_id,
+                            ) {
+                                self.gantt_scroll_offset = state.offset.y;
+                            }
                         }
                     }
                 });
@@ -2367,6 +2384,7 @@ impl eframe::App for CadenceApp {
                         &mut self.drag_start,
                         &mut self.status_message,
                         parse_date(&self.status_date_buffer),
+                        &mut self.gantt_scroll_offset,
                         &self.sorted_cache,
                         px,
                         &mut self.pixels_per_day,
@@ -3838,6 +3856,7 @@ fn render_gantt(
     drag_start: &mut Option<usize>,
     status_message: &mut Option<String>,
     status_date: Option<Date>,
+    gantt_scroll_offset: &mut f32,
     activities: &[Activity],
     pixels_per_day: f32,
     pixels_per_day_out: &mut f32,
@@ -3887,7 +3906,11 @@ fn render_gantt(
     });
 
     let mut pending_link = None;
-    ScrollArea::both().show(ui, |ui| {
+    let gantt_scroll_id = Id::new("gantt_scroll");
+    ScrollArea::both()
+        .id_source(gantt_scroll_id)
+        .vertical_scroll_offset(*gantt_scroll_offset)
+        .show(ui, |ui| {
         let (rect, response) = ui.allocate_exact_size(
             Vec2::new(timeline_width, total_height),
             Sense::click_and_drag(),
@@ -4374,6 +4397,9 @@ fn render_gantt(
             painter.line_segment([Pos2::new(mid_x, y1), Pos2::new(x1, y1)], stroke);
         }
     });
+    if let Some(state) = egui::containers::scroll_area::State::load(ui.ctx(), gantt_scroll_id) {
+        *gantt_scroll_offset = state.offset.y;
+    }
 
     let mut changed = false;
     if let Some((start_row, end_row)) = pending_link {
