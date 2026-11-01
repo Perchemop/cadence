@@ -28,7 +28,7 @@ use cadence_core::engine::{evm_metrics, level_resources, resource_conflicts, res
 use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, LinkType,
-    LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind,
+    LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind, WbsId,
 };
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
 use time::{Date, Month};
@@ -345,6 +345,8 @@ pub struct CadenceApp {
     sorted_key: SortKey,
     sorted_ascending: bool,
     show_split_gantt: bool,
+    /// WBS nodes currently collapsed in the table and Gantt outlines.
+    collapsed_wbs: BTreeSet<WbsId>,
     visible_columns: BTreeSet<SortKey>,
 }
 
@@ -439,6 +441,7 @@ impl CadenceApp {
             sorted_key: SortKey::Name,
             sorted_ascending: true,
             show_split_gantt: true,
+            collapsed_wbs: BTreeSet::new(),
             visible_columns: SortKey::all_columns(),
         }
     }
@@ -1375,6 +1378,21 @@ impl CadenceApp {
     fn sorted(&self) -> &[Activity] {
         &self.sorted_cache
     }
+
+    /// Activities visible in the table/Gantt outline: descendants of collapsed
+    /// WBS nodes are hidden, mirroring MSP/P6 outline behaviour.
+    fn visible_activities(&self) -> Vec<Activity> {
+        let mut visible = Vec::new();
+        for activity in &self.sorted_cache {
+            let hidden = activity
+                .wbs
+                .is_some_and(|node| self.collapsed_wbs.iter().any(|c| self.project.wbs.is_ancestor(*c, node)));
+            if !hidden {
+                visible.push(activity.clone());
+            }
+        }
+        visible
+    }
 }
 
 impl eframe::App for CadenceApp {
@@ -2105,7 +2123,7 @@ impl eframe::App for CadenceApp {
                     });
 
                 if self.show_split_gantt {
-                    let activities = &self.sorted_cache;
+                    let activities = self.visible_activities();
                     let mut gantt_changed = false;
                     egui::Panel::right("workbench_gantt")
                         .default_size(420.0)
@@ -2133,7 +2151,7 @@ impl eframe::App for CadenceApp {
                 }
 
                 let schedule = self.schedule.as_ref();
-                let sorted = self.sorted();
+                let sorted = self.visible_activities();
                 let selected_id = self.selected;
                 let scroll_to_selection = self.scroll_to_selection;
                 let mut clicked_activity = None;
@@ -2258,6 +2276,33 @@ impl eframe::App for CadenceApp {
                                                     );
                                                 }
                                                 Some(SortKey::Name) => {
+                                                    let node_opt = activity.wbs;
+                                                    let is_summary = node_opt.is_some_and(|node| {
+                                                        self.project
+                                                            .wbs
+                                                            .node(node)
+                                                            .is_some_and(|n| !n.children.is_empty())
+                                                    });
+                                                    if is_summary {
+                                                        let node = node_opt.unwrap();
+                                                        let collapsed = self.collapsed_wbs.contains(&node);
+                                                        let toggle = if collapsed { "▸" } else { "▾" };
+                                                        if ui
+                                                            .add_sized(
+                                                                [20.0, row_height],
+                                                                egui::Button::new(toggle)
+                                                                    .frame(false)
+                                                                ,
+                                                            )
+                                                            .clicked()
+                                                        {
+                                                            if collapsed {
+                                                                self.collapsed_wbs.remove(&node);
+                                                            } else {
+                                                                self.collapsed_wbs.insert(node);
+                                                            }
+                                                        }
+                                                    }
                                                     if ui
                                                         .add_sized(
                                                             [widths[col], row_height],
@@ -2358,6 +2403,7 @@ impl eframe::App for CadenceApp {
                 let mut gantt_changed = false;
                 egui::CentralPanel::default().show(ui, |ui| {
                     let px = self.pixels_per_day;
+                    let activities = self.visible_activities();
                     gantt_changed = render_gantt(
                         ui,
                         &mut self.project,
@@ -2365,7 +2411,7 @@ impl eframe::App for CadenceApp {
                         &mut self.stack,
                         &mut self.drag_start,
                         &mut self.status_message,
-                        &self.sorted_cache,
+                        &activities,
                         px,
                         &mut self.pixels_per_day,
                         self.dark,
@@ -3853,8 +3899,11 @@ fn render_gantt(
     let total_days = (finish.to_julian_day() - origin.to_julian_day()).max(1) as f32 + 2.0;
     let row_height = 20.0;
     let header_height = 44.0;
+    /// Left name gutter so the full-screen Gantt reads like MSP/P6 (name
+    /// column plus collapse/expand toggles). Bars start after the gutter.
+    let gutter_width = 170.0;
     let total_height = activities.len() as f32 * row_height + header_height;
-    let timeline_width = total_days * pixels_per_day + 40.0;
+    let timeline_width = total_days * pixels_per_day + gutter_width + 40.0;
     let summary = gantt_summary(current_schedule);
     ui.label(&summary);
     ui.horizontal(|ui| {
@@ -3895,6 +3944,50 @@ fn render_gantt(
         let mut painter = ui.painter_at(rect);
         let clip = ui.clip_rect().intersect(rect);
         painter.set_clip_rect(clip);
+        let gutter_x = rect.min.x + gutter_width;
+
+        // Name gutter: header, per-row names (truncated to fit), and a
+        // vertical separator. Only visible (non-collapsed-descendant) rows are
+        // passed in, so the gutter stays aligned with the bars.
+        painter.line_segment(
+            [
+                Pos2::new(gutter_x, rect.min.y),
+                Pos2::new(gutter_x, rect.max.y),
+            ],
+            egui::Stroke::new(1.0, Color32::from_gray(110)),
+        );
+        painter.text(
+            Pos2::new(rect.min.x + 6.0, rect.min.y + 7.0),
+            Align2::LEFT_TOP,
+            "Name",
+            egui::FontId::proportional(10.0),
+            Color32::from_gray(160),
+        );
+        let gutter_max_chars = (gutter_width / 7.0).max(3.0) as usize;
+        for (index, activity) in activities.iter().enumerate() {
+            let y =
+                rect.min.y + header_height + index as f32 * row_height + row_height / 2.0;
+            if y < rect.min.y || y > rect.max.y {
+                continue;
+            }
+            let display = if activity.name.chars().count() > gutter_max_chars {
+                let truncated: String = activity
+                    .name
+                    .chars()
+                    .take(gutter_max_chars.saturating_sub(1))
+                    .collect();
+                format!("{truncated}…")
+            } else {
+                activity.name.clone()
+            };
+            painter.text(
+                Pos2::new(rect.min.x + 6.0, y),
+                Align2::LEFT_CENTER,
+                &display,
+                egui::FontId::proportional(10.0),
+                Color32::WHITE,
+            );
+        }
 
         // Weekly hairlines and the today line: structure in low-contrast
         // strokes, so colour stays reserved for meaning.
@@ -3906,10 +3999,10 @@ fn render_gantt(
         let mut week_origin = origin;
         while week_origin < finish {
             if week_origin > origin {
-                let x = rect.min.x
+                let x = gutter_x
                     + (week_origin.to_julian_day() - origin.to_julian_day()) as f32
                         * pixels_per_day;
-                if x >= rect.min.x && x <= rect.max.x {
+                if x >= gutter_x && x <= rect.max.x {
                     painter.line_segment(
                         [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
                         egui::Stroke::new(1.0, grid_color),
@@ -3924,7 +4017,7 @@ fn render_gantt(
         let now = today();
         if now >= origin && now <= finish {
             let x =
-                rect.min.x + (now.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
+                gutter_x + (now.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
             painter.line_segment(
                 [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
                 egui::Stroke::new(1.5, ACCENT),
@@ -3949,7 +4042,7 @@ fn render_gantt(
                 if let Some(result) = current_schedule.activity(start_activity.id) {
                     let start_days =
                         (result.scheduled_finish.to_julian_day() - origin.to_julian_day()) as f32;
-                    let start_x = rect.min.x + (start_days + 1.0) * pixels_per_day;
+                    let start_x = gutter_x + (start_days + 1.0) * pixels_per_day;
                     painter.line_segment(
                         [Pos2::new(start_x, start_y), pos],
                         egui::Stroke::new(1.5, Color32::YELLOW),
@@ -3997,7 +4090,7 @@ fn render_gantt(
 
         // Minor tier: day/week ticks and labels.
         for day in 0..=(total_days as i32) {
-            let x = rect.min.x + day as f32 * pixels_per_day;
+            let x = gutter_x + day as f32 * pixels_per_day;
             if x < clip.min.x || x > clip.max.x {
                 continue;
             }
@@ -4022,9 +4115,9 @@ fn render_gantt(
         // Major tier: month/year grouping labels across the top band.
         let mut major_day = 0i32;
         while major_day <= total_days as i32 {
-            let x = rect.min.x + major_day as f32 * pixels_per_day;
+            let x = gutter_x + major_day as f32 * pixels_per_day;
             let next = (major_day + major_step).min(total_days as i32 + 1);
-            let x_next = rect.min.x + next as f32 * pixels_per_day;
+            let x_next = gutter_x + next as f32 * pixels_per_day;
             if x >= clip.min.x && x <= clip.max.x {
                 let date =
                     Date::from_julian_day(origin.to_julian_day() + major_day).unwrap_or(origin);
@@ -4064,7 +4157,7 @@ fn render_gantt(
                         {
                             let b_start = (bs.to_julian_day() - origin.to_julian_day()) as f32;
                             let b_finish = (bf.to_julian_day() - origin.to_julian_day()) as f32;
-                            let bx0 = rect.min.x + b_start * pixels_per_day;
+                            let bx0 = gutter_x + b_start * pixels_per_day;
                             let bwidth = ((b_finish - b_start + 1.0) * pixels_per_day).max(6.0);
                             let bx1 = bx0 + bwidth;
                             let ghost = Rect::from_min_max(
@@ -4084,7 +4177,7 @@ fn render_gantt(
                     (result.scheduled_start.to_julian_day() - origin.to_julian_day()) as f32;
                 let finish_days =
                     (result.scheduled_finish.to_julian_day() - origin.to_julian_day()) as f32;
-                let x0 = rect.min.x + start_days * pixels_per_day;
+                let x0 = gutter_x + start_days * pixels_per_day;
                 let width = ((finish_days - start_days + 1.0) * pixels_per_day).max(6.0);
                 let x1 = x0 + width;
                 let bar =
@@ -4124,9 +4217,9 @@ fn render_gantt(
                         }
                         let s = min_start.unwrap_or(origin);
                         let f = max_finish.unwrap_or(origin);
-                        let sx = rect.min.x
+                        let sx = gutter_x
                             + (s.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
-                        let fx = rect.min.x
+                        let fx = gutter_x
                             + (f.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day
                             + pixels_per_day;
                         Rect::from_min_max(
@@ -4147,7 +4240,7 @@ fn render_gantt(
                     tokens.normal
                 };
                 if is_milestone {
-                    let cx = rect.min.x + (finish_days + 0.5) * pixels_per_day;
+                    let cx = gutter_x + (finish_days + 0.5) * pixels_per_day;
                     let cy = y + row_height / 2.0;
                     let size = row_height * 0.7;
                     let half = size / 2.0;
@@ -4214,7 +4307,7 @@ fn render_gantt(
                     format!("{}{}", indent, activity.name)
                 };
                 let text_pos = if is_milestone {
-                    let cx = rect.min.x + (finish_days + 0.5) * pixels_per_day;
+                    let cx = gutter_x + (finish_days + 0.5) * pixels_per_day;
                     let cy = y + row_height / 2.0;
                     Pos2::new(cx + (row_height * 0.7) / 2.0 + 4.0, cy)
                 } else {
@@ -4286,8 +4379,8 @@ fn render_gantt(
             let succ_days = (succ_date.to_julian_day() - origin.to_julian_day()) as f32;
             let pred_offset = if pred_from_start { 0.0 } else { 1.0 };
             let succ_offset = if succ_at_finish { 1.0 } else { 0.0 };
-            let x0 = rect.min.x + (pred_days + pred_offset) * pixels_per_day;
-            let x1 = rect.min.x + (succ_days + succ_offset) * pixels_per_day;
+            let x0 = gutter_x + (pred_days + pred_offset) * pixels_per_day;
+            let x1 = gutter_x + (succ_days + succ_offset) * pixels_per_day;
             let y0 = rect.min.y + header_height + pred_row as f32 * row_height + row_height / 2.0;
             let y1 = rect.min.y + header_height + succ_row as f32 * row_height + row_height / 2.0;
             let mid_x = (x0 + x1) / 2.0;
