@@ -30,6 +30,7 @@ use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, LinkType,
     LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind,
 };
+use cadence_core::wbs::WbsId;
 use egui::{
     Align2, Color32, ComboBox, Context, CursorIcon, Grid, Pos2, Rect, ScrollArea, Sense, Ui,
     Vec2,
@@ -4133,12 +4134,17 @@ fn render_gantt(
                             let sx_bar = rect.min.x
                                 + (s.to_julian_day() - origin.to_julian_day()) as f32
                                     * pixels_per_day;
-                            painter.triangle_filled(
-                                Pos2::new(sx_bar, y - 4.0),
-                                Pos2::new(sx_bar, y + 4.0),
-                                Pos2::new(sx_bar + 6.0, y),
-                                Color32::from_rgb(0xC0, 0x39, 0x2B),
-                            );
+                            painter.add(egui::Shape::Path(
+                                egui::epaint::PathShape::convex_polygon(
+                                    vec![
+                                        Pos2::new(sx_bar, y - 4.0),
+                                        Pos2::new(sx_bar, y + 4.0),
+                                        Pos2::new(sx_bar + 6.0, y),
+                                    ],
+                                    Color32::from_rgb(0xC0, 0x39, 0x2B),
+                                    egui::epaint::PathStroke::NONE,
+                                ),
+                            ));
                         }
                     }
                 }
@@ -4461,6 +4467,7 @@ fn render_gantt(
                             bar,
                             2.0,
                             egui::Stroke::new(2.0, Color32::WHITE),
+                            egui::StrokeKind::Middle,
                         );
 
                     // Constraint indicator
