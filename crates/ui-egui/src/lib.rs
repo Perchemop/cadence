@@ -19,6 +19,7 @@ use cadence_commands::{
     SetRelationshipLag, SetResourceCapacity, SetResourceKind,
 };
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
+
 use cadence_core::calendar_set::CalendarId;
 use cadence_core::clash::location_clashes;
 use cadence_core::engine::schedule;
@@ -3851,7 +3852,7 @@ fn render_gantt(
     let finish = current_schedule.project_finish;
     let total_days = (finish.to_julian_day() - origin.to_julian_day()).max(1) as f32 + 2.0;
     let row_height = 20.0;
-    let header_height = 24.0;
+    let header_height = 44.0;
     let total_height = activities.len() as f32 * row_height + header_height;
     let timeline_width = total_days * pixels_per_day + 40.0;
     let summary = gantt_summary(current_schedule);
@@ -3978,34 +3979,65 @@ fn render_gantt(
             }
         }
 
-        let tick_step = if pixels_per_day < 4.0 {
+        let minor_step = if pixels_per_day < 4.0 {
             10
         } else if pixels_per_day < 10.0 {
             5
         } else {
             1
         };
+        // Major tier step: coarser grouping for the upper header band.
+        let major_step = if pixels_per_day < 2.0 {
+            90
+        } else if pixels_per_day < 6.0 {
+            30
+        } else {
+            7
+        };
 
-        // Timeline header.
+        // Minor tier: day/week ticks and labels.
         for day in 0..=(total_days as i32) {
             let x = rect.min.x + day as f32 * pixels_per_day;
             if x < clip.min.x || x > clip.max.x {
                 continue;
             }
             painter.line_segment(
-                [Pos2::new(x, rect.min.y), Pos2::new(x, rect.min.y + 6.0)],
+                [Pos2::new(x, rect.min.y + 20.0), Pos2::new(x, rect.min.y + 26.0)],
                 egui::Stroke::new(1.0, Color32::GRAY),
             );
-            if day % tick_step == 0 {
+            if day % minor_step == 0 {
                 let date = Date::from_julian_day(origin.to_julian_day() + day).unwrap_or(origin);
                 painter.text(
-                    Pos2::new(x, rect.min.y + 8.0),
+                    Pos2::new(x, rect.min.y + 28.0),
                     Align2::CENTER_TOP,
                     date.to_string(),
+                    egui::FontId::proportional(9.0),
+                    Color32::GRAY,
+                );
+            }
+        }
+        // Major tier: month/year grouping labels across the top band.
+        let mut major_day = 0i32;
+        while major_day <= total_days as i32 {
+            let x = rect.min.x + major_day as f32 * pixels_per_day;
+            let next = (major_day + major_step).min(total_days as i32 + 1);
+            let x_next = rect.min.x + next as f32 * pixels_per_day;
+            if x >= clip.min.x && x <= clip.max.x {
+                let date = Date::from_julian_day(origin.to_julian_day() + major_day).unwrap_or(origin);
+                let label = format!("{} {}", date.month(), date.year());
+                painter.text(
+                    Pos2::new((x + x_next) / 2.0, rect.min.y + 4.0),
+                    Align2::CENTER_TOP,
+                    label,
                     egui::FontId::proportional(10.0),
                     Color32::GRAY,
                 );
             }
+            painter.line_segment(
+                [Pos2::new(x, rect.min.y), Pos2::new(x, rect.min.y + 20.0)],
+                egui::Stroke::new(1.0, Color32::GRAY),
+            );
+            major_day = next;
         }
 
         let first_row = ((clip.min.y - rect.min.y - header_height) / row_height)
@@ -4020,6 +4052,33 @@ fn render_gantt(
         for (row, activity) in activities.iter().enumerate().take(last_row).skip(first_row) {
             let y = rect.min.y + header_height + row as f32 * row_height;
             if let Some(result) = current_schedule.activity(activity.id) {
+                // Baseline ghost bar behind the live bar when baselines exist.
+                if let Some(baseline) = project.baselines.last() {
+                    if let Some(snapshot) = baseline.snapshot(activity.id) {
+                        if let (Some(bs), Some(bf)) =
+                            (snapshot.baseline_start, snapshot.baseline_finish)
+                        {
+                            let b_start = (bs.to_julian_day() - origin.to_julian_day()) as f32;
+                            let b_finish = (bf.to_julian_day() - origin.to_julian_day()) as f32;
+                            let bx0 = rect.min.x + b_start * pixels_per_day;
+                            let bwidth = ((b_finish - b_start + 1.0) * pixels_per_day).max(6.0);
+                            let bx1 = bx0 + bwidth;
+                            let ghost = Rect::from_min_max(
+                                Pos2::new(bx0, y + 4.0),
+                                Pos2::new(bx1, y + row_height - 4.0),
+                            );
+                            let variance_days =
+                                result.scheduled_finish.to_julian_day() - bf.to_julian_day();
+                            let tint = variance_color(Some(variance_days), dark);
+                            let ghost_color = Color32::from_rgba_unmultiplied(
+                                tint.r(),
+                                tint.g(),
+                                tint.b(),
+                                90,
+                            );
+                            painter.rect_filled(ghost, 2.0, ghost_color);
+                    }
+                }
                 let start_days =
                     (result.scheduled_start.to_julian_day() - origin.to_julian_day()) as f32;
                 let finish_days =
@@ -4029,12 +4088,64 @@ fn render_gantt(
                 let x1 = x0 + width;
                 let bar =
                     Rect::from_min_max(Pos2::new(x0, y + 2.0), Pos2::new(x1, y + row_height - 2.0));
-                let color = if result.critical {
+                let is_summary = activity
+                    .wbs
+                    .and_then(|node| project.wbs.node(node))
+                    .map(|node| !node.children.is_empty())
+                    .unwrap_or(false);
+                let bar = if is_summary {
+                    if let Some(node) = activity.wbs {
+                        let mut min_start: Option<Date> = None;
+                        let mut max_finish: Option<Date> = None;
+                        for other in activities {
+                            let in_subtree = other
+                                .wbs
+                                .map(|on| on == node || project.wbs.is_ancestor(node, on))
+                                .unwrap_or(false);
+                            if !in_subtree {
+                                continue;
+                            }
+                            if let Some(res) = current_schedule.activity(other.id) {
+                                if let Some(s) = res.scheduled_start {
+                                    min_start = Some(min_start.map_or(s, |cur: Date| if s < cur { s } else { cur }));
+                                }
+                                if let Some(f) = res.scheduled_finish {
+                                    max_finish = Some(max_finish.map_or(f, |cur: Date| if f > cur { f } else { cur }));
+                                }
+                            }
+                        }
+                        let s = min_start.unwrap_or(origin);
+                        let f = max_finish.unwrap_or(origin);
+                        let sx = rect.min.x
+                            + (s.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
+                        let fx = rect.min.x
+                            + (f.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day
+                            + pixels_per_day;
+                        Rect::from_min_max(Pos2::new(sx, y + 1.0), Pos2::new(fx.max(sx + 6.0), y + row_height - 1.0))
+                    } else {
+                        bar
+                    }
+                } else {
+                    bar
+                };
+                let color = if is_summary {
+                    tokens.normal
+                } else if result.critical {
                     tokens.critical
                 } else {
                     tokens.normal
                 };
                 painter.rect_filled(bar, 2.0, color);
+                if is_summary {
+                    painter.line_segment(
+                        [Pos2::new(bar.min.x, bar.min.y), Pos2::new(bar.min.x, bar.max.y)],
+                        egui::Stroke::new(2.0, Color32::WHITE),
+                    );
+                    painter.line_segment(
+                        [Pos2::new(bar.max.x, bar.min.y), Pos2::new(bar.max.x, bar.max.y)],
+                        egui::Stroke::new(2.0, Color32::WHITE),
+                    );
+                }
 
                 // Progress overlay: the completed share of the bar is drawn in
                 // the accent so recorded progress stays visible over either
@@ -4050,10 +4161,17 @@ fn render_gantt(
                     }
                 }
 
-                let bar_label = if result.critical {
-                    format!("! {}", activity.name)
+                let depth = activity
+                    .wbs
+                    .and_then(|node| project.wbs.depth(node))
+                    .unwrap_or(0);
+                let indent = "  ".repeat(depth.saturating_sub(1));
+                let bar_label = if is_summary {
+                    format!("{}▸ {}", indent, activity.name)
+                } else if result.critical {
+                    format!("{}! {}", indent, activity.name)
                 } else {
-                    activity.name.clone()
+                    format!("{}{}", indent, activity.name)
                 };
                 painter.text(
                     bar.center(),
