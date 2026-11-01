@@ -4002,7 +4002,10 @@ fn render_gantt(
                 continue;
             }
             painter.line_segment(
-                [Pos2::new(x, rect.min.y + 20.0), Pos2::new(x, rect.min.y + 26.0)],
+                [
+                    Pos2::new(x, rect.min.y + 20.0),
+                    Pos2::new(x, rect.min.y + 26.0),
+                ],
                 egui::Stroke::new(1.0, Color32::GRAY),
             );
             if day % minor_step == 0 {
@@ -4023,7 +4026,8 @@ fn render_gantt(
             let next = (major_day + major_step).min(total_days as i32 + 1);
             let x_next = rect.min.x + next as f32 * pixels_per_day;
             if x >= clip.min.x && x <= clip.max.x {
-                let date = Date::from_julian_day(origin.to_julian_day() + major_day).unwrap_or(origin);
+                let date =
+                    Date::from_julian_day(origin.to_julian_day() + major_day).unwrap_or(origin);
                 let label = format!("{} {}", date.month(), date.year());
                 painter.text(
                     Pos2::new((x + x_next) / 2.0, rect.min.y + 4.0),
@@ -4070,15 +4074,11 @@ fn render_gantt(
                             let variance_days =
                                 result.scheduled_finish.to_julian_day() - bf.to_julian_day();
                             let tint = variance_color(Some(variance_days as i64), dark);
-                            let ghost_color = Color32::from_rgba_unmultiplied(
-                                tint.r(),
-                                tint.g(),
-                                tint.b(),
-                                90,
-                            );
+                            let ghost_color =
+                                Color32::from_rgba_unmultiplied(tint.r(), tint.g(), tint.b(), 90);
                             painter.rect_filled(ghost, 2.0, ghost_color);
+                        }
                     }
-                }
                 }
                 let start_days =
                     (result.scheduled_start.to_julian_day() - origin.to_julian_day()) as f32;
@@ -4108,9 +4108,21 @@ fn render_gantt(
                             }
                             if let Some(res) = current_schedule.activity(other.id) {
                                 let s = res.scheduled_start;
-                                min_start = Some(min_start.map_or(s, |cur: Date| if s < cur { s } else { cur }));
+                                min_start =
+                                    Some(
+                                        min_start.map_or(
+                                            s,
+                                            |cur: Date| if s < cur { s } else { cur },
+                                        ),
+                                    );
                                 let f = res.scheduled_finish;
-                                max_finish = Some(max_finish.map_or(f, |cur: Date| if f > cur { f } else { cur }));
+                                max_finish =
+                                    Some(
+                                        max_finish.map_or(
+                                            f,
+                                            |cur: Date| if f > cur { f } else { cur },
+                                        ),
+                                    );
                             }
                         }
                         let s = min_start.unwrap_or(origin);
@@ -4120,7 +4132,10 @@ fn render_gantt(
                         let fx = rect.min.x
                             + (f.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day
                             + pixels_per_day;
-                        Rect::from_min_max(Pos2::new(sx, y + 1.0), Pos2::new(fx.max(sx + 6.0), y + row_height - 1.0))
+                        Rect::from_min_max(
+                            Pos2::new(sx, y + 1.0),
+                            Pos2::new(fx.max(sx + 6.0), y + row_height - 1.0),
+                        )
                     } else {
                         bar
                     }
@@ -4137,11 +4152,17 @@ fn render_gantt(
                 painter.rect_filled(bar, 2.0, color);
                 if is_summary {
                     painter.line_segment(
-                        [Pos2::new(bar.min.x, bar.min.y), Pos2::new(bar.min.x, bar.max.y)],
+                        [
+                            Pos2::new(bar.min.x, bar.min.y),
+                            Pos2::new(bar.min.x, bar.max.y),
+                        ],
                         egui::Stroke::new(2.0, Color32::WHITE),
                     );
                     painter.line_segment(
-                        [Pos2::new(bar.max.x, bar.min.y), Pos2::new(bar.max.x, bar.max.y)],
+                        [
+                            Pos2::new(bar.max.x, bar.min.y),
+                            Pos2::new(bar.max.x, bar.max.y),
+                        ],
                         egui::Stroke::new(2.0, Color32::WHITE),
                     );
                 }
