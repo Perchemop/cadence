@@ -4206,12 +4206,31 @@ fn render_gantt(
                     .and_then(|node| project.wbs.depth(node))
                     .unwrap_or(0);
                 let indent = "  ".repeat(depth.saturating_sub(1));
-                let bar_label = if is_summary {
+                let base_label = if is_summary {
                     format!("{}▸ {}", indent, activity.name)
                 } else if result.critical {
                     format!("{}! {}", indent, activity.name)
                 } else {
                     format!("{}{}", indent, activity.name)
+                };
+                let mut bar_label = base_label;
+                if !is_summary && !is_milestone {
+                    if let Some(pct) = activity.percent_complete {
+                        let display_pct = pct.clamp(0, 10_000) / 100;
+                        bar_label = format!("{} {}%", base_label, display_pct);
+                    }
+                }
+                // Truncate to fit bar width for non-milestone bars
+                let display_label = if !is_milestone && bar.width() > 30.0 {
+                    let max_chars = (bar.width() / 7.0).max(3.0) as usize;
+                    if bar_label.chars().count() > max_chars {
+                        let truncated: String = bar_label.chars().take(max_chars.saturating_sub(1)).collect();
+                        format!("{}…", truncated)
+                    } else {
+                        bar_label
+                    }
+                } else {
+                    bar_label
                 };
                 let text_pos = if is_milestone {
                     let cx = rect.min.x + (finish_days + 0.5) * pixels_per_day;
@@ -4225,12 +4244,18 @@ fn render_gantt(
                 } else {
                     Align2::CENTER_CENTER
                 };
+                // Choose text colour for contrast: dark text on light normal bars
+                let text_color = if !is_milestone && !is_summary && !result.critical {
+                    Color32::BLACK
+                } else {
+                    Color32::WHITE
+                };
                 painter.text(
                     text_pos,
                     text_align,
-                    &bar_label,
+                    &display_label,
                     egui::FontId::proportional(10.0),
-                    Color32::WHITE,
+                    text_color,
                 );
             }
         }
