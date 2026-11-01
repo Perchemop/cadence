@@ -4110,18 +4110,14 @@ fn render_gantt(
                                 let s = res.scheduled_start;
                                 min_start =
                                     Some(
-                                        min_start.map_or(
-                                            s,
-                                            |cur: Date| if s < cur { s } else { cur },
-                                        ),
+                                        min_start
+                                            .map_or(s, |cur: Date| if s < cur { s } else { cur }),
                                     );
                                 let f = res.scheduled_finish;
                                 max_finish =
                                     Some(
-                                        max_finish.map_or(
-                                            f,
-                                            |cur: Date| if f > cur { f } else { cur },
-                                        ),
+                                        max_finish
+                                            .map_or(f, |cur: Date| if f > cur { f } else { cur }),
                                     );
                             }
                         }
