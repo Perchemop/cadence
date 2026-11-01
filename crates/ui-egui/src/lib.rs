@@ -281,6 +281,9 @@ pub struct CadenceApp {
     sort_ascending: bool,
     view_mode: ViewMode,
     pixels_per_day: f32,
+    /// Shared vertical scroll offset between the table and Gantt panes so they
+    /// stay aligned (MSP/P6-style linked scroll).
+    gantt_scroll_offset: f32,
     drag_start: Option<usize>,
     status_message: Option<String>,
     dirty: bool,
@@ -377,6 +380,7 @@ impl CadenceApp {
             sort_ascending: true,
             view_mode: ViewMode::Table,
             pixels_per_day: 14.0,
+            gantt_scroll_offset: 0.0,
             drag_start: None,
             status_message: None,
             dirty: false,
@@ -2105,6 +2109,8 @@ impl eframe::App for CadenceApp {
                                 &mut self.drag_start,
                                 &mut self.status_message,
                                 &mut self.selected,
+                                parse_date(&self.status_date_buffer),
+                                &mut self.gantt_scroll_offset,
                                 activities,
                                 self.pixels_per_day,
                                 &mut self.pixels_per_day,
@@ -2196,12 +2202,18 @@ impl eframe::App for CadenceApp {
                             let selected_index = selected_id.and_then(|id| {
                                 sorted.iter().position(|activity| activity.id == id)
                             });
-                            let mut area = ScrollArea::vertical();
+                            let table_scroll_id = Id::new("table_scroll");
+                            let mut area = ScrollArea::vertical().id_source(table_scroll_id);
                             if scroll_to_selection {
                                 if let Some(index) = selected_index {
                                     let offset = (index as f32 * row_height - 120.0).max(0.0);
+                                    self.gantt_scroll_offset = offset;
                                     area = area.vertical_scroll_offset(offset);
+                                } else {
+                                    area = area.vertical_scroll_offset(self.gantt_scroll_offset);
                                 }
+                            } else {
+                                area = area.vertical_scroll_offset(self.gantt_scroll_offset);
                             }
                             area.show_rows(ui, row_height, sorted.len(), |ui, range| {
                                 ui.spacing_mut().item_spacing.y = 0.0;
@@ -2350,6 +2362,12 @@ impl eframe::App for CadenceApp {
                                     });
                                 }
                             });
+                            if let Some(state) = egui::containers::scroll_area::State::load(
+                                ui.ctx(),
+                                table_scroll_id,
+                            ) {
+                                self.gantt_scroll_offset = state.offset.y;
+                            }
                         }
                     }
                 });
@@ -2380,6 +2398,8 @@ impl eframe::App for CadenceApp {
                         &mut self.drag_start,
                         &mut self.status_message,
                         &mut self.selected,
+                        parse_date(&self.status_date_buffer),
+                        &mut self.gantt_scroll_offset,
                         &activities,
                         px,
                         &mut self.pixels_per_day,
@@ -3851,6 +3871,8 @@ fn render_gantt(
     drag_start: &mut Option<usize>,
     status_message: &mut Option<String>,
     selected: &mut Option<ActivityId>,
+    status_date: Option<Date>,
+    gantt_scroll_offset: &mut f32,
     activities: &[Activity],
     pixels_per_day: f32,
     pixels_per_day_out: &mut f32,
@@ -3932,7 +3954,11 @@ fn render_gantt(
     );
 
     let mut pending_link = None;
-    ScrollArea::both().show(ui, |ui| {
+    let gantt_scroll_id = Id::new("gantt_scroll");
+    ScrollArea::both()
+        .id_source(gantt_scroll_id)
+        .vertical_scroll_offset(*gantt_scroll_offset)
+        .show(ui, |ui| {
         let (rect, response) = ui.allocate_exact_size(
             Vec2::new(timeline_width, total_height),
             Sense::click_and_drag(),
@@ -4056,6 +4082,80 @@ fn render_gantt(
                 egui::FontId::proportional(9.0),
                 ACCENT,
             );
+        }
+
+        // Status-date line: vertical marker at the status date (from the EVM
+        // status date buffer) with a progress-line treatment.
+        if let Some(status_date) = status_date {
+            if status_date >= origin && status_date <= finish {
+                let sx = rect.min.x
+                    + (status_date.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
+                painter.line_segment(
+                    [
+                        Pos2::new(sx, rect.min.y),
+                        Pos2::new(sx, rect.max.y),
+                    ],
+                    egui::Stroke::new(1.5, Color32::from_rgb(0x9C, 0x27, 0xB0)),
+                );
+                painter.text(
+                    Pos2::new(sx + 4.0, rect.min.y + 2.0),
+                    Align2::LEFT_TOP,
+                    "Status date",
+                    egui::FontId::proportional(9.0),
+                    Color32::from_rgb(0x9C, 0x27, 0xB0),
+                );
+
+                // Progress line: for each in-progress activity whose span covers
+                // the status date, mark the progress point on the bar at the
+                // status date.
+                let header_bottom = rect.min.y + header_height;
+                for activity in activities {
+                    let Some(result) = current_schedule.activity(activity.id) else {
+                        continue;
+                    };
+                    let s = result.scheduled_start;
+                    let f = result.scheduled_finish;
+                    if s <= status_date && status_date <= f {
+                        if let Some(pct) = activity.percent_complete {
+                            let fraction = pct.clamp(0, 10_000) as f32 / 10_000.0;
+                            let row_idx = activities
+                                .iter()
+                                .position(|a| a.id == activity.id)
+                                .unwrap_or(0);
+                            let y = header_bottom + row_idx as f32 * row_height + row_height / 2.0;
+                            let progress_x = rect.min.x
+                                + (status_date.to_julian_day() - origin.to_julian_day()) as f32
+                                    * pixels_per_day;
+                            painter.circle_filled(
+                                Pos2::new(progress_x, y),
+                                3.0,
+                                tokens.accent,
+                            );
+                        }
+                    }
+
+                    // Behind-schedule flag: not started yet but scheduled start
+                    // is after the status date.
+                    if let Some(pct) = activity.percent_complete {
+                        if pct == 0 && s > status_date {
+                            let row_idx = activities
+                                .iter()
+                                .position(|a| a.id == activity.id)
+                                .unwrap_or(0);
+                            let y = header_bottom + row_idx as f32 * row_height + row_height / 2.0;
+                            let sx_bar = rect.min.x
+                                + (s.to_julian_day() - origin.to_julian_day()) as f32
+                                    * pixels_per_day;
+                            painter.triangle_filled(
+                                Pos2::new(sx_bar, y - 4.0),
+                                Pos2::new(sx_bar, y + 4.0),
+                                Pos2::new(sx_bar + 6.0, y),
+                                Color32::from_rgb(0xC0, 0x39, 0x2B),
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         // Drag-to-create dependency links.
@@ -4556,6 +4656,9 @@ fn render_gantt(
             }
         }
     });
+    if let Some(state) = egui::containers::scroll_area::State::load(ui.ctx(), gantt_scroll_id) {
+        *gantt_scroll_offset = state.offset.y;
+    }
 
     let mut changed = false;
     if let Some((start_row, end_row)) = pending_link {
