@@ -3565,7 +3565,6 @@ fn gantt_summary(schedule: &Schedule) -> String {
 }
 
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::too_many_arguments)]
 fn render_gantt(
     ui: &mut Ui,
     project: &mut Project,
