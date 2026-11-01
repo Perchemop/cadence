@@ -4552,6 +4552,7 @@ fn render_gantt(
                 );
             }
         }
+        }
 
         // Hover status: show a one-line description of the activity under the
         // pointer in the status bar.
