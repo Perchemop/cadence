@@ -4094,6 +4094,7 @@ fn render_gantt(
                     .and_then(|node| project.wbs.node(node))
                     .map(|node| !node.children.is_empty())
                     .unwrap_or(false);
+                let is_milestone = !is_summary && activity.original_duration == 0;
                 let bar = if is_summary {
                     if let Some(node) = activity.wbs {
                         let mut min_start: Option<Date> = None;
@@ -4145,35 +4146,58 @@ fn render_gantt(
                 } else {
                     tokens.normal
                 };
-                painter.rect_filled(bar, 2.0, color);
-                if is_summary {
-                    painter.line_segment(
-                        [
-                            Pos2::new(bar.min.x, bar.min.y),
-                            Pos2::new(bar.min.x, bar.max.y),
-                        ],
-                        egui::Stroke::new(2.0, Color32::WHITE),
-                    );
-                    painter.line_segment(
-                        [
-                            Pos2::new(bar.max.x, bar.min.y),
-                            Pos2::new(bar.max.x, bar.max.y),
-                        ],
-                        egui::Stroke::new(2.0, Color32::WHITE),
-                    );
-                }
-
-                // Progress overlay: the completed share of the bar is drawn in
-                // the accent so recorded progress stays visible over either
-                // bar colour in both themes.
-                if let Some(percent) = activity.percent_complete {
-                    if percent > 0 {
-                        let fraction = percent.clamp(0, 10_000) as f32 / 10_000.0;
-                        let progress = Rect::from_min_max(
-                            bar.min,
-                            Pos2::new(bar.min.x + bar.width() * fraction, bar.max.y),
+                if is_milestone {
+                    let cx = rect.min.x + (finish_days + 0.5) * pixels_per_day;
+                    let cy = y + row_height / 2.0;
+                    let size = row_height * 0.7;
+                    let half = size / 2.0;
+                    let points = vec![
+                        Pos2::new(cx, cy - half),
+                        Pos2::new(cx + half, cy),
+                        Pos2::new(cx, cy + half),
+                        Pos2::new(cx - half, cy),
+                    ];
+                    let milestone_color = if result.critical {
+                        tokens.critical
+                    } else {
+                        tokens.normal
+                    };
+                    painter.add(egui::Shape::Path(egui::epaint::PathShape::convex_polygon(
+                        points,
+                        milestone_color,
+                        egui::epaint::PathStroke::new(2.0, Color32::WHITE),
+                    )));
+                } else {
+                    painter.rect_filled(bar, 2.0, color);
+                    if is_summary {
+                        painter.line_segment(
+                            [
+                                Pos2::new(bar.min.x, bar.min.y),
+                                Pos2::new(bar.min.x, bar.max.y),
+                            ],
+                            egui::Stroke::new(2.0, Color32::WHITE),
                         );
-                        painter.rect_filled(progress, 2.0, tokens.accent);
+                        painter.line_segment(
+                            [
+                                Pos2::new(bar.max.x, bar.min.y),
+                                Pos2::new(bar.max.x, bar.max.y),
+                            ],
+                            egui::Stroke::new(2.0, Color32::WHITE),
+                        );
+                    }
+
+                    // Progress overlay: the completed share of the bar is drawn in
+                    // the accent so recorded progress stays visible over either
+                    // bar colour in both themes.
+                    if let Some(percent) = activity.percent_complete {
+                        if percent > 0 {
+                            let fraction = percent.clamp(0, 10_000) as f32 / 10_000.0;
+                            let progress = Rect::from_min_max(
+                                bar.min,
+                                Pos2::new(bar.min.x + bar.width() * fraction, bar.max.y),
+                            );
+                            painter.rect_filled(progress, 2.0, tokens.accent);
+                        }
                     }
                 }
 
@@ -4189,9 +4213,21 @@ fn render_gantt(
                 } else {
                     format!("{}{}", indent, activity.name)
                 };
+                let text_pos = if is_milestone {
+                    let cx = rect.min.x + (finish_days + 0.5) * pixels_per_day;
+                    let cy = y + row_height / 2.0;
+                    Pos2::new(cx + (row_height * 0.7) / 2.0 + 4.0, cy)
+                } else {
+                    bar.center()
+                };
+                let text_align = if is_milestone {
+                    Align2::LEFT_CENTER
+                } else {
+                    Align2::CENTER_CENTER
+                };
                 painter.text(
-                    bar.center(),
-                    Align2::CENTER_CENTER,
+                    text_pos,
+                    text_align,
                     &bar_label,
                     egui::FontId::proportional(10.0),
                     Color32::WHITE,
