@@ -4064,7 +4064,11 @@ fn render_gantt(
                     Pos2::new(x1 - arrow_size, y1 + arrow_size),
                 ]
             };
-            painter.add(egui::Shape::convex_polygon(head, Color32::GRAY, egui::Stroke::NONE));
+            painter.add(egui::Shape::convex_polygon(
+                head,
+                Color32::GRAY,
+                egui::Stroke::NONE,
+            ));
 
             // Lag label near the elbow when non-zero.
             if relationship.lag != 0 {
