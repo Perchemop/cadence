@@ -227,6 +227,9 @@ pub struct CadenceApp {
     pixels_per_day: f32,
     drag_start: Option<usize>,
     status_message: Option<String>,
+    dirty: bool,
+    confirm_close: bool,
+    confirm_delete_activity: bool,
     selected_relationship: Option<cadence_core::model::RelationshipId>,
     lag_buffer: String,
     last_rel: Option<cadence_core::model::RelationshipId>,
@@ -280,6 +283,7 @@ pub struct CadenceApp {
     production_activity_buffer: String,
     production_date_buffer: String,
     production_percent: i64,
+    production_percent_buffer: String,
     owner_buffer: String,
     promised_buffer: bool,
     delay_reason_buffer: String,
@@ -317,6 +321,9 @@ impl CadenceApp {
             pixels_per_day: 14.0,
             drag_start: None,
             status_message: None,
+            dirty: false,
+            confirm_close: false,
+            confirm_delete_activity: false,
             selected_relationship: None,
             lag_buffer: String::new(),
             last_rel: None,
@@ -370,6 +377,7 @@ impl CadenceApp {
             production_activity_buffer: String::new(),
             production_date_buffer: today().to_string(),
             production_percent: 0,
+            production_percent_buffer: "0".to_string(),
             owner_buffer: String::new(),
             promised_buffer: false,
             delay_reason_buffer: String::new(),
@@ -398,6 +406,7 @@ impl CadenceApp {
     fn recompute(&mut self) {
         self.edit_version = self.edit_version.wrapping_add(1);
         self.schedule = schedule(&self.project).map_err(|error| error.to_string());
+        self.dirty = true;
     }
 
     /// Reload the inspector buffers for the selected activity after an undo or
@@ -1156,6 +1165,7 @@ impl CadenceApp {
             Ok(()) => {
                 self.status_message = Some(format!("Saved to {}", path.display()));
                 self.project_path = Some(path);
+                self.dirty = false;
             }
             Err(error) => {
                 self.status_message = Some(format!("Cannot save: {error}"));
@@ -1203,6 +1213,7 @@ impl CadenceApp {
                 self.selected_baseline = None;
                 self.selected_lookahead_snapshot = None;
                 self.recompute();
+                self.dirty = false;
                 self.status_message = Some(format!("Opened {}", path.display()));
             }
             Err(error) => {
@@ -1317,6 +1328,20 @@ impl eframe::App for CadenceApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
+        // Reflect unsaved state in the window title each frame.
+        let title = format!(
+            "{}{} — Cadence",
+            self.project.name,
+            if self.dirty { " •" } else { "" }
+        );
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
+
+        // Guard against closing with unsaved changes.
+        if ctx.input(|i| i.viewport().close_requested()) && self.dirty && !self.confirm_close {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.confirm_close = true;
+        }
+
         // Poll the background update check at a low rate; the network request
         // itself happens on its own thread so the UI never blocks.
         if let Some(receiver) = self.update_receiver.take() {
@@ -1346,6 +1371,20 @@ impl eframe::App for CadenceApp {
         }
         if ctx.input(|input| input.key_pressed(egui::Key::O) && input.modifiers.ctrl) {
             self.open_dialog();
+        }
+        if ctx.input(|input| input.key_pressed(egui::Key::N) && input.modifiers.ctrl) {
+            let id = self.project.next_activity_id();
+            let command = cadence_commands::CreateActivity::new(id, "New activity", 1);
+            if self
+                .stack
+                .execute(&mut self.project, Box::new(command))
+                .is_ok()
+            {
+                self.recompute();
+                self.select(id);
+                self.scroll_to_selection = true;
+                self.status_message = Some("Activity created.".to_string());
+            }
         }
 
         // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y: undo and redo from any view. Skip
@@ -1539,6 +1578,24 @@ impl eframe::App for CadenceApp {
                 {
                     self.save_as_dialog();
                 }
+                if ui
+                    .button("New activity")
+                    .on_hover_text("Create a new activity (Ctrl+N)")
+                    .clicked()
+                {
+                    let id = self.project.next_activity_id();
+                    let command = cadence_commands::CreateActivity::new(id, "New activity", 1);
+                    if self
+                        .stack
+                        .execute(&mut self.project, Box::new(command))
+                        .is_ok()
+                    {
+                        self.recompute();
+                        self.select(id);
+                        self.scroll_to_selection = true;
+                        self.status_message = Some("Activity created.".to_string());
+                    }
+                }
                 ui.separator();
                 // View tabs: one tab per workspace, MS Project / P6 style.
                 // Selected tab keeps its fill so the active workspace is obvious.
@@ -1659,10 +1716,12 @@ impl eframe::App for CadenceApp {
                 if ui.button("Undo").clicked() {
                     let _ = self.stack.undo(&mut self.project);
                     self.recompute();
+                    self.refresh_selection();
                 }
                 if ui.button("Redo").clicked() {
                     let _ = self.stack.redo(&mut self.project);
                     self.recompute();
+                    self.refresh_selection();
                 }
                 if let Some(message) = &self.status_message {
                     ui.label(format!("Status: {message}"));
@@ -1749,6 +1808,9 @@ impl eframe::App for CadenceApp {
                             .show(ui, |ui| {
                                 ui.heading("Inspector");
                                 if let Some(id) = self.selected {
+                                    if ui.button("Delete activity").clicked() {
+                                        self.confirm_delete_activity = true;
+                                    }
                                     ui.label(format!("Activity {}", id));
                                     ui.label("Name");
                                     ui.text_edit_singleline(&mut self.name_buffer);
@@ -3169,7 +3231,156 @@ impl eframe::App for CadenceApp {
                 egui::CentralPanel::default().show(ui, |ui| {
                     ui.heading("Production tracking");
                     ui.label("Record daily actual progress against the schedule.");
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        ui.label("Activity");
+                        egui::ComboBox::from_id_salt("prod_activity")
+                            .selected_text(if self.production_activity_buffer.is_empty() {
+                                "Select activity".to_string()
+                            } else {
+                                self.production_activity_buffer.clone()
+                            })
+                            .show_ui(ui, |ui| {
+                                for activity in &self.project.activities {
+                                    ui.selectable_value(
+                                        &mut self.production_activity_buffer,
+                                        activity.id.0.to_string(),
+                                        &activity.name,
+                                    );
+                                }
+                            });
+                        ui.label("Date");
+                        ui.text_edit_singleline(&mut self.production_date_buffer);
+                        ui.label("Percent");
+                        ui.text_edit_singleline(&mut self.production_percent_buffer);
+                        if ui.button("Record").clicked() {
+                            if let Ok(activity_id) = self.production_activity_buffer.parse::<u64>()
+                            {
+                                if let Some(date) = parse_date(self.production_date_buffer.trim()) {
+                                    if let Ok(percent) =
+                                        self.production_percent_buffer.parse::<i64>()
+                                    {
+                                        let command = cadence_commands::RecordProduction {
+                                            activity_id: ActivityId(activity_id),
+                                            date,
+                                            percent_complete: percent * 100,
+                                        };
+                                        if self
+                                            .stack
+                                            .execute(&mut self.project, Box::new(command))
+                                            .is_ok()
+                                        {
+                                            self.recompute();
+                                            self.status_message =
+                                                Some("Production recorded.".to_string());
+                                        }
+                                    } else {
+                                        self.status_message =
+                                            Some("Percent must be a number.".to_string());
+                                    }
+                                } else {
+                                    self.status_message =
+                                        Some("Date must be YYYY-MM-DD.".to_string());
+                                }
+                            } else {
+                                self.status_message = Some("Select an activity first.".to_string());
+                            }
+                        }
+                    });
+                    ui.separator();
+                    ui.heading("Entries");
+                    let mut to_delete = None;
+                    for entry in &self.project.production_entries {
+                        ui.horizontal(|ui| {
+                            ui.label(format!(
+                                "Activity {} — {} — {} bp",
+                                entry.activity_id, entry.date, entry.percent_complete
+                            ));
+                            if ui.button("Delete").clicked() {
+                                to_delete = Some(entry.id);
+                            }
+                        });
+                    }
+                    if let Some(id) = to_delete {
+                        let command = cadence_commands::DeleteProduction { id };
+                        if self
+                            .stack
+                            .execute(&mut self.project, Box::new(command))
+                            .is_ok()
+                        {
+                            self.recompute();
+                            self.status_message = Some("Production entry deleted.".to_string());
+                        }
+                    }
                 });
+            }
+        }
+
+        if self.confirm_delete_activity {
+            let mut open = true;
+            egui::Window::new("Delete activity?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    ui.label("Delete the selected activity? This can be undone.");
+                    ui.horizontal(|ui| {
+                        if ui.button("Delete").clicked() {
+                            if let Some(id) = self.selected {
+                                let command = cadence_commands::DeleteActivity { id };
+                                if self
+                                    .stack
+                                    .execute(&mut self.project, Box::new(command))
+                                    .is_ok()
+                                {
+                                    self.recompute();
+                                    self.selected = None;
+                                    self.status_message = Some("Activity deleted.".to_string());
+                                }
+                            }
+                            self.confirm_delete_activity = false;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.confirm_delete_activity = false;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_delete_activity = false;
+            }
+        }
+
+        if self.confirm_close {
+            let mut open = true;
+            egui::Window::new("Save changes?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    ui.label(format!(
+                        "Save changes to {} before closing?",
+                        self.project.name
+                    ));
+                    ui.horizontal(|ui| {
+                        if ui.button("Save").clicked() {
+                            self.save_or_prompt();
+                            self.confirm_close = false;
+                            if !self.dirty {
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            }
+                        }
+                        if ui.button("Discard").clicked() {
+                            self.dirty = false;
+                            self.confirm_close = false;
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.confirm_close = false;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_close = false;
             }
         }
 
