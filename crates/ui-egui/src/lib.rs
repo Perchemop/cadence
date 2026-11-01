@@ -4295,6 +4295,30 @@ fn render_gantt(
             painter.line_segment([Pos2::new(x0, y0), Pos2::new(mid_x, y0)], stroke);
             painter.line_segment([Pos2::new(mid_x, y0), Pos2::new(mid_x, y1)], stroke);
             painter.line_segment([Pos2::new(mid_x, y1), Pos2::new(x1, y1)], stroke);
+            // Arrowhead at successor end
+            let arrow_size = 6.0;
+            let direction = if x1 >= x0 { 1.0 } else { -1.0 };
+            let arrow_points = vec![
+                Pos2::new(x1, y1),
+                Pos2::new(x1 - direction * arrow_size, y1 - arrow_size / 2.0),
+                Pos2::new(x1 - direction * arrow_size, y1 + arrow_size / 2.0),
+            ];
+            painter.add(egui::Shape::Path(egui::epaint::PathShape::convex_polygon(
+                arrow_points,
+                Color32::GRAY,
+                egui::epaint::PathStroke::new(1.0, Color32::GRAY),
+            )));
+            // Lag label
+            if relationship.lag != 0 {
+                let lag_text = format!("{}d", relationship.lag);
+                painter.text(
+                    Pos2::new(mid_x, (y0 + y1) / 2.0),
+                    Align2::CENTER_CENTER,
+                    lag_text,
+                    egui::FontId::proportional(8.0),
+                    Color32::GRAY,
+                );
+            }
         }
     });
 
