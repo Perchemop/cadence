@@ -1629,27 +1629,22 @@ impl eframe::App for CadenceApp {
                 ui.heading("Cadence");
                 ui.separator();
                 ui.label(&self.project.name);
-                if ui
-                    .button("Open…")
-                    .on_hover_text("Open a Cadence project file (Ctrl+O)")
-                    .clicked()
-                {
-                    self.open_dialog();
-                }
-                if ui
-                    .button("Save")
-                    .on_hover_text("Save the project (Ctrl+S)")
-                    .clicked()
-                {
-                    self.save_or_prompt();
-                }
-                if ui
-                    .button("Save as…")
-                    .on_hover_text("Save the project to a new file")
-                    .clicked()
-                {
-                    self.save_as_dialog();
-                }
+                ui.separator();
+
+                ui.menu_button("File", |ui| {
+                    if ui.button("Open…  (Ctrl+O)").clicked() {
+                        self.open_dialog();
+                        ui.close_menu();
+                    }
+                    if ui.button("Save  (Ctrl+S)").clicked() {
+                        self.save_or_prompt();
+                        ui.close_menu();
+                    }
+                    if ui.button("Save as…").clicked() {
+                        self.save_as_dialog();
+                        ui.close_menu();
+                    }
+                });
                 ui.separator();
                 if ui
                     .button("New activity")
@@ -1670,45 +1665,41 @@ impl eframe::App for CadenceApp {
                     }
                 }
                 ui.separator();
-                // View tabs: one tab per workspace, MS Project / P6 style.
-                // Selected tab keeps its fill so the active workspace is obvious.
-                let first = &mut true;
-                for (mode, label) in [
-                    (ViewMode::Table, "Table"),
-                    (ViewMode::Gantt, "Gantt"),
-                    (ViewMode::Resources, "Resources"),
-                    (ViewMode::Baselines, "Baselines"),
-                    (ViewMode::Calendars, "Calendars"),
-                    (ViewMode::Audit, "Audit"),
-                    (ViewMode::Lookahead, "Lookahead"),
-                    (ViewMode::Diary, "Diary"),
-                    (ViewMode::Production, "Production"),
-                ] {
-                    let selected = self.view_mode == mode;
-                    if *first {
-                        *first = false;
-                    } else {
-                        ui.separator();
+                // View menu: one entry per workspace, MS Project / P6 style.
+                ui.menu_button("View", |ui| {
+                    for (mode, label) in [
+                        (ViewMode::Table, "Table"),
+                        (ViewMode::Gantt, "Gantt"),
+                        (ViewMode::Resources, "Resources"),
+                        (ViewMode::Baselines, "Baselines"),
+                        (ViewMode::Calendars, "Calendars"),
+                        (ViewMode::Audit, "Audit"),
+                        (ViewMode::Lookahead, "Lookahead"),
+                        (ViewMode::Diary, "Diary"),
+                        (ViewMode::Production, "Production"),
+                    ] {
+                        let selected = self.view_mode == mode;
+                        if ui
+                            .button(if selected { format!("▪ {label}") } else { label.to_string() })
+                            .clicked()
+                        {
+                            self.view_mode = mode;
+                            ui.close_menu();
+                        }
                     }
+                    ui.separator();
                     if ui
-                        .add(egui::Button::new(label).selected(selected).frame(selected))
+                        .button(if self.show_split_gantt {
+                            "Split Gantt: on"
+                        } else {
+                            "Split Gantt: off"
+                        })
                         .clicked()
                     {
-                        self.view_mode = mode;
+                        self.show_split_gantt = !self.show_split_gantt;
+                        ui.close_menu();
                     }
-                }
-
-                ui.separator();
-                if ui
-                    .button(if self.show_split_gantt {
-                        "Split Gantt: on"
-                    } else {
-                        "Split Gantt: off"
-                    })
-                    .clicked()
-                {
-                    self.show_split_gantt = !self.show_split_gantt;
-                }
+                });
                 let columns_menu = ui.menu_button("Columns", |ui| {
                     ui.heading("Visible columns");
                     for key in SortKey::ordered_columns() {
@@ -1726,39 +1717,12 @@ impl eframe::App for CadenceApp {
                         self.visible_columns = SortKey::all_columns();
                     }
                 });
-                columns_menu.response.on_hover_text("Choose which columns show in the activity table (MS Project / P6 column chooser)");
                 if ui
                     .button("Save report")
                     .on_hover_text("Write a Markdown report next to the working directory")
                     .clicked()
                 {
                     self.save_report();
-                }
-                if ui
-                    .button("Print report…")
-                    .on_hover_text("Save a print-ready PDF of the report via a file dialog")
-                    .clicked()
-                {
-                    self.print_report_dialog();
-                }
-                if ui
-                    .add_enabled(
-                        self.view_mode == ViewMode::Gantt,
-                        egui::Button::new("Print Gantt…"),
-                    )
-                    .on_hover_text("Save a print-ready PDF of the Gantt view via a file dialog")
-                    .clicked()
-                {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("PDF document", &["pdf"])
-                        .set_file_name(format!("{}-gantt.pdf", file_stem(&self.project.name)))
-                        .save_file()
-                    {
-                        self.gantt_print_path = Some(path);
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
-                            egui::UserData::default(),
-                        ));
-                    }
                 }
                 if ui
                     .button("Report a bug…")
