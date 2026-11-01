@@ -1649,6 +1649,26 @@ impl eframe::App for CadenceApp {
                     if ui.button("Save as…").clicked() {
                         self.save_as_dialog();
                     }
+                    ui.separator();
+                    if ui
+                        .button("Print Gantt…")
+                        .on_hover_text("Save a print-ready PDF of the Gantt view")
+                        .clicked()
+                    {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("PDF document", &["pdf"])
+                            .set_file_name(format!("{}-gantt.pdf", file_stem(&self.project.name)))
+                            .save_file()
+                        {
+                            self.gantt_print_path = Some(path);
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
+                                egui::UserData::default(),
+                            ));
+                        }
+                    }
+                    if ui.button("Print Report…").clicked() {
+                        self.print_report_dialog();
+                    }
                 });
                 ui.separator();
                 if ui
@@ -4650,7 +4670,6 @@ fn render_gantt(
             }
         }
     });
-    *gantt_scroll_offset = output.state.offset.y;
 
     let mut changed = false;
     if let Some((start_row, end_row)) = pending_link {
