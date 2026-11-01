@@ -3254,11 +3254,13 @@ impl eframe::App for CadenceApp {
                         ui.label("Percent");
                         ui.text_edit_singleline(&mut self.production_percent_buffer);
                         if ui.button("Record").clicked() {
-                            if let Ok(activity_id) = self.production_activity_buffer.parse::<u64>() {
+                            if let Ok(activity_id) = self.production_activity_buffer.parse::<u64>()
+                            {
                                 if let Some(date) = parse_date(self.production_date_buffer.trim())
                                 {
-                                    if let Ok(percent) =
-                                        self.production_percent_buffer.parse::<i64>()
+                                    if let Ok(percent) = self
+                                        .production_percent_buffer
+                                        .parse::<i64>()
                                     {
                                         let command = cadence_commands::RecordProduction {
                                             activity_id: ActivityId(activity_id),
@@ -3283,8 +3285,7 @@ impl eframe::App for CadenceApp {
                                         Some("Date must be YYYY-MM-DD.".to_string());
                                 }
                             } else {
-                                self.status_message =
-                                    Some("Select an activity first.".to_string());
+                                self.status_message = Some("Select an activity first.".to_string());
                             }
                         }
                     });
@@ -3304,7 +3305,11 @@ impl eframe::App for CadenceApp {
                     }
                     if let Some(id) = to_delete {
                         let command = cadence_commands::DeleteProduction { id };
-                        if self.stack.execute(&mut self.project, Box::new(command)).is_ok() {
+                        if self
+                            .stack
+                            .execute(&mut self.project, Box::new(command))
+                            .is_ok()
+                        {
                             self.recompute();
                             self.status_message = Some("Production entry deleted.".to_string());
                         }
