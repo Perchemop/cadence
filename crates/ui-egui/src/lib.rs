@@ -30,7 +30,7 @@ use cadence_core::model::{
     LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind,
 };
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
-use time::{Date, Month};
+use time::{Date, Month, Weekday};
 
 pub mod crash;
 pub mod design;
@@ -1990,6 +1990,7 @@ impl eframe::App for CadenceApp {
                         .min_size(300.0)
                         .resizable(true)
                         .show(ui, |ui| {
+                            let mut gantt_selection = None;
                             gantt_changed = render_gantt(
                                 ui,
                                 &mut self.project,
@@ -2001,7 +2002,12 @@ impl eframe::App for CadenceApp {
                                 self.pixels_per_day,
                                 &mut self.pixels_per_day,
                                 self.dark,
+                                self.selected,
+                                &mut gantt_selection,
                             );
+                            if let Some(id) = gantt_selection {
+                                self.select(id);
+                            }
                         });
                     if gantt_changed {
                         // A drag-created link changes the schedule; bump the
@@ -2236,6 +2242,7 @@ impl eframe::App for CadenceApp {
                 let mut gantt_changed = false;
                 egui::CentralPanel::default().show(ui, |ui| {
                     let px = self.pixels_per_day;
+                    let mut gantt_selection = None;
                     gantt_changed = render_gantt(
                         ui,
                         &mut self.project,
@@ -2247,7 +2254,12 @@ impl eframe::App for CadenceApp {
                         px,
                         &mut self.pixels_per_day,
                         self.dark,
+                        self.selected,
+                        &mut gantt_selection,
                     );
+                    if let Some(id) = gantt_selection {
+                        self.select(id);
+                    }
                 });
                 if gantt_changed {
                     self.recompute();
@@ -3554,6 +3566,7 @@ fn gantt_summary(schedule: &Schedule) -> String {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 fn render_gantt(
     ui: &mut Ui,
     project: &mut Project,
@@ -3565,6 +3578,8 @@ fn render_gantt(
     pixels_per_day: f32,
     pixels_per_day_out: &mut f32,
     dark: bool,
+    selected: Option<ActivityId>,
+    selection_out: &mut Option<ActivityId>,
 ) -> bool {
     let tokens = DesignTokens::for_dark(dark);
     let current_schedule = match schedule.as_ref() {
@@ -3622,30 +3637,51 @@ fn render_gantt(
         let clip = ui.clip_rect().intersect(rect);
         painter.set_clip_rect(clip);
 
+        // Non-working-time shading: fill day columns that are not working
+        // days (weekends / holidays) with the theme's `deep` colour before
+        // drawing bars.
+        let deep_color = design::palette(dark).deep;
+        for day in 0..=(total_days as i32) {
+            let date = Date::from_julian_day(origin.to_julian_day() + day as i64).unwrap_or(origin);
+            if project.calendar.is_working_day(date) {
+                continue;
+            }
+            let x = rect.min.x + day as f32 * pixels_per_day;
+            if x + pixels_per_day < clip.min.x || x > clip.max.x {
+                continue;
+            }
+            let col_rect = Rect::from_min_max(
+                Pos2::new(x, rect.min.y),
+                Pos2::new((x + pixels_per_day).min(rect.max.x), rect.max.y),
+            );
+            painter.rect_filled(col_rect, 0.0, deep_color);
+        }
+
         // Weekly hairlines and the today line: structure in low-contrast
-        // strokes, so colour stays reserved for meaning.
+        // strokes, so colour stays reserved for meaning. Use real calendar
+        // weeks (Mondays) instead of a 5-working-day step so the lines no
+        // longer drift across holidays.
         let grid_color = if dark {
             Color32::from_rgb(0x2A, 0x2E, 0x36)
         } else {
             Color32::from_rgb(0xE5, 0xE7, 0xEB)
         };
-        let mut week_origin = origin;
-        while week_origin < finish {
-            if week_origin > origin {
-                let x = rect.min.x
-                    + (week_origin.to_julian_day() - origin.to_julian_day()) as f32
-                        * pixels_per_day;
-                if x >= rect.min.x && x <= rect.max.x {
-                    painter.line_segment(
-                        [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
-                        egui::Stroke::new(1.0, grid_color),
-                    );
-                }
+        for day in 0..=(total_days as i32) {
+            let date = Date::from_julian_day(origin.to_julian_day() + day as i64).unwrap_or(origin);
+            if date.weekday() != Weekday::Monday {
+                continue;
             }
-            week_origin = project
-                .calendar
-                .add_working_days(week_origin, 5)
-                .unwrap_or(week_origin);
+            if day == 0 {
+                continue;
+            }
+            let x = rect.min.x + day as f32 * pixels_per_day;
+            if x < clip.min.x || x > clip.max.x {
+                continue;
+            }
+            painter.line_segment(
+                [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
+                egui::Stroke::new(1.0, grid_color),
+            );
         }
         let now = today();
         if now >= origin && now <= finish {
@@ -3744,6 +3780,8 @@ fn render_gantt(
             + 1;
         let last_row = last_row.min(activities.len());
 
+        // Collect bar rects for hit-testing / tooltips.
+        let mut bar_rects: Vec<(ActivityId, Rect, String, String)> = Vec::new();
         for (row, activity) in activities.iter().enumerate().take(last_row).skip(first_row) {
             let y = rect.min.y + header_height + row as f32 * row_height;
             if let Some(result) = current_schedule.activity(activity.id) {
@@ -3756,6 +3794,54 @@ fn render_gantt(
                 let x1 = x0 + width;
                 let bar =
                     Rect::from_min_max(Pos2::new(x0, y + 2.0), Pos2::new(x1, y + row_height - 2.0));
+
+                // Milestone: zero-duration activities draw a diamond marker
+                // instead of a stub bar.
+                if activity.original_duration == 0 {
+                    let cx = rect.min.x + (start_days + 0.5) * pixels_per_day;
+                    let cy = y + row_height / 2.0;
+                    let size = 6.0;
+                    let points = vec![
+                        Pos2::new(cx, cy - size),
+                        Pos2::new(cx + size, cy),
+                        Pos2::new(cx, cy + size),
+                        Pos2::new(cx - size, cy),
+                    ];
+                    painter.add(egui::Shape::convex_polygon(
+                        points,
+                        if result.critical { tokens.critical } else { tokens.normal },
+                        egui::Stroke::NONE,
+                    ));
+                    let label = if result.critical {
+                        format!("! {}", activity.name)
+                    } else {
+                        activity.name.clone()
+                    };
+                    painter.text(
+                        Pos2::new(cx + size + 4.0, cy),
+                        Align2::LEFT_CENTER,
+                        &label,
+                        egui::FontId::proportional(10.0),
+                        design::palette(dark).text,
+                    );
+                    // Tooltip payload stored with a zero-size rect proxy: use bar
+                    // rect for hit-testing consistency (the diamond's bounding box).
+                    let tip = format!(
+                        "{}\nStart: {}  Finish: {}\nFloat: {}  Status: {}",
+                        activity.name,
+                        result.scheduled_start,
+                        result.scheduled_finish,
+                        result.total_float,
+                        if result.critical { "Critical" } else { "Normal" }
+                    );
+                    bar_rects.push((activity.id, bar, tip, label));
+                    // Selection highlight for milestone.
+                    if selected == Some(activity.id) {
+                        painter.rect_stroke(bar, 2.0, egui::Stroke::new(1.5, ACCENT));
+                    }
+                    continue;
+                }
+
                 let color = if result.critical {
                     tokens.critical
                 } else {
@@ -3763,9 +3849,7 @@ fn render_gantt(
                 };
                 painter.rect_filled(bar, 2.0, color);
 
-                // Progress overlay: the completed share of the bar is drawn in
-                // the accent so recorded progress stays visible over either
-                // bar colour in both themes.
+                // Progress overlay.
                 if let Some(percent) = activity.percent_complete {
                     if percent > 0 {
                         let fraction = percent.clamp(0, 10_000) as f32 / 10_000.0;
@@ -3777,18 +3861,104 @@ fn render_gantt(
                     }
                 }
 
+                // Bar label: ellipsize to fit, keep critical prefix.
                 let bar_label = if result.critical {
                     format!("! {}", activity.name)
                 } else {
                     activity.name.clone()
                 };
+                let font = egui::FontId::proportional(10.0);
+                let text_color = {
+                    // Choose label colour from bar luminance.
+                    let lum = (color.r() as f32 * 0.299
+                        + color.g() as f32 * 0.587
+                        + color.b() as f32 * 0.114)
+                        / 255.0;
+                    if lum > 0.6 {
+                        design::palette(dark).text
+                    } else {
+                        Color32::WHITE
+                    }
+                };
+                // Measure and ellipsize.
+                let galley = painter.layout_no_wrap(bar_label.clone(), font.clone(), text_color);
+                let available = bar.width() - 6.0;
+                let label_to_draw = if galley.size().x <= available || available <= 0.0 {
+                    bar_label.clone()
+                } else {
+                    let mut s = bar_label.clone();
+                    while !s.is_empty() {
+                        s.pop();
+                        let test = format!("{}…", s);
+                        let g = painter.layout_no_wrap(test.clone(), font.clone(), text_color);
+                        if g.size().x <= available {
+                            s = test;
+                            break;
+                        }
+                    }
+                    if s.is_empty() {
+                        "…".to_string()
+                    } else {
+                        s
+                    }
+                };
                 painter.text(
                     bar.center(),
                     Align2::CENTER_CENTER,
-                    &bar_label,
-                    egui::FontId::proportional(10.0),
-                    Color32::WHITE,
+                    &label_to_draw,
+                    font,
+                    text_color,
                 );
+
+                // Percent-complete number at the bar tip.
+                if let Some(percent) = activity.percent_complete {
+                    let pct_text = format!("{}%", percent / 100);
+                    painter.text(
+                        Pos2::new(bar.max.x - 2.0, bar.center().y),
+                        Align2::RIGHT_CENTER,
+                        &pct_text,
+                        egui::FontId::proportional(9.0),
+                        text_color,
+                    );
+                }
+
+                // Selection highlight.
+                if selected == Some(activity.id) {
+                    painter.rect_stroke(bar, 2.0, egui::Stroke::new(1.5, ACCENT));
+                }
+
+                let tip = format!(
+                    "{}\nStart: {}  Finish: {}\nFloat: {}  Status: {}",
+                    activity.name,
+                    result.scheduled_start,
+                    result.scheduled_finish,
+                    result.total_float,
+                    if result.critical { "Critical" } else { "Normal" }
+                );
+                bar_rects.push((activity.id, bar, tip, bar_label));
+            }
+        }
+
+        // Click selection + tooltip based on hovered/clicked bar.
+        if response.clicked() {
+            if let Some(pos) = ui.ctx().pointer_interact_pos() {
+                for (id, bar, _, _) in &bar_rects {
+                    if bar.contains(pos) {
+                        *selection_out = Some(*id);
+                        break;
+                    }
+                }
+            }
+        }
+        // Tooltip
+        if response.hovered() {
+            if let Some(pos) = ui.ctx().pointer_hover_pos() {
+                for (_, bar, tip, _) in &bar_rects {
+                    if bar.contains(pos) {
+                        response.on_hover_text(tip.clone());
+                        break;
+                    }
+                }
             }
         }
 
@@ -3847,11 +4017,44 @@ fn render_gantt(
             let x1 = rect.min.x + (succ_days + succ_offset) * pixels_per_day;
             let y0 = rect.min.y + header_height + pred_row as f32 * row_height + row_height / 2.0;
             let y1 = rect.min.y + header_height + succ_row as f32 * row_height + row_height / 2.0;
-            let mid_x = (x0 + x1) / 2.0;
+            // Drop side flips when the successor sits left of the predecessor.
+            let drop_x = if x1 >= x0 {
+                x0 + pixels_per_day * 0.5
+            } else {
+                x0 - pixels_per_day * 0.5
+            };
             let stroke = egui::Stroke::new(1.0, Color32::GRAY);
-            painter.line_segment([Pos2::new(x0, y0), Pos2::new(mid_x, y0)], stroke);
-            painter.line_segment([Pos2::new(mid_x, y0), Pos2::new(mid_x, y1)], stroke);
-            painter.line_segment([Pos2::new(mid_x, y1), Pos2::new(x1, y1)], stroke);
+            painter.line_segment([Pos2::new(x0, y0), Pos2::new(drop_x, y0)], stroke);
+            painter.line_segment([Pos2::new(drop_x, y0), Pos2::new(drop_x, y1)], stroke);
+            painter.line_segment([Pos2::new(drop_x, y1), Pos2::new(x1, y1)], stroke);
+
+            // Arrowhead at the successor end.
+            let arrow_size = 4.0;
+            let head = if succ_at_finish {
+                vec![
+                    Pos2::new(x1, y1),
+                    Pos2::new(x1 + arrow_size, y1 - arrow_size),
+                    Pos2::new(x1 + arrow_size, y1 + arrow_size),
+                ]
+            } else {
+                vec![
+                    Pos2::new(x1, y1),
+                    Pos2::new(x1 - arrow_size, y1 - arrow_size),
+                    Pos2::new(x1 - arrow_size, y1 + arrow_size),
+                ]
+            };
+            painter.add(egui::Shape::convex_polygon(head, Color32::GRAY, egui::Stroke::NONE));
+
+            // Lag label near the elbow when non-zero.
+            if relationship.lag != 0 {
+                painter.text(
+                    Pos2::new(drop_x, (y0 + y1) * 0.5),
+                    Align2::LEFT_CENTER,
+                    format!("{}", relationship.lag),
+                    egui::FontId::proportional(9.0),
+                    design::palette(dark).text_muted,
+                );
+            }
         }
     });
 
