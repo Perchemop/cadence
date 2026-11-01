@@ -28,13 +28,13 @@ use cadence_core::engine::{evm_metrics, level_resources, resource_conflicts, res
 use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, LinkType,
-    LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind, WbsId,
+    LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind,
 };
 use egui::{
-    Align2, Color32, ComboBox, Context, CursorIcon, Grid, Id, Pos2, Rect, ScrollArea, Sense, Ui,
+    Align2, Color32, ComboBox, Context, CursorIcon, Grid, Pos2, Rect, ScrollArea, Sense, Ui,
     Vec2,
 };
-use time::{Date, Duration, Month};
+use time::{Date, Month};
 
 pub mod crash;
 pub mod design;
@@ -1641,15 +1641,12 @@ impl eframe::App for CadenceApp {
                 ui.menu_button("File", |ui| {
                     if ui.button("Open…  (Ctrl+O)").clicked() {
                         self.open_dialog();
-                        ui.close_menu();
                     }
                     if ui.button("Save  (Ctrl+S)").clicked() {
                         self.save_or_prompt();
-                        ui.close_menu();
                     }
                     if ui.button("Save as…").clicked() {
                         self.save_as_dialog();
-                        ui.close_menu();
                     }
                 });
                 ui.separator();
@@ -1691,8 +1688,7 @@ impl eframe::App for CadenceApp {
                             .clicked()
                         {
                             self.view_mode = mode;
-                            ui.close_menu();
-                        }
+                            }
                     }
                     ui.separator();
                     if ui
@@ -1704,7 +1700,6 @@ impl eframe::App for CadenceApp {
                         .clicked()
                     {
                         self.show_split_gantt = !self.show_split_gantt;
-                        ui.close_menu();
                     }
                 });
                 let columns_menu = ui.menu_button("Columns", |ui| {
@@ -2111,7 +2106,7 @@ impl eframe::App for CadenceApp {
                                 &mut self.selected,
                                 parse_date(&self.status_date_buffer),
                                 &mut self.gantt_scroll_offset,
-                                activities,
+                                &activities,
                                 self.pixels_per_day,
                                 &mut self.pixels_per_day,
                                 self.dark,
@@ -2202,8 +2197,7 @@ impl eframe::App for CadenceApp {
                             let selected_index = selected_id.and_then(|id| {
                                 sorted.iter().position(|activity| activity.id == id)
                             });
-                            let table_scroll_id = Id::new("table_scroll");
-                            let mut area = ScrollArea::vertical().id_source(table_scroll_id);
+                            let mut area = ScrollArea::vertical();
                             if scroll_to_selection {
                                 if let Some(index) = selected_index {
                                     let offset = (index as f32 * row_height - 120.0).max(0.0);
@@ -2215,7 +2209,7 @@ impl eframe::App for CadenceApp {
                             } else {
                                 area = area.vertical_scroll_offset(self.gantt_scroll_offset);
                             }
-                            area.show_rows(ui, row_height, sorted.len(), |ui, range| {
+                            let output = area.show_rows(ui, row_height, sorted.len(), |ui, range| {
                                 ui.spacing_mut().item_spacing.y = 0.0;
                                 for index in range {
                                     let activity = &sorted[index];
@@ -2362,12 +2356,7 @@ impl eframe::App for CadenceApp {
                                     });
                                 }
                             });
-                            if let Some(state) = egui::containers::scroll_area::State::load(
-                                ui.ctx(),
-                                table_scroll_id,
-                            ) {
-                                self.gantt_scroll_offset = state.offset.y;
-                            }
+                            self.gantt_scroll_offset = output.state.offset.y;
                         }
                     }
                 });
@@ -3891,8 +3880,8 @@ fn render_gantt(
     let total_days = (finish.to_julian_day() - origin.to_julian_day()).max(1) as f32 + 2.0;
     let row_height = 20.0;
     let header_height = 44.0;
-    /// Left name gutter so the full-screen Gantt reads like MSP/P6 (name
-    /// column plus collapse/expand toggles). Bars start after the gutter.
+    // Left name gutter so the full-screen Gantt reads like MSP/P6 (name
+    // column plus collapse/expand toggles). Bars start after the gutter.
     let gutter_width = 170.0;
     let total_height = activities.len() as f32 * row_height + header_height;
     let timeline_width = total_days * pixels_per_day + gutter_width + 40.0;
@@ -3954,9 +3943,7 @@ fn render_gantt(
     );
 
     let mut pending_link = None;
-    let gantt_scroll_id = Id::new("gantt_scroll");
-    ScrollArea::both()
-        .id_source(gantt_scroll_id)
+    let output = ScrollArea::both()
         .vertical_scroll_offset(*gantt_scroll_offset)
         .show(ui, |ui| {
         let (rect, response) = ui.allocate_exact_size(
@@ -4039,7 +4026,7 @@ fn render_gantt(
                     );
                 }
             }
-            day = day.checked_add(Duration::days(1)).unwrap_or(day);
+            day = Date::from_julian_day(day.to_julian_day() + 1).unwrap_or(day);
         }
 
         // Weekly hairlines and the today line: structure in low-contrast
@@ -4657,9 +4644,7 @@ fn render_gantt(
             }
         }
     });
-    if let Some(state) = egui::containers::scroll_area::State::load(ui.ctx(), gantt_scroll_id) {
-        *gantt_scroll_offset = state.offset.y;
-    }
+    *gantt_scroll_offset = output.state.offset.y;
 
     let mut changed = false;
     if let Some((start_row, end_row)) = pending_link {
