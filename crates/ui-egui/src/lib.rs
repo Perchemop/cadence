@@ -1983,14 +1983,14 @@ impl eframe::App for CadenceApp {
                     });
 
                 if self.show_split_gantt {
-                    let activities = &self.sorted_cache;
                     let mut gantt_changed = false;
+                    let mut gantt_selection = None;
                     egui::Panel::right("workbench_gantt")
                         .default_size(420.0)
                         .min_size(300.0)
                         .resizable(true)
                         .show(ui, |ui| {
-                            let mut gantt_selection = None;
+                            let activities = &self.sorted_cache;
                             gantt_changed = render_gantt(
                                 ui,
                                 &mut self.project,
@@ -2005,10 +2005,10 @@ impl eframe::App for CadenceApp {
                                 self.selected,
                                 &mut gantt_selection,
                             );
-                            if let Some(id) = gantt_selection {
-                                self.select(id);
-                            }
                         });
+                    if let Some(id) = gantt_selection {
+                        self.select(id);
+                    }
                     if gantt_changed {
                         // A drag-created link changes the schedule; bump the
                         // edit version so cached sort and audit results refresh.
@@ -2240,9 +2240,8 @@ impl eframe::App for CadenceApp {
             }
             ViewMode::Gantt => {
                 let mut gantt_changed = false;
+                let mut gantt_selection = None;
                 egui::CentralPanel::default().show(ui, |ui| {
-                    let px = self.pixels_per_day;
-                    let mut gantt_selection = None;
                     gantt_changed = render_gantt(
                         ui,
                         &mut self.project,
@@ -2251,16 +2250,16 @@ impl eframe::App for CadenceApp {
                         &mut self.drag_start,
                         &mut self.status_message,
                         &self.sorted_cache,
-                        px,
+                        self.pixels_per_day,
                         &mut self.pixels_per_day,
                         self.dark,
                         self.selected,
                         &mut gantt_selection,
                     );
-                    if let Some(id) = gantt_selection {
-                        self.select(id);
-                    }
                 });
+                if let Some(id) = gantt_selection {
+                    self.select(id);
+                }
                 if gantt_changed {
                     self.recompute();
                 }
@@ -3642,7 +3641,7 @@ fn render_gantt(
         // drawing bars.
         let deep_color = design::palette(dark).deep;
         for day in 0..=(total_days as i32) {
-            let date = Date::from_julian_day(origin.to_julian_day() + day as i64).unwrap_or(origin);
+            let date = Date::from_julian_day(origin.to_julian_day() + day).unwrap_or(origin);
             if project.calendar.is_working_day(date) {
                 continue;
             }
@@ -3667,7 +3666,7 @@ fn render_gantt(
             Color32::from_rgb(0xE5, 0xE7, 0xEB)
         };
         for day in 0..=(total_days as i32) {
-            let date = Date::from_julian_day(origin.to_julian_day() + day as i64).unwrap_or(origin);
+            let date = Date::from_julian_day(origin.to_julian_day() + day).unwrap_or(origin);
             if date.weekday() != Weekday::Monday {
                 continue;
             }
@@ -3837,7 +3836,7 @@ fn render_gantt(
                     bar_rects.push((activity.id, bar, tip, label));
                     // Selection highlight for milestone.
                     if selected == Some(activity.id) {
-                        painter.rect_stroke(bar, 2.0, egui::Stroke::new(1.5, ACCENT));
+                        painter.rect_stroke(bar, 2.0, egui::Stroke::new(1.5, ACCENT), egui::StrokeKind::Middle);
                     }
                     continue;
                 }
@@ -3924,7 +3923,7 @@ fn render_gantt(
 
                 // Selection highlight.
                 if selected == Some(activity.id) {
-                    painter.rect_stroke(bar, 2.0, egui::Stroke::new(1.5, ACCENT));
+                    painter.rect_stroke(bar, 2.0, egui::Stroke::new(1.5, ACCENT), egui::StrokeKind::Middle);
                 }
 
                 let tip = format!(
