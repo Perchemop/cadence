@@ -2230,7 +2230,7 @@ impl eframe::App for CadenceApp {
                             } else {
                                 area = area.vertical_scroll_offset(self.gantt_scroll_offset);
                             }
-                            let output = area.show_rows(ui, row_height, sorted.len(), |ui, range| {
+                            area.show_rows(ui, row_height, sorted.len(), |ui, range| {
                                 ui.spacing_mut().item_spacing.y = 0.0;
                                 for index in range {
                                     let activity = &sorted[index];
@@ -2377,7 +2377,6 @@ impl eframe::App for CadenceApp {
                                     });
                                 }
                             });
-                            self.gantt_scroll_offset = output.state.offset.y;
                         }
                     }
                 });
