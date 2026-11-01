@@ -4104,7 +4104,7 @@ fn render_gantt(
                     let s = result.scheduled_start;
                     let f = result.scheduled_finish;
                     if s <= status_date && status_date <= f {
-                        if let Some(pct) = activity.percent_complete {
+                        if let Some(_) = activity.percent_complete {
                             let row_idx = activities
                                 .iter()
                                 .position(|a| a.id == activity.id)
