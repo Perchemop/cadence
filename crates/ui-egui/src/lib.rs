@@ -30,7 +30,10 @@ use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, LinkType,
     LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind, WbsId,
 };
-use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
+use egui::{
+    Align2, Color32, ComboBox, Context, CursorIcon, Grid, Id, Pos2, Rect, ScrollArea, Sense, Ui,
+    Vec2,
+};
 use time::{Date, Duration, Month};
 
 pub mod crash;
@@ -2101,6 +2104,7 @@ impl eframe::App for CadenceApp {
                                 &mut self.stack,
                                 &mut self.drag_start,
                                 &mut self.status_message,
+                                &mut self.selected,
                                 activities,
                                 self.pixels_per_day,
                                 &mut self.pixels_per_day,
@@ -2375,6 +2379,7 @@ impl eframe::App for CadenceApp {
                         &mut self.stack,
                         &mut self.drag_start,
                         &mut self.status_message,
+                        &mut self.selected,
                         &activities,
                         px,
                         &mut self.pixels_per_day,
@@ -3845,6 +3850,7 @@ fn render_gantt(
     stack: &mut CommandStack,
     drag_start: &mut Option<usize>,
     status_message: &mut Option<String>,
+    selected: &mut Option<ActivityId>,
     activities: &[Activity],
     pixels_per_day: f32,
     pixels_per_day_out: &mut f32,
@@ -4174,6 +4180,10 @@ fn render_gantt(
             + 1;
         let last_row = last_row.min(activities.len());
 
+        let pointer_pos = ui.ctx().input(|i| i.pointer.interact_pos());
+        let clicked = response.clicked() && drag_start.is_none();
+        let mut hovered_id: Option<ActivityId> = None;
+
         for (row, activity) in activities.iter().enumerate().take(last_row).skip(first_row) {
             let y = rect.min.y + header_height + row as f32 * row_height;
             if let Some(result) = current_schedule.activity(activity.id) {
@@ -4260,6 +4270,28 @@ fn render_gantt(
                 } else {
                     bar
                 };
+                // Hit test: selection on click, hover highlight/cursor.
+                // Only select when not mid drag-to-create-link (drag_start is
+                // None), so we never steal a click that begins a dependency link.
+                let over = if let Some(pos) = pointer_pos {
+                    if is_milestone {
+                        let cx = rect.min.x + (finish_days + 0.5) * pixels_per_day;
+                        let cy = y + row_height / 2.0;
+                        let size = row_height * 0.7;
+                        ((pos.x - cx).powi(2) + (pos.y - cy).powi(2)).sqrt() < size * 0.7
+                    } else {
+                        bar.contains(pos)
+                    }
+                } else {
+                    false
+                };
+                if over {
+                    hovered_id = Some(activity.id);
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    if clicked {
+                        *selected = Some(activity.id);
+                    }
+                }
                 let color = if is_summary {
                     tokens.normal
                 } else if result.critical {
@@ -4288,6 +4320,23 @@ fn render_gantt(
                         milestone_color,
                         egui::epaint::PathStroke::new(2.0, Color32::WHITE),
                     )));
+                    if *selected == Some(activity.id) {
+                        let cx = rect.min.x + (finish_days + 0.5) * pixels_per_day;
+                        let cy = y + row_height / 2.0;
+                        let size = row_height * 0.7;
+                        let half = (size * 1.4) / 2.0;
+                        let points = vec![
+                            Pos2::new(cx, cy - half),
+                            Pos2::new(cx + half, cy),
+                            Pos2::new(cx, cy + half),
+                            Pos2::new(cx - half, cy),
+                        ];
+                        painter.add(egui::Shape::Path(egui::epaint::PathShape::convex_polygon(
+                            points,
+                            Color32::TRANSPARENT,
+                            egui::epaint::PathStroke::new(2.0, Color32::WHITE),
+                        )));
+                    }
                 } else {
                     painter.rect_filled(bar, 2.0, color);
                     if is_summary {
@@ -4319,6 +4368,13 @@ fn render_gantt(
                             );
                             painter.rect_filled(progress, 2.0, tokens.accent);
                         }
+                    }
+                    if *selected == Some(activity.id) {
+                        painter.rect_stroke(
+                            bar,
+                            2.0,
+                            egui::Stroke::new(2.0, Color32::WHITE),
+                        );
                     }
                 }
 
@@ -4353,6 +4409,23 @@ fn render_gantt(
                     egui::FontId::proportional(10.0),
                     Color32::WHITE,
                 );
+            }
+        }
+
+        // Hover status: show a one-line description of the activity under the
+        // pointer in the status bar.
+        if let Some(id) = hovered_id {
+            if let Some(activity) = activities.iter().find(|a| a.id == id) {
+                if let Some(result) = current_schedule.activity(activity.id) {
+                    let percent = activity.percent_complete.unwrap_or(0);
+                    *status_message = Some(format!(
+                        "{} – {} to {} ({}% complete)",
+                        activity.name,
+                        result.scheduled_start,
+                        result.scheduled_finish,
+                        percent as f64 / 100.0,
+                    ));
+                }
             }
         }
 
