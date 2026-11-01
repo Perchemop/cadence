@@ -3808,7 +3808,11 @@ fn render_gantt(
                     ];
                     painter.add(egui::Shape::convex_polygon(
                         points,
-                        if result.critical { tokens.critical } else { tokens.normal },
+                        if result.critical {
+                            tokens.critical
+                        } else {
+                            tokens.normal
+                        },
                         egui::Stroke::NONE,
                     ));
                     let label = if result.critical {
@@ -3831,7 +3835,11 @@ fn render_gantt(
                         result.scheduled_start,
                         result.scheduled_finish,
                         result.total_float,
-                        if result.critical { "Critical" } else { "Normal" }
+                        if result.critical {
+                            "Critical"
+                        } else {
+                            "Normal"
+                        }
                     );
                     bar_rects.push((activity.id, bar, tip, label));
                     // Selection highlight for milestone.
@@ -3932,7 +3940,11 @@ fn render_gantt(
                     result.scheduled_start,
                     result.scheduled_finish,
                     result.total_float,
-                    if result.critical { "Critical" } else { "Normal" }
+                    if result.critical {
+                        "Critical"
+                    } else {
+                        "Normal"
+                    }
                 );
                 bar_rects.push((activity.id, bar, tip, bar_label));
             }
