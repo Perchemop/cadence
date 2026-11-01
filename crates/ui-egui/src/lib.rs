@@ -1703,7 +1703,7 @@ impl eframe::App for CadenceApp {
                         self.show_split_gantt = !self.show_split_gantt;
                     }
                 });
-                let columns_menu = ui.menu_button("Columns", |ui| {
+                ui.menu_button("Columns", |ui| {
                     ui.heading("Visible columns");
                     for key in SortKey::ordered_columns() {
                         let mut visible = self.visible_columns.contains(&key);
@@ -4105,7 +4105,6 @@ fn render_gantt(
                     let f = result.scheduled_finish;
                     if s <= status_date && status_date <= f {
                         if let Some(pct) = activity.percent_complete {
-                            let fraction = pct.clamp(0, 10_000) as f32 / 10_000.0;
                             let row_idx = activities
                                 .iter()
                                 .position(|a| a.id == activity.id)
@@ -4471,7 +4470,7 @@ fn render_gantt(
                         );
 
                     // Constraint indicator
-                    if let Some(date) = activity.constraint.date() {
+                    if let Some(_) = activity.constraint.date() {
                         let is_start = matches!(
                             activity.constraint,
                             cadence_core::model::Constraint::StartNoEarlierThan(_)
@@ -4504,7 +4503,7 @@ fn render_gantt(
                 if !is_summary && !is_milestone {
                     if let Some(pct) = activity.percent_complete {
                         let display_pct = pct.clamp(0, 10_000) / 100;
-                        bar_label = format!("{} {}%", base_label, display_pct);
+                        bar_label = format!("{} {}%", bar_label, display_pct);
                     }
                 }
                 // Truncate to fit bar width for non-milestone bars
