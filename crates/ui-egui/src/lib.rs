@@ -3893,8 +3893,37 @@ fn render_gantt(
         {
             *pixels_per_day_out = 14.0;
         }
+        ui.separator();
+        if ui
+            .button("Day")
+            .on_hover_text("Day zoom (14 px/day)")
+            .clicked()
+        {
+            *pixels_per_day_out = 14.0;
+        }
+        if ui
+            .button("Week")
+            .on_hover_text("Week zoom (2 px/day)")
+            .clicked()
+        {
+            *pixels_per_day_out = 2.0;
+        }
+        if ui
+            .button("Month")
+            .on_hover_text("Month zoom (0.5 px/day)")
+            .clicked()
+        {
+            *pixels_per_day_out = 0.5;
+        }
         ui.label(format!("{:.0}%", *pixels_per_day_out / 14.0 * 100.0));
     });
+    ui.label(
+        egui::RichText::new(
+            "Legend: blue = task, red = critical, accent fill = % complete, yellow dot = constraint, diamond = milestone",
+        )
+        .small()
+        .weak(),
+    );
 
     let mut pending_link = None;
     ScrollArea::both().show(ui, |ui| {
@@ -3985,6 +4014,13 @@ fn render_gantt(
             painter.line_segment(
                 [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
                 egui::Stroke::new(1.5, ACCENT),
+            );
+            painter.text(
+                Pos2::new(x + 4.0, rect.min.y + 4.0),
+                Align2::LEFT_TOP,
+                "Today",
+                egui::FontId::proportional(9.0),
+                ACCENT,
             );
         }
 
