@@ -3256,11 +3256,9 @@ impl eframe::App for CadenceApp {
                         if ui.button("Record").clicked() {
                             if let Ok(activity_id) = self.production_activity_buffer.parse::<u64>()
                             {
-                                if let Some(date) = parse_date(self.production_date_buffer.trim())
-                                {
-                                    if let Ok(percent) = self
-                                        .production_percent_buffer
-                                        .parse::<i64>()
+                                if let Some(date) = parse_date(self.production_date_buffer.trim()) {
+                                    if let Ok(percent) =
+                                        self.production_percent_buffer.parse::<i64>()
                                     {
                                         let command = cadence_commands::RecordProduction {
                                             activity_id: ActivityId(activity_id),
