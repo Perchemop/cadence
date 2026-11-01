@@ -30,7 +30,11 @@ use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, LinkType,
     LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind,
 };
-use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
+use cadence_core::wbs::WbsId;
+use egui::{
+    Align2, Color32, ComboBox, Context, CursorIcon, Grid, Pos2, Rect, ScrollArea, Sense, Ui,
+    Vec2,
+};
 use time::{Date, Month};
 
 pub mod crash;
@@ -278,6 +282,9 @@ pub struct CadenceApp {
     sort_ascending: bool,
     view_mode: ViewMode,
     pixels_per_day: f32,
+    /// Shared vertical scroll offset between the table and Gantt panes so they
+    /// stay aligned (MSP/P6-style linked scroll).
+    gantt_scroll_offset: f32,
     drag_start: Option<usize>,
     status_message: Option<String>,
     dirty: bool,
@@ -345,6 +352,8 @@ pub struct CadenceApp {
     sorted_key: SortKey,
     sorted_ascending: bool,
     show_split_gantt: bool,
+    /// WBS nodes currently collapsed in the table and Gantt outlines.
+    collapsed_wbs: BTreeSet<WbsId>,
     visible_columns: BTreeSet<SortKey>,
 }
 
@@ -372,6 +381,7 @@ impl CadenceApp {
             sort_ascending: true,
             view_mode: ViewMode::Table,
             pixels_per_day: 14.0,
+            gantt_scroll_offset: 0.0,
             drag_start: None,
             status_message: None,
             dirty: false,
@@ -439,6 +449,7 @@ impl CadenceApp {
             sorted_key: SortKey::Name,
             sorted_ascending: true,
             show_split_gantt: true,
+            collapsed_wbs: BTreeSet::new(),
             visible_columns: SortKey::all_columns(),
         }
     }
@@ -1375,6 +1386,21 @@ impl CadenceApp {
     fn sorted(&self) -> &[Activity] {
         &self.sorted_cache
     }
+
+    /// Activities visible in the table/Gantt outline: descendants of collapsed
+    /// WBS nodes are hidden, mirroring MSP/P6 outline behaviour.
+    fn visible_activities(&self) -> Vec<Activity> {
+        let mut visible = Vec::new();
+        for activity in &self.sorted_cache {
+            let hidden = activity
+                .wbs
+                .is_some_and(|node| self.collapsed_wbs.iter().any(|c| self.project.wbs.is_ancestor(*c, node)));
+            if !hidden {
+                visible.push(activity.clone());
+            }
+        }
+        visible
+    }
 }
 
 impl eframe::App for CadenceApp {
@@ -1611,27 +1637,39 @@ impl eframe::App for CadenceApp {
                 ui.heading("Cadence");
                 ui.separator();
                 ui.label(&self.project.name);
-                if ui
-                    .button("Open…")
-                    .on_hover_text("Open a Cadence project file (Ctrl+O)")
-                    .clicked()
-                {
-                    self.open_dialog();
-                }
-                if ui
-                    .button("Save")
-                    .on_hover_text("Save the project (Ctrl+S)")
-                    .clicked()
-                {
-                    self.save_or_prompt();
-                }
-                if ui
-                    .button("Save as…")
-                    .on_hover_text("Save the project to a new file")
-                    .clicked()
-                {
-                    self.save_as_dialog();
-                }
+                ui.separator();
+
+                ui.menu_button("File", |ui| {
+                    if ui.button("Open…  (Ctrl+O)").clicked() {
+                        self.open_dialog();
+                    }
+                    if ui.button("Save  (Ctrl+S)").clicked() {
+                        self.save_or_prompt();
+                    }
+                    if ui.button("Save as…").clicked() {
+                        self.save_as_dialog();
+                    }
+                    ui.separator();
+                    if ui
+                        .button("Print Gantt…")
+                        .on_hover_text("Save a print-ready PDF of the Gantt view")
+                        .clicked()
+                    {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("PDF document", &["pdf"])
+                            .set_file_name(format!("{}-gantt.pdf", file_stem(&self.project.name)))
+                            .save_file()
+                        {
+                            self.gantt_print_path = Some(path);
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
+                                egui::UserData::default(),
+                            ));
+                        }
+                    }
+                    if ui.button("Print Report…").clicked() {
+                        self.print_report_dialog();
+                    }
+                });
                 ui.separator();
                 if ui
                     .button("New activity")
@@ -1652,46 +1690,40 @@ impl eframe::App for CadenceApp {
                     }
                 }
                 ui.separator();
-                // View tabs: one tab per workspace, MS Project / P6 style.
-                // Selected tab keeps its fill so the active workspace is obvious.
-                let first = &mut true;
-                for (mode, label) in [
-                    (ViewMode::Table, "Table"),
-                    (ViewMode::Gantt, "Gantt"),
-                    (ViewMode::Resources, "Resources"),
-                    (ViewMode::Baselines, "Baselines"),
-                    (ViewMode::Calendars, "Calendars"),
-                    (ViewMode::Audit, "Audit"),
-                    (ViewMode::Lookahead, "Lookahead"),
-                    (ViewMode::Diary, "Diary"),
-                    (ViewMode::Production, "Production"),
-                ] {
-                    let selected = self.view_mode == mode;
-                    if *first {
-                        *first = false;
-                    } else {
-                        ui.separator();
+                // View menu: one entry per workspace, MS Project / P6 style.
+                ui.menu_button("View", |ui| {
+                    for (mode, label) in [
+                        (ViewMode::Table, "Table"),
+                        (ViewMode::Gantt, "Gantt"),
+                        (ViewMode::Resources, "Resources"),
+                        (ViewMode::Baselines, "Baselines"),
+                        (ViewMode::Calendars, "Calendars"),
+                        (ViewMode::Audit, "Audit"),
+                        (ViewMode::Lookahead, "Lookahead"),
+                        (ViewMode::Diary, "Diary"),
+                        (ViewMode::Production, "Production"),
+                    ] {
+                        let selected = self.view_mode == mode;
+                        if ui
+                            .button(if selected { format!("▪ {label}") } else { label.to_string() })
+                            .clicked()
+                        {
+                            self.view_mode = mode;
+                            }
                     }
+                    ui.separator();
                     if ui
-                        .add(egui::Button::new(label).selected(selected).frame(selected))
+                        .button(if self.show_split_gantt {
+                            "Split Gantt: on"
+                        } else {
+                            "Split Gantt: off"
+                        })
                         .clicked()
                     {
-                        self.view_mode = mode;
+                        self.show_split_gantt = !self.show_split_gantt;
                     }
-                }
-
-                ui.separator();
-                if ui
-                    .button(if self.show_split_gantt {
-                        "Split Gantt: on"
-                    } else {
-                        "Split Gantt: off"
-                    })
-                    .clicked()
-                {
-                    self.show_split_gantt = !self.show_split_gantt;
-                }
-                let columns_menu = ui.menu_button("Columns", |ui| {
+                });
+                ui.menu_button("Columns", |ui| {
                     ui.heading("Visible columns");
                     for key in SortKey::ordered_columns() {
                         let mut visible = self.visible_columns.contains(&key);
@@ -1708,39 +1740,12 @@ impl eframe::App for CadenceApp {
                         self.visible_columns = SortKey::all_columns();
                     }
                 });
-                columns_menu.response.on_hover_text("Choose which columns show in the activity table (MS Project / P6 column chooser)");
                 if ui
                     .button("Save report")
                     .on_hover_text("Write a Markdown report next to the working directory")
                     .clicked()
                 {
                     self.save_report();
-                }
-                if ui
-                    .button("Print report…")
-                    .on_hover_text("Save a print-ready PDF of the report via a file dialog")
-                    .clicked()
-                {
-                    self.print_report_dialog();
-                }
-                if ui
-                    .add_enabled(
-                        self.view_mode == ViewMode::Gantt,
-                        egui::Button::new("Print Gantt…"),
-                    )
-                    .on_hover_text("Save a print-ready PDF of the Gantt view via a file dialog")
-                    .clicked()
-                {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("PDF document", &["pdf"])
-                        .set_file_name(format!("{}-gantt.pdf", file_stem(&self.project.name)))
-                        .save_file()
-                    {
-                        self.gantt_print_path = Some(path);
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
-                            egui::UserData::default(),
-                        ));
-                    }
                 }
                 if ui
                     .button("Report a bug…")
@@ -2105,7 +2110,7 @@ impl eframe::App for CadenceApp {
                     });
 
                 if self.show_split_gantt {
-                    let activities = &self.sorted_cache;
+                    let activities = self.visible_activities();
                     let mut gantt_changed = false;
                     egui::Panel::right("workbench_gantt")
                         .default_size(420.0)
@@ -2119,7 +2124,10 @@ impl eframe::App for CadenceApp {
                                 &mut self.stack,
                                 &mut self.drag_start,
                                 &mut self.status_message,
-                                activities,
+                                &mut self.selected,
+                                parse_date(&self.status_date_buffer),
+                                &mut self.gantt_scroll_offset,
+                                &activities,
                                 self.pixels_per_day,
                                 &mut self.pixels_per_day,
                                 self.dark,
@@ -2133,7 +2141,7 @@ impl eframe::App for CadenceApp {
                 }
 
                 let schedule = self.schedule.as_ref();
-                let sorted = self.sorted();
+                let sorted = self.visible_activities();
                 let selected_id = self.selected;
                 let scroll_to_selection = self.scroll_to_selection;
                 let mut clicked_activity = None;
@@ -2214,8 +2222,13 @@ impl eframe::App for CadenceApp {
                             if scroll_to_selection {
                                 if let Some(index) = selected_index {
                                     let offset = (index as f32 * row_height - 120.0).max(0.0);
+                                    self.gantt_scroll_offset = offset;
                                     area = area.vertical_scroll_offset(offset);
+                                } else {
+                                    area = area.vertical_scroll_offset(self.gantt_scroll_offset);
                                 }
+                            } else {
+                                area = area.vertical_scroll_offset(self.gantt_scroll_offset);
                             }
                             area.show_rows(ui, row_height, sorted.len(), |ui, range| {
                                 ui.spacing_mut().item_spacing.y = 0.0;
@@ -2258,6 +2271,33 @@ impl eframe::App for CadenceApp {
                                                     );
                                                 }
                                                 Some(SortKey::Name) => {
+                                                    let node_opt = activity.wbs;
+                                                    let is_summary = node_opt.is_some_and(|node| {
+                                                        self.project
+                                                            .wbs
+                                                            .node(node)
+                                                            .is_some_and(|n| !n.children.is_empty())
+                                                    });
+                                                    if is_summary {
+                                                        let node = node_opt.unwrap();
+                                                        let collapsed = self.collapsed_wbs.contains(&node);
+                                                        let toggle = if collapsed { "▸" } else { "▾" };
+                                                        if ui
+                                                            .add_sized(
+                                                                [20.0, row_height],
+                                                                egui::Button::new(toggle)
+                                                                    .frame(false)
+                                                                ,
+                                                            )
+                                                            .clicked()
+                                                        {
+                                                            if collapsed {
+                                                                self.collapsed_wbs.remove(&node);
+                                                            } else {
+                                                                self.collapsed_wbs.insert(node);
+                                                            }
+                                                        }
+                                                    }
                                                     if ui
                                                         .add_sized(
                                                             [widths[col], row_height],
@@ -2358,6 +2398,7 @@ impl eframe::App for CadenceApp {
                 let mut gantt_changed = false;
                 egui::CentralPanel::default().show(ui, |ui| {
                     let px = self.pixels_per_day;
+                    let activities = self.visible_activities();
                     gantt_changed = render_gantt(
                         ui,
                         &mut self.project,
@@ -2365,7 +2406,10 @@ impl eframe::App for CadenceApp {
                         &mut self.stack,
                         &mut self.drag_start,
                         &mut self.status_message,
-                        &self.sorted_cache,
+                        &mut self.selected,
+                        parse_date(&self.status_date_buffer),
+                        &mut self.gantt_scroll_offset,
+                        &activities,
                         px,
                         &mut self.pixels_per_day,
                         self.dark,
@@ -3835,6 +3879,9 @@ fn render_gantt(
     stack: &mut CommandStack,
     drag_start: &mut Option<usize>,
     status_message: &mut Option<String>,
+    selected: &mut Option<ActivityId>,
+    status_date: Option<Date>,
+    gantt_scroll_offset: &mut f32,
     activities: &[Activity],
     pixels_per_day: f32,
     pixels_per_day_out: &mut f32,
@@ -3853,8 +3900,11 @@ fn render_gantt(
     let total_days = (finish.to_julian_day() - origin.to_julian_day()).max(1) as f32 + 2.0;
     let row_height = 20.0;
     let header_height = 44.0;
+    // Left name gutter so the full-screen Gantt reads like MSP/P6 (name
+    // column plus collapse/expand toggles). Bars start after the gutter.
+    let gutter_width = 170.0;
     let total_height = activities.len() as f32 * row_height + header_height;
-    let timeline_width = total_days * pixels_per_day + 40.0;
+    let timeline_width = total_days * pixels_per_day + gutter_width + 40.0;
     let summary = gantt_summary(current_schedule);
     ui.label(&summary);
     ui.horizontal(|ui| {
@@ -3880,11 +3930,42 @@ fn render_gantt(
         {
             *pixels_per_day_out = 14.0;
         }
+        ui.separator();
+        if ui
+            .button("Day")
+            .on_hover_text("Day zoom (14 px/day)")
+            .clicked()
+        {
+            *pixels_per_day_out = 14.0;
+        }
+        if ui
+            .button("Week")
+            .on_hover_text("Week zoom (2 px/day)")
+            .clicked()
+        {
+            *pixels_per_day_out = 2.0;
+        }
+        if ui
+            .button("Month")
+            .on_hover_text("Month zoom (0.5 px/day)")
+            .clicked()
+        {
+            *pixels_per_day_out = 0.5;
+        }
         ui.label(format!("{:.0}%", *pixels_per_day_out / 14.0 * 100.0));
     });
+    ui.label(
+        egui::RichText::new(
+            "Legend: blue = task, red = critical, accent fill = % complete, yellow dot = constraint, diamond = milestone",
+        )
+        .small()
+        .weak(),
+    );
 
     let mut pending_link = None;
-    ScrollArea::both().show(ui, |ui| {
+    ScrollArea::both()
+        .vertical_scroll_offset(*gantt_scroll_offset)
+        .show(ui, |ui| {
         let (rect, response) = ui.allocate_exact_size(
             Vec2::new(timeline_width, total_height),
             Sense::click_and_drag(),
@@ -3895,6 +3976,78 @@ fn render_gantt(
         let mut painter = ui.painter_at(rect);
         let clip = ui.clip_rect().intersect(rect);
         painter.set_clip_rect(clip);
+        let gutter_x = rect.min.x + gutter_width;
+
+        // Name gutter: header, per-row names (truncated to fit), and a
+        // vertical separator. Only visible (non-collapsed-descendant) rows are
+        // passed in, so the gutter stays aligned with the bars.
+        painter.line_segment(
+            [
+                Pos2::new(gutter_x, rect.min.y),
+                Pos2::new(gutter_x, rect.max.y),
+            ],
+            egui::Stroke::new(1.0, Color32::from_gray(110)),
+        );
+        painter.text(
+            Pos2::new(rect.min.x + 6.0, rect.min.y + 7.0),
+            Align2::LEFT_TOP,
+            "Name",
+            egui::FontId::proportional(10.0),
+            Color32::from_gray(160),
+        );
+        let gutter_max_chars = (gutter_width / 7.0).max(3.0) as usize;
+        for (index, activity) in activities.iter().enumerate() {
+            let y =
+                rect.min.y + header_height + index as f32 * row_height + row_height / 2.0;
+            if y < rect.min.y || y > rect.max.y {
+                continue;
+            }
+            let display = if activity.name.chars().count() > gutter_max_chars {
+                let truncated: String = activity
+                    .name
+                    .chars()
+                    .take(gutter_max_chars.saturating_sub(1))
+                    .collect();
+                format!("{truncated}…")
+            } else {
+                activity.name.clone()
+            };
+            painter.text(
+                Pos2::new(rect.min.x + 6.0, y),
+                Align2::LEFT_CENTER,
+                &display,
+                egui::FontId::proportional(10.0),
+                Color32::WHITE,
+            );
+        }
+
+        // Non-working day shading.
+        let palette = design::palette(dark);
+        let shade = Color32::from_rgba_unmultiplied(
+            palette.deep.r(),
+            palette.deep.g(),
+            palette.deep.b(),
+            30,
+        );
+        let mut day = origin;
+        while day <= finish {
+            if !project.calendar.is_working_day(day) {
+                let day_index = (day.to_julian_day() - origin.to_julian_day()) as f32;
+                let x0 = rect.min.x + day_index * pixels_per_day;
+                let x1 = x0 + pixels_per_day;
+                if x1 >= rect.min.x && x0 <= rect.max.x {
+                    painter.rect_filled(
+                        Rect::from_min_max(
+                            Pos2::new(x0, rect.min.y),
+                            Pos2::new(x1, rect.max.y),
+                        ),
+                        0.0,
+                        shade,
+                    );
+                }
+            }
+            day = Date::from_julian_day(day.to_julian_day() + 1).unwrap_or(day);
+        }
 
         // Weekly hairlines and the today line: structure in low-contrast
         // strokes, so colour stays reserved for meaning.
@@ -3906,10 +4059,10 @@ fn render_gantt(
         let mut week_origin = origin;
         while week_origin < finish {
             if week_origin > origin {
-                let x = rect.min.x
+                let x = gutter_x
                     + (week_origin.to_julian_day() - origin.to_julian_day()) as f32
                         * pixels_per_day;
-                if x >= rect.min.x && x <= rect.max.x {
+                if x >= gutter_x && x <= rect.max.x {
                     painter.line_segment(
                         [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
                         egui::Stroke::new(1.0, grid_color),
@@ -3924,11 +4077,96 @@ fn render_gantt(
         let now = today();
         if now >= origin && now <= finish {
             let x =
-                rect.min.x + (now.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
+                gutter_x + (now.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
             painter.line_segment(
                 [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
                 egui::Stroke::new(1.5, ACCENT),
             );
+            painter.text(
+                Pos2::new(x + 4.0, rect.min.y + 4.0),
+                Align2::LEFT_TOP,
+                "Today",
+                egui::FontId::proportional(9.0),
+                ACCENT,
+            );
+        }
+
+        // Status-date line: vertical marker at the status date (from the EVM
+        // status date buffer) with a progress-line treatment.
+        if let Some(status_date) = status_date {
+            if status_date >= origin && status_date <= finish {
+                let sx = rect.min.x
+                    + (status_date.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
+                painter.line_segment(
+                    [
+                        Pos2::new(sx, rect.min.y),
+                        Pos2::new(sx, rect.max.y),
+                    ],
+                    egui::Stroke::new(1.5, Color32::from_rgb(0x9C, 0x27, 0xB0)),
+                );
+                painter.text(
+                    Pos2::new(sx + 4.0, rect.min.y + 2.0),
+                    Align2::LEFT_TOP,
+                    "Status date",
+                    egui::FontId::proportional(9.0),
+                    Color32::from_rgb(0x9C, 0x27, 0xB0),
+                );
+
+                // Progress line: for each in-progress activity whose span covers
+                // the status date, mark the progress point on the bar at the
+                // status date.
+                let header_bottom = rect.min.y + header_height;
+                for activity in activities {
+                    let Some(result) = current_schedule.activity(activity.id) else {
+                        continue;
+                    };
+                    let s = result.scheduled_start;
+                    let f = result.scheduled_finish;
+                    if s <= status_date && status_date <= f {
+                        if let Some(_) = activity.percent_complete {
+                            let row_idx = activities
+                                .iter()
+                                .position(|a| a.id == activity.id)
+                                .unwrap_or(0);
+                            let y = header_bottom + row_idx as f32 * row_height + row_height / 2.0;
+                            let progress_x = rect.min.x
+                                + (status_date.to_julian_day() - origin.to_julian_day()) as f32
+                                    * pixels_per_day;
+                            painter.circle_filled(
+                                Pos2::new(progress_x, y),
+                                3.0,
+                                tokens.accent,
+                            );
+                        }
+                    }
+
+                    // Behind-schedule flag: not started yet but scheduled start
+                    // is after the status date.
+                    if let Some(pct) = activity.percent_complete {
+                        if pct == 0 && s > status_date {
+                            let row_idx = activities
+                                .iter()
+                                .position(|a| a.id == activity.id)
+                                .unwrap_or(0);
+                            let y = header_bottom + row_idx as f32 * row_height + row_height / 2.0;
+                            let sx_bar = rect.min.x
+                                + (s.to_julian_day() - origin.to_julian_day()) as f32
+                                    * pixels_per_day;
+                            painter.add(egui::Shape::Path(
+                                egui::epaint::PathShape::convex_polygon(
+                                    vec![
+                                        Pos2::new(sx_bar, y - 4.0),
+                                        Pos2::new(sx_bar, y + 4.0),
+                                        Pos2::new(sx_bar + 6.0, y),
+                                    ],
+                                    Color32::from_rgb(0xC0, 0x39, 0x2B),
+                                    egui::epaint::PathStroke::NONE,
+                                ),
+                            ));
+                        }
+                    }
+                }
+            }
         }
 
         // Drag-to-create dependency links.
@@ -3949,7 +4187,7 @@ fn render_gantt(
                 if let Some(result) = current_schedule.activity(start_activity.id) {
                     let start_days =
                         (result.scheduled_finish.to_julian_day() - origin.to_julian_day()) as f32;
-                    let start_x = rect.min.x + (start_days + 1.0) * pixels_per_day;
+                    let start_x = gutter_x + (start_days + 1.0) * pixels_per_day;
                     painter.line_segment(
                         [Pos2::new(start_x, start_y), pos],
                         egui::Stroke::new(1.5, Color32::YELLOW),
@@ -3997,7 +4235,7 @@ fn render_gantt(
 
         // Minor tier: day/week ticks and labels.
         for day in 0..=(total_days as i32) {
-            let x = rect.min.x + day as f32 * pixels_per_day;
+            let x = gutter_x + day as f32 * pixels_per_day;
             if x < clip.min.x || x > clip.max.x {
                 continue;
             }
@@ -4022,9 +4260,9 @@ fn render_gantt(
         // Major tier: month/year grouping labels across the top band.
         let mut major_day = 0i32;
         while major_day <= total_days as i32 {
-            let x = rect.min.x + major_day as f32 * pixels_per_day;
+            let x = gutter_x + major_day as f32 * pixels_per_day;
             let next = (major_day + major_step).min(total_days as i32 + 1);
-            let x_next = rect.min.x + next as f32 * pixels_per_day;
+            let x_next = gutter_x + next as f32 * pixels_per_day;
             if x >= clip.min.x && x <= clip.max.x {
                 let date =
                     Date::from_julian_day(origin.to_julian_day() + major_day).unwrap_or(origin);
@@ -4053,6 +4291,10 @@ fn render_gantt(
             + 1;
         let last_row = last_row.min(activities.len());
 
+        let pointer_pos = ui.ctx().input(|i| i.pointer.interact_pos());
+        let clicked = response.clicked() && drag_start.is_none();
+        let mut hovered_id: Option<ActivityId> = None;
+
         for (row, activity) in activities.iter().enumerate().take(last_row).skip(first_row) {
             let y = rect.min.y + header_height + row as f32 * row_height;
             if let Some(result) = current_schedule.activity(activity.id) {
@@ -4064,7 +4306,7 @@ fn render_gantt(
                         {
                             let b_start = (bs.to_julian_day() - origin.to_julian_day()) as f32;
                             let b_finish = (bf.to_julian_day() - origin.to_julian_day()) as f32;
-                            let bx0 = rect.min.x + b_start * pixels_per_day;
+                            let bx0 = gutter_x + b_start * pixels_per_day;
                             let bwidth = ((b_finish - b_start + 1.0) * pixels_per_day).max(6.0);
                             let bx1 = bx0 + bwidth;
                             let ghost = Rect::from_min_max(
@@ -4084,7 +4326,7 @@ fn render_gantt(
                     (result.scheduled_start.to_julian_day() - origin.to_julian_day()) as f32;
                 let finish_days =
                     (result.scheduled_finish.to_julian_day() - origin.to_julian_day()) as f32;
-                let x0 = rect.min.x + start_days * pixels_per_day;
+                let x0 = gutter_x + start_days * pixels_per_day;
                 let width = ((finish_days - start_days + 1.0) * pixels_per_day).max(6.0);
                 let x1 = x0 + width;
                 let bar =
@@ -4124,9 +4366,9 @@ fn render_gantt(
                         }
                         let s = min_start.unwrap_or(origin);
                         let f = max_finish.unwrap_or(origin);
-                        let sx = rect.min.x
+                        let sx = gutter_x
                             + (s.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
-                        let fx = rect.min.x
+                        let fx = gutter_x
                             + (f.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day
                             + pixels_per_day;
                         Rect::from_min_max(
@@ -4139,6 +4381,28 @@ fn render_gantt(
                 } else {
                     bar
                 };
+                // Hit test: selection on click, hover highlight/cursor.
+                // Only select when not mid drag-to-create-link (drag_start is
+                // None), so we never steal a click that begins a dependency link.
+                let over = if let Some(pos) = pointer_pos {
+                    if is_milestone {
+                        let cx = rect.min.x + (finish_days + 0.5) * pixels_per_day;
+                        let cy = y + row_height / 2.0;
+                        let size = row_height * 0.7;
+                        ((pos.x - cx).powi(2) + (pos.y - cy).powi(2)).sqrt() < size * 0.7
+                    } else {
+                        bar.contains(pos)
+                    }
+                } else {
+                    false
+                };
+                if over {
+                    hovered_id = Some(activity.id);
+                    ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+                    if clicked {
+                        *selected = Some(activity.id);
+                    }
+                }
                 let color = if is_summary {
                     tokens.normal
                 } else if result.critical {
@@ -4147,7 +4411,7 @@ fn render_gantt(
                     tokens.normal
                 };
                 if is_milestone {
-                    let cx = rect.min.x + (finish_days + 0.5) * pixels_per_day;
+                    let cx = gutter_x + (finish_days + 0.5) * pixels_per_day;
                     let cy = y + row_height / 2.0;
                     let size = row_height * 0.7;
                     let half = size / 2.0;
@@ -4167,6 +4431,23 @@ fn render_gantt(
                         milestone_color,
                         egui::epaint::PathStroke::new(2.0, Color32::WHITE),
                     )));
+                    if *selected == Some(activity.id) {
+                        let cx = rect.min.x + (finish_days + 0.5) * pixels_per_day;
+                        let cy = y + row_height / 2.0;
+                        let size = row_height * 0.7;
+                        let half = (size * 1.4) / 2.0;
+                        let points = vec![
+                            Pos2::new(cx, cy - half),
+                            Pos2::new(cx + half, cy),
+                            Pos2::new(cx, cy + half),
+                            Pos2::new(cx - half, cy),
+                        ];
+                        painter.add(egui::Shape::Path(egui::epaint::PathShape::convex_polygon(
+                            points,
+                            Color32::TRANSPARENT,
+                            egui::epaint::PathStroke::new(2.0, Color32::WHITE),
+                        )));
+                    }
                 } else {
                     painter.rect_filled(bar, 2.0, color);
                     if is_summary {
@@ -4199,6 +4480,30 @@ fn render_gantt(
                             painter.rect_filled(progress, 2.0, tokens.accent);
                         }
                     }
+                    if *selected == Some(activity.id) {
+                        painter.rect_stroke(
+                            bar,
+                            2.0,
+                            egui::Stroke::new(2.0, Color32::WHITE),
+                            egui::StrokeKind::Middle,
+                        );
+
+                    // Constraint indicator
+                    if let Some(_) = activity.constraint.date() {
+                        let is_start = matches!(
+                            activity.constraint,
+                            cadence_core::model::Constraint::StartNoEarlierThan(_)
+                                | cadence_core::model::Constraint::StartNoLaterThan(_)
+                        );
+                        let cx = if is_start {
+                            bar.min.x
+                        } else {
+                            bar.max.x
+                        };
+                        let cy = bar.center().y;
+                        painter.circle_filled(Pos2::new(cx, cy), 3.0, Color32::YELLOW);
+                        painter.circle_stroke(Pos2::new(cx, cy), 3.0, egui::Stroke::new(1.0, Color32::BLACK));
+                    }
                 }
 
                 let depth = activity
@@ -4206,15 +4511,34 @@ fn render_gantt(
                     .and_then(|node| project.wbs.depth(node))
                     .unwrap_or(0);
                 let indent = "  ".repeat(depth.saturating_sub(1));
-                let bar_label = if is_summary {
+                let base_label = if is_summary {
                     format!("{}▸ {}", indent, activity.name)
                 } else if result.critical {
                     format!("{}! {}", indent, activity.name)
                 } else {
                     format!("{}{}", indent, activity.name)
                 };
+                let mut bar_label = base_label;
+                if !is_summary && !is_milestone {
+                    if let Some(pct) = activity.percent_complete {
+                        let display_pct = pct.clamp(0, 10_000) / 100;
+                        bar_label = format!("{} {}%", bar_label, display_pct);
+                    }
+                }
+                // Truncate to fit bar width for non-milestone bars
+                let display_label = if !is_milestone && bar.width() > 30.0 {
+                    let max_chars = (bar.width() / 7.0).max(3.0) as usize;
+                    if bar_label.chars().count() > max_chars {
+                        let truncated: String = bar_label.chars().take(max_chars.saturating_sub(1)).collect();
+                        format!("{}…", truncated)
+                    } else {
+                        bar_label
+                    }
+                } else {
+                    bar_label
+                };
                 let text_pos = if is_milestone {
-                    let cx = rect.min.x + (finish_days + 0.5) * pixels_per_day;
+                    let cx = gutter_x + (finish_days + 0.5) * pixels_per_day;
                     let cy = y + row_height / 2.0;
                     Pos2::new(cx + (row_height * 0.7) / 2.0 + 4.0, cy)
                 } else {
@@ -4225,13 +4549,37 @@ fn render_gantt(
                 } else {
                     Align2::CENTER_CENTER
                 };
+                // Choose text colour for contrast: dark text on light normal bars
+                let text_color = if !is_milestone && !is_summary && !result.critical {
+                    Color32::BLACK
+                } else {
+                    Color32::WHITE
+                };
                 painter.text(
                     text_pos,
                     text_align,
-                    &bar_label,
+                    &display_label,
                     egui::FontId::proportional(10.0),
-                    Color32::WHITE,
+                    text_color,
                 );
+            }
+        }
+        }
+
+        // Hover status: show a one-line description of the activity under the
+        // pointer in the status bar.
+        if let Some(id) = hovered_id {
+            if let Some(activity) = activities.iter().find(|a| a.id == id) {
+                if let Some(result) = current_schedule.activity(activity.id) {
+                    let percent = activity.percent_complete.unwrap_or(0);
+                    *status_message = Some(format!(
+                        "{} – {} to {} ({}% complete)",
+                        activity.name,
+                        result.scheduled_start,
+                        result.scheduled_finish,
+                        percent as f64 / 100.0,
+                    ));
+                }
             }
         }
 
@@ -4286,8 +4634,8 @@ fn render_gantt(
             let succ_days = (succ_date.to_julian_day() - origin.to_julian_day()) as f32;
             let pred_offset = if pred_from_start { 0.0 } else { 1.0 };
             let succ_offset = if succ_at_finish { 1.0 } else { 0.0 };
-            let x0 = rect.min.x + (pred_days + pred_offset) * pixels_per_day;
-            let x1 = rect.min.x + (succ_days + succ_offset) * pixels_per_day;
+            let x0 = gutter_x + (pred_days + pred_offset) * pixels_per_day;
+            let x1 = gutter_x + (succ_days + succ_offset) * pixels_per_day;
             let y0 = rect.min.y + header_height + pred_row as f32 * row_height + row_height / 2.0;
             let y1 = rect.min.y + header_height + succ_row as f32 * row_height + row_height / 2.0;
             let mid_x = (x0 + x1) / 2.0;
