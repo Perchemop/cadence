@@ -3964,7 +3964,7 @@ fn render_gantt(
     );
 
     let mut pending_link = None;
-    let output = ScrollArea::both()
+    ScrollArea::both()
         .vertical_scroll_offset(*gantt_scroll_offset)
         .show(ui, |ui| {
         let (rect, response) = ui.allocate_exact_size(
