@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.8.0"
+version = "0.9.0"
 edition = "2021"
 rust-version = "1.81"
 license = "MIT OR Apache-2.0"
@@ -23,11 +23,11 @@ repository = "https://github.com/Perchemop/cadence"
 # security workflow's ban on wildcard dependencies fails the build on one
 # (D20 in DECISIONS.md). The explicit version also keeps the crates
 # publishable as-is.
-cadence-core = { path = "crates/core", version = "0.8.0" }
-cadence-commands = { path = "crates/commands", version = "0.8.0" }
-cadence-persistence = { path = "crates/persistence", version = "0.8.0" }
-cadence-interchange = { path = "crates/interchange", version = "0.8.0" }
-cadence-ui-egui = { path = "crates/ui-egui", version = "0.8.0" }
+cadence-core = { path = "crates/core", version = "0.9.0" }
+cadence-commands = { path = "crates/commands", version = "0.9.0" }
+cadence-persistence = { path = "crates/persistence", version = "0.9.0" }
+cadence-interchange = { path = "crates/interchange", version = "0.9.0" }
+cadence-ui-egui = { path = "crates/ui-egui", version = "0.9.0" }
 
 time = { version = "0.3", features = ["formatting", "parsing", "serde"] }
 serde = { version = "1", features = ["derive"] }

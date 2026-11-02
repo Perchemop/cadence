@@ -167,7 +167,13 @@ Progress-driven rescheduling remains queued in v0.3.x below.
       `cadence-core::clash::location_clashes`, which flags two open activities
       sharing a location on overlapping working days; the Lookahead view lists
       them with links to the activities.
-- [ ] Remaining Aphex lookahead stage: production tracking.
+- [x] Remaining Aphex lookahead stage: production tracking. New **Production** view
+      (`Ctrl+9`) with create/delete authoring blockers, dirty-guard prompts, and
+      production session tracking.
+- [x] Gantt polish: dependency arrowheads and lag labels, milestone diamonds for
+      zero-duration activities, WBS summary bars with two-tier timescale and
+      labelled today line, baseline ghosts overlaid as translucent bars, and
+      improved toolbar grouping and status colour semantics.
 
 ### Human-gated (recorded, not decided)
 
