@@ -56,7 +56,7 @@ use time::{Date, Duration};
 
 use crate::calendar_set::CalendarId;
 use crate::model::{
-    saturate_i64, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar,
+    saturate_i64, Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar,
     CalendarError, Constraint, EvmMetrics, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
     LookaheadSnapshotId, Project, RelationshipId, ResourceId,
 };
@@ -1018,6 +1018,526 @@ pub fn schedule_with_minimum_starts(
         let calendar = activity_calendars[activity_index];
         let total_float =
             calendar.working_days_between(early_start[activity_index], late_start[activity_index]);
+        let mut free_float = total_float;
+
+        if !outgoing[activity_index].is_empty() {
+            let mut minimum = i64::MAX;
+            for &relationship_index in &outgoing[activity_index] {
+                let relationship = &project.relationships[relationship_index];
+                let successor = relationship_successor[relationship_index];
+                let slack = match relationship.link_type {
+                    LinkType::Fs => calendar
+                        .working_days_between(early_finish[activity_index], early_start[successor])
+                        .checked_sub(1)
+                        .and_then(|value| value.checked_sub(relationship.lag)),
+                    LinkType::Ss => calendar
+                        .working_days_between(early_start[activity_index], early_start[successor])
+                        .checked_sub(relationship.lag),
+                    LinkType::Ff => calendar
+                        .working_days_between(early_finish[activity_index], early_finish[successor])
+                        .checked_sub(relationship.lag),
+                    LinkType::Sf => calendar
+                        .working_days_between(early_start[activity_index], early_finish[successor])
+                        .checked_sub(relationship.lag),
+                }
+                .ok_or(SchedError::ArithmeticOverflow)?;
+                minimum = minimum.min(slack);
+            }
+            free_float = minimum.max(0);
+        }
+
+        activities.push(ActivitySchedule {
+            id: activity.id,
+            early_start: early_start[activity_index],
+            early_finish: early_finish[activity_index],
+            late_start: late_start[activity_index],
+            late_finish: late_finish[activity_index],
+            scheduled_start: scheduled_start[activity_index],
+            scheduled_finish: scheduled_finish[activity_index],
+            total_float,
+            free_float,
+            critical: total_float <= 0,
+        });
+    }
+
+    let mut critical_indices: Vec<usize> = activities
+        .iter()
+        .enumerate()
+        .filter_map(|(activity_index, activity)| activity.critical.then_some(activity_index))
+        .collect();
+    critical_indices.sort_unstable_by_key(|&activity_index| {
+        (
+            early_start[activity_index],
+            project.activities[activity_index].id,
+        )
+    });
+    let critical_path = critical_indices
+        .into_iter()
+        .map(|activity_index| project.activities[activity_index].id)
+        .collect();
+
+    Ok(Schedule {
+        project_start: early_start.iter().copied().min().unwrap_or(origin),
+        project_finish,
+        activities,
+        critical_path,
+    })
+}
+
+/// Progress state of an activity as the rescheduling mode reads it.
+///
+/// The state is derived from the recorded facts (`percent_complete`,
+/// `actual_start`, `actual_finish`) on every call; it is never stored on the
+/// model, so editing a fact cannot leave a stale classification behind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProgressState {
+    /// No work recorded: the activity is scheduled from logic.
+    NotStarted,
+    /// Work has started but is not finished: the outstanding work is
+    /// rescheduled from the data date.
+    InProgress,
+    /// Work is finished: the activity is pinned to its recorded dates.
+    Complete,
+}
+
+/// Recorded progress for one activity, as the rescheduling mode reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActivityProgress {
+    /// Progress state derived from the recorded facts.
+    pub state: ProgressState,
+    /// Start the activity is pinned to once work has started.
+    pub actual_start: Option<Date>,
+    /// Finish the activity is pinned to once work is finished.
+    pub actual_finish: Option<Date>,
+    /// Working days of work still outstanding (the full duration when not
+    /// started, zero when complete).
+    pub remaining_duration: u32,
+}
+
+/// Classify an activity's recorded progress and compute its remaining work.
+///
+/// An activity is **complete** when an actual finish is recorded or percent
+/// complete is 100%. It is **in progress** when an actual start or any non-zero
+/// percent complete is recorded. It is **not started** otherwise. The remaining
+/// duration is the recorded duration scaled by the outstanding share of work,
+/// rounded **up**, so a partially complete activity never loses a whole day of
+/// outstanding work to rounding, and never drops to zero while unfinished.
+pub fn activity_progress(activity: &Activity) -> ActivityProgress {
+    let percent = activity.percent_complete.unwrap_or_default().clamp(0, 10_000);
+    let complete = activity.actual_finish.is_some() || percent >= 10_000;
+    let state = if complete {
+        ProgressState::Complete
+    } else if activity.actual_start.is_some() || percent > 0 {
+        ProgressState::InProgress
+    } else {
+        ProgressState::NotStarted
+    };
+    let remaining_duration = match state {
+        ProgressState::Complete => 0,
+        // Ceiling division: `duration * (10000 - percent) / 10000`, rounded up.
+        ProgressState::InProgress => {
+            let outstanding = i64::from(activity.original_duration) * (10_000 - percent);
+            let rounded = outstanding.div_ceil(10_000);
+            let remaining = if rounded <= 0 && activity.original_duration > 0 {
+                1
+            } else {
+                rounded
+            };
+            u32::try_from(remaining).unwrap_or(activity.original_duration)
+        }
+        ProgressState::NotStarted => activity.original_duration,
+    };
+    ActivityProgress {
+        state,
+        actual_start: activity.actual_start,
+        actual_finish: activity.actual_finish,
+        remaining_duration,
+    }
+}
+
+/// Schedule a project from recorded progress as of a data date.
+///
+/// This is the **explicit** progress-driven rescheduling mode that
+/// [`schedule`] deliberately is not (see `DECISIONS.md` D15). The plain
+/// [`schedule`] is untouched, so the variance views and the earned-value panel
+/// keep comparing plan against reality without becoming circular.
+///
+/// # Model
+///
+/// `data_date` is the status date: the point in time the outstanding work is
+/// scheduled from. It is normalised forward to the next working day of the
+/// project calendar.
+///
+/// - A **complete** activity is pinned to its recorded dates and drives its
+///   successors from them. A missing actual start falls back to the actual
+///   finish and vice versa, so a half-recorded fact still yields a valid day.
+/// - An **in-progress** activity starts at its actual start; its outstanding
+///   work (the recorded duration scaled by the unfinished share) is scheduled
+///   from the later of the actual start and the data date.
+/// - A **not-started** activity is scheduled by logic, never before the data
+///   date.
+///
+/// Relationships use the predecessor's *resolved* dates, so a successor of a
+/// complete activity is driven from the actual finish — the retained-logic
+/// convention. Complete activities report zero float; in-progress float is
+/// measured on the outstanding work, and not-started float on the whole
+/// activity.
+///
+/// Upper-bound (`…NoLaterThan`) constraints are enforced only for work that
+/// has not started. Recorded facts are never silently overridden, so a missed
+/// deadline on completed or in-progress work is left for the audit tool to
+/// flag rather than surfacing as a scheduling error here.
+///
+/// # Errors
+///
+/// The same set as [`schedule`]: duplicate identifiers, relationships that
+/// refer to missing activities, cycles, arithmetic overflow, an unusable
+/// calendar, a named calendar or WBS node that does not exist, and an
+/// unsatisfiable upper-bound constraint on not-started work.
+pub fn schedule_with_progress(project: &Project, data_date: Date) -> Result<Schedule, SchedError> {
+    let calendar = &project.calendar;
+    let origin = calendar.next_working_day_on_or_after(project.start_date)?;
+    // Outstanding work is never scheduled before the data date.
+    let data_day = calendar.next_working_day_on_or_after(data_date)?;
+    let count = project.activities.len();
+
+    let index = index_activities(project)?;
+
+    // Resolve each activity's calendar once. Activities without a named
+    // calendar inherit the project default.
+    let activity_calendars: Vec<&Calendar> = project
+        .activities
+        .iter()
+        .map(|activity| match activity.calendar {
+            None => Ok(&project.calendar),
+            Some(id) => project
+                .calendars
+                .calendar(id)
+                .map_err(|_| SchedError::UnknownCalendar {
+                    activity: activity.id,
+                    calendar: id,
+                }),
+        })
+        .collect::<Result<_, SchedError>>()?;
+
+    for activity in &project.activities {
+        if let Some(wbs) = activity.wbs {
+            if project.wbs.node(wbs).is_none() {
+                return Err(SchedError::UnknownWbs {
+                    activity: activity.id,
+                    wbs,
+                });
+            }
+        }
+    }
+
+    let mut successors: Vec<Vec<usize>> = vec![Vec::new(); count];
+    let mut incoming: Vec<Vec<usize>> = vec![Vec::new(); count];
+    let mut outgoing: Vec<Vec<usize>> = vec![Vec::new(); count];
+    let mut indegree = vec![0usize; count];
+    let mut relationship_predecessor = vec![0usize; project.relationships.len()];
+    let mut relationship_successor = vec![0usize; project.relationships.len()];
+    let mut seen_relationships = HashSet::with_capacity(project.relationships.len());
+
+    for (relationship_index, relationship) in project.relationships.iter().enumerate() {
+        if !seen_relationships.insert(relationship.id) {
+            return Err(SchedError::DuplicateRelationship(relationship.id));
+        }
+
+        let predecessor =
+            *index
+                .get(&relationship.predecessor)
+                .ok_or(SchedError::UnknownActivity {
+                    relationship: relationship.id,
+                    activity: relationship.predecessor,
+                })?;
+        let successor = *index
+            .get(&relationship.successor)
+            .ok_or(SchedError::UnknownActivity {
+                relationship: relationship.id,
+                activity: relationship.successor,
+            })?;
+
+        relationship_predecessor[relationship_index] = predecessor;
+        relationship_successor[relationship_index] = successor;
+        successors[predecessor].push(successor);
+        incoming[successor].push(relationship_index);
+        outgoing[predecessor].push(relationship_index);
+        indegree[successor] = indegree[successor].saturating_add(1);
+    }
+
+    let order = topological_order(count, &successors, &indegree);
+    if order.len() != count {
+        let mut remaining = vec![true; count];
+        for &processed in &order {
+            remaining[processed] = false;
+        }
+        let cycle = find_cycle(count, &successors, &remaining);
+        let path = cycle
+            .into_iter()
+            .map(|activity_index| project.activities[activity_index].id)
+            .collect();
+        return Err(SchedError::Cycle { path });
+    }
+
+    // Classify progress and remaining work once per activity.
+    let progress: Vec<ActivityProgress> = project.activities.iter().map(activity_progress).collect();
+
+    // Forward pass from recorded progress.
+    let mut early_start = vec![origin; count];
+    let mut early_finish = vec![origin; count];
+    // Start of the outstanding work, used to measure in-progress float.
+    let mut outstanding_start = vec![origin; count];
+    // Duration the backward pass uses for the work still outstanding.
+    let mut remaining_duration = vec![0u32; count];
+
+    for &activity_index in &order {
+        let activity = &project.activities[activity_index];
+        let calendar = activity_calendars[activity_index];
+        let progress = &progress[activity_index];
+        let duration = activity.original_duration;
+        let constraint = activity.constraint;
+
+        match progress.state {
+            ProgressState::Complete => {
+                // Pin to the recorded dates: the facts are the schedule.
+                let start_hint = progress
+                    .actual_start
+                    .or(progress.actual_finish)
+                    .unwrap_or(data_day);
+                let finish_hint = progress
+                    .actual_finish
+                    .or(progress.actual_start)
+                    .unwrap_or(data_day);
+                let start = calendar.next_working_day_on_or_after(start_hint)?;
+                let finish = calendar.prev_working_day_on_or_before(finish_hint)?.max(start);
+                early_start[activity_index] = start;
+                early_finish[activity_index] = finish;
+                outstanding_start[activity_index] = start;
+                remaining_duration[activity_index] = 0;
+            }
+            ProgressState::InProgress => {
+                // The activity started in the past; the outstanding work begins
+                // at the data date, or later when a start is recorded ahead of
+                // the status date.
+                let start_hint = progress.actual_start.unwrap_or(data_day);
+                let start = calendar.next_working_day_on_or_after(start_hint)?;
+                let resume = if start > data_day { start } else { data_day };
+                let finish =
+                    finish_from_start(calendar, resume, progress.remaining_duration)?;
+                early_start[activity_index] = start;
+                early_finish[activity_index] = finish.max(start);
+                outstanding_start[activity_index] = resume;
+                remaining_duration[activity_index] = progress.remaining_duration;
+            }
+            ProgressState::NotStarted => {
+                // Never earlier than the data date.
+                let mut start = data_day;
+
+                for &relationship_index in &incoming[activity_index] {
+                    let relationship = &project.relationships[relationship_index];
+                    let predecessor = relationship_predecessor[relationship_index];
+                    let candidate = match relationship.link_type {
+                        LinkType::Fs => advance(
+                            calendar,
+                            early_finish[predecessor],
+                            lag_plus_one(relationship.lag)?,
+                        )?,
+                        LinkType::Ss => {
+                            advance(calendar, early_start[predecessor], relationship.lag)?
+                        }
+                        LinkType::Ff => {
+                            let finish =
+                                advance(calendar, early_finish[predecessor], relationship.lag)?;
+                            start_from_finish(calendar, finish, duration)?
+                        }
+                        LinkType::Sf => {
+                            let finish =
+                                advance(calendar, early_start[predecessor], relationship.lag)?;
+                            start_from_finish(calendar, finish, duration)?
+                        }
+                    };
+
+                    start = start.max(candidate);
+                }
+
+                match constraint {
+                    Constraint::StartNoEarlierThan(date) => {
+                        start = start.max(calendar.next_working_day_on_or_after(date)?);
+                    }
+                    Constraint::FinishNoEarlierThan(date) => {
+                        let earliest_finish = calendar.next_working_day_on_or_after(date)?;
+                        start = start.max(start_from_finish(calendar, earliest_finish, duration)?);
+                    }
+                    _ => {}
+                }
+
+                let start = calendar.next_working_day_on_or_after(start)?;
+                let finish = finish_from_start(calendar, start, duration)?;
+
+                // Upper bounds are hard for work that has not started: if the
+                // earliest feasible dates already miss one, no schedule can
+                // satisfy the constraint.
+                match constraint {
+                    Constraint::StartNoLaterThan(date) => {
+                        let latest_start = calendar.prev_working_day_on_or_before(date)?;
+                        if start > latest_start {
+                            return Err(SchedError::ConstraintViolated {
+                                activity: activity.id,
+                                constraint,
+                            });
+                        }
+                    }
+                    Constraint::FinishNoLaterThan(date) => {
+                        let latest_finish = calendar.prev_working_day_on_or_before(date)?;
+                        if finish > latest_finish {
+                            return Err(SchedError::ConstraintViolated {
+                                activity: activity.id,
+                                constraint,
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+
+                early_start[activity_index] = start;
+                early_finish[activity_index] = finish;
+                outstanding_start[activity_index] = start;
+                remaining_duration[activity_index] = duration;
+            }
+        }
+    }
+
+    let project_finish = early_finish.iter().copied().max().unwrap_or(origin);
+
+    // Backward pass. Complete activities are facts and are pinned to zero
+    // float. The outstanding duration anchors the late dates so float measures
+    // slack in the work still to do.
+    let mut late_finish = vec![project_finish; count];
+    let mut late_start = vec![project_finish; count];
+    for &activity_index in order.iter().rev() {
+        let activity = &project.activities[activity_index];
+        let calendar = activity_calendars[activity_index];
+        let constraint = activity.constraint;
+
+        if progress[activity_index].state == ProgressState::Complete {
+            late_finish[activity_index] = early_finish[activity_index];
+            late_start[activity_index] = early_start[activity_index];
+            continue;
+        }
+
+        let duration = remaining_duration[activity_index];
+        let mut finish = project_finish;
+
+        for &relationship_index in &outgoing[activity_index] {
+            let relationship = &project.relationships[relationship_index];
+            let successor = relationship_successor[relationship_index];
+            let candidate = match relationship.link_type {
+                LinkType::Fs => retreat(
+                    calendar,
+                    late_start[successor],
+                    lag_plus_one(relationship.lag)?,
+                )?,
+                LinkType::Ss => {
+                    let start = retreat(calendar, late_start[successor], relationship.lag)?;
+                    finish_from_start(calendar, start, duration)?
+                }
+                LinkType::Ff => retreat(calendar, late_finish[successor], relationship.lag)?,
+                LinkType::Sf => {
+                    let start = retreat(calendar, late_finish[successor], relationship.lag)?;
+                    finish_from_start(calendar, start, duration)?
+                }
+            };
+
+            finish = finish.min(candidate);
+        }
+
+        finish = calendar.prev_working_day_on_or_before(finish)?;
+
+        match constraint {
+            Constraint::StartNoLaterThan(date) => {
+                let latest_start = calendar.prev_working_day_on_or_before(date)?;
+                finish = finish.min(finish_from_start(calendar, latest_start, duration)?);
+            }
+            Constraint::FinishNoLaterThan(date) => {
+                finish = finish.min(calendar.prev_working_day_on_or_before(date)?);
+            }
+            _ => {}
+        }
+
+        match constraint {
+            Constraint::StartNoEarlierThan(date) => {
+                let earliest_start = calendar.next_working_day_on_or_after(date)?;
+                finish = finish.max(finish_from_start(calendar, earliest_start, duration)?);
+            }
+            Constraint::FinishNoEarlierThan(date) => {
+                finish = finish.max(calendar.next_working_day_on_or_after(date)?);
+            }
+            _ => {}
+        }
+
+        late_finish[activity_index] = finish;
+        late_start[activity_index] = start_from_finish(calendar, finish, duration)?;
+    }
+
+    // Scheduled dates. ASAP work reports its early dates. ALAP work that has
+    // not started is moved to its late dates, pulled back only where a
+    // successor's scheduled date would otherwise be violated. Work that has
+    // already started or finished is a recorded fact and is never moved by an
+    // ALAP preference.
+    let mut scheduled_start = early_start.clone();
+    let mut scheduled_finish = early_finish.clone();
+    for &activity_index in order.iter().rev() {
+        let activity = &project.activities[activity_index];
+        if activity.constraint != Constraint::AsLateAsPossible
+            || progress[activity_index].state != ProgressState::NotStarted
+        {
+            continue;
+        }
+        let duration = activity.original_duration;
+        let calendar = activity_calendars[activity_index];
+        let mut finish = late_finish[activity_index];
+
+        for &relationship_index in &outgoing[activity_index] {
+            let relationship = &project.relationships[relationship_index];
+            let successor = relationship_successor[relationship_index];
+            let candidate = match relationship.link_type {
+                LinkType::Fs => retreat(
+                    calendar,
+                    scheduled_start[successor],
+                    lag_plus_one(relationship.lag)?,
+                )?,
+                LinkType::Ss => {
+                    let start = retreat(calendar, scheduled_start[successor], relationship.lag)?;
+                    finish_from_start(calendar, start, duration)?
+                }
+                LinkType::Ff => retreat(calendar, scheduled_finish[successor], relationship.lag)?,
+                LinkType::Sf => {
+                    let start = retreat(calendar, scheduled_finish[successor], relationship.lag)?;
+                    finish_from_start(calendar, start, duration)?
+                }
+            };
+
+            finish = finish.min(candidate);
+        }
+
+        let finish = finish.max(early_finish[activity_index]);
+        scheduled_finish[activity_index] = finish;
+        scheduled_start[activity_index] = start_from_finish(calendar, finish, duration)?;
+    }
+
+    // Float values and the critical set.
+    let mut activities = Vec::with_capacity(count);
+    for (activity_index, activity) in project.activities.iter().enumerate() {
+        let calendar = activity_calendars[activity_index];
+        let total_float = if progress[activity_index].state == ProgressState::Complete {
+            0
+        } else {
+            calendar.working_days_between(
+                outstanding_start[activity_index],
+                late_start[activity_index],
+            )
+        };
         let mut free_float = total_float;
 
         if !outgoing[activity_index].is_empty() {
@@ -2349,5 +2869,213 @@ mod tests {
         assert_eq!(metrics.earned_value, i64::MAX);
         assert_eq!(metrics.actual_cost, i64::MIN);
         assert_eq!(metrics.cost_variance, i64::MAX);
+    }
+
+    // --- Progress-driven rescheduling -------------------------------------
+
+    fn set_progress(
+        project: &mut Project,
+        id: ActivityId,
+        percent: Option<i64>,
+        actual_start: Option<Date>,
+        actual_finish: Option<Date>,
+    ) {
+        let activity = project
+            .activities
+            .iter_mut()
+            .find(|activity| activity.id == id)
+            .expect("activity exists");
+        activity.percent_complete = percent;
+        activity.actual_start = actual_start;
+        activity.actual_finish = actual_finish;
+    }
+
+    #[test]
+    fn progress_state_is_derived_from_the_recorded_facts() {
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
+        assert_eq!(activity_progress(&activity).state, ProgressState::NotStarted);
+        assert_eq!(activity_progress(&activity).remaining_duration, 4);
+
+        activity.percent_complete = Some(2_500);
+        assert_eq!(activity_progress(&activity).state, ProgressState::InProgress);
+
+        activity.percent_complete = Some(0);
+        activity.actual_start = Some(jan(5));
+        assert_eq!(activity_progress(&activity).state, ProgressState::InProgress);
+
+        activity.actual_finish = Some(jan(9));
+        let complete = activity_progress(&activity);
+        assert_eq!(complete.state, ProgressState::Complete);
+        assert_eq!(complete.remaining_duration, 0);
+
+        // 100% is complete even without an actual finish.
+        let mut done = Activity::new(ActivityId(2), "B", 3);
+        done.percent_complete = Some(10_000);
+        assert_eq!(activity_progress(&done).state, ProgressState::Complete);
+        assert_eq!(activity_progress(&done).remaining_duration, 0);
+    }
+
+    #[test]
+    fn remaining_duration_rounds_up_and_never_drops_to_zero_while_unfinished() {
+        let mut activity = Activity::new(ActivityId(1), "A", 5);
+        activity.percent_complete = Some(5_000);
+        // ceil(5 * 0.5) = 3, so rounding never discards outstanding work.
+        assert_eq!(activity_progress(&activity).remaining_duration, 3);
+
+        let mut nearly_done = Activity::new(ActivityId(2), "B", 100);
+        nearly_done.percent_complete = Some(9_900);
+        // ceil(100 * 0.01) = 1: an unfinished activity keeps a day.
+        assert_eq!(activity_progress(&nearly_done).remaining_duration, 1);
+
+        let mut milestone = Activity::new(ActivityId(3), "M", 0);
+        milestone.percent_complete = Some(0);
+        milestone.actual_start = Some(jan(5));
+        assert_eq!(activity_progress(&milestone).state, ProgressState::InProgress);
+        assert_eq!(activity_progress(&milestone).remaining_duration, 0);
+    }
+
+    #[test]
+    fn a_project_without_progress_matches_the_plain_schedule_at_the_start_date() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 2);
+        let b = add_activity(&mut project, 2, "B", 3);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+
+        let plain = schedule(&project).expect("plain schedule");
+        let progressed = schedule_with_progress(&project, jan(5)).expect("progress schedule");
+
+        assert_eq!(plain, progressed);
+    }
+
+    #[test]
+    fn a_complete_activity_is_pinned_and_drives_its_successor() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 5);
+        let b = add_activity(&mut project, 2, "B", 2);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+        // A actually ran Monday..Friday, a week later than its planned start.
+        set_progress(&mut project, a, Some(10_000), Some(jan(5)), Some(jan(9)));
+
+        let schedule = schedule_with_progress(&project, jan(12)).expect("schedule");
+
+        let a_result = result(&schedule, a);
+        assert_eq!(a_result.early_start, jan(5));
+        assert_eq!(a_result.early_finish, jan(9));
+        assert_eq!(a_result.total_float, 0);
+        assert!(a_result.critical);
+
+        // B is driven from A's actual finish: the next working day is Monday.
+        let b_result = result(&schedule, b);
+        assert_eq!(b_result.early_start, jan(12));
+        assert_eq!(b_result.early_finish, jan(13));
+    }
+
+    #[test]
+    fn an_in_progress_activity_reschedules_its_outstanding_work_from_the_data_date() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 10);
+        set_progress(&mut project, a, Some(5_000), Some(jan(5)), None);
+
+        let schedule = schedule_with_progress(&project, jan(12)).expect("schedule");
+
+        let a_result = result(&schedule, a);
+        // Five working days of the ten are done; the other five run from the
+        // data date (Monday) to Friday.
+        assert_eq!(a_result.early_start, jan(5));
+        assert_eq!(a_result.early_finish, jan(16));
+        assert_eq!(schedule.project_finish, jan(16));
+    }
+
+    #[test]
+    fn a_not_started_activity_is_never_scheduled_before_the_data_date() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 2);
+
+        // The plan's own start is a week earlier; the data date wins.
+        let schedule = schedule_with_progress(&project, jan(12)).expect("schedule");
+
+        let a_result = result(&schedule, a);
+        assert_eq!(a_result.early_start, jan(12));
+        assert_eq!(a_result.early_finish, jan(13));
+        assert_eq!(schedule.project_finish, jan(13));
+    }
+
+    #[test]
+    fn a_successor_of_an_in_progress_activity_follows_the_outstanding_finish() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 10);
+        let b = add_activity(&mut project, 2, "B", 2);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+        set_progress(&mut project, a, Some(5_000), Some(jan(5)), None);
+
+        let schedule = schedule_with_progress(&project, jan(12)).expect("schedule");
+
+        // A finishes Friday the 16th; B may start the next working day.
+        assert_eq!(result(&schedule, a).early_finish, jan(16));
+        assert_eq!(result(&schedule, b).early_start, jan(19));
+        assert_eq!(schedule.project_finish, jan(20));
+    }
+
+    #[test]
+    fn a_complete_milestone_is_pinned_to_its_recorded_date() {
+        let mut project = project();
+        let milestone = add_activity(&mut project, 1, "M", 0);
+        set_progress(&mut project, milestone, Some(10_000), Some(jan(9)), Some(jan(9)));
+
+        let schedule = schedule_with_progress(&project, jan(12)).expect("schedule");
+
+        let result = result(&schedule, milestone);
+        assert_eq!(result.early_start, jan(9));
+        assert_eq!(result.early_finish, jan(9));
+        assert_eq!(result.total_float, 0);
+    }
+
+    #[test]
+    fn the_plain_schedule_still_ignores_recorded_progress() {
+        // D15: the default schedule is plan-only. Recorded facts must not move
+        // the dates the variance and earned-value views compare against.
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 3);
+        set_progress(&mut project, a, Some(10_000), Some(jan(20)), Some(jan(22)));
+
+        let schedule = schedule(&project).expect("schedule");
+        let a_result = result(&schedule, a);
+
+        assert_eq!(a_result.early_start, jan(5));
+        assert_eq!(a_result.early_finish, jan(7));
+    }
+
+    #[test]
+    fn an_empty_project_reschedules_to_its_origin() {
+        let project = project();
+        let schedule = schedule_with_progress(&project, jan(12)).expect("schedule");
+        assert!(schedule.activities.is_empty());
+        assert_eq!(schedule.project_start, jan(5));
+        assert_eq!(schedule.project_finish, jan(5));
+    }
+
+    #[test]
+    fn progress_rescheduling_still_rejects_a_cycle() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 1);
+        let b = add_activity(&mut project, 2, "B", 1);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+        add_relationship(&mut project, 2, b, a, LinkType::Fs, 0);
+
+        let error = schedule_with_progress(&project, jan(12)).expect_err("cycle is rejected");
+        assert!(matches!(error, SchedError::Cycle { .. }));
+    }
+
+    #[test]
+    fn progress_rescheduling_is_deterministic() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 10);
+        let b = add_activity(&mut project, 2, "B", 4);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+        set_progress(&mut project, a, Some(4_000), Some(jan(5)), None);
+
+        let first = schedule_with_progress(&project, jan(14)).expect("first");
+        let second = schedule_with_progress(&project, jan(14)).expect("second");
+        assert_eq!(first, second);
     }
 }

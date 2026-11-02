@@ -24,7 +24,10 @@ use cadence_core::calendar_set::CalendarId;
 use cadence_core::clash::location_clashes;
 use cadence_core::engine::schedule;
 use cadence_core::engine::Schedule;
-use cadence_core::engine::{evm_metrics, level_resources, resource_conflicts, resource_histogram};
+use cadence_core::engine::{
+    activity_progress, evm_metrics, level_resources, resource_conflicts, resource_histogram,
+    schedule_with_progress, ProgressState,
+};
 use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, LinkType,
@@ -264,6 +267,78 @@ fn resource_kind_from_index(index: usize) -> ResourceKind {
     }
 }
 
+/// One activity's planned-versus-rescheduled finish in the progress preview.
+#[derive(Debug, Clone)]
+struct RescheduleRow {
+    name: String,
+    planned_finish: Option<Date>,
+    progress_finish: Date,
+    variance_days: Option<i64>,
+}
+
+/// A non-destructive preview of progress-driven rescheduling.
+///
+/// The preview never edits the project or its cached schedule: it answers the
+/// question "if I rescheduled from recorded progress now, what would move?"
+/// without committing an answer. Applying the result is a later slice.
+#[derive(Debug, Clone)]
+struct ReschedulePreview {
+    data_date: Date,
+    project_finish: Date,
+    not_started: u32,
+    in_progress: u32,
+    complete: u32,
+    rows: Vec<RescheduleRow>,
+}
+
+impl ReschedulePreview {
+    /// Reschedule the project from recorded progress and collect the result.
+    ///
+    /// The current `plan` (if any) is the baseline the variance is measured
+    /// against: a positive variance means the outstanding work now finishes
+    /// later than the plan.
+    fn build(project: &Project, plan: Option<&Schedule>, data_date: Date) -> Result<Self, String> {
+        let schedule =
+            schedule_with_progress(project, data_date).map_err(|error| error.to_string())?;
+        let mut not_started = 0u32;
+        let mut in_progress = 0u32;
+        let mut complete = 0u32;
+        let mut rows = Vec::with_capacity(project.activities.len());
+        for activity in &project.activities {
+            match activity_progress(activity).state {
+                ProgressState::NotStarted => not_started += 1,
+                ProgressState::InProgress => in_progress += 1,
+                ProgressState::Complete => complete += 1,
+            }
+            let Some(result) = schedule.activity(activity.id) else {
+                continue;
+            };
+            let planned_finish = plan
+                .and_then(|plan| plan.activity(activity.id))
+                .map(|planned| planned.scheduled_finish);
+            let variance_days = planned_finish.map(|planned| {
+                project
+                    .calendar
+                    .working_days_between(planned, result.scheduled_finish)
+            });
+            rows.push(RescheduleRow {
+                name: activity.name.clone(),
+                planned_finish,
+                progress_finish: result.scheduled_finish,
+                variance_days,
+            });
+        }
+        Ok(Self {
+            data_date,
+            project_finish: schedule.project_finish,
+            not_started,
+            in_progress,
+            complete,
+            rows,
+        })
+    }
+}
+
 /// The Cadence application state.
 #[allow(dead_code)]
 pub struct CadenceApp {
@@ -337,6 +412,8 @@ pub struct CadenceApp {
     production_date_buffer: String,
     production_percent: i64,
     production_percent_buffer: String,
+    reschedule_date_buffer: String,
+    reschedule_preview: Option<ReschedulePreview>,
     owner_buffer: String,
     promised_buffer: bool,
     delay_reason_buffer: String,
@@ -431,6 +508,8 @@ impl CadenceApp {
             production_date_buffer: today().to_string(),
             production_percent: 0,
             production_percent_buffer: "0".to_string(),
+            reschedule_date_buffer: today().to_string(),
+            reschedule_preview: None,
             owner_buffer: String::new(),
             promised_buffer: false,
             delay_reason_buffer: String::new(),
@@ -3372,6 +3451,75 @@ impl eframe::App for CadenceApp {
                             self.status_message = Some("Production entry deleted.".to_string());
                         }
                     }
+                    ui.separator();
+                    ui.collapsing("Reschedule from progress", |ui| {
+                        ui.label(
+                            "Preview how the schedule moves when remaining work is \
+                             rescheduled from a status date. The plan is not changed \
+                             until you apply the result (a later slice).",
+                        );
+                        ui.horizontal(|ui| {
+                            ui.label("Status date");
+                            ui.text_edit_singleline(&mut self.reschedule_date_buffer);
+                            if ui.button("Preview").clicked() {
+                                if let Some(date) = parse_date(self.reschedule_date_buffer.trim()) {
+                                    match ReschedulePreview::build(
+                                        &self.project,
+                                        self.schedule.as_ref().ok(),
+                                        date,
+                                    ) {
+                                        Ok(preview) => {
+                                            self.status_message = Some(format!(
+                                                "Reschedule preview: the project finishes {}.",
+                                                preview.project_finish
+                                            ));
+                                            self.reschedule_preview = Some(preview);
+                                        }
+                                        Err(message) => self.status_message = Some(message),
+                                    }
+                                } else {
+                                    self.status_message =
+                                        Some("Status date must be YYYY-MM-DD.".to_string());
+                                }
+                            }
+                            if self.reschedule_preview.is_some() && ui.button("Clear").clicked() {
+                                self.reschedule_preview = None;
+                            }
+                        });
+                        if let Some(preview) = &self.reschedule_preview {
+                            ui.label(format!(
+                                "As of {}: project finish {}. {} complete, {} in progress, \
+                                 {} not started.",
+                                preview.data_date,
+                                preview.project_finish,
+                                preview.complete,
+                                preview.in_progress,
+                                preview.not_started
+                            ));
+                            egui::Grid::new("reschedule_preview_grid")
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    ui.strong("Activity");
+                                    ui.strong("Planned finish");
+                                    ui.strong("Rescheduled finish");
+                                    ui.strong("Variance (days)");
+                                    ui.end_row();
+                                    for row in &preview.rows {
+                                        ui.label(&row.name);
+                                        ui.label(row.planned_finish.map_or_else(
+                                            || "—".to_string(),
+                                            |date| date.to_string(),
+                                        ));
+                                        ui.label(row.progress_finish.to_string());
+                                        ui.label(match row.variance_days {
+                                            Some(days) => format!("{days:+}"),
+                                            None => "—".to_string(),
+                                        });
+                                        ui.end_row();
+                                    }
+                                });
+                        }
+                    });
                 });
             }
         }
