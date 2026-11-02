@@ -6,6 +6,10 @@ follows Keep a Changelog; releases use git tags.
 ## [Unreleased]
 
 ### Added
+
+## [0.10.0] — 2026-11-02
+
+### Added
 - Progress-driven rescheduling mode: `schedule_with_progress(project,
   data_date)` in `cadence-core`, the CLI `cadence reschedule <file>
   [--status-date YYYY-MM-DD] [--json]`, and a non-destructive preview in the
