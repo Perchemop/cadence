@@ -58,7 +58,7 @@ use crate::calendar_set::CalendarId;
 use crate::model::{
     saturate_i64, Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar,
     CalendarError, Constraint, EvmMetrics, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
-    LookaheadSnapshotId, Project, RelationshipId, ResourceId,
+    LookaheadSnapshotId, Project, RelationshipId, ResourceId, FULL_UNITS,
 };
 use crate::wbs::WbsId;
 
@@ -188,13 +188,16 @@ impl Schedule {
     }
 }
 
-/// A single resource unit assigned to an activity on a given day.
+/// A single resource assignment active on a given day.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResourceAssignment {
     /// Resource identifier.
     pub resource_id: ResourceId,
     /// Activity identifier using the resource.
     pub activity_id: ActivityId,
+    /// Units the assignment consumes on the day, in basis points
+    /// (`10_000` is one whole resource unit; see [`FULL_UNITS`]).
+    pub units: u32,
 }
 
 /// Resource histogram: for each working day in the project window, the set of
@@ -272,6 +275,7 @@ pub fn resource_histogram(project: &Project, schedule: &Schedule) -> ResourceHis
                         .push(ResourceAssignment {
                             resource_id,
                             activity_id: result.id,
+                            units: activity.units_for(resource_id),
                         });
                 }
             }
@@ -295,9 +299,10 @@ pub struct ResourceConflict {
     pub resource_id: ResourceId,
     /// Day the over-allocation happens on.
     pub date: Date,
-    /// Units the resource is committed to on that day.
+    /// Units the resource is committed to on that day, in basis points
+    /// (`10_000` is one whole unit).
     pub required: u32,
-    /// Units the resource can supply on that day.
+    /// Units the resource can supply on that day, in basis points.
     pub capacity: u32,
     /// Activities competing for the resource on that day.
     pub activities: Vec<ActivityId>,
@@ -338,10 +343,11 @@ type ResourceUsage = BTreeMap<(Date, ResourceId), (u32, Vec<ActivityId>)>;
 /// Find every day on which a resource is committed beyond its capacity.
 ///
 /// Each activity that has scheduled dates and at least one assigned resource
-/// consumes one unit of each of its resources on every working day between its
-/// scheduled start and scheduled finish (inclusive). A resource is
-/// over-allocated on a day when the units it is committed to exceed its
-/// capacity.
+/// consumes that assignment's units (see [`Activity::units_for`]) on every
+/// working day between its scheduled start and scheduled finish (inclusive).
+/// A resource is over-allocated on a day when the units it is committed to
+/// exceed its capacity. Units are compared in basis points, so the resource's
+/// whole-unit capacity is scaled by [`FULL_UNITS`].
 pub fn resource_conflicts(project: &Project, schedule: &Schedule) -> Vec<ResourceConflict> {
     let mut usage: ResourceUsage = BTreeMap::new();
 
@@ -363,8 +369,9 @@ pub fn resource_conflicts(project: &Project, schedule: &Schedule) -> Vec<Resourc
         while day <= result.scheduled_finish {
             if calendar.is_working_day(day) {
                 for &resource_id in &resources {
+                    let units = activity.units_for(resource_id);
                     let entry = usage.entry((day, resource_id)).or_insert((0, Vec::new()));
-                    entry.0 += 1;
+                    entry.0 = entry.0.saturating_add(units);
                     if !entry.1.contains(&result.id) {
                         entry.1.push(result.id);
                     }
@@ -384,8 +391,8 @@ pub fn resource_conflicts(project: &Project, schedule: &Schedule) -> Vec<Resourc
         .filter_map(|((date, resource_id), (required, activities))| {
             let capacity = project
                 .resource(resource_id)
-                .map(|resource| resource.capacity)
-                .unwrap_or(1);
+                .map(|resource| resource.capacity.saturating_mul(FULL_UNITS))
+                .unwrap_or(FULL_UNITS);
             if required <= capacity {
                 return None;
             }
@@ -2506,6 +2513,7 @@ mod tests {
             Some(&vec![ResourceAssignment {
                 resource_id: r1,
                 activity_id: a1,
+                units: FULL_UNITS,
             }])
         );
         assert_eq!(
@@ -2513,6 +2521,7 @@ mod tests {
             Some(&vec![ResourceAssignment {
                 resource_id: r1,
                 activity_id: a1,
+                units: FULL_UNITS,
             }])
         );
         assert_eq!(
@@ -2520,6 +2529,7 @@ mod tests {
             Some(&vec![ResourceAssignment {
                 resource_id: r2,
                 activity_id: a2,
+                units: FULL_UNITS,
             }])
         );
         assert!(histogram.assignments_on(jan(4)).is_none());
@@ -2626,10 +2636,31 @@ mod tests {
         assert_eq!(conflicts.len(), 3);
         assert_eq!(conflicts[0].resource_id, ResourceId(1));
         assert_eq!(conflicts[0].date, jan(5));
-        assert_eq!(conflicts[0].required, 2);
-        assert_eq!(conflicts[0].capacity, 1);
+        assert_eq!(conflicts[0].required, 2 * FULL_UNITS);
+        assert_eq!(conflicts[0].capacity, FULL_UNITS);
         assert_eq!(conflicts[0].activities, vec![ActivityId(1), ActivityId(2)]);
         assert_eq!(conflicts[2].date, jan(7));
+    }
+
+    #[test]
+    fn fractional_units_share_a_whole_unit_capacity_without_a_conflict() {
+        let mut project = project();
+        let r = add_resource(&mut project, 1, "Crew");
+        add_activity(&mut project, 1, "A", 2);
+        add_activity(&mut project, 2, "B", 2);
+        // Both activities commit half a unit on the same days, so the
+        // whole-unit capacity is not exceeded.
+        for activity in &mut project.activities {
+            activity.resources = vec![r];
+            activity.set_units_for(r, 5_000);
+        }
+
+        let schedule = schedule(&project).expect("schedule");
+        assert!(resource_conflicts(&project, &schedule).is_empty());
+
+        // Restoring one activity to a whole unit tips the shared days over.
+        project.activities[1].set_units_for(r, FULL_UNITS);
+        assert!(!resource_conflicts(&project, &schedule).is_empty());
     }
 
     #[test]

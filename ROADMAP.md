@@ -207,8 +207,13 @@ Progress-driven rescheduling remains queued in v0.3.x below.
       separate from `schedule`), `activity_progress`/`ProgressState`
       classification, the CLI `cadence reschedule`, and a non-destructive GUI
       preview in the **Production** view (D24).
-- [ ] Per-assignment resource units and cost rate tables (D11 records the
-      current one-unit model).
+- [x] Per-assignment resource units and a single resource cost rate (D25): a
+      sparse per-assignment units override (basis points) and a per-resource
+      `cost_per_unit`, units-aware over-allocation and leveling, a planned
+      resource-cost roll-up, schema v10, the `SetAssignmentUnits` /
+      `SetResourceCostRate` commands and GUI editing.
+- [ ] Time-phased resource cost rate tables and per-assignment cost overrides
+      (deferred from D25; the current model has one rate per resource).
 - [x] Calendar editing in the GUI (Calendars view, calendar definition
       command, per-activity assignment).
 

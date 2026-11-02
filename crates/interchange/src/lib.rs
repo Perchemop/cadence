@@ -11,10 +11,11 @@
 //!
 //! Both modules implement a documented subset of their format. Everything that
 //! Cadence models — the activity list, durations, constraints, relationships
-//! with lag, the resource dictionary, assignments and baselines — is written
-//! and read back. Fields that Cadence does not model (cost rates, calendars,
-//! custom fields, levelling results) are ignored on import and omitted on
-//! export rather than silently invented.
+//! with lag, the resource dictionary, assignments with their per-assignment
+//! units and baselines — is written and read back. Fields the dialects have no
+//! Cadence mapping for (resource cost rates, calendars, custom fields,
+//! levelling results) are ignored on import and omitted on export rather than
+//! silently invented.
 //!
 //! [`csv`] is the exception to that scope: a CSV table carries one row per
 //! activity, so it exchanges the activity list, its constraints and links, and

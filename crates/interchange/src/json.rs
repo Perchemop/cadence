@@ -13,10 +13,11 @@
 //! Schema version **2** added `wbs`, `calendars` and the per-activity `wbs`
 //! and `calendar` members. Version **3** added the project default `calendar`,
 //! the per-activity `location`, and the `lookahead_snapshots` and `daily_notes`
-//! lists. Version 1 and 2 documents still load, with defaults for the members
-//! those versions could not express; the version is checked so an older build
-//! refuses a newer document instead of silently dropping data. Unknown members
-//! are ignored, so the schema can keep growing.
+//! lists. Version **4** added the per-activity `assignment_units` map and the
+//! resource `cost_per_unit` rate. Versions 1, 2 and 3 documents still load,
+//! with defaults for the members those versions could not express; the version
+//! is checked so an older build refuses a newer document instead of silently
+//! dropping data. Unknown members are ignored, so the schema can keep growing.
 //!
 //! The one remaining loss is deliberate: the derived schedule fields
 //! (`early_start`, `late_finish`, `total_float` and the like) are not written
@@ -27,7 +28,7 @@
 //!
 //! ```json
 //! {
-//!   "cadence": 3,
+//!   "cadence": 4,
 //!   "project": {
 //!     "name": "Bridge & Road",
 //!     "start_date": "2026-01-05",
@@ -54,14 +55,15 @@
 //!         "budget_at_completion": 1500.00, "actual_cost": 750.50,
 //!         "actual_start": "2026-01-05", "actual_finish": "2026-01-06",
 //!         "wbs": 2, "calendar": 1, "resources": [1],
-//!         "location": "Level 2"
+//!         "assignment_units": {"1": 5000}, "location": "Level 2"
 //!       }
 //!     ],
 //!     "relationships": [
 //!       {"id": 1, "predecessor": 1, "successor": 2, "type": "FS", "lag": 1}
 //!     ],
 //!     "resources": [
-//!       {"id": 1, "name": "Crane", "kind": "equipment", "capacity": 2}
+//!       {"id": 1, "name": "Crane", "kind": "equipment", "capacity": 2,
+//!        "cost_per_unit": 125.00}
 //!     ],
 //!     "baselines": [
 //!       {
@@ -99,6 +101,14 @@
 //! percentage. Scheduled dates are not written: they are derived data (D9),
 //! and the engine recomputes them from logic, calendars and constraints.
 //!
+//! `resources` is the ordered assignment list of resource identifiers.
+//! `assignment_units` is a sparse object keyed by resource identifier whose
+//! values are **basis points** per assignment (`10000` is one whole unit), so
+//! an assignment with no override is simply absent — a document without the
+//! member imports every assignment at one whole unit. `cost_per_unit` is a
+//! decimal money amount per whole unit per working day, like the activity cost
+//! fields; a missing rate imports as zero.
+//!
 //! The reader and writer live in this crate (see D14): the reader is a small
 //! recursive-descent parser with a nesting limit, covered by its own tests,
 //! and no JSON library is pulled into the build.
@@ -119,7 +129,7 @@ use time::Date;
 use crate::{default_start_date, format_date, parse_date, InterchangeError};
 
 /// The schema version this build reads and writes.
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 /// The oldest schema version this build still reads.
 const OLDEST_SCHEMA_VERSION: i64 = 1;
@@ -537,6 +547,23 @@ fn import_activity(value: &Value) -> Result<Activity, InterchangeError> {
             }
         }
     }
+    // Units are applied after the assignment list, because a unit override for
+    // an unassigned resource is ignored (the model keeps the map sparse).
+    if let Some(Value::Object(members)) = value.get("assignment_units") {
+        for (resource, units) in members {
+            let Ok(resource) = resource.parse::<u64>() else {
+                continue;
+            };
+            let Some(units) = units.as_f64() else {
+                continue;
+            };
+            if !units.is_finite() || units < 1.0 {
+                continue;
+            }
+            let units = units.round().clamp(1.0, f64::from(u32::MAX));
+            activity.set_units_for(ResourceId(resource), units as u32);
+        }
+    }
     Ok(activity)
 }
 
@@ -614,11 +641,17 @@ fn import_resource(value: &Value) -> Result<Resource, InterchangeError> {
         .and_then(Value::as_u64)
         .map(|capacity| capacity.max(1).min(u64::from(u32::MAX)) as u32)
         .unwrap_or(1);
+    let cost_per_unit = value
+        .get("cost_per_unit")
+        .and_then(money_from_json)
+        .unwrap_or(0)
+        .max(0);
     Ok(Resource {
         id,
         name,
         kind,
         capacity,
+        cost_per_unit,
     })
 }
 
@@ -859,6 +892,18 @@ fn activity_json(activity: &Activity) -> Value {
             ),
         ),
         (
+            "assignment_units".to_string(),
+            Value::Object(
+                activity
+                    .assignment_units
+                    .iter()
+                    .map(|(id, units)| {
+                        (id.0.to_string(), Value::Number(Number::Int(i64::from(*units))))
+                    })
+                    .collect(),
+            ),
+        ),
+        (
             "wbs".to_string(),
             identifier_json(activity.wbs.map(|wbs| wbs.0)),
         ),
@@ -998,6 +1043,10 @@ fn resource_json(resource: &Resource) -> Value {
         (
             "capacity".to_string(),
             Value::Number(Number::Int(i64::from(resource.capacity))),
+        ),
+        (
+            "cost_per_unit".to_string(),
+            money_json(Some(resource.cost_per_unit)),
         ),
     ])
 }
@@ -1513,6 +1562,7 @@ fn write_string(string: &str, output: &mut String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cadence_core::model::FULL_UNITS;
     use time::Month;
 
     fn date(year: i32, month: Month, day: u8) -> Date {
@@ -1690,6 +1740,49 @@ mod tests {
         assert_eq!(loaded.daily_notes.len(), 1);
         assert_eq!(loaded.daily_notes[0].content, "Mobilised");
         assert_eq!(loaded.daily_notes[0].activity_id, Some(ActivityId(1)));
+    }
+
+    #[test]
+    fn assignment_units_and_resource_rates_round_trip() {
+        let start = date(2026, Month::January, 5);
+        let mut project = Project::new("Units", start);
+        project.resources.push(Resource::with_rate(ResourceId(1), "Crew", 1, 12_500));
+
+        let mut activity = Activity::new(ActivityId(1), "Pour", 3);
+        activity.resources = vec![ResourceId(1)];
+        activity.set_units_for(ResourceId(1), 2_500);
+        project.activities.push(activity);
+
+        let text = export(&project);
+        assert!(text.contains("\"cost_per_unit\": 125"));
+        assert!(text.contains("\"assignment_units\": {"));
+        assert!(text.contains("\"1\": 2500"));
+
+        let loaded = import(&text).expect("import");
+        assert_eq!(loaded.resources[0].cost_per_unit, 12_500);
+        assert_eq!(loaded.activities[0].units_for(ResourceId(1)), 2_500);
+        // 2500 bp × 12 500 minor units × 3 days / 10 000 = 9 375.
+        assert_eq!(loaded.activities[0].resource_cost(&loaded.resources), 9_375);
+    }
+
+    #[test]
+    fn assignments_without_units_default_to_one_whole_unit() {
+        let text = r#"{
+            "cadence": 3,
+            "project": {
+                "name": "Legacy",
+                "start_date": "2026-01-05",
+                "resources": [{"id": 1, "name": "Crew"}],
+                "activities": [
+                    {"id": 1, "name": "A", "duration": 2, "resources": [1]}
+                ]
+            }
+        }"#;
+        let project = import(text).expect("import");
+
+        assert_eq!(project.resources[0].cost_per_unit, 0);
+        assert_eq!(project.activities[0].units_for(ResourceId(1)), FULL_UNITS);
+        assert!(project.activities[0].assignment_units.is_empty());
     }
 
     #[test]
@@ -1988,7 +2081,7 @@ mod tests {
     fn the_writer_produces_indented_output() {
         let project = Project::new("Demo", date(2026, Month::January, 5));
         let text = export(&project);
-        assert!(text.starts_with("{\n  \"cadence\": 3,\n  \"project\": {"));
+        assert!(text.starts_with("{\n  \"cadence\": 4,\n  \"project\": {"));
         assert!(text.contains("\"activities\": []"));
         assert!(text.contains("\"resources\": []"));
         assert!(text.contains("\"calendars\": []"));

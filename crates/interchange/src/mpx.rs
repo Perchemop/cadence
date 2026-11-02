@@ -21,13 +21,18 @@
 //! and `FNLT`, relation types as `FS`, `SS`, `FF` and `SF`, and resource types
 //! as `0` (material), `1` (work) and `2` (cost) — the same codes Microsoft
 //! Project uses.
+//!
+//! `Units` in `[assignments]` is a fraction of one whole unit, so `1` is 100%
+//! and `0.5` is half an assignment; it is converted to and from Cadence's
+//! basis-point assignment units. MPX carries no resource cost rate that maps
+//! cleanly to `Resource::cost_per_unit`, so that rate imports as zero.
 
 use std::fmt::Write as _;
 
 use cadence_core::engine::schedule;
 use cadence_core::model::{
     Activity, ActivityId, Constraint, LinkType, Project, Relationship, RelationshipId, Resource,
-    ResourceId, ResourceKind,
+    ResourceId, ResourceKind, FULL_UNITS,
 };
 use time::Date;
 
@@ -211,6 +216,7 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
                 name: resource_name,
                 kind,
                 capacity,
+                cost_per_unit: 0,
             });
         }
     }
@@ -231,6 +237,10 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
                     "assignments/TaskID or ResourceID".to_string(),
                 ));
             };
+            let units = assignments
+                .value(record, "units")
+                .and_then(parse_units)
+                .unwrap_or(FULL_UNITS);
             if let Some(activity) = project
                 .activities
                 .iter_mut()
@@ -240,6 +250,7 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
                 if !activity.resources.contains(&resource) {
                     activity.resources.push(resource);
                 }
+                activity.set_units_for(resource, units);
             }
         }
     }
@@ -327,7 +338,13 @@ pub fn export(project: &Project) -> Result<String, InterchangeError> {
     output.push_str("TaskID\tResourceID\tUnits\n");
     for activity in &project.activities {
         for resource in &activity.resources {
-            let _ = writeln!(output, "{}\t{}\t1", activity.id.0, resource.0);
+            let _ = writeln!(
+                output,
+                "{}\t{}\t{}",
+                activity.id.0,
+                resource.0,
+                format_units(activity.units_for(*resource))
+            );
         }
     }
 
@@ -450,6 +467,21 @@ fn parse_days(text: &str) -> Option<u32> {
         .parse::<f64>()
         .ok()
         .map(|value| value.round().max(0.0) as u32)
+}
+
+/// Parse an MPX `Units` fraction (1 = one whole unit) into basis points.
+fn parse_units(text: &str) -> Option<u32> {
+    let fraction = text.trim().parse::<f64>().ok()?;
+    if !fraction.is_finite() || fraction <= 0.0 {
+        return None;
+    }
+    let units = (fraction * 10_000.0).round().clamp(1.0, f64::from(u32::MAX));
+    Some(units as u32)
+}
+
+/// Format basis points as an MPX `Units` fraction (1 = one whole unit).
+fn format_units(basis_points: u32) -> String {
+    format!("{}", f64::from(basis_points) / 10_000.0)
 }
 
 /// Replace characters that would break the record layout.
@@ -611,6 +643,27 @@ TaskID\tResourceID\tUnits
         assert_eq!(project.relationships[0].lag, 2);
         assert_eq!(project.resources[0].capacity, 3);
         assert_eq!(project.activities[0].resources, vec![ResourceId(3)]);
+        assert_eq!(project.activities[0].units_for(ResourceId(3)), FULL_UNITS);
+    }
+
+    #[test]
+    fn assignment_units_round_trip_as_a_fraction() {
+        let start = date(2026, Month::January, 5);
+        let mut project = Project::new("Units", start);
+        project.resources.push(Resource::new(ResourceId(1), "Crew"));
+
+        let mut activity = Activity::new(ActivityId(1), "Pour", 2);
+        activity.resources = vec![ResourceId(1)];
+        activity.set_units_for(ResourceId(1), 2_500);
+        project.activities.push(activity);
+
+        let document = export(&project).expect("export");
+        assert!(document.contains("1\t1\t0.25"));
+
+        let loaded = import(&document).expect("import");
+        assert_eq!(loaded.activities[0].units_for(ResourceId(1)), 2_500);
+        // MPX carries no resource rate, so it imports as zero.
+        assert_eq!(loaded.resources[0].cost_per_unit, 0);
     }
 
     #[test]

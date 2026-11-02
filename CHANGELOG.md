@@ -13,6 +13,14 @@ follows Keep a Changelog; releases use git tags.
   work in progress resumes from the status date, and not-started work is
   scheduled from logic but never before it. The default schedule is unchanged,
   so variance and earned-value views stay honest (`DECISIONS.md` D24).
+- Per-assignment resource units and a single resource cost rate: an assignment
+  can consume a fraction or a multiple of one resource unit (stored sparsely in
+  `Activity::assignment_units`), and a resource can carry a cost per unit per
+  day (`Resource::cost_per_unit`). Over-allocation now compares committed units
+  against capacity, so two half-unit assignments share a capacity-one resource;
+  the report shows a planned resource-cost total. Persistence schema v10;
+  `SetAssignmentUnits` and `SetResourceCostRate` commands; GUI editing in the
+  **Resources** view (`DECISIONS.md` D11, D25).
 
 ## [0.9.0] — 2026-11-02
 

@@ -16,7 +16,7 @@
 //! | `Task/ActualStart`, `Task/ActualFinish` | [`Activity::actual_start`], [`Activity::actual_finish`] |
 //! | `Task/PredecessorLink` | [`Relationship`] (type and lag) |
 //! | `Resource/UID`, `Name`, `Type`, `MaxUnits` | [`Resource`] |
-//! | `Assignment/TaskUID`, `ResourceUID` | [`Activity::resources`] |
+//! | `Assignment/TaskUID`, `ResourceUID`, `Units` | [`Activity::resources`], [`Activity::assignment_units`] |
 //! | `Task/Baseline` | [`Baseline`] snapshots |
 //!
 //! Durations are converted at eight working hours per day, matching the
@@ -25,6 +25,12 @@
 //! Percent complete is written as a whole percentage because that is what
 //! MSPDI's `PercentComplete` holds, so sub-percent precision is rounded away
 //! (149 basis points become 1%, 150 become 2%).
+//!
+//! `Assignment/Units` is a fraction of one whole unit, so `1` is 100% and
+//! `0.5` is half an assignment. It is converted to and from Cadence's
+//! basis-point assignment units; a missing or unreadable value means one whole
+//! unit, the same default used for an ordinary assignment. Resource cost rates
+//! are not carried: `Resource::cost_per_unit` imports as zero.
 //!
 //! Two MSPDI constraints have no exact Cadence equivalent: *must start on* is
 //! read as *start no earlier than* and *must finish on* as *finish no earlier
@@ -37,7 +43,7 @@ use std::fmt::Write as _;
 use cadence_core::engine::schedule;
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Constraint, LinkType,
-    Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
+    Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind, FULL_UNITS,
 };
 use time::Date;
 
@@ -201,6 +207,7 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
                 name: resource_name,
                 kind,
                 capacity,
+                cost_per_unit: 0,
             });
         }
     }
@@ -219,7 +226,7 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
             }
         }
     }
-    for (task, resource) in assignments {
+    for (task, resource, units) in assignments {
         if let Some(activity) = project
             .activities
             .iter_mut()
@@ -229,6 +236,7 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
             if !activity.resources.contains(&resource) {
                 activity.resources.push(resource);
             }
+            activity.set_units_for(resource, units);
         }
     }
 
@@ -448,7 +456,11 @@ pub fn export(project: &Project) -> Result<String, InterchangeError> {
             output.push_str("    <Assignment>\n");
             let _ = writeln!(output, "      <TaskUID>{}</TaskUID>", activity.id.0);
             let _ = writeln!(output, "      <ResourceUID>{}</ResourceUID>", resource.0);
-            output.push_str("      <Units>1</Units>\n");
+            let _ = writeln!(
+                output,
+                "      <Units>{}</Units>",
+                format_assignment_units(activity.units_for(*resource))
+            );
             output.push_str("    </Assignment>\n");
         }
     }
@@ -467,7 +479,7 @@ fn task_uid(task: &Element) -> Result<u64, InterchangeError> {
 fn collect_assignment(
     element: &Element,
     parent_resource: Option<u64>,
-    out: &mut Vec<(u64, u64)>,
+    out: &mut Vec<(u64, u64, u32)>,
 ) -> Result<(), InterchangeError> {
     let task = element
         .parse_of::<u64>("TaskUID")
@@ -476,8 +488,29 @@ fn collect_assignment(
         .parse_of::<u64>("ResourceUID")
         .or(parent_resource)
         .ok_or_else(|| InterchangeError::MissingField("Assignment/ResourceUID".to_string()))?;
-    out.push((task, resource));
+    out.push((task, resource, import_assignment_units(element)));
     Ok(())
+}
+
+/// Read an assignment's `Units` fraction (1 = one whole unit) as basis points.
+///
+/// A missing or unreadable value means one whole unit, and a non-positive value
+/// is raised to one basis point so the model never receives an assignment that
+/// consumes nothing.
+fn import_assignment_units(element: &Element) -> u32 {
+    let Some(fraction) = element.parse_of::<f64>("Units") else {
+        return FULL_UNITS;
+    };
+    if !fraction.is_finite() {
+        return FULL_UNITS;
+    }
+    let units = (fraction * 10_000.0).round().clamp(1.0, f64::from(u32::MAX));
+    units as u32
+}
+
+/// Write basis points as an MSPDI `Units` fraction (1 = one whole unit).
+fn format_assignment_units(basis_points: u32) -> String {
+    format!("{}", f64::from(basis_points) / 10_000.0)
 }
 
 fn import_constraint(task: &Element) -> Result<Constraint, InterchangeError> {
@@ -801,6 +834,47 @@ mod tests {
         assert_eq!(project.resources[0].capacity, 3);
         // The assignment nested inside the resource is read.
         assert_eq!(project.activities[0].resources, vec![ResourceId(5)]);
+        assert_eq!(project.activities[0].units_for(ResourceId(5)), FULL_UNITS);
+    }
+
+    #[test]
+    fn assignment_units_are_read_as_a_fraction_of_one_whole_unit() {
+        let document = r#"<Project>
+            <StartDate>2026-01-05</StartDate>
+            <Tasks><Task><UID>1</UID><Name>A</Name></Task></Tasks>
+            <Resources><Resource><UID>2</UID><Name>Crew</Name></Resource></Resources>
+            <Assignments>
+              <Assignment>
+                <TaskUID>1</TaskUID>
+                <ResourceUID>2</ResourceUID>
+                <Units>0.5</Units>
+              </Assignment>
+            </Assignments>
+        </Project>"#;
+
+        let project = import(document).expect("import");
+        assert_eq!(project.activities[0].resources, vec![ResourceId(2)]);
+        assert_eq!(project.activities[0].units_for(ResourceId(2)), 5_000);
+    }
+
+    #[test]
+    fn assignment_units_round_trip_as_a_fraction() {
+        let start = date(2026, Month::January, 5);
+        let mut project = Project::new("Units", start);
+        project.resources.push(Resource::new(ResourceId(1), "Crew"));
+
+        let mut activity = Activity::new(ActivityId(1), "Pour", 3);
+        activity.resources = vec![ResourceId(1)];
+        activity.set_units_for(ResourceId(1), 2_500);
+        project.activities.push(activity);
+
+        let document = export(&project).expect("export");
+        assert!(document.contains("<Units>0.25</Units>"));
+
+        let loaded = import(&document).expect("import");
+        assert_eq!(loaded.activities[0].units_for(ResourceId(1)), 2_500);
+        // MSPDI carries no resource rate, so it imports as zero.
+        assert_eq!(loaded.resources[0].cost_per_unit, 0);
     }
 
     #[test]

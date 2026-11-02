@@ -917,12 +917,15 @@ impl Command for RemoveResourceFromActivity {
                 self.activity_id, self.resource_id
             ));
         };
+        let units = activity.assignment_units.get(&self.resource_id).copied();
         activity.resources.remove(index);
+        activity.assignment_units.remove(&self.resource_id);
         activity.clear_schedule();
         Ok(Box::new(RestoreResourceOnActivity {
             activity_id: self.activity_id,
             resource_id: self.resource_id,
             index,
+            units,
         }))
     }
 }
@@ -936,6 +939,8 @@ pub struct RestoreResourceOnActivity {
     pub resource_id: ResourceId,
     /// Index the assignment occupied before it was removed.
     pub index: usize,
+    /// Unit override the assignment carried, if any.
+    pub units: Option<u32>,
 }
 
 impl Command for RestoreResourceOnActivity {
@@ -958,6 +963,9 @@ impl Command for RestoreResourceOnActivity {
         }
         let index = self.index.min(activity.resources.len());
         activity.resources.insert(index, self.resource_id);
+        if let Some(units) = self.units {
+            activity.set_units_for(self.resource_id, units);
+        }
         activity.clear_schedule();
         Ok(Box::new(RemoveResourceFromActivity {
             activity_id: self.activity_id,
@@ -973,6 +981,8 @@ pub struct RemovedAssignment {
     pub activity_id: ActivityId,
     /// Index the assignment occupied in the activity's resource list.
     pub index: usize,
+    /// Unit override the assignment carried, if any.
+    pub units: Option<u32>,
 }
 
 /// Add a resource to the project dictionary.
@@ -1004,6 +1014,7 @@ impl Command for CreateResource {
             name,
             kind: self.kind,
             capacity: self.capacity.max(1),
+            cost_per_unit: 0,
         });
         Ok(Box::new(DeleteResource { id: self.id }))
     }
@@ -1033,11 +1044,14 @@ impl Command for DeleteResource {
         let mut assignments = Vec::new();
         for activity in &mut project.activities {
             if let Some(index) = activity.resources.iter().position(|&id| id == self.id) {
+                let units = activity.assignment_units.get(&self.id).copied();
                 activity.resources.remove(index);
+                activity.assignment_units.remove(&self.id);
                 activity.clear_schedule();
                 assignments.push(RemovedAssignment {
                     activity_id: activity.id,
                     index,
+                    units,
                 });
             }
         }
@@ -1081,6 +1095,9 @@ impl Command for RestoreResource {
             }
             let index = assignment.index.min(activity.resources.len());
             activity.resources.insert(index, id);
+            if let Some(units) = assignment.units {
+                activity.set_units_for(id, units);
+            }
             activity.clear_schedule();
         }
 
@@ -1169,6 +1186,126 @@ impl Command for SetResourceKind {
         Ok(Box::new(SetResourceKind {
             id: self.id,
             kind: previous,
+        }))
+    }
+}
+
+/// Change the cost of one whole unit of a resource for one working day.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetResourceCostRate {
+    /// Resource to update.
+    pub id: ResourceId,
+    /// New cost per whole unit per working day, in minor currency units. A
+    /// negative value is rejected.
+    pub cost_per_unit: i64,
+}
+
+impl Command for SetResourceCostRate {
+    fn description(&self) -> String {
+        format!(
+            "set cost rate of resource {} to {}",
+            self.id, self.cost_per_unit
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if self.cost_per_unit < 0 {
+            return Err("resource cost rate must not be negative".to_string());
+        }
+        let Some(resource) = project.resource_mut(self.id) else {
+            return Err(format!("resource {} does not exist", self.id));
+        };
+        let previous = resource.cost_per_unit;
+        resource.cost_per_unit = self.cost_per_unit;
+        Ok(Box::new(SetResourceCostRate {
+            id: self.id,
+            cost_per_unit: previous,
+        }))
+    }
+}
+
+/// Set the units one assignment of a resource consumes per working day.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetAssignmentUnits {
+    /// Activity holding the assignment.
+    pub activity_id: ActivityId,
+    /// Assigned resource.
+    pub resource_id: ResourceId,
+    /// New units in basis points (`10_000` is one whole unit). Zero is
+    /// rejected; a value above the resource's whole units is allowed, because
+    /// over-allocation is a modelled condition rather than an error.
+    pub units: u32,
+}
+
+impl Command for SetAssignmentUnits {
+    fn description(&self) -> String {
+        format!(
+            "set units of resource {} on activity {} to {}",
+            self.resource_id, self.activity_id, self.units
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        if self.units == 0 {
+            return Err("assignment units must be greater than zero".to_string());
+        }
+        let Some(activity) = project.activity_mut(self.activity_id) else {
+            return Err(format!("activity {} does not exist", self.activity_id));
+        };
+        if !activity.has_resource(self.resource_id) {
+            return Err(format!(
+                "activity {} does not have resource {}",
+                self.activity_id, self.resource_id
+            ));
+        }
+        let previous = activity.assignment_units.get(&self.resource_id).copied();
+        activity.set_units_for(self.resource_id, self.units);
+        Ok(Box::new(SetAssignmentUnitsUndo {
+            activity_id: self.activity_id,
+            resource_id: self.resource_id,
+            previous,
+        }))
+    }
+}
+
+/// Undo for [`SetAssignmentUnits`]: restore the previous override (or the
+/// default when there was none).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetAssignmentUnitsUndo {
+    /// Activity holding the assignment.
+    pub activity_id: ActivityId,
+    /// Assigned resource.
+    pub resource_id: ResourceId,
+    /// Override that was present before the change, if any.
+    pub previous: Option<u32>,
+}
+
+impl Command for SetAssignmentUnitsUndo {
+    fn description(&self) -> String {
+        format!(
+            "restore units of resource {} on activity {}",
+            self.resource_id, self.activity_id
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.activity_id) else {
+            return Err(format!("activity {} does not exist", self.activity_id));
+        };
+        // Capture the override being replaced so the returned command can put
+        // it back; `set_units_for` keeps the map sparse and ignores an
+        // unassigned resource, which makes this idempotent.
+        let current = activity.assignment_units.get(&self.resource_id).copied();
+        match self.previous {
+            Some(units) => activity.set_units_for(self.resource_id, units),
+            None => {
+                activity.assignment_units.remove(&self.resource_id);
+            }
+        }
+        Ok(Box::new(SetAssignmentUnitsUndo {
+            activity_id: self.activity_id,
+            resource_id: self.resource_id,
+            previous: current,
         }))
     }
 }
@@ -3450,5 +3587,192 @@ mod tests {
             }),
         );
         assert_eq!(project.resources[0].capacity, 1);
+    }
+
+    #[test]
+    fn set_assignment_units_is_reversible() {
+        use cadence_core::model::FULL_UNITS;
+
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let activity = add_activity(&mut stack, &mut project, 1, "A", 2);
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crew".to_string(),
+                kind: ResourceKind::Labour,
+                capacity: 1,
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(AddResourceToActivity {
+                activity_id: activity,
+                resource_id: ResourceId(1),
+            }),
+        );
+        assert_eq!(project.activities[0].units_for(ResourceId(1)), FULL_UNITS);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetAssignmentUnits {
+                activity_id: activity,
+                resource_id: ResourceId(1),
+                units: 5_000,
+            }),
+        );
+        assert_eq!(project.activities[0].units_for(ResourceId(1)), 5_000);
+
+        stack.undo(&mut project).expect("undo units");
+        assert_eq!(project.activities[0].units_for(ResourceId(1)), FULL_UNITS);
+        assert!(project.activities[0].assignment_units.is_empty());
+
+        stack.redo(&mut project).expect("redo units");
+        assert_eq!(project.activities[0].units_for(ResourceId(1)), 5_000);
+    }
+
+    #[test]
+    fn set_assignment_units_rejects_an_unassigned_resource_and_zero() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let activity = add_activity(&mut stack, &mut project, 1, "A", 2);
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crew".to_string(),
+                kind: ResourceKind::Labour,
+                capacity: 1,
+            }),
+        );
+
+        let unassigned = stack.execute(
+            &mut project,
+            Box::new(SetAssignmentUnits {
+                activity_id: activity,
+                resource_id: ResourceId(1),
+                units: 5_000,
+            }),
+        );
+        assert!(unassigned.is_err());
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(AddResourceToActivity {
+                activity_id: activity,
+                resource_id: ResourceId(1),
+            }),
+        );
+        let zero = stack.execute(
+            &mut project,
+            Box::new(SetAssignmentUnits {
+                activity_id: activity,
+                resource_id: ResourceId(1),
+                units: 0,
+            }),
+        );
+        assert!(zero.is_err());
+    }
+
+    #[test]
+    fn set_resource_cost_rate_is_reversible_and_rejects_negative() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crew".to_string(),
+                kind: ResourceKind::Labour,
+                capacity: 1,
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetResourceCostRate {
+                id: ResourceId(1),
+                cost_per_unit: 12_500,
+            }),
+        );
+        assert_eq!(project.resources[0].cost_per_unit, 12_500);
+
+        stack.undo(&mut project).expect("undo rate");
+        assert_eq!(project.resources[0].cost_per_unit, 0);
+
+        let negative = stack.execute(
+            &mut project,
+            Box::new(SetResourceCostRate {
+                id: ResourceId(1),
+                cost_per_unit: -1,
+            }),
+        );
+        assert!(negative.is_err());
+    }
+
+    #[test]
+    fn removing_or_deleting_an_assignment_restores_its_units_on_undo() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let activity = add_activity(&mut stack, &mut project, 1, "A", 2);
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CreateResource {
+                id: ResourceId(1),
+                name: "Crew".to_string(),
+                kind: ResourceKind::Labour,
+                capacity: 1,
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(AddResourceToActivity {
+                activity_id: activity,
+                resource_id: ResourceId(1),
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetAssignmentUnits {
+                activity_id: activity,
+                resource_id: ResourceId(1),
+                units: 2_500,
+            }),
+        );
+
+        // Removing the assignment and undoing restores the override.
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(RemoveResourceFromActivity {
+                activity_id: activity,
+                resource_id: ResourceId(1),
+            }),
+        );
+        assert!(!project.activities[0].has_resource(ResourceId(1)));
+        stack.undo(&mut project).expect("undo remove");
+        assert_eq!(project.activities[0].units_for(ResourceId(1)), 2_500);
+
+        // Deleting the resource and undoing restores the override too.
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(DeleteResource { id: ResourceId(1) }),
+        );
+        assert!(project.resources.is_empty());
+        assert!(project.activities[0].resources.is_empty());
+        stack.undo(&mut project).expect("undo delete");
+        assert_eq!(project.resources.len(), 1);
+        assert_eq!(project.activities[0].units_for(ResourceId(1)), 2_500);
     }
 }

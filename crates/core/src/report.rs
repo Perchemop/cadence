@@ -182,6 +182,18 @@ fn resources_section(project: &Project, computed: &Schedule, report: &mut String
             over,
         );
     }
+
+    // Planned resource cost: only when at least one resource carries a rate,
+    // to keep the report quiet for projects without cost data.
+    if project.resources.iter().any(|resource| resource.cost_per_unit != 0) {
+        let total: i64 = project
+            .activities
+            .iter()
+            .map(|activity| activity.resource_cost(&project.resources))
+            .fold(0i64, i64::saturating_add);
+        let _ = writeln!(report);
+        let _ = writeln!(report, "Planned resource cost: {}", money(total));
+    }
 }
 
 fn earned_value_section(project: &Project, status_date: Date, report: &mut String) {
@@ -363,6 +375,17 @@ mod tests {
         // The survey and the pour run in parallel on one crew: five committed
         // days across three activities, two of them over capacity.
         assert!(report.contains("| Crew A | Labour | 1 | 7 | 2 |"));
+    }
+
+    #[test]
+    fn planned_resource_cost_appears_with_a_rate() {
+        let mut project = sample();
+        // Give the crew a non-zero cost rate.
+        if let Some(resource) = project.resources.get_mut(0) {
+            resource.cost_per_unit = 250;
+        }
+        let report = project_report(&project, date(2026, Month::January, 9));
+        assert!(report.contains("Planned resource cost:"));
     }
 
     #[test]

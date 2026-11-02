@@ -18,6 +18,7 @@ use cadence_commands::{
     SetActivityOwner, SetActivityProgress, SetActivityPromise, SetCalendarDefinition,
     SetRelationshipLag, SetResourceCapacity, SetResourceKind,
 };
+use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
 
 use cadence_core::calendar_set::CalendarId;
@@ -29,6 +30,7 @@ use cadence_core::engine::{
     schedule_with_progress, ProgressState,
 };
 use cadence_core::lookahead::{lookahead, LookaheadEntry};
+use cadence_core::model::FULL_UNITS;
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, LinkType,
     LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind,
@@ -374,6 +376,8 @@ pub struct CadenceApp {
     resource_name_buffer: String,
     resource_kind_index: usize,
     resource_capacity_buffer: String,
+    resource_cost_rate_buffer: String,
+    assignment_units_buffers: BTreeMap<(ActivityId, ResourceId), String>,
     leveling_report: Option<String>,
     selected_baseline: Option<BaselineId>,
     baseline_name_buffer: String,
@@ -470,6 +474,8 @@ impl CadenceApp {
             resource_name_buffer: String::new(),
             resource_kind_index: 0,
             resource_capacity_buffer: "1".to_string(),
+            resource_cost_rate_buffer: "0".to_string(),
+            assignment_units_buffers: BTreeMap::new(),
             leveling_report: None,
             selected_baseline: None,
             baseline_name_buffer: String::new(),
@@ -897,6 +903,7 @@ impl CadenceApp {
         if let Some(resource) = self.project.resource(id) {
             self.resource_name_buffer = resource.name.clone();
             self.resource_capacity_buffer = resource.capacity.to_string();
+            self.resource_cost_rate_buffer = format_money(resource.cost_per_unit);
             self.resource_kind_index = resource_kind_index(resource.kind);
         }
     }
@@ -925,6 +932,21 @@ impl CadenceApp {
                 if let Err(error) = self.stack.execute(
                     &mut self.project,
                     Box::new(SetResourceCapacity { id, capacity }),
+                ) {
+                    self.status_message = Some(error);
+                }
+            }
+        }
+
+        // The rate is typed as a decimal amount, like every other money field.
+        if let Some(cost_rate) = parse_money(self.resource_cost_rate_buffer.trim()) {
+            if cost_rate != resource.cost_per_unit {
+                if let Err(error) = self.stack.execute(
+                    &mut self.project,
+                    Box::new(SetResourceCostRate {
+                        id,
+                        cost_per_unit: cost_rate,
+                    }),
                 ) {
                     self.status_message = Some(error);
                 }
@@ -967,6 +989,21 @@ impl CadenceApp {
         match self.stack.execute(&mut self.project, Box::new(command)) {
             Ok(()) => {
                 self.status_message = None;
+                // A non-zero rate typed alongside the new resource is applied
+                // with a second command, so it stays undoable on its own.
+                if let Some(rate) = parse_money(self.resource_cost_rate_buffer.trim()) {
+                    if rate > 0 {
+                        if let Err(error) = self.stack.execute(
+                            &mut self.project,
+                            Box::new(SetResourceCostRate {
+                                id,
+                                cost_per_unit: rate,
+                            }),
+                        ) {
+                            self.status_message = Some(error);
+                        }
+                    }
+                }
                 self.recompute();
                 self.select_resource(id);
             }
@@ -2475,6 +2512,8 @@ impl eframe::App for CadenceApp {
                             });
                         ui.label("Capacity (units per working day)");
                         ui.text_edit_singleline(&mut self.resource_capacity_buffer);
+                        ui.label("Cost rate per unit (per working day)");
+                        ui.text_edit_singleline(&mut self.resource_cost_rate_buffer);
 
                         if ui.button("Add resource").clicked() {
                             self.create_resource();
@@ -2577,6 +2616,7 @@ impl eframe::App for CadenceApp {
                                     .resource(id)
                                     .map(|resource| resource.capacity)
                                     .unwrap_or(1);
+                                let capacity_units = capacity.saturating_mul(FULL_UNITS);
                                 ScrollArea::vertical()
                                     .id_salt("resource_usage")
                                     .max_height(160.0)
@@ -2587,15 +2627,19 @@ impl eframe::App for CadenceApp {
                                             .show(ui, |ui| {
                                                 for (date, units) in usage {
                                                     ui.label(date.to_string());
-                                                    if units > capacity {
+                                                    let text = format!(
+                                                        "{:.2} / {capacity}",
+                                                        units as f64 / FULL_UNITS as f64
+                                                    );
+                                                    if units > capacity_units {
                                                         ui.colored_label(
                                                             egui::Color32::from_rgb(
                                                                 0xC0, 0x39, 0x2B,
                                                             ),
-                                                            format!("{units} / {capacity}"),
+                                                            text,
                                                         );
                                                     } else {
-                                                        ui.label(format!("{units} / {capacity}"));
+                                                        ui.label(text);
                                                     }
                                                     ui.end_row();
                                                 }
@@ -2628,6 +2672,68 @@ impl eframe::App for CadenceApp {
                                             self.toggle_assignment(id);
                                         }
                                         ui.label(activity.original_duration.to_string());
+                                        ui.label(activity.original_duration.to_string());
+                                        let current_units = activity.units_for(id);
+                                        let current_text =
+                                            format!("{:.2}", current_units as f64 / 100.0);
+                                        let mut pending_units = None;
+                                        {
+                                            let entry = self
+                                                .assignment_units_buffers
+                                                .entry((activity.id, id))
+                                                .or_insert_with(|| current_text.clone());
+                                            let response = ui.add(
+                                                egui::TextEdit::singleline(entry)
+                                                    .desired_width(56.0)
+                                                    .hint_text("100.00"),
+                                            );
+                                            if response.lost_focus() {
+                                                if let Ok(percent) = entry.trim().parse::<f64>()
+                                                {
+                                                    let units =
+                                                        ((percent * 100.0).round() as i64)
+                                                            .max(1) as u32;
+                                                    if assigned && units != current_units {
+                                                        pending_units =
+                                                            Some((activity.id, id, units));
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        // The buffer borrow has ended, so the
+                                        // project may be mutated and repainted.
+                                        if let Some((activity_id, resource_id, units)) =
+                                            pending_units
+                                        {
+                                            match self.stack.execute(
+                                                &mut self.project,
+                                                Box::new(SetAssignmentUnits {
+                                                    activity_id,
+                                                    resource_id,
+                                                    units,
+                                                }),
+                                            ) {
+                                                Ok(()) => {
+                                                    self.status_message = None;
+                                                    self.recompute();
+                                                }
+                                                Err(error) => {
+                                                    self.status_message = Some(error);
+                                                }
+                                            }
+                                        }
+                                        let shown_units = self
+                                            .project
+                                            .activity(activity.id)
+                                            .map(|activity| activity.units_for(id))
+                                            .unwrap_or(FULL_UNITS);
+                                        if let Some(entry) = self
+                                            .assignment_units_buffers
+                                            .get_mut(&(activity.id, id))
+                                        {
+                                            *entry =
+                                                format!("{:.2}", shown_units as f64 / 100.0);
+                                        }
                                         if let Some(result) = schedule.activity(activity.id) {
                                             ui.label(result.scheduled_start.to_string());
                                             ui.label(result.scheduled_finish.to_string());
@@ -3946,13 +4052,17 @@ fn resource_day_usage(
     schedule: &Schedule,
     resource_id: ResourceId,
 ) -> BTreeMap<Date, u32> {
+    // Units are returned in basis points, the same scale the engine's
+    // histogram carries, so a half-unit assignment counts as half.
     let histogram = resource_histogram(project, schedule);
     let mut usage = BTreeMap::new();
     for (date, assignments) in &histogram.entries {
         let units = assignments
             .iter()
             .filter(|assignment| assignment.resource_id == resource_id)
-            .count() as u32;
+            .fold(0u32, |sum, assignment| {
+                sum.saturating_add(assignment.units)
+            });
         if units > 0 {
             usage.insert(*date, units);
         }

@@ -496,3 +496,33 @@ is answered by a **separate** engine function rather than a change to
   and the GUI's **Production** view gains a non-destructive preview. Applying
   the rescheduled dates to the project is a later slice; the mode itself is the
   deliverable here.
+
+## D25 — Per-assignment units and a single resource cost rate (2026-11-02)
+
+D11 kept the resource model at exactly one unit per assignment and no cost
+rates. This slice widens it by the smallest step that makes the common cases
+expressible:
+
+- `Resource` gains `cost_per_unit` (minor currency units per whole unit per
+  working day; zero means no cost).
+- The set of assigned resources stays `Activity::resources`. Units are a
+  **sparse override**: `Activity::assignment_units` maps a `ResourceId` to its
+  units in basis points (`10 000` = one whole unit), and an absent key means one
+  whole unit. Every override names a resource in `resources`; `set_units_for`
+  ignores an unassigned resource and never stores the default value, and the
+  assignment/delete commands remove the override when the assignment goes away.
+  Keeping the map sparse is what lets the assignment list stay a plain vector
+  through SQLite and the interchange formats in the common case.
+- The engine compares committed units in basis points against
+  `capacity × 10 000`, so a capacity-one resource can host two half-unit
+  assignments without over-allocation — the "half a crane" case D11 could not
+  express. `ResourceConflict::required` and `capacity` are therefore reported in
+  basis points.
+- `Activity::resource_cost` rolls planned cost up as
+  `units × cost_per_unit × duration`, saturating rather than overflowing.
+
+Deliberately deferred (recorded in the roadmap as later work): time-phased rate
+tables, cost-per-use, and per-assignment cost overrides. One rate per resource
+is enough for a first cut and keeps the model small. The lossless JSON format
+carries units and the rate both ways; MSPDI, MPX and CSV carry them only where
+the format has a natural field and otherwise document the limitation.
