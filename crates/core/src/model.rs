@@ -1842,7 +1842,7 @@ mod tests {
 
         // An unassigned resource is ignored, keeping the invariant.
         activity.set_units_for(ResourceId(2), 3_000);
-        assert!(activity.assignment_units.get(&ResourceId(2)).is_none());
+        assert!(!activity.assignment_units.contains_key(&ResourceId(2)));
     }
 
     #[test]
