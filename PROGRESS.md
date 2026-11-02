@@ -1105,3 +1105,14 @@ Deferred (roadmap): time-phased rate tables and per-assignment cost overrides.
 
 Verification: CI green on the pull request.
 
+## 2026-11-02 — Release 0.10.0
+
+Tagged `v0.10.0` on `main` after the two v0.3.x slices (progress-driven
+rescheduling and per-assignment resource units with a single resource cost
+rate). The release workflow passed all six jobs (run `41440898709`) and
+published binaries for Linux (x86_64, aarch64), Windows (x86_64),
+macOS (aarch64), the CycloneDX SBOM and `SHA256SUMS.txt`. The §2.5 legal
+checklist is covered by the release run: secret scanning, the personal-data
+scan, dependency licence/advisory checks and the bill-of-materials job are all
+green on the release commit.
+
