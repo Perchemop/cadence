@@ -1123,7 +1123,10 @@ pub struct ActivityProgress {
 /// rounded **up**, so a partially complete activity never loses a whole day of
 /// outstanding work to rounding, and never drops to zero while unfinished.
 pub fn activity_progress(activity: &Activity) -> ActivityProgress {
-    let percent = activity.percent_complete.unwrap_or_default().clamp(0, 10_000);
+    let percent = activity
+        .percent_complete
+        .unwrap_or_default()
+        .clamp(0, 10_000);
     let complete = activity.actual_finish.is_some() || percent >= 10_000;
     let state = if complete {
         ProgressState::Complete
@@ -1136,9 +1139,14 @@ pub fn activity_progress(activity: &Activity) -> ActivityProgress {
         ProgressState::Complete => 0,
         // Ceiling division: `duration * (10000 - percent) / 10000`, rounded up.
         ProgressState::InProgress => {
-            let outstanding = i64::from(activity.original_duration) * (10_000 - percent);
+            // Outstanding share of the recorded work in basis points, rounded
+            // up to whole working days so a partial day is never dropped. The
+            // product fits `u64` (u32::MAX × 10 000); signed `div_ceil` is not
+            // stable, so the count stays unsigned.
+            let share = u64::try_from(10_000 - percent).unwrap_or(0);
+            let outstanding = u64::from(activity.original_duration).saturating_mul(share);
             let rounded = outstanding.div_ceil(10_000);
-            let remaining = if rounded <= 0 && activity.original_duration > 0 {
+            let remaining = if rounded == 0 && activity.original_duration > 0 {
                 1
             } else {
                 rounded
@@ -1281,7 +1289,8 @@ pub fn schedule_with_progress(project: &Project, data_date: Date) -> Result<Sche
     }
 
     // Classify progress and remaining work once per activity.
-    let progress: Vec<ActivityProgress> = project.activities.iter().map(activity_progress).collect();
+    let progress: Vec<ActivityProgress> =
+        project.activities.iter().map(activity_progress).collect();
 
     // Forward pass from recorded progress.
     let mut early_start = vec![origin; count];
@@ -1310,7 +1319,9 @@ pub fn schedule_with_progress(project: &Project, data_date: Date) -> Result<Sche
                     .or(progress.actual_start)
                     .unwrap_or(data_day);
                 let start = calendar.next_working_day_on_or_after(start_hint)?;
-                let finish = calendar.prev_working_day_on_or_before(finish_hint)?.max(start);
+                let finish = calendar
+                    .prev_working_day_on_or_before(finish_hint)?
+                    .max(start);
                 early_start[activity_index] = start;
                 early_finish[activity_index] = finish;
                 outstanding_start[activity_index] = start;
@@ -1323,8 +1334,7 @@ pub fn schedule_with_progress(project: &Project, data_date: Date) -> Result<Sche
                 let start_hint = progress.actual_start.unwrap_or(data_day);
                 let start = calendar.next_working_day_on_or_after(start_hint)?;
                 let resume = if start > data_day { start } else { data_day };
-                let finish =
-                    finish_from_start(calendar, resume, progress.remaining_duration)?;
+                let finish = finish_from_start(calendar, resume, progress.remaining_duration)?;
                 early_start[activity_index] = start;
                 early_finish[activity_index] = finish.max(start);
                 outstanding_start[activity_index] = resume;
@@ -2893,15 +2903,24 @@ mod tests {
     #[test]
     fn progress_state_is_derived_from_the_recorded_facts() {
         let mut activity = Activity::new(ActivityId(1), "A", 4);
-        assert_eq!(activity_progress(&activity).state, ProgressState::NotStarted);
+        assert_eq!(
+            activity_progress(&activity).state,
+            ProgressState::NotStarted
+        );
         assert_eq!(activity_progress(&activity).remaining_duration, 4);
 
         activity.percent_complete = Some(2_500);
-        assert_eq!(activity_progress(&activity).state, ProgressState::InProgress);
+        assert_eq!(
+            activity_progress(&activity).state,
+            ProgressState::InProgress
+        );
 
         activity.percent_complete = Some(0);
         activity.actual_start = Some(jan(5));
-        assert_eq!(activity_progress(&activity).state, ProgressState::InProgress);
+        assert_eq!(
+            activity_progress(&activity).state,
+            ProgressState::InProgress
+        );
 
         activity.actual_finish = Some(jan(9));
         let complete = activity_progress(&activity);
@@ -2930,7 +2949,10 @@ mod tests {
         let mut milestone = Activity::new(ActivityId(3), "M", 0);
         milestone.percent_complete = Some(0);
         milestone.actual_start = Some(jan(5));
-        assert_eq!(activity_progress(&milestone).state, ProgressState::InProgress);
+        assert_eq!(
+            activity_progress(&milestone).state,
+            ProgressState::InProgress
+        );
         assert_eq!(activity_progress(&milestone).remaining_duration, 0);
     }
 
@@ -3020,7 +3042,13 @@ mod tests {
     fn a_complete_milestone_is_pinned_to_its_recorded_date() {
         let mut project = project();
         let milestone = add_activity(&mut project, 1, "M", 0);
-        set_progress(&mut project, milestone, Some(10_000), Some(jan(9)), Some(jan(9)));
+        set_progress(
+            &mut project,
+            milestone,
+            Some(10_000),
+            Some(jan(9)),
+            Some(jan(9)),
+        );
 
         let schedule = schedule_with_progress(&project, jan(12)).expect("schedule");
 
