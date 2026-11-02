@@ -1035,6 +1035,8 @@ Gantt presentation and authoring workflow improvements:
 - Status colour semantics and shortcuts dialog completeness: status messages use
   more distinct colours and shortcuts are grouped by category. PR #68.
 
-Workspace version bumped to 0.9.0. CI green on all required checks; PRs merged
-to main. Release 0.9.0 to be tagged after PR review.
+Workspace version bumped to 0.9.0. CI green on all required checks; PR #80
+merged to `main`; tag `v0.9.0` pushed; GitHub Release published with
+artifacts for Linux (x86_64, aarch64), Windows (x86_64), macOS (aarch64),
+CycloneDX SBOM and SHA256SUMS.
 
