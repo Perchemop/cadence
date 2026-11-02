@@ -22,6 +22,9 @@
 //!   preserved: a round trip matches assignments by name and renumbers the
 //!   dictionary in first-seen order. Activity identifiers, by contrast, are
 //!   carried in the `ID` column and in the `Predecessors` links.
+//! * CSV has no per-assignment units and no resource cost-rate column, so an
+//!   imported project gives every assignment one whole unit and a zero
+//!   `Resource::cost_per_unit`.
 //! * `Percent complete` is a percentage (0–100); `Budget at completion` and
 //!   `Actual cost` are decimal amounts. `Actual start` and `Actual finish`
 //!   are `YYYY-MM-DD`.

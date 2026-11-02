@@ -10,7 +10,7 @@
 //! this phase).
 
 use std::cmp::Ordering;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -85,17 +85,26 @@ pub struct Resource {
     pub kind: ResourceKind,
     /// Maximum units the resource can supply on one working day.
     ///
-    /// Every activity assignment consumes one unit per working day, so a
-    /// capacity of two lets the resource work on two activities at the same
-    /// time while a capacity of one forces them to be serialised.
+    /// An assignment consumes its own units per working day (see
+    /// [`FULL_UNITS`]), so a capacity of two lets the resource work on two
+    /// whole-unit assignments at the same time while a capacity of one forces
+    /// them to be serialised.
     #[serde(default = "default_resource_capacity")]
     pub capacity: u32,
+    /// Cost of one whole unit for one working day, in minor currency units
+    /// (e.g. cents). Zero means the resource carries no cost.
+    #[serde(default)]
+    pub cost_per_unit: i64,
 }
 
 /// Default resource capacity: one unit per working day.
 const fn default_resource_capacity() -> u32 {
     1
 }
+
+/// Units an assignment consumes per working day when it has no explicit
+/// override, in basis points: one whole resource unit (D25).
+pub const FULL_UNITS: u32 = 10_000;
 
 impl Resource {
     /// Create a resource with the given identifier and name.
@@ -107,6 +116,7 @@ impl Resource {
             name: name.into(),
             kind: ResourceKind::Labour,
             capacity: default_resource_capacity(),
+            cost_per_unit: 0,
         }
     }
 
@@ -120,6 +130,24 @@ impl Resource {
             name: name.into(),
             kind: ResourceKind::Labour,
             capacity: capacity.max(default_resource_capacity()),
+            cost_per_unit: 0,
+        }
+    }
+
+    /// Create a resource with an explicit capacity and a cost per whole unit
+    /// per working day. A negative rate is raised to zero.
+    pub fn with_rate(
+        id: ResourceId,
+        name: impl Into<String>,
+        capacity: u32,
+        cost_per_unit: i64,
+    ) -> Self {
+        Self {
+            id,
+            name: name.into(),
+            kind: ResourceKind::Labour,
+            capacity: capacity.max(default_resource_capacity()),
+            cost_per_unit: cost_per_unit.max(0),
         }
     }
 }
@@ -620,6 +648,14 @@ pub struct Activity {
     /// Optional resources assigned to this activity.
     #[serde(default)]
     pub resources: Vec<ResourceId>,
+    /// Per-assignment unit overrides, in basis points (see [`FULL_UNITS`]).
+    ///
+    /// Sparse: an absent resource consumes one whole unit, so the common case
+    /// keeps the assignment list a plain vector. Every key must name a
+    /// resource in [`Activity::resources`]; a unit value of exactly
+    /// [`FULL_UNITS`] is never stored.
+    #[serde(default)]
+    pub assignment_units: BTreeMap<ResourceId, u32>,
     /// Optional named calendar. `None` selects the project default calendar.
     #[serde(default)]
     pub calendar: Option<CalendarId>,
@@ -692,6 +728,7 @@ impl Activity {
             original_duration,
             wbs: None,
             resources: Vec::new(),
+            assignment_units: BTreeMap::new(),
             calendar: None,
             constraint: Constraint::AsSoonAsPossible,
             early_start: None,
@@ -726,6 +763,59 @@ impl Activity {
         self.total_float = None;
         self.free_float = None;
         self.critical = false;
+    }
+
+    /// True when the resource is assigned to this activity, whatever its units.
+    pub fn has_resource(&self, resource: ResourceId) -> bool {
+        self.resources.contains(&resource)
+    }
+
+    /// Units the resource contributes per working day, in basis points.
+    ///
+    /// A resource that is not assigned, or that has no override, reads as one
+    /// whole unit ([`FULL_UNITS`]).
+    pub fn units_for(&self, resource: ResourceId) -> u32 {
+        self.assignment_units
+            .get(&resource)
+            .copied()
+            .unwrap_or(FULL_UNITS)
+    }
+
+    /// Set the per-assignment units, in basis points.
+    ///
+    /// The map stays sparse: exactly [`FULL_UNITS`] removes the override, and
+    /// units below one are raised to one. A resource that is not assigned is
+    /// ignored, which keeps the invariant that every override names an
+    /// assigned resource.
+    pub fn set_units_for(&mut self, resource: ResourceId, units: u32) {
+        if !self.resources.contains(&resource) {
+            return;
+        }
+        let units = units.max(1);
+        if units == FULL_UNITS {
+            self.assignment_units.remove(&resource);
+        } else {
+            self.assignment_units.insert(resource, units);
+        }
+    }
+
+    /// Planned resource cost, in minor currency units.
+    ///
+    /// Each assignment contributes its units (basis points of a whole unit)
+    /// times the resource's cost per unit, for the activity's duration in
+    /// working days. A resource that has been deleted, or that carries no
+    /// rate, contributes nothing; the total saturates rather than overflow.
+    pub fn resource_cost(&self, resources: &[Resource]) -> i64 {
+        let mut total: i128 = 0;
+        for &resource_id in &self.resources {
+            let Some(resource) = resources.iter().find(|item| item.id == resource_id) else {
+                continue;
+            };
+            let units = i128::from(self.units_for(resource_id));
+            let days = i128::from(self.original_duration);
+            total += units * i128::from(resource.cost_per_unit) * days / 10_000;
+        }
+        saturate_i64(total)
     }
 }
 
@@ -1729,5 +1819,46 @@ mod tests {
         assert_eq!(resource.id, ResourceId(1));
         assert_eq!(resource.name, "Crew A");
         assert_eq!(resource.kind, ResourceKind::Labour);
+    }
+
+    #[test]
+    fn units_default_to_full_and_overrides_stay_sparse() {
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
+        activity.resources.push(ResourceId(1));
+        assert_eq!(activity.units_for(ResourceId(1)), FULL_UNITS);
+        assert!(activity.assignment_units.is_empty());
+
+        activity.set_units_for(ResourceId(1), 2_500);
+        assert_eq!(activity.units_for(ResourceId(1)), 2_500);
+        assert_eq!(activity.assignment_units.get(&ResourceId(1)), Some(&2_500));
+
+        // Setting the default again removes the override.
+        activity.set_units_for(ResourceId(1), FULL_UNITS);
+        assert!(activity.assignment_units.is_empty());
+
+        // A zero is raised to one basis point.
+        activity.set_units_for(ResourceId(1), 0);
+        assert_eq!(activity.units_for(ResourceId(1)), 1);
+
+        // An unassigned resource is ignored, keeping the invariant.
+        activity.set_units_for(ResourceId(2), 3_000);
+        assert!(!activity.assignment_units.contains_key(&ResourceId(2)));
+    }
+
+    #[test]
+    fn resource_cost_multiplies_units_rate_and_duration() {
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
+        activity.resources = vec![ResourceId(1)];
+        activity.set_units_for(ResourceId(1), FULL_UNITS / 2);
+        let resources = vec![Resource::with_rate(ResourceId(1), "Crew", 1, 1_000)];
+        // Half a unit times 1000 minor units per day, for four days = 2000.
+        assert_eq!(activity.resource_cost(&resources), 2_000);
+
+        // A resource with no rate contributes nothing.
+        let free = vec![Resource::new(ResourceId(1), "Crew")];
+        assert_eq!(activity.resource_cost(&free), 0);
+
+        // A resource that is no longer in the dictionary is skipped.
+        assert_eq!(activity.resource_cost(&[]), 0);
     }
 }

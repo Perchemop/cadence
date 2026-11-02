@@ -564,7 +564,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "cadence-app"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "cadence-commands",
  "cadence-core",
@@ -576,7 +576,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-commands"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "cadence-core",
  "serde",
@@ -585,7 +585,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-core"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "proptest",
  "serde",
@@ -596,7 +596,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-interchange"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "cadence-core",
  "proptest",
@@ -605,7 +605,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-persistence"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "cadence-core",
  "rusqlite",
@@ -615,7 +615,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-ui-egui"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "cadence-commands",
  "cadence-core",
@@ -681,9 +681,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.10.0"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86e055fa6e3e40ad6187ba25b6855eeb635d5271f8e0f0e1e9a5826b8d75bea0"
+checksum = "375989decec1a0fa424442bed520fa12ede43a48475ce8c7417d2c69b32b5f6b"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -828,9 +828,9 @@ dependencies = [
 
 [[package]]
 name = "crc32fast"
-version = "1.5.3"
+version = "1.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ba106e844045ddc02c20768ac4b0b7cb45f2cc2ecbd833ac9f5dacb183c2055"
+checksum = "5f97d3416d5337d15c4b0d78c8c91df922ca143f57ec20e2d1c188333047ef04"
 dependencies = [
  "cfg-if",
 ]

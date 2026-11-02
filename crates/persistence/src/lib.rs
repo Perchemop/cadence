@@ -1,7 +1,7 @@
 //! SQLite project files for Cadence.
 //!
 //! A Cadence project file is an ordinary SQLite database. The schema is
-//! versioned with `PRAGMA user_version`; this build reads and writes version 9
+//! versioned with `PRAGMA user_version`; this build reads and writes version 10
 //! and migrates version 1 and later files in place.
 //!
 //! Saving runs in a single transaction that replaces the previous contents, so
@@ -18,7 +18,7 @@ use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
     DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
     LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship, RelationshipId,
-    Resource, ResourceId, ResourceKind,
+    Resource, ResourceId, ResourceKind, FULL_UNITS,
 };
 use cadence_core::wbs::{WbsId, WbsTree};
 use rusqlite::{params, Connection};
@@ -26,7 +26,7 @@ use thiserror::Error;
 use time::{Date, Month};
 
 /// Project-file schema version written by this build.
-pub const SCHEMA_VERSION: i64 = 9;
+pub const SCHEMA_VERSION: i64 = 10;
 
 const SCHEMA: &str = r#"
 CREATE TABLE project (
@@ -93,12 +93,14 @@ CREATE TABLE IF NOT EXISTS resources (
     id      INTEGER PRIMARY KEY,
     name    TEXT    NOT NULL UNIQUE COLLATE NOCASE,
     kind    TEXT    NOT NULL DEFAULT 'labour',
-    capacity INTEGER NOT NULL DEFAULT 1
+    capacity INTEGER NOT NULL DEFAULT 1,
+    cost_per_unit INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS activity_resources (
     activity_id   INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
     resource_id   INTEGER NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+    units         INTEGER NOT NULL DEFAULT 10000,
     PRIMARY KEY (activity_id, resource_id)
 );
 
@@ -309,7 +311,9 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL,
                      UNIQUE (activity_id, date)
                  );
-                 PRAGMA user_version = 9;",
+                 ALTER TABLE resources ADD COLUMN cost_per_unit INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activity_resources ADD COLUMN units INTEGER NOT NULL DEFAULT 10000;
+                 PRAGMA user_version = 10;",
             )?;
             transaction.commit()?;
             Ok(())
@@ -386,7 +390,9 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL,
                      UNIQUE (activity_id, date)
                  );
-                 PRAGMA user_version = 9;",
+                 ALTER TABLE resources ADD COLUMN cost_per_unit INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activity_resources ADD COLUMN units INTEGER NOT NULL DEFAULT 10000;
+                 PRAGMA user_version = 10;",
             )?;
             transaction.commit()?;
             Ok(())
@@ -433,7 +439,9 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL,
                      UNIQUE (activity_id, date)
                  );
-                 PRAGMA user_version = 9;",
+                 ALTER TABLE resources ADD COLUMN cost_per_unit INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activity_resources ADD COLUMN units INTEGER NOT NULL DEFAULT 10000;
+                 PRAGMA user_version = 10;",
             )?;
             transaction.commit()?;
             Ok(())
@@ -480,7 +488,9 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL,
                      UNIQUE (activity_id, date)
                  );
-                 PRAGMA user_version = 9;",
+                 ALTER TABLE resources ADD COLUMN cost_per_unit INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activity_resources ADD COLUMN units INTEGER NOT NULL DEFAULT 10000;
+                 PRAGMA user_version = 10;",
             )?;
             transaction.commit()?;
             Ok(())
@@ -523,7 +533,9 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL,
                      UNIQUE (activity_id, date)
                  );
-                 PRAGMA user_version = 9;",
+                 ALTER TABLE resources ADD COLUMN cost_per_unit INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activity_resources ADD COLUMN units INTEGER NOT NULL DEFAULT 10000;
+                 PRAGMA user_version = 10;",
             )?;
             transaction.commit()?;
             Ok(())
@@ -549,7 +561,9 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL,
                      UNIQUE (activity_id, date)
                  );
-                 PRAGMA user_version = 9;",
+                 ALTER TABLE resources ADD COLUMN cost_per_unit INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activity_resources ADD COLUMN units INTEGER NOT NULL DEFAULT 10000;
+                 PRAGMA user_version = 10;",
             )?;
             transaction.commit()?;
             Ok(())
@@ -568,7 +582,9 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL,
                      UNIQUE (activity_id, date)
                  );
-                 PRAGMA user_version = 9;",
+                 ALTER TABLE resources ADD COLUMN cost_per_unit INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activity_resources ADD COLUMN units INTEGER NOT NULL DEFAULT 10000;
+                 PRAGMA user_version = 10;",
             )?;
             transaction.commit()?;
             Ok(())
@@ -585,7 +601,21 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
                      percent_complete INTEGER NOT NULL,
                      UNIQUE (activity_id, date)
                  );
-                 PRAGMA user_version = 9;",
+                 ALTER TABLE resources ADD COLUMN cost_per_unit INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activity_resources ADD COLUMN units INTEGER NOT NULL DEFAULT 10000;
+                 PRAGMA user_version = 10;",
+            )?;
+            transaction.commit()?;
+            Ok(())
+        }
+        9 => {
+            // Version 10 adds per-assignment resource units and a single cost
+            // per whole unit on the resource.
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(
+                "ALTER TABLE resources ADD COLUMN cost_per_unit INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE activity_resources ADD COLUMN units INTEGER NOT NULL DEFAULT 10000;
+                 PRAGMA user_version = 10;",
             )?;
             transaction.commit()?;
             Ok(())
@@ -813,7 +843,8 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
 
     for resource in project.resources.iter() {
         transaction.execute(
-            "INSERT INTO resources (id, name, kind, capacity) VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO resources (id, name, kind, capacity, cost_per_unit)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
             params![
                 to_sql_id(resource.id.0, "resource")?,
                 resource.name,
@@ -823,6 +854,7 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
                     ResourceKind::Material => "material",
                 },
                 i64::from(resource.capacity),
+                resource.cost_per_unit,
             ],
         )?;
     }
@@ -830,10 +862,12 @@ fn write_project(transaction: &rusqlite::Transaction<'_>, project: &Project) -> 
     for activity in &project.activities {
         for &resource_id in &activity.resources {
             transaction.execute(
-                "INSERT INTO activity_resources (activity_id, resource_id) VALUES (?1, ?2)",
+                "INSERT INTO activity_resources (activity_id, resource_id, units)
+                 VALUES (?1, ?2, ?3)",
                 params![
                     to_sql_id(activity.id.0, "activity")?,
                     to_sql_id(resource_id.0, "resource")?,
+                    i64::from(activity.units_for(resource_id)),
                 ],
             )?;
         }
@@ -964,9 +998,12 @@ fn read_project(connection: &Connection) -> Result<Project> {
     project.activities = activities;
     project.relationships = relationships;
     project.resources = resources;
-    for (activity_id, resource_id) in activity_resources {
+    for (activity_id, resource_id, units) in activity_resources {
         if let Some(activity) = project.activity_mut(activity_id) {
             activity.resources.push(resource_id);
+            if units != FULL_UNITS {
+                activity.set_units_for(resource_id, units);
+            }
         }
     }
     project.baselines = baselines;
@@ -1286,19 +1323,20 @@ fn read_relationships(connection: &Connection) -> Result<Vec<Relationship>> {
 fn read_resources(connection: &Connection) -> Result<Vec<Resource>> {
     let rows = collect_rows(
         connection,
-        "SELECT id, name, kind, capacity FROM resources ORDER BY id",
+        "SELECT id, name, kind, capacity, cost_per_unit FROM resources ORDER BY id",
         |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
             ))
         },
     )?;
 
     let mut resources = Vec::with_capacity(rows.len());
-    for (id, name, kind, capacity) in rows {
+    for (id, name, kind, capacity, cost_per_unit) in rows {
         let kind = match kind.as_str() {
             "labour" => ResourceKind::Labour,
             "equipment" => ResourceKind::Equipment,
@@ -1317,23 +1355,38 @@ fn read_resources(connection: &Connection) -> Result<Vec<Resource>> {
             name,
             kind,
             capacity: capacity.max(1),
+            cost_per_unit,
         });
     }
     Ok(resources)
 }
 
-fn read_activity_resources(connection: &Connection) -> Result<Vec<(ActivityId, ResourceId)>> {
+fn read_activity_resources(connection: &Connection) -> Result<Vec<(ActivityId, ResourceId, u32)>> {
     let rows = collect_rows(
         connection,
-        "SELECT activity_id, resource_id FROM activity_resources ORDER BY activity_id, resource_id",
-        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+        "SELECT activity_id, resource_id, units FROM activity_resources
+         ORDER BY activity_id, resource_id",
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        },
     )?;
 
     let mut assignments = Vec::with_capacity(rows.len());
-    for (activity_id, resource_id) in rows {
+    for (activity_id, resource_id, units) in rows {
+        let activity_id = from_sql_id(activity_id, "activity")?;
+        let units = u32::try_from(units).map_err(|_| {
+            PersistenceError::InvalidData(format!(
+                "activity {activity_id} has invalid resource units {units}"
+            ))
+        })?;
         assignments.push((
-            ActivityId(from_sql_id(activity_id, "activity")?),
+            ActivityId(activity_id),
             ResourceId(from_sql_id(resource_id, "resource")?),
+            units,
         ));
     }
     Ok(assignments)
@@ -1837,6 +1890,28 @@ mod tests {
     }
 
     #[test]
+    fn resource_rates_and_assignment_units_round_trip() {
+        let dir = TempDir::new();
+        let path = dir.file("units.cadence");
+        let mut project = sample_project();
+        project.resources[0].cost_per_unit = 7_500;
+        project.activities[1].set_units_for(ResourceId(2), 2_500);
+
+        save_project(&project, &path).expect("save project");
+        let loaded = load_project(&path).expect("load project");
+
+        assert_eq!(loaded.resources[0].cost_per_unit, 7_500);
+        assert_eq!(loaded.resources[1].cost_per_unit, 0);
+        assert_eq!(loaded.activities[1].units_for(ResourceId(2)), 2_500);
+        assert_eq!(loaded.activities[1].units_for(ResourceId(1)), FULL_UNITS);
+        assert_eq!(
+            loaded.activities[1].assignment_units,
+            project.activities[1].assignment_units
+        );
+        assert_eq!(loaded, project);
+    }
+
+    #[test]
     fn activity_cost_fields_round_trip() {
         let dir = TempDir::new();
         let path = dir.file("costs.cadence");
@@ -1956,6 +2031,8 @@ mod tests {
                      ALTER TABLE activities DROP COLUMN promised;
                      ALTER TABLE activities DROP COLUMN delay_reason;
                      ALTER TABLE activities DROP COLUMN location;
+                     ALTER TABLE resources DROP COLUMN cost_per_unit;
+                     ALTER TABLE activity_resources DROP COLUMN units;
                      PRAGMA user_version = 1;",
                 )
                 .expect("downgrade schema");
@@ -2248,6 +2325,8 @@ mod tests {
                  ALTER TABLE activities DROP COLUMN promised;
                  ALTER TABLE activities DROP COLUMN delay_reason;
                  ALTER TABLE activities DROP COLUMN location;
+                 ALTER TABLE resources DROP COLUMN cost_per_unit;
+                 ALTER TABLE activity_resources DROP COLUMN units;
                  PRAGMA user_version = 4;",
             )
             .expect("downgrade");
@@ -2257,5 +2336,75 @@ mod tests {
         assert_eq!(loaded.activities.len(), project.activities.len());
         assert_eq!(loaded.activities[0].owner, None);
         assert!(!loaded.activities[0].promised);
+    }
+
+    #[test]
+    fn a_version_9_file_migrates_to_resource_units() {
+        let dir = TempDir::new();
+        let path = dir.file("v9.cadence");
+        {
+            let connection = Connection::open(&path).expect("create database");
+            connection.execute_batch(SCHEMA).expect("create schema");
+            // Turn the current schema into the version 9 shape: the resource
+            // rate and the per-assignment units do not exist yet.
+            connection
+                .execute_batch(
+                    "ALTER TABLE resources DROP COLUMN cost_per_unit;
+                     ALTER TABLE activity_resources DROP COLUMN units;
+                     PRAGMA user_version = 9;",
+                )
+                .expect("downgrade schema");
+            connection
+                .execute(
+                    "INSERT INTO project (id, name, start_date, workweek) VALUES (1, ?1, ?2, ?3)",
+                    params!["Legacy", "2026-01-05", 0b001_1111],
+                )
+                .expect("insert project");
+            connection
+                .execute(
+                    "INSERT INTO wbs_nodes (id, name, parent_id, preorder)
+                     VALUES (1, 'Project', NULL, 0)",
+                    [],
+                )
+                .expect("insert root");
+            connection
+                .execute(
+                    "INSERT INTO activities (id, name, duration, wbs_id, calendar_id, position)
+                     VALUES (1, 'Legacy activity', 2, NULL, NULL, 0)",
+                    [],
+                )
+                .expect("insert activity");
+            connection
+                .execute(
+                    "INSERT INTO resources (id, name, kind, capacity)
+                     VALUES (1, 'Crew', 'labour', 1)",
+                    [],
+                )
+                .expect("insert resource");
+            connection
+                .execute(
+                    "INSERT INTO activity_resources (activity_id, resource_id) VALUES (1, 1)",
+                    [],
+                )
+                .expect("insert assignment");
+        }
+
+        let project = load_project(&path).expect("load and migrate");
+        assert_eq!(project.resources.len(), 1);
+        assert_eq!(project.resources[0].cost_per_unit, 0);
+        assert_eq!(project.activities[0].resources, vec![ResourceId(1)]);
+        assert_eq!(project.activities[0].units_for(ResourceId(1)), FULL_UNITS);
+        assert!(project.activities[0].assignment_units.is_empty());
+
+        {
+            let connection = Connection::open(&path).expect("reopen database");
+            let version: i64 = connection
+                .pragma_query_value(None, "user_version", |row| row.get(0))
+                .expect("read version");
+            assert_eq!(version, 10);
+        }
+
+        save_project(&project, &path).expect("save after migration");
+        assert_eq!(load_project(&path).expect("reload"), project);
     }
 }

@@ -126,8 +126,13 @@ logic alone, so plan-versus-reality comparisons stay honest.
 * The engine runs a forward and backward pass, reports early/late dates,
   total and free float, and the critical set. Cached schedule fields are
   derived data and are never persisted (D9).
-* Resources have a kind (Labour, Equipment, Material) and a capacity in units
-  per working day. Each assignment consumes one unit per working day (D11).
+* Resources have a kind (Labour, Equipment, Material), a capacity in whole
+  units per working day, and an optional cost per unit per working day. An
+  assignment consumes one whole unit by default and can carry its own units (a
+  fraction or a multiple), so two half-unit assignments share a capacity-one
+  resource; over-allocation compares committed units against capacity (D11,
+  D25). Planned resource cost is `units × cost per unit × duration`, shown in
+  the report when any resource carries a rate.
 * Leveling greedily delays the latest-starting activity on the earliest
   over-allocated day until the schedule is feasible (D12).
 

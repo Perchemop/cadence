@@ -52,12 +52,14 @@ Living list of capabilities. Status values: `todo`, `in progress`, `done`.
 
 | Capability | Status | Notes |
 |---|---|---|
-| Resource dictionary | done | `Resource` with `kind` and `capacity` (units per working day), unique case-insensitive names |
+| Resource dictionary | done | `Resource` with `kind`, `capacity` (units per working day) and `cost_per_unit`, unique case-insensitive names |
 | Resource assignments | done | `Activity::resources`, undoable assign/unassign commands |
-| Usage histograms | done | `engine::resource_histogram`: committed units per working day |
-| Over-allocation detection | done | `engine::resource_conflicts` reports every day over capacity |
+| Per-assignment units | done | sparse `Activity::assignment_units` override in basis points; `SetAssignmentUnits`, GUI editing (D25) |
+| Resource cost rates | done | `Resource::cost_per_unit`; planned-cost roll-up in the report; `SetResourceCostRate` (D25). Time-phased rate tables deferred |
+| Usage histograms | done | `engine::resource_histogram`: committed units per working day, units-aware |
+| Over-allocation detection | done | `engine::resource_conflicts` reports every day committed units exceed capacity (D25) |
 | Resource leveling | done | `engine::level_resources`, greedy earliest-conflict delay (D12) |
-| Resource panel in the UI | done | dictionary, editing, assignments, usage, leveling preview/apply |
+| Resource panel in the UI | done | dictionary, editing, assignments, units, cost rate, usage, leveling preview/apply |
 
 ## Phase 4 — Baselines, progress & EVM
 

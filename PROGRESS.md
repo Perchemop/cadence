@@ -1069,3 +1069,39 @@ The workspace version is bumped at release time, matching the v0.9.0 flow.
 
 Verification: CI green on the pull request (PR #85).
 
+## 2026-11-02 — Per-assignment resource units and a single resource cost rate (v0.3.x)
+
+Widening the resource model (D11 → D25) by the smallest step that makes "half a
+crane" and a resource cost expressible:
+
+- **Model:** `Resource::cost_per_unit` (minor currency units per whole unit per
+  working day) and a sparse `Activity::assignment_units` override in basis
+  points (`FULL_UNITS` = one whole unit; an absent key means one whole unit;
+  `set_units_for` keeps the map sparse and ignores unassigned resources).
+- **Engine:** the histogram carries each assignment's units, and
+  over-allocation compares committed units (basis points) against
+  `capacity × FULL_UNITS`, so two half-unit assignments share a capacity-one
+  resource without conflict. Leveling is unchanged and now sees the same
+  units-aware conflicts. `ResourceConflict::required`/`capacity` are reported
+  in basis points.
+- **Commands:** undoable `SetAssignmentUnits` and `SetResourceCostRate`;
+  removing an assignment or deleting a resource removes — and restores — the
+  override with it.
+- **Persistence:** schema v10 adds `resources.cost_per_unit` and
+  `activity_resources.units`, with an in-place v9→v10 migration and a v9-file
+  migration test.
+- **Interchange:** the lossless JSON format (schema 4) carries units and the
+  rate both ways, backward-compatible; MSPDI and MPX carry assignment `Units`
+  as a fraction of one whole unit, matching what MS Project writes; CSV
+  documents the limitation. Resource cost rates travel in JSON only, a
+  documented limitation for the other formats.
+- **GUI:** the Resources view edits each assignment's units (as a percentage)
+  and each resource's cost rate (decimal money); the daily-usage table reads
+  units in basis points; the report shows a planned resource-cost total when
+  any resource carries a rate.
+- **Workspace version** bumped to 0.10.0 (semver: new public fields and types).
+
+Deferred (roadmap): time-phased rate tables and per-assignment cost overrides.
+
+Verification: CI green on the pull request.
+
