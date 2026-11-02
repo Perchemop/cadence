@@ -467,3 +467,32 @@ pointer/wheel panning of the Gantt canvas, status text that is not a live
 region, an image-only Gantt PDF, and the need for manual screen-reader passes on
 each release platform — are recorded in `ACCESSIBILITY.md` instead of being
 claimed as complete.
+
+## D24 — Progress-driven rescheduling is a separate engine mode (2026-11-02)
+
+Status and earned value compare the plan against reality, so recorded progress
+stays a fact and never feeds the default schedule (D15). Rescheduling a live
+programme *from* that progress is a different question from planning it, and it
+is answered by a **separate** engine function rather than a change to
+`schedule`:
+
+- `cadence_core::engine::schedule_with_progress(project, data_date)` is the
+  explicit mode. `schedule` is untouched, so the variance views and the
+  earned-value panel keep comparing plan against reality without circularity.
+- `engine::activity_progress` classifies each activity from the recorded facts
+  alone — complete, in progress, or not started — and returns the outstanding
+  duration, rounded **up** so a partial day of work is never dropped.
+- A complete activity is pinned to its recorded dates and drives its successors
+  from them (the retained-logic convention). An in-progress activity starts at
+  its actual start and its outstanding work resumes from the data date. A
+  not-started activity is scheduled by logic, never before the data date.
+- Complete work reports zero float; in-progress float is measured on the
+  outstanding work, not on the past part of the activity.
+- Upper-bound constraints are enforced only for work that has not started. A
+  missed deadline on work already done or under way is left for the audit tool
+  to flag: the recorded facts are never silently overridden, and a delay that
+  has already happened is not a scheduling error.
+- The CLI gains `cadence reschedule <file> [--status-date YYYY-MM-DD] [--json]`,
+  and the GUI's **Production** view gains a non-destructive preview. Applying
+  the rescheduled dates to the project is a later slice; the mode itself is the
+  deliverable here.

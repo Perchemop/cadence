@@ -202,8 +202,11 @@ Progress-driven rescheduling remains queued in v0.3.x below.
 
 ### v0.3.x — deeper scheduling
 
-- [ ] Progress-driven rescheduling mode (actual dates feeding the engine —
-      D15 records why this must be an explicit mode).
+- [x] Progress-driven rescheduling mode: the explicit engine mode
+      `schedule_with_progress(project, data_date)` (D15 explains why it must be
+      separate from `schedule`), `activity_progress`/`ProgressState`
+      classification, the CLI `cadence reschedule`, and a non-destructive GUI
+      preview in the **Production** view (D24).
 - [ ] Per-assignment resource units and cost rate tables (D11 records the
       current one-unit model).
 - [x] Calendar editing in the GUI (Calendars view, calendar definition

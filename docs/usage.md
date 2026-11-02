@@ -16,6 +16,7 @@ takes the file path; with no arguments `cadence` runs a built-in demo project.
 | `cadence save <file>` | Save the demo project to a project file |
 | `cadence load <file> [--json]` | Load a project file and print its schedule |
 | `cadence audit <file> [--json] [--status-date YYYY-MM-DD]` | Audit the programme's schedule quality |
+| `cadence reschedule <file> [--json] [--status-date YYYY-MM-DD]` | Reschedule outstanding work from recorded progress |
 | `cadence report <file> [out]` | Write a Markdown report (stdout if no file) |
 | `cadence print <file> <out.pdf>` | Print the report as a PDF |
 | `cadence version` | Show the version and the last cached update check |
@@ -85,6 +86,35 @@ command succeeds whenever the audit ran, even when checks fail.
   view re-runs the audit after edits, and **Run audit** applies the optional
   status date typed into the field. The audit is offline like everything else
   in Cadence.
+
+## Rescheduling from progress
+
+`cadence reschedule <file> [--status-date YYYY-MM-DD]` updates a live programme
+from the progress recorded against it. It is the explicit progress-driven mode
+that the default schedule deliberately is not (D15, D24): the ordinary
+`cadence load` and the variance and earned-value views still schedule from
+logic alone, so plan-versus-reality comparisons stay honest.
+
+* The **status date** (data date) is where outstanding work is scheduled from;
+  it defaults to today and is normalised forward to the next working day.
+* A **complete** activity (an actual finish recorded, or 100% complete) is
+  pinned to its recorded dates and drives its successors from them.
+* An **in-progress** activity starts at its actual start; its outstanding work
+  (the recorded duration scaled by the unfinished share, rounded up) resumes
+  from the later of the actual start and the status date.
+* A **not-started** activity is scheduled by logic, never before the status
+  date.
+* Complete work reports zero float; in-progress float is measured on the
+  outstanding work. Upper-bound constraints are enforced only for work that has
+  not started — a missed deadline on work already done or under way is left for
+  the audit to flag, never silently overridden.
+* The plain-text output is the schedule table followed by a one-line tally of
+  complete / in-progress / not-started activities; `--json` prints the same
+  `kind: "schedule"` document as `cadence load --json`.
+* In the GUI, the **Production** view has a non-destructive **Reschedule from
+  progress** preview: enter a status date, press **Preview**, and read the new
+  project finish and each activity's planned-versus-rescheduled finish. Nothing
+  is written to the project until you apply it (a later slice).
 
 ## Scheduling model
 
