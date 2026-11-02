@@ -6,6 +6,13 @@ follows Keep a Changelog; releases use git tags.
 ## [Unreleased]
 
 ### Added
+- Progress-driven rescheduling mode: `schedule_with_progress(project,
+  data_date)` in `cadence-core`, the CLI `cadence reschedule <file>
+  [--status-date YYYY-MM-DD] [--json]`, and a non-destructive preview in the
+  GUI **Production** view. Completed activities stay at their recorded dates,
+  work in progress resumes from the status date, and not-started work is
+  scheduled from logic but never before it. The default schedule is unchanged,
+  so variance and earned-value views stay honest (`DECISIONS.md` D24).
 
 ## [0.9.0] — 2026-11-02
 

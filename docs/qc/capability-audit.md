@@ -29,6 +29,11 @@
 Cadence is audited below against **273 distinct capabilities** across 21
 domains. Overall: **130 shipped, 37 partial, 86 missing, 20 out-of-scope.**
 
+*Post-audit update (2026-11-02):* progress-driven rescheduling moved from
+`missing` to `shipped` (D24), so the current tally is **131 shipped, 37
+partial, 85 missing, 20 out-of-scope**; the dated per-product matrix below is
+left as the 2026-10-30 snapshot.
+
 Counts per reference product (a row naming several products is counted once
 under each, so the per-product totals exceed the 273 rows; `Audit` also matches
 the named tools/standards DCMA, GAO, AACE, Acumen, SSI, Steelray, Barbecana,
@@ -60,7 +65,7 @@ crate/module, command or GUI view.
 | 1 | **Navigation filters, grouping and highlighters** | P6/MSP let a planner slice a 5,000-activity programme by activity code, resource, float or custom field, and highlight rows. | A professional cannot work an enterprise-size programme without slicing it; Cadence is "sort only" today. | `cadence-ui-egui`: a filter/group-by/highlighter state over the activity list, predicate on `Activity` fields; persist as a layout. Recorded "considering" in `docs/ui-patterns.md:36`. |
 | 2 | **WBS tree view and roll-up** | MSP/P6 show the outline as a collapsible tree with rolled-up summary dates, cost and work. | The WBS model exists but is invisible; planners navigate by hierarchy, not a flat table. | New **WBS** view in `cadence-ui-egui` reading `project.wbs` (`crates/core/src/wbs.rs`); roll-up dates/cost in the engine. |
 | 3 | **Out-of-sequence progress detection** | DCMA/SSI/Acumen flag progress posted out of sequence; P6 records it in the schedule log. | A core reason owners reject an update; already named as an audit edge case (`docs/research/schedule-audit.md:202`). | New `CheckId` in `crates/core/src/audit.rs`; also feeds the Aphex production-tracking stage. |
-| 4 | **Progress-driven rescheduling mode** | MSP/P6 reschedule remaining work from actual dates and a status date. | Updating a live programme is the daily paid task; Cadence records progress but never schedules from it (D15). | Explicit engine mode (`crates/core/src/engine.rs`); already queued in `ROADMAP.md:199` (v0.3.x). |
+| 4 | **Progress-driven rescheduling mode** | MSP/P6 reschedule remaining work from actual dates and a status date. | Updating a live programme is the daily paid task; Cadence records progress but never schedules from it (D15). | **Shipped 2026-11-02:** explicit engine mode `schedule_with_progress` (`crates/core/src/engine.rs`), CLI `cadence reschedule`, GUI **Production** preview (D24). |
 | 5 | **Remaining duration field** | MSP keeps duration/actual/remaining separately and lets the planner override remaining work. | The planner's most-used edit during updating. | `Activity` field in `crates/core/src/model.rs`, `SetActivityRemainingDuration` command, inspector edit. |
 | 6 | **Schedule log** | P6 writes a per-run record of conditions encountered (constraint effects, open ends, out-of-sequence). | The reviewer's audit trail behind the dates; the audit report is not a substitute. | Return conditions from `schedule()`/`level_resources`; a CLI/GUI panel. |
 | 7 | **Longest-path criticality and per-activity longest path** | P6 distinguishes float-based criticality from the longest driving chain; SSI prints longest-path values per activity. | Constraints distort float; owners increasingly require longest-path claims. | Add a longest-path pass in `crates/core/src/engine.rs`; recorded post-v1 candidate (`docs/parity.md:35`). |
@@ -216,7 +221,7 @@ crate/module, command or GUI view.
 | Out-of-sequence progress detection | P6, Audit | Flags progress posted on an activity whose predecessors are unfinished. | missing | New `CheckId` in `crates/core/src/audit.rs:70`; named edge case `docs/research/schedule-audit.md:202`. |
 | Progress lines on the Gantt | MSP | Trend lines connecting progress points. | missing | Draw in the Gantt canvas (`cadence-ui-egui`); status date needed first. |
 | Progress overlay on bars | MSP, Asta | Percent complete drawn inside the bar. | shipped | Darker fill in Gantt bars (`docs/ui-patterns.md:47`); `docs/parity.md:69`. |
-| Progress-driven rescheduling | MSP, P6 | Remaining work is rescheduled from actual dates/status date. | missing | Explicit engine mode; D15 (`DECISIONS.md:199`), queued `ROADMAP.md:199`. |
+| Progress-driven rescheduling | MSP, P6 | Remaining work is rescheduled from actual dates/status date. | shipped | `engine::schedule_with_progress` + `activity_progress`/`ProgressState`, CLI `cadence reschedule`, GUI **Production** preview; D24 (`DECISIONS.md`). |
 | Status date | MSP, P6 | A date that anchors EVM and updating. | shipped | Editable status date in the Baselines view (`ui-egui/lib.rs:2453`); `--status-date` (`main.rs:33`). |
 | Progress in interchange | MSP, P6 | Progress travels between tools. | shipped | MSPDI/CSV/JSON carry percent, actual dates, actual cost (`docs/usage.md:109`). |
 

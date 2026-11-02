@@ -16,7 +16,9 @@ use std::process::ExitCode;
 use cadence_commands::{Command, CommandStack, CreateActivity, CreateRelationship};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
 use cadence_core::compare::{compare, Comparison, RelationshipChange};
-use cadence_core::engine::{schedule, Schedule};
+use cadence_core::engine::{
+    activity_progress, schedule, schedule_with_progress, ProgressState, Schedule,
+};
 use cadence_core::model::{LinkType, Project};
 use cadence_ui_egui::update_check;
 use time::{Date, Month};
@@ -34,6 +36,8 @@ Usage:
                                   Audit the programme's schedule quality
   cadence audit-compare <before> <after> [--json]
                                   Forensic comparison of two programme versions
+  cadence reschedule <file> [--json] [--status-date YYYY-MM-DD]
+                                  Reschedule remaining work from recorded progress
   cadence report <file> [out]    Write a Markdown report (stdout if no file)
   cadence print <file> <out.pdf>  Print a project report to PDF
   cadence version                Show the version and the last cached update check
@@ -78,6 +82,16 @@ fn main() -> ExitCode {
             if command == "audit-compare" && input != "--json" && output != "--json" =>
         {
             compare_command(input, output, json)
+        }
+        [command, path] if command == "reschedule" => reschedule_command(path, json, None),
+        [command, path, flag, value] if command == "reschedule" && flag == "--status-date" => {
+            match parse_status_date(value) {
+                Ok(data_date) => reschedule_command(path, json, Some(data_date)),
+                Err(message) => {
+                    usage_error = true;
+                    Err(usage_failure(&message))
+                }
+            }
         }
         [command, path] if command == "report" => print_report(path, None),
         [command, input, output] if command == "report" => print_report(input, Some(output)),
@@ -144,7 +158,7 @@ fn split_json_flag(arguments: Vec<String>) -> (Vec<String>, bool) {
     // The file-name argument positions of the command in `arguments[0]`,
     // for the commands that accept `--json` at all.
     let file_slots = match arguments.first().map(String::as_str) {
-        Some("load") | Some("audit") => Some(1..=1),
+        Some("load") | Some("audit") | Some("reschedule") => Some(1..=1),
         Some("audit-compare") => Some(1..=2),
         _ => None,
     };
@@ -542,6 +556,55 @@ fn print_schedule_output(project: &Project, json: bool) -> Result<(), String> {
             Ok(())
         }
     }
+}
+
+/// Reschedule remaining work from recorded progress as of a status date.
+///
+/// This is the explicit progress-driven rescheduling mode (`DECISIONS.md` D15):
+/// completed activities stay at their recorded dates, work in progress resumes
+/// from the data date, and not-started work is scheduled from logic but never
+/// before the data date. The data date defaults to today when `--status-date`
+/// is not given. A scheduling failure is reported the same way
+/// [`print_schedule_output`] reports it, including the error document in
+/// `--json` mode.
+fn reschedule_command(path: &str, json: bool, data_date: Option<Date>) -> Result<(), String> {
+    let project = cadence_persistence::load_project(path)
+        .map_err(|error| json_error(error.to_string(), json))?;
+    let data_date = data_date.unwrap_or_else(today);
+    match schedule_with_progress(&project, data_date) {
+        Err(error) => Err(json_error(error.to_string(), json)),
+        Ok(schedule) => {
+            if json {
+                print!(
+                    "{}",
+                    cadence_interchange::schedule::schedule_export(&project, &schedule)
+                );
+            } else {
+                print_schedule(&project, &schedule);
+                print_progress_summary(&project, data_date);
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Print a one-line tally of recorded progress, as the mode classifies it.
+fn print_progress_summary(project: &Project, data_date: Date) {
+    let mut not_started = 0u32;
+    let mut in_progress = 0u32;
+    let mut complete = 0u32;
+    for activity in &project.activities {
+        match activity_progress(activity).state {
+            ProgressState::NotStarted => not_started += 1,
+            ProgressState::InProgress => in_progress += 1,
+            ProgressState::Complete => complete += 1,
+        }
+    }
+    println!();
+    println!(
+        "Rescheduled from progress as of {data_date}: {complete} complete, \
+         {in_progress} in progress, {not_started} not started"
+    );
 }
 
 /// Write a Markdown project report to stdout or to a file.

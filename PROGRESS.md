@@ -1035,6 +1035,37 @@ Gantt presentation and authoring workflow improvements:
 - Status colour semantics and shortcuts dialog completeness: status messages use
   more distinct colours and shortcuts are grouped by category. PR #68.
 
-Workspace version bumped to 0.9.0. CI green on all required checks; PRs merged
-to main. Release 0.9.0 to be tagged after PR review.
+Workspace version bumped to 0.9.0. CI green on all required checks; PR #80
+merged to `main`; tag `v0.9.0` pushed; GitHub Release published with
+artifacts for Linux (x86_64, aarch64), Windows (x86_64), macOS (aarch64),
+CycloneDX SBOM and SHA256SUMS.
+
+## 2026-11-02 — Progress-driven rescheduling mode (v0.3.x)
+
+Rescheduling a live programme from recorded progress, as an **explicit** engine
+mode rather than a change to the default schedule (D15, D24):
+
+- `cadence_core::engine::schedule_with_progress(project, data_date)` plus the
+  `activity_progress` / `ProgressState` classification. Completed activities
+  are pinned to their recorded dates and drive their successors from them;
+  in-progress work resumes from the data date with its outstanding duration,
+  rounded up; not-started work is scheduled by logic but never before the data
+  date. Complete work reports zero float, in-progress float is measured on the
+  outstanding work, and upper-bound constraints are enforced only for work that
+  has not started.
+- CLI `cadence reschedule <file> [--status-date YYYY-MM-DD] [--json]` prints the
+  rescheduled table and a complete / in-progress / not-started tally, or the
+  `kind: "schedule"` document in JSON mode.
+- GUI **Production** view: a non-destructive **Reschedule from progress**
+  preview — a status date, the new project finish, and each activity's
+  planned-versus-rescheduled finish. Nothing is applied to the project yet.
+- Twelve unit tests in `crates/core/src/engine.rs` cover the classification, the
+  remaining-duration rounding, complete / in-progress / not-started scheduling,
+  successor logic driven from a complete or in-progress predecessor, a complete
+  milestone, the empty project, cycle rejection, determinism, and that the
+  default `schedule` still ignores recorded progress (D15).
+
+The workspace version is bumped at release time, matching the v0.9.0 flow.
+
+Verification: CI green on the pull request (PR #85).
 
