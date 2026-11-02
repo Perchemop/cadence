@@ -504,7 +504,9 @@ fn import_assignment_units(element: &Element) -> u32 {
     if !fraction.is_finite() {
         return FULL_UNITS;
     }
-    let units = (fraction * 10_000.0).round().clamp(1.0, f64::from(u32::MAX));
+    let units = (fraction * 10_000.0)
+        .round()
+        .clamp(1.0, f64::from(u32::MAX));
     units as u32
 }
 

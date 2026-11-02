@@ -898,7 +898,10 @@ fn activity_json(activity: &Activity) -> Value {
                     .assignment_units
                     .iter()
                     .map(|(id, units)| {
-                        (id.0.to_string(), Value::Number(Number::Int(i64::from(*units))))
+                        (
+                            id.0.to_string(),
+                            Value::Number(Number::Int(i64::from(*units))),
+                        )
                     })
                     .collect(),
             ),
@@ -1746,7 +1749,9 @@ mod tests {
     fn assignment_units_and_resource_rates_round_trip() {
         let start = date(2026, Month::January, 5);
         let mut project = Project::new("Units", start);
-        project.resources.push(Resource::with_rate(ResourceId(1), "Crew", 1, 12_500));
+        project
+            .resources
+            .push(Resource::with_rate(ResourceId(1), "Crew", 1, 12_500));
 
         let mut activity = Activity::new(ActivityId(1), "Pour", 3);
         activity.resources = vec![ResourceId(1)];

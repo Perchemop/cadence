@@ -185,7 +185,11 @@ fn resources_section(project: &Project, computed: &Schedule, report: &mut String
 
     // Planned resource cost: only when at least one resource carries a rate,
     // to keep the report quiet for projects without cost data.
-    if project.resources.iter().any(|resource| resource.cost_per_unit != 0) {
+    if project
+        .resources
+        .iter()
+        .any(|resource| resource.cost_per_unit != 0)
+    {
         let total: i64 = project
             .activities
             .iter()

@@ -475,7 +475,9 @@ fn parse_units(text: &str) -> Option<u32> {
     if !fraction.is_finite() || fraction <= 0.0 {
         return None;
     }
-    let units = (fraction * 10_000.0).round().clamp(1.0, f64::from(u32::MAX));
+    let units = (fraction * 10_000.0)
+        .round()
+        .clamp(1.0, f64::from(u32::MAX));
     Some(units as u32)
 }
 

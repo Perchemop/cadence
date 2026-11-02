@@ -2688,11 +2688,10 @@ impl eframe::App for CadenceApp {
                                                     .hint_text("100.00"),
                                             );
                                             if response.lost_focus() {
-                                                if let Ok(percent) = entry.trim().parse::<f64>()
-                                                {
-                                                    let units =
-                                                        ((percent * 100.0).round() as i64)
-                                                            .max(1) as u32;
+                                                if let Ok(percent) = entry.trim().parse::<f64>() {
+                                                    let units = ((percent * 100.0).round() as i64)
+                                                        .max(1)
+                                                        as u32;
                                                     if assigned && units != current_units {
                                                         pending_units =
                                                             Some((activity.id, id, units));
@@ -2731,8 +2730,7 @@ impl eframe::App for CadenceApp {
                                             .assignment_units_buffers
                                             .get_mut(&(activity.id, id))
                                         {
-                                            *entry =
-                                                format!("{:.2}", shown_units as f64 / 100.0);
+                                            *entry = format!("{:.2}", shown_units as f64 / 100.0);
                                         }
                                         if let Some(result) = schedule.activity(activity.id) {
                                             ui.label(result.scheduled_start.to_string());
@@ -4060,9 +4058,7 @@ fn resource_day_usage(
         let units = assignments
             .iter()
             .filter(|assignment| assignment.resource_id == resource_id)
-            .fold(0u32, |sum, assignment| {
-                sum.saturating_add(assignment.units)
-            });
+            .fold(0u32, |sum, assignment| sum.saturating_add(assignment.units));
         if units > 0 {
             usage.insert(*date, units);
         }

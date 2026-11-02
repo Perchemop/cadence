@@ -16,9 +16,9 @@ use std::path::Path;
 use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
-    DailyNote, DailyNoteId, FULL_UNITS, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
     LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship, RelationshipId,
-    Resource, ResourceId, ResourceKind,
+    Resource, ResourceId, ResourceKind, FULL_UNITS,
 };
 use cadence_core::wbs::{WbsId, WbsTree};
 use rusqlite::{params, Connection};
@@ -1366,7 +1366,13 @@ fn read_activity_resources(connection: &Connection) -> Result<Vec<(ActivityId, R
         connection,
         "SELECT activity_id, resource_id, units FROM activity_resources
          ORDER BY activity_id, resource_id",
-        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?)),
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        },
     )?;
 
     let mut assignments = Vec::with_capacity(rows.len());
