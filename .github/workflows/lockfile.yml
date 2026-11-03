@@ -17,10 +17,10 @@ name: Lockfile
 # workflow, so every lockfile change is reviewed and CI-checked. It is also
 # excluded from main pushes, which would produce an upload nothing consumes.
 #
-# The `cargo update -p clipboard-win` step makes the yanked-crate policy
-# enforceable: fresh resolution avoids yanked versions, and this re-resolve of
-# the one package whose previous pin was yanked makes that explicit instead of
-# hoping the full regeneration moved it.
+# The `cargo update -p <crate>` steps make the yanked-crate policy
+# enforceable: fresh resolution avoids yanked versions, and re-resolving each
+# package whose previous pin was yanked makes that explicit instead of hoping
+# the full regeneration moved it (D19, D20, D26).
 
 on:
   push:
@@ -54,7 +54,9 @@ jobs:
       - name: Resolve the dependency graph
         run: cargo generate-lockfile
       - name: Move off any yanked pin
-        run: cargo update -p clipboard-win
+        run: |
+          cargo update -p clipboard-win
+          cargo update -p async-executor
       - name: Summarise the result
         shell: bash
         run: |

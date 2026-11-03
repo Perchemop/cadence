@@ -1116,3 +1116,55 @@ checklist is covered by the release run: secret scanning, the personal-data
 scan, dependency licence/advisory checks and the bill-of-materials job are all
 green on the release commit.
 
+## 2026-11-03 — Workbench UI polish and a yanked dependency pin (unreleased)
+
+A design-review pass over the desktop shell (`docs/design/ui-polish-audit.md`),
+delivering that audit's shippable slices S1–S7 plus the dependency hygiene the
+security workflow requires:
+
+- **Status bar (S1):** critical-activity count, the latest baseline's earned
+  value (`PV EV AC SV CV SPI CPI`) or `No baseline`, a worded save indicator
+  (`✓ saved` / `● unsaved`) and the zoom level. Recomputed on edit and
+  undo/redo, not per frame — the table and Gantt hot paths are untouched.
+- **Toolbar tooltips (S2):** every primary action names its shortcut on hover.
+- **Active sort column (S3):** renders in the accent colour; the tooltip states
+  the order, so the sort is never colour-only.
+- **Gantt (S4):** a 2 px today line with a shape marker at the top, and signed
+  dependency lag labels drawn on a small badge.
+- **Split view (S5):** the **Split Gantt** toggle explains the draggable divider.
+- **Empty states (S6):** the Table, Baselines, Published snapshots and Diary
+  views each state the empty surface's purpose and its one action.
+- **F1 footer (S7):** a **F1: shortcuts** control in the status bar opens the
+  keyboard reference from anywhere.
+- **Dependency hygiene:** `Cargo.lock` refreshed off the yanked
+  `async-executor 1.14.0` to `1.14.1` (D26); the lockfile workflow re-resolves
+  that pin explicitly so the next yank is moved by the workflow, not by hand.
+
+Verification: CI green on `opencode/ci` — the required checks (Verify on Linux
+x86_64/aarch64, Windows and macOS; Package (Linux); Secret scanning; Dependency
+licences and advisories; Dependency review; Static analysis (rust/actions); Bill
+of materials; Lockfile freshness; Personal data scan).
+
+## Design audit backlog — PR #90 cross-check (future slices)
+
+PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`, 43 findings)
+was re-verified against the current tree and cross-referenced in
+`docs/design/ui-polish-audit.md`.
+
+**Closed already (S1 blockers):**
+- S1-1 Create/delete activity: Ctrl+N + **New activity** toolbar button create an activity (select/recompute/scroll-to-view); inspector **Delete activity** with confirmation dialog.
+- S1-2 Production: working activity/date/percent form issuing `RecordProduction`/`DeleteProduction`; `Ctrl+9` bound; listed in F1 dialog.
+- S1-3 Dirty state: `dirty` flag, viewport-title `•` marker, Save/Discard/Cancel close guard.
+- S2-2 Toolbar Undo/Redo now recompute + refresh_selection with shortcut tooltips.
+- S2-3 Status messages coloured by `StatusSeverity` (Info/Success/Warning/Error → palette tokens).
+- S2-17 F1 shortcuts dialog lists Ctrl+S/O/N, Production (Ctrl+1..9) and all bindings.
+
+**Still open — queued as future slices** (see `docs/design/ui-polish-audit.md`
+"Future slices (from PR #90 backlog)"):
+- P0 authoring: S1-1c row context menu.
+- P1 feedback/shell: S2-1 menu bar + toolbar declutter, S2-2b disable Undo/Redo when empty, S2-3b auto-clear success, S2-4 date field helper, S2-13 cache critical count, S2-14 save-report dialog, S2-16 consume Ctrl+wheel scroll, S2-18 confirmation consistency, S2-20 AccessKit labelled_by, S2-22 duplicate theme toggle.
+- P2 Gantt as working chart: S2-6 bar selection + inspector, S2-7 non-FS drag-to-link, S2-21 apply zoom before draw.
+- P3 density/completeness: S2-5 table filter/multi-select, S2-8 relationship delete/retype, S2-9 Location/WBS inspector fields, S2-10 Diary picker + note edit, S2-11 per-frame resource cache, S2-12 per-frame lookahead cache, S2-15 atomic leveling undo, plus all S3 minors (S3-1 red non-token colours, S3-6 doc drift, S3-7 tab tooltips, S3-18 window min size, …).
+
+No item above blocks the current release; all are tracked so they are not missed.
+

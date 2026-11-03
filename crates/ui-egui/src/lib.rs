@@ -32,8 +32,8 @@ use cadence_core::engine::{
 use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use cadence_core::model::FULL_UNITS;
 use cadence_core::model::{
-    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, LinkType,
-    LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind,
+    Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, EvmMetrics,
+    LinkType, LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind,
 };
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
 use time::{Date, Month};
@@ -359,6 +359,10 @@ pub struct CadenceApp {
     status_message: Option<String>,
     dirty: bool,
     confirm_close: bool,
+    /// Whether a baseline is available, shown in the status bar.
+    baseline_active: bool,
+    /// Earned-value metrics for the most recent baseline, shown in the status bar.
+    evm_metrics: Option<EvmMetrics>,
     confirm_delete_activity: bool,
     selected_relationship: Option<cadence_core::model::RelationshipId>,
     lag_buffer: String,
@@ -457,6 +461,8 @@ impl CadenceApp {
             status_message: None,
             dirty: false,
             confirm_close: false,
+            baseline_active: false,
+            evm_metrics: None,
             confirm_delete_activity: false,
             selected_relationship: None,
             lag_buffer: String::new(),
@@ -545,6 +551,15 @@ impl CadenceApp {
         self.edit_version = self.edit_version.wrapping_add(1);
         self.schedule = schedule(&self.project).map_err(|error| error.to_string());
         self.dirty = true;
+        // Refresh the baseline flag and earned-value metrics the status bar
+        // shows, so they follow edits and undo/redo without recomputing per
+        // frame.
+        self.baseline_active = self.project.baselines.last().is_some();
+        self.evm_metrics = self
+            .project
+            .baselines
+            .last()
+            .map(|baseline| evm_metrics(&self.project, Some(baseline), today()));
     }
 
     /// Reload the inspector buffers for the selected activity after an undo or
@@ -1803,6 +1818,10 @@ impl eframe::App for CadenceApp {
                     } else {
                         "Split Gantt: off"
                     })
+                    .on_hover_text(
+                        "Show the Gantt beside the table; drag the divider between \
+                         the panels to resize it",
+                    )
                     .clicked()
                 {
                     self.show_split_gantt = !self.show_split_gantt;
@@ -1884,12 +1903,20 @@ impl eframe::App for CadenceApp {
                 {
                     self.show_update_dialog = true;
                 }
-                if ui.button("Undo").clicked() {
+                if ui
+                    .button("Undo")
+                    .on_hover_text("Undo the last edit (Ctrl+Z)")
+                    .clicked()
+                {
                     let _ = self.stack.undo(&mut self.project);
                     self.recompute();
                     self.refresh_selection();
                 }
-                if ui.button("Redo").clicked() {
+                if ui
+                    .button("Redo")
+                    .on_hover_text("Redo the last undone edit (Ctrl+Y)")
+                    .clicked()
+                {
                     let _ = self.stack.redo(&mut self.project);
                     self.recompute();
                     self.refresh_selection();
@@ -1902,7 +1929,11 @@ impl eframe::App for CadenceApp {
                     );
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Toggle theme").clicked() {
+                    if ui
+                        .button("Toggle theme")
+                        .on_hover_text("Switch between the light and dark theme (Ctrl+D)")
+                        .clicked()
+                    {
                         self.dark = !self.dark;
                         apply_theme(&ctx, self.dark);
                     }
@@ -1944,16 +1975,53 @@ impl eframe::App for CadenceApp {
                     }
                     Err(_) => ("Cannot schedule".to_string(), 0),
                 };
+                let palette = design::palette(self.dark);
+                // Left: project range, activity count, and the critical count
+                // (coloured so criticality never relies on the number alone).
                 ui.label(
                     egui::RichText::new(format!(
-                        "{range}   {} activities   {} critical   Zoom {:.0}%",
-                        self.project.activities.len(),
-                        critical_count,
-                        self.pixels_per_day / 14.0 * 100.0,
+                        "{range}   {} activities",
+                        self.project.activities.len()
                     ))
-                    .weak()
-                    .small(),
+                    .small()
+                    .color(palette.text_muted),
                 );
+                if critical_count > 0 {
+                    let critical_text = if critical_count == 1 {
+                        "1 critical activity".to_string()
+                    } else {
+                        format!("{critical_count} critical activities")
+                    };
+                    ui.label(
+                        egui::RichText::new(critical_text)
+                            .small()
+                            .color(palette.critical),
+                    );
+                }
+                // Centre: earned-value metrics when a baseline is active, or a
+                // short hint when none has been captured.
+                if let (true, Some(metrics)) = (self.baseline_active, &self.evm_metrics) {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "PV {}  EV {}  AC {}  SV {}  CV {}  SPI {:.2}  CPI {:.2}",
+                            metrics.planned_value,
+                            metrics.earned_value,
+                            metrics.actual_cost,
+                            metrics.schedule_variance,
+                            metrics.cost_variance,
+                            metrics.schedule_performance_index.unwrap_or(0.0),
+                            metrics.cost_performance_index.unwrap_or(0.0),
+                        ))
+                        .small()
+                        .color(palette.text_muted),
+                    );
+                } else {
+                    ui.label(
+                        egui::RichText::new("No baseline")
+                            .small()
+                            .color(palette.text_muted),
+                    );
+                }
                 if let Some(message) = &self.status_message {
                     ui.label("   ·   ");
                     let severity = StatusSeverity::from_message(message);
@@ -1965,9 +2033,30 @@ impl eframe::App for CadenceApp {
                     );
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Save indicator: a word, not a colour alone.
+                    let (save_text, save_color) = if self.dirty {
+                        ("● unsaved", palette.critical)
+                    } else {
+                        ("✓ saved", palette.ok)
+                    };
+                    ui.label(egui::RichText::new(save_text).small().color(save_color));
+                    ui.label(
+                        egui::RichText::new(format!("{:.0}%", self.pixels_per_day / 14.0 * 100.0))
+                            .small()
+                            .color(palette.text_muted),
+                    );
                     if ui.button("Toggle theme").clicked() {
                         self.dark = !self.dark;
                         apply_theme(&ctx, self.dark);
+                    }
+                    // F1 footer: the keyboard reference is one click away from
+                    // anywhere, matching the F1 binding.
+                    if ui
+                        .small_button("F1: shortcuts")
+                        .on_hover_text("Open the keyboard reference (F1)")
+                        .clicked()
+                    {
+                        self.show_shortcuts_dialog = true;
                     }
                 });
             });
@@ -2297,8 +2386,8 @@ impl eframe::App for CadenceApp {
                                 let Some(key) = col.0 else {
                                     continue;
                                 };
-                                // The active sort column shows its direction.
-                                let label = if self.sort_key == key {
+                                // The active sort column shows its direction with accent colour.
+                                let label_text = if self.sort_key == key {
                                     format!(
                                         "{} {}",
                                         key.label(),
@@ -2307,11 +2396,25 @@ impl eframe::App for CadenceApp {
                                 } else {
                                     key.label().to_owned()
                                 };
+                                let label = if self.sort_key == key {
+                                    egui::RichText::new(label_text).color(ACCENT)
+                                } else {
+                                    egui::RichText::new(label_text)
+                                };
                                 if ui
                                     .add_sized(
                                         [widths[index], 22.0],
                                         egui::Button::new(label).frame(false),
                                     )
+                                    .on_hover_text(format!(
+                                        "Sort by {} ({} order)",
+                                        key.label(),
+                                        if self.sort_ascending {
+                                            "ascending"
+                                        } else {
+                                            "descending"
+                                        }
+                                    ))
                                     .clicked()
                                 {
                                     header_clicked = Some(key);
@@ -2321,7 +2424,15 @@ impl eframe::App for CadenceApp {
                         ui.separator();
 
                         if sorted.is_empty() {
-                            ui.label("No activities yet.");
+                            ui.add_space(8.0);
+                            ui.label(
+                                egui::RichText::new(
+                                    "No activities yet. Use New activity (Ctrl+N) to add the \
+                                     first one.",
+                                )
+                                .weak()
+                                .small(),
+                            );
                         } else {
                             let selected_index = selected_id.and_then(|id| {
                                 sorted.iter().position(|activity| activity.id == id)
@@ -2762,7 +2873,15 @@ impl eframe::App for CadenceApp {
                         ui.separator();
                         let baselines = self.project.baselines.clone();
                         if baselines.is_empty() {
-                            ui.label("No baselines captured yet.");
+                            ui.add_space(8.0);
+                            ui.label(
+                                egui::RichText::new(
+                                    "No baselines captured yet. Use Capture baseline to record \
+                                     the current schedule as a baseline to compare against.",
+                                )
+                                .weak()
+                                .small(),
+                            );
                         }
                         for baseline in &baselines {
                             let selected = self.selected_baseline == Some(baseline.id);
@@ -3216,7 +3335,15 @@ impl eframe::App for CadenceApp {
                     ui.separator();
                     ui.heading("Published snapshots");
                     if self.project.lookahead_snapshots.is_empty() {
-                        ui.label("No snapshots published yet.");
+                        ui.add_space(8.0);
+                        ui.label(
+                            egui::RichText::new(
+                                "No snapshots published yet. Publish the current window above \
+                                 to compare it against a later one.",
+                            )
+                            .weak()
+                            .small(),
+                        );
                     } else {
                         for snapshot in &self.project.lookahead_snapshots {
                             let selected = self.selected_lookahead_snapshot == Some(snapshot.id);
@@ -3439,7 +3566,15 @@ impl eframe::App for CadenceApp {
                         .collect();
                     notes.sort_by(|a, b| b.1.cmp(&a.1).then(b.0.cmp(&a.0)));
                     if notes.is_empty() {
-                        ui.label("No diary notes yet.");
+                        ui.add_space(8.0);
+                        ui.label(
+                            egui::RichText::new(
+                                "No diary notes yet. Add a dated note above to record what \
+                                 happened on site (Ctrl+8 opens this view).",
+                            )
+                            .weak()
+                            .small(),
+                        );
                     }
                     let mut to_delete = None;
                     for (id, date, content, activity_id, window) in &notes {
@@ -4095,6 +4230,7 @@ fn render_gantt(
     dark: bool,
 ) -> bool {
     let tokens = DesignTokens::for_dark(dark);
+    let palette = design::palette(dark);
     let current_schedule = match schedule.as_ref() {
         Ok(schedule) => schedule,
         Err(error) => {
@@ -4181,8 +4317,20 @@ fn render_gantt(
                 rect.min.x + (now.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
             painter.line_segment(
                 [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
-                egui::Stroke::new(1.5, ACCENT),
+                egui::Stroke::new(2.0, ACCENT),
             );
+            // A downward marker at the top of the line, so the today stroke
+            // reads as a shape cue and not by colour alone.
+            let marker = vec![
+                Pos2::new(x - 4.0, rect.min.y + 1.0),
+                Pos2::new(x + 4.0, rect.min.y + 1.0),
+                Pos2::new(x, rect.min.y + 7.0),
+            ];
+            painter.add(egui::Shape::convex_polygon(
+                marker,
+                ACCENT,
+                egui::Stroke::NONE,
+            ));
         }
 
         // Drag-to-create dependency links.
@@ -4562,16 +4710,20 @@ fn render_gantt(
                 Color32::GRAY,
                 egui::epaint::PathStroke::new(1.0, Color32::GRAY),
             )));
-            // Lag label
+            // Lag label: signed, and on a small badge so it stays legible
+            // where it crosses the grid hairlines.
             if relationship.lag != 0 {
-                let lag_text = format!("{}d", relationship.lag);
-                painter.text(
-                    Pos2::new(mid_x, (y0 + y1) / 2.0),
-                    Align2::CENTER_CENTER,
-                    lag_text,
-                    egui::FontId::proportional(8.0),
-                    Color32::GRAY,
-                );
+                let lag_text = if relationship.lag > 0 {
+                    format!("+{}d", relationship.lag)
+                } else {
+                    format!("{}d", relationship.lag)
+                };
+                let galley =
+                    painter.layout_no_wrap(lag_text, egui::FontId::proportional(8.0), palette.text);
+                let centre = Pos2::new(mid_x, (y0 + y1) / 2.0);
+                let badge = Rect::from_center_size(centre, galley.size() + Vec2::new(6.0, 2.0));
+                painter.rect_filled(badge, 2.0, palette.panel);
+                painter.galley(badge.left_top() + Vec2::new(3.0, 1.0), galley, palette.text);
             }
         }
     });

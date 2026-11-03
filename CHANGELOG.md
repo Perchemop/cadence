@@ -6,6 +6,26 @@ follows Keep a Changelog; releases use git tags.
 ## [Unreleased]
 
 ### Added
+- Workbench UI polish: the status bar now shows the critical-activity count,
+  the most recent baseline's earned-value metrics (`PV EV AC SV CV SPI CPI`) or
+  `No baseline`, a save indicator that reads as a word (`✓ saved` /
+  `● unsaved`), and the zoom level; every primary toolbar action carries a hover
+  tooltip naming its shortcut; and the active sort column renders in the accent
+  colour with its order in the tooltip. Metrics are recomputed on edit and
+  undo/redo, not per frame, so the table and Gantt hot paths are unchanged.
+- Gantt legibility: a 2 px today line with a shape marker at the top, and signed
+  dependency lag labels (`+2d` / `-1d`) drawn on a small badge so they stay
+  readable over the grid.
+- Empty states: the Table, Baselines, Published snapshots and Diary views each
+  state what the empty surface is for and the one action that fills it, in the
+  product's own voice.
+- Discoverability: an **F1: shortcuts** control in the status bar opens the
+  keyboard reference from anywhere (`docs/design/ui-polish-audit.md`).
+
+### Fixed
+- Move off the yanked `async-executor 1.14.0` pin (superseded by `1.14.1`) so
+  the required dependency-advisory check stays green; the lockfile workflow now
+  re-resolves this pin explicitly (`DECISIONS.md` D26).
 
 ## [0.10.0] — 2026-11-02
 
