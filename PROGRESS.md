@@ -1145,3 +1145,26 @@ x86_64/aarch64, Windows and macOS; Package (Linux); Secret scanning; Dependency
 licences and advisories; Dependency review; Static analysis (rust/actions); Bill
 of materials; Lockfile freshness; Personal data scan).
 
+## Design audit backlog — PR #90 cross-check (future slices)
+
+PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`, 43 findings)
+was re-verified against the current tree and cross-referenced in
+`docs/design/ui-polish-audit.md`.
+
+**Closed already (S1 blockers):**
+- S1-1 Create/delete activity: Ctrl+N + **New activity** toolbar button create an activity (select/recompute/scroll-to-view); inspector **Delete activity** with confirmation dialog.
+- S1-2 Production: working activity/date/percent form issuing `RecordProduction`/`DeleteProduction`; `Ctrl+9` bound; listed in F1 dialog.
+- S1-3 Dirty state: `dirty` flag, viewport-title `•` marker, Save/Discard/Cancel close guard.
+- S2-2 Toolbar Undo/Redo now recompute + refresh_selection with shortcut tooltips.
+- S2-3 Status messages coloured by `StatusSeverity` (Info/Success/Warning/Error → palette tokens).
+- S2-17 F1 shortcuts dialog lists Ctrl+S/O/N, Production (Ctrl+1..9) and all bindings.
+
+**Still open — queued as future slices** (see `docs/design/ui-polish-audit.md`
+"Future slices (from PR #90 backlog)"):
+- P0 authoring: S1-1c row context menu.
+- P1 feedback/shell: S2-1 menu bar + toolbar declutter, S2-2b disable Undo/Redo when empty, S2-3b auto-clear success, S2-4 date field helper, S2-13 cache critical count, S2-14 save-report dialog, S2-16 consume Ctrl+wheel scroll, S2-18 confirmation consistency, S2-20 AccessKit labelled_by, S2-22 duplicate theme toggle.
+- P2 Gantt as working chart: S2-6 bar selection + inspector, S2-7 non-FS drag-to-link, S2-21 apply zoom before draw.
+- P3 density/completeness: S2-5 table filter/multi-select, S2-8 relationship delete/retype, S2-9 Location/WBS inspector fields, S2-10 Diary picker + note edit, S2-11 per-frame resource cache, S2-12 per-frame lookahead cache, S2-15 atomic leveling undo, plus all S3 minors (S3-1 red non-token colours, S3-6 doc drift, S3-7 tab tooltips, S3-18 window min size, …).
+
+No item above blocks the current release; all are tracked so they are not missed.
+

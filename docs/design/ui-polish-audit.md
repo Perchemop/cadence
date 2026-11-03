@@ -12,13 +12,30 @@ Observations are from the running v0.10.0 build and a read of
 publicly documented behaviour only (see [`../ui-patterns.md`](../ui-patterns.md));
 nothing here copies another product's layout, icons, strings or trade dress.
 
+## Cross-check with PR #90 exhaustive audit (2026-11-03)
+
+PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 43 findings across S1 (blockers), S2 (major) and S3 (minor). Each was re-verified against the current tree.
+
+**S1 blockers — all closed in the current tree** (the audit was written against an older revision):
+- **S1-1 Create/delete activity:** `CreateActivity` wired via Ctrl+N and the **New activity** toolbar button (select + recompute + scroll-to-view); `DeleteActivity` wired in the inspector with a confirmation dialog (`confirm_delete_activity`). The empty state now names the action (S6).
+- **S1-2 Production dead tab:** Production view renders an activity picker + date + percent + **Record** issuing `RecordProduction`/`DeleteProduction`; reachable via `Ctrl+9` and listed in the F1 dialog.
+- **S1-3 Dirty state + close guard + window title:** `dirty: bool` tracked, cleared on save; viewport title shows `•` when dirty; close is guarded by a Save/Discard/Cancel modal.
+
+**S2 majors — partially closed:**
+- **S2-2 Toolbar Undo/Redo:** now call `recompute()` + `refresh_selection()` and carry shortcut tooltips. Still open: buttons not disabled when the stack is empty (`can_undo`/`can_redo` exist in `cadence-commands`, not yet used).
+- **S2-3 Status feedback:** `StatusSeverity` (Info/Success/Warning/Error) colours messages by semantic token (`ok`/`warn`/`critical`/`text_muted`). Still open: no auto-clear of success messages.
+- **S2-17 Shortcuts dialog:** now lists Ctrl+S, Ctrl+O, Ctrl+N, Production (Ctrl+1..9) and all other bindings. Closed.
+- Still open: S2-1 (status lives in toolbar; menu bar), S2-4 (date field helper), S2-5 (table filter/multi-select), S2-6 (Gantt bar selection/inspector), S2-7 (drag-to-link FS lag-0 only), S2-8 (relationship delete/retype), S2-9 (Location/WBS inspector fields), S2-10 (Diary picker + note edit), S2-11 (per-frame resource work), S2-12 (per-frame lookahead comparison), S2-13 (per-frame critical count), S2-14 (Save report to CWD), S2-15 (leveling undo atomicity), S2-16 (Ctrl+wheel scroll), S2-18 (confirmation consistency), S2-20 (AccessKit labelled_by), S2-21 (Gantt zoom lag), S2-22 (duplicate theme toggle).
+
+**S3 minors — all open** (doc drift, red non-token colours, crash preview, grid loop, tab tooltips, progress hint, focus rings, window min size, etc.), catalogued in the future-slices table below.
+
 ## Directive-by-directive findings
 
 | Directive | State | Notes |
 |---|---|---|
 | 1. Branding & chrome | Compliant | Plain window title, token palette, 4 px radii, 1 px hairlines; no proprietary assets. |
-| 2. Top-level navigation | Partial | View-tab strip and toolbar present; toolbar button hierarchy thin; tab labels carry no shortcut hint. |
-| 3. Buttons & hierarchy | Partial | Text buttons throughout; primary actions carry no accent weight (see below). |
+| 2. Top-level navigation | Partial | View-tab strip and toolbar present; tab labels carry no shortcut hint (S3-7); toolbar is dense but functional (S2-1, future slice). |
+| 3. Buttons & hierarchy | Partial | Text buttons throughout; primary actions carry no accent weight (see below). Toolbar Undo/Redo are enabled when the stack is empty (S2-2b, future slice). |
 | 4. Menus & combos | Compliant | Column menu and combo boxes navigate by keyboard; hover text on the column menu. |
 | 5. Table & inspector | Partial | Virtualised rows, monospace numerics, sticky sortable header; active sort column was not visually distinguished. |
 | 6. Gantt | Compliant | Critical/normal bars, milestones, summary bars, baseline ghosts, arrows with signed lag-label badges, and a 2 px today line with a shape marker — all present. |
@@ -44,6 +61,42 @@ Deferred, with reason: original icon set (S9 in the directives; text-only per
 `brand.md` for v1) and per-button visual shortcut badges (an egui text button
 carries one text style, so a badge needs a custom widget; the shortcut is stated
 in every button's tooltip and in the F1 footer instead).
+
+## Future slices (from PR #90 backlog)
+
+Findings verified still-open against the current tree, ranked by the audit's
+severity and the project's existing remediation pillars (P0 authoring, P1
+feedback/shell, P2 Gantt as working chart, P3 density/completeness). None of
+these block the current slices; they are queued so they are not missed.
+
+| ID | Finding | Severity | Fix hint | Pillar |
+|----|---------|----------|----------|--------|
+| S1-1c | Row context menu (New below / Delete / Duplicate / Link to selected) on table rows | S1 | Add a right-click context menu to table rows | P0 |
+| S2-1 | Overloaded toolbar; status message duplicated inside toolbar | S2 | `egui::menu::bar` (File/Edit/View/Help); compact tab strip; status only in bottom bar | P1 |
+| S2-2b | Toolbar Undo/Redo not disabled when stack is empty | S2 | `add_enabled(stack.can_undo())` / `can_redo()` | P1 |
+| S2-3b | Success messages never auto-clear; linger indefinitely | S2 | Timed auto-clear for `StatusSeverity::Success`/`Info` | P1 |
+| S2-4 | Raw `YYYY-MM-DD` text fields; parse errors far from the input | S2 | Reusable `date_field` helper with inline validation | P1 |
+| S2-5 | Table: no filter, find, group or multi-select | S2 | Filter field + critical-only toggle; shift/ctrl range selection | P3 |
+| S2-6 | Gantt: bars not hit-testable; inspector unreachable from chart | S2 | Hit-test bars on click; persistent inspector; two-way selection sync | P2 |
+| S2-7 | Drag-to-link always FS lag-0 regardless of modifier/type | S2 | Default FS; modifier or pop-up for SS/FF/SF + lag | P2 |
+| S2-8 | Relationships can be added but never removed or retyped in GUI | S2 | Delete button + confirm; type ComboBox issuing update command | P3 |
+| S2-9 | Inspector missing Location and WBS fields | S2 | Add fields (already first-class in model/commands) | P3 |
+| S2-10 | Diary: raw numeric Activity ID; notes not editable after creation | S2 | Activity picker; surface parse errors; wire UpdateDailyNote/Delete | P3 |
+| S2-11 | Resources: conflicts/histogram/sort recompute every frame | S2 | Cache against `edit_version` | P3 |
+| S2-12 | Lookahead: O(n²) snapshot comparison every frame | S2 | Cache comparison window, keyed by identity | P3 |
+| S2-13 | Status bar: critical-activity recount every frame | S2 | Compute once in `recompute()`, store the count | P1 |
+| S2-14 | Save report writes to CWD without a dialog | S2 | Use the save-file dialog pattern (like Print report) | P1 |
+| S2-15 | Leveling applies N separate undo entries (partial state on mid-batch failure) | S2 | Composite/transactional command for atomic undo | P3 |
+| S2-16 | Ctrl+wheel zooms and scrolls simultaneously | S2 | Consume the scroll event when zoom modifier is active | P1 |
+| S2-18 | Confirmation dialogs inconsistent across destructive actions | S2 | Uniform confirm pattern for delete activity / destructive leveling | P1 |
+| S2-20 | AccessKit: many label+field pairs not linked via `labelled_by` | S2 | Systematic `labelled_by` for every form field | P1 |
+| S2-21 | Gantt zoom applies one frame after button press | S2 | Apply `pixels_per_day` before drawing the canvas | P2 |
+| S2-22 | Theme toggle duplicated in toolbar and status bar | S2 | Differentiate or remove one | P1 |
+| S3-1 | Non-token red error colours in Table/Resources/Baselines/Audit | S3 | Route through `StatusSeverity`/palette tokens | P3 |
+| S3-6 | `ACCESSIBILITY.md` still mentions Ctrl+1–5 | S3 | Update to Ctrl+1..9 + Production + file shortcuts | P3 |
+| S3-7 | No tooltips on the nine view tabs | S3 | Add `on_hover_text` to each tab button | P3 |
+| S3-18 | No window minimum size; toolbar wraps on extreme narrow widths | S3 | Assert a minimum window size | P3 |
+| — | Accessibility: manual screen-reader verification (NVDA/VoiceOver/Orca) | release | Release-checklist item; cannot be fully automated | — |
 
 ## Slices in this change
 

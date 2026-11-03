@@ -255,6 +255,27 @@ acceptance criteria drive implementation; it does not promise a release date.
       Research:
       [`docs/research/aphex-integration.md`](docs/research/aphex-integration.md).
 
+### Design audit backlog (PR #90, 2026-11-03 — queued future work)
+
+The exhaustive design/GUI audit (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`,
+43 findings) was re-verified against the current tree and cross-referenced in
+`docs/design/ui-polish-audit.md`. Its three S1 authoring blockers are already
+closed (activity create/delete, Production view, dirty-state close guard); the
+remaining S2/S3 findings are queued as future slices and tracked in PROGRESS.md
+so they are not missed:
+
+- **P1 feedback & shell:** menu bar + toolbar declutter, typed status with
+  auto-clear, unified date field, save-report dialog, Undo/Redo disabled when
+  empty, Ctrl+wheel scroll consumption, confirmation consistency, AccessKit
+  `labelled_by`, single theme toggle.
+- **P2 Gantt as working chart:** bar selection + inspector presence, non-FS
+  drag-to-link, apply zoom before draw.
+- **P3 density & completeness:** table filter/multi-select, relationship
+  delete/retype, Location + WBS inspector fields, Diary picker + note editing,
+  per-frame performance caches (resources, lookahead comparison, critical
+  count), atomic leveling undo, plus S3 polish (token colours, tab tooltips,
+  window min size, doc drift).
+
 ## Out of scope (recorded in `docs/scope.md`)
 
 Mobile platforms; any type of telemetry; proprietary file formats.
