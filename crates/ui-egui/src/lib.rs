@@ -1904,8 +1904,10 @@ impl eframe::App for CadenceApp {
                     self.show_update_dialog = true;
                 }
                 if ui
-                    .button("Undo")
-                    .on_hover_text("Undo the last edit (Ctrl+Z)")
+                    .add_enabled(
+                        self.stack.can_undo(),
+                        egui::Button::new("Undo").on_hover_text("Undo the last edit (Ctrl+Z)"),
+                    )
                     .clicked()
                 {
                     let _ = self.stack.undo(&mut self.project);
@@ -1913,8 +1915,10 @@ impl eframe::App for CadenceApp {
                     self.refresh_selection();
                 }
                 if ui
-                    .button("Redo")
-                    .on_hover_text("Redo the last undone edit (Ctrl+Y)")
+                    .add_enabled(
+                        self.stack.can_redo(),
+                        egui::Button::new("Redo").on_hover_text("Redo the last undone edit (Ctrl+Y)"),
+                    )
                     .clicked()
                 {
                     let _ = self.stack.redo(&mut self.project);
@@ -3195,6 +3199,7 @@ impl eframe::App for CadenceApp {
                                                 let label = format!("{name} ({id})");
                                                 if ui.selectable_label(false, &label).clicked() {
                                                     self.select(*id);
+                                                    self.scroll_to_selection = true;
                                                     self.view_mode = ViewMode::Table;
                                                 }
                                                 ui.label(detail);

@@ -1155,7 +1155,8 @@ was re-verified against the current tree and cross-referenced in
 - S1-1 Create/delete activity: Ctrl+N + **New activity** toolbar button create an activity (select/recompute/scroll-to-view); inspector **Delete activity** with confirmation dialog.
 - S1-2 Production: working activity/date/percent form issuing `RecordProduction`/`DeleteProduction`; `Ctrl+9` bound; listed in F1 dialog.
 - S1-3 Dirty state: `dirty` flag, viewport-title `•` marker, Save/Discard/Cancel close guard.
-- S2-2 Toolbar Undo/Redo now recompute + refresh_selection with shortcut tooltips.
+- S2-2 Toolbar Undo/Redo now recompute + refresh_selection with shortcut tooltips, and are disabled when the command stack is empty (`can_undo()`/`can_redo()`).
+- **Programme audit tool (AC2):** selecting an Audit-view finding now sets `scroll_to_selection`, so it selects *and scrolls* to the activity — acceptance criterion 2 fully met. CLI, GUI, stable IDs/thresholds, pure headless engine and 22 unit tests already in place (AC1, AC3–AC5).
 - S2-3 Status messages coloured by `StatusSeverity` (Info/Success/Warning/Error → palette tokens).
 - S2-17 F1 shortcuts dialog lists Ctrl+S/O/N, Production (Ctrl+1..9) and all bindings.
 
