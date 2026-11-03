@@ -1116,3 +1116,32 @@ checklist is covered by the release run: secret scanning, the personal-data
 scan, dependency licence/advisory checks and the bill-of-materials job are all
 green on the release commit.
 
+## 2026-11-03 — Workbench UI polish and a yanked dependency pin (unreleased)
+
+A design-review pass over the desktop shell (`docs/design/ui-polish-audit.md`),
+delivering that audit's shippable slices S1–S7 plus the dependency hygiene the
+security workflow requires:
+
+- **Status bar (S1):** critical-activity count, the latest baseline's earned
+  value (`PV EV AC SV CV SPI CPI`) or `No baseline`, a worded save indicator
+  (`✓ saved` / `● unsaved`) and the zoom level. Recomputed on edit and
+  undo/redo, not per frame — the table and Gantt hot paths are untouched.
+- **Toolbar tooltips (S2):** every primary action names its shortcut on hover.
+- **Active sort column (S3):** renders in the accent colour; the tooltip states
+  the order, so the sort is never colour-only.
+- **Gantt (S4):** a 2 px today line with a shape marker at the top, and signed
+  dependency lag labels drawn on a small badge.
+- **Split view (S5):** the **Split Gantt** toggle explains the draggable divider.
+- **Empty states (S6):** the Table, Baselines, Published snapshots and Diary
+  views each state the empty surface's purpose and its one action.
+- **F1 footer (S7):** a **F1: shortcuts** control in the status bar opens the
+  keyboard reference from anywhere.
+- **Dependency hygiene:** `Cargo.lock` refreshed off the yanked
+  `async-executor 1.14.0` to `1.14.1` (D26); the lockfile workflow re-resolves
+  that pin explicitly so the next yank is moved by the workflow, not by hand.
+
+Verification: CI green on `opencode/ci` — the required checks (Verify on Linux
+x86_64/aarch64, Windows and macOS; Package (Linux); Secret scanning; Dependency
+licences and advisories; Dependency review; Static analysis (rust/actions); Bill
+of materials; Lockfile freshness; Personal data scan).
+

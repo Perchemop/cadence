@@ -1818,6 +1818,10 @@ impl eframe::App for CadenceApp {
                     } else {
                         "Split Gantt: off"
                     })
+                    .on_hover_text(
+                        "Show the Gantt beside the table; drag the divider between \
+                         the panels to resize it",
+                    )
                     .clicked()
                 {
                     self.show_split_gantt = !self.show_split_gantt;
@@ -2044,6 +2048,15 @@ impl eframe::App for CadenceApp {
                     if ui.button("Toggle theme").clicked() {
                         self.dark = !self.dark;
                         apply_theme(&ctx, self.dark);
+                    }
+                    // F1 footer: the keyboard reference is one click away from
+                    // anywhere, matching the F1 binding.
+                    if ui
+                        .small_button("F1: shortcuts")
+                        .on_hover_text("Open the keyboard reference (F1)")
+                        .clicked()
+                    {
+                        self.show_shortcuts_dialog = true;
                     }
                 });
             });
@@ -2411,7 +2424,15 @@ impl eframe::App for CadenceApp {
                         ui.separator();
 
                         if sorted.is_empty() {
-                            ui.label("No activities yet.");
+                            ui.add_space(8.0);
+                            ui.label(
+                                egui::RichText::new(
+                                    "No activities yet. Use New activity (Ctrl+N) to add the \
+                                     first one.",
+                                )
+                                .weak()
+                                .small(),
+                            );
                         } else {
                             let selected_index = selected_id.and_then(|id| {
                                 sorted.iter().position(|activity| activity.id == id)
@@ -2852,7 +2873,15 @@ impl eframe::App for CadenceApp {
                         ui.separator();
                         let baselines = self.project.baselines.clone();
                         if baselines.is_empty() {
-                            ui.label("No baselines captured yet.");
+                            ui.add_space(8.0);
+                            ui.label(
+                                egui::RichText::new(
+                                    "No baselines captured yet. Use Capture baseline to record \
+                                     the current schedule as a baseline to compare against.",
+                                )
+                                .weak()
+                                .small(),
+                            );
                         }
                         for baseline in &baselines {
                             let selected = self.selected_baseline == Some(baseline.id);
@@ -3306,7 +3335,15 @@ impl eframe::App for CadenceApp {
                     ui.separator();
                     ui.heading("Published snapshots");
                     if self.project.lookahead_snapshots.is_empty() {
-                        ui.label("No snapshots published yet.");
+                        ui.add_space(8.0);
+                        ui.label(
+                            egui::RichText::new(
+                                "No snapshots published yet. Publish the current window above \
+                                 to compare it against a later one.",
+                            )
+                            .weak()
+                            .small(),
+                        );
                     } else {
                         for snapshot in &self.project.lookahead_snapshots {
                             let selected = self.selected_lookahead_snapshot == Some(snapshot.id);
@@ -3529,7 +3566,15 @@ impl eframe::App for CadenceApp {
                         .collect();
                     notes.sort_by(|a, b| b.1.cmp(&a.1).then(b.0.cmp(&a.0)));
                     if notes.is_empty() {
-                        ui.label("No diary notes yet.");
+                        ui.add_space(8.0);
+                        ui.label(
+                            egui::RichText::new(
+                                "No diary notes yet. Add a dated note above to record what \
+                                 happened on site (Ctrl+8 opens this view).",
+                            )
+                            .weak()
+                            .small(),
+                        );
                     }
                     let mut to_delete = None;
                     for (id, date, content, activity_id, window) in &notes {
@@ -4185,6 +4230,7 @@ fn render_gantt(
     dark: bool,
 ) -> bool {
     let tokens = DesignTokens::for_dark(dark);
+    let palette = design::palette(dark);
     let current_schedule = match schedule.as_ref() {
         Ok(schedule) => schedule,
         Err(error) => {
@@ -4271,8 +4317,16 @@ fn render_gantt(
                 rect.min.x + (now.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
             painter.line_segment(
                 [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
-                egui::Stroke::new(1.5, ACCENT),
+                egui::Stroke::new(2.0, ACCENT),
             );
+            // A downward marker at the top of the line, so the today stroke
+            // reads as a shape cue and not by colour alone.
+            let marker = vec![
+                Pos2::new(x - 4.0, rect.min.y + 1.0),
+                Pos2::new(x + 4.0, rect.min.y + 1.0),
+                Pos2::new(x, rect.min.y + 7.0),
+            ];
+            painter.add(egui::Shape::convex_polygon(marker, ACCENT, egui::Stroke::NONE));
         }
 
         // Drag-to-create dependency links.
@@ -4652,16 +4706,23 @@ fn render_gantt(
                 Color32::GRAY,
                 egui::epaint::PathStroke::new(1.0, Color32::GRAY),
             )));
-            // Lag label
+            // Lag label: signed, and on a small badge so it stays legible
+            // where it crosses the grid hairlines.
             if relationship.lag != 0 {
-                let lag_text = format!("{}d", relationship.lag);
-                painter.text(
-                    Pos2::new(mid_x, (y0 + y1) / 2.0),
-                    Align2::CENTER_CENTER,
+                let lag_text = if relationship.lag > 0 {
+                    format!("+{}d", relationship.lag)
+                } else {
+                    format!("{}d", relationship.lag)
+                };
+                let galley = painter.layout_no_wrap(
                     lag_text,
                     egui::FontId::proportional(8.0),
-                    Color32::GRAY,
+                    palette.text,
                 );
+                let centre = Pos2::new(mid_x, (y0 + y1) / 2.0);
+                let badge = Rect::from_center_size(centre, galley.size() + Vec2::new(6.0, 2.0));
+                painter.rect_filled(badge, 2.0, palette.panel);
+                painter.galley(badge.left_top() + Vec2::new(3.0, 1.0), galley, palette.text);
             }
         }
     });

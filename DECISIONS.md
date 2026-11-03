@@ -526,3 +526,22 @@ tables, cost-per-use, and per-assignment cost overrides. One rate per resource
 is enough for a first cut and keeps the model small. The lossless JSON format
 carries units and the rate both ways; MSPDI, MPX and CSV carry them only where
 the format has a natural field and otherwise document the limitation.
+
+## D26 — A yanked pin is moved by the lockfile workflow, not by hand (2026-11-03)
+
+`async-executor 1.14.0` was yanked upstream on 2026-11-02 and superseded by
+`1.14.1` the same day. It reaches the graph through
+`accesskit_unix → accesskit_winit → egui-winit → eframe` (screen-reader
+support), so no direct dependency of ours controls the pin. The advisories
+check in the security workflow is a required status check and `yanked = "deny"`
+in `deny.toml`, so the yank turned a green default branch red without any
+change of ours.
+
+Following D20, the remedy is the D19 regeneration, not an ignore: the committed
+`Cargo.lock` is replaced with the freshly resolved graph, which pins
+`async-executor 1.14.1` and takes the one coincidental transitive bump that
+came with it (`async-lock 3.4.2 → 3.5.0`). The lockfile workflow's explicit
+yank step now re-resolves `async-executor` alongside `clipboard-win`, so the
+next yank of this package is moved by the workflow rather than by hand. No
+advisory-ignore entry was added: relaxation would have hidden every future yank
+instead of resolving this one.
