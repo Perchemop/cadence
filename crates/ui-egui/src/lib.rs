@@ -2037,12 +2037,9 @@ impl eframe::App for CadenceApp {
                     };
                     ui.label(egui::RichText::new(save_text).small().color(save_color));
                     ui.label(
-                        egui::RichText::new(format!(
-                            "{:.0}%",
-                            self.pixels_per_day / 14.0 * 100.0
-                        ))
-                        .small()
-                        .color(palette.text_muted),
+                        egui::RichText::new(format!("{:.0}%", self.pixels_per_day / 14.0 * 100.0))
+                            .small()
+                            .color(palette.text_muted),
                     );
                     if ui.button("Toggle theme").clicked() {
                         self.dark = !self.dark;
@@ -2387,7 +2384,7 @@ impl eframe::App for CadenceApp {
                                     key.label().to_owned()
                                 };
                                 let label = if self.sort_key == key {
-                                    egui::RichText::new(label_text).text_color(ACCENT)
+                                    egui::RichText::new(label_text).color(ACCENT)
                                 } else {
                                     egui::RichText::new(label_text)
                                 };
@@ -2399,7 +2396,11 @@ impl eframe::App for CadenceApp {
                                     .on_hover_text(format!(
                                         "Sort by {} ({} order)",
                                         key.label(),
-                                        if self.sort_ascending { "ascending" } else { "descending" }
+                                        if self.sort_ascending {
+                                            "ascending"
+                                        } else {
+                                            "descending"
+                                        }
                                     ))
                                     .clicked()
                                 {
