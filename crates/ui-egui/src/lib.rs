@@ -4326,7 +4326,11 @@ fn render_gantt(
                 Pos2::new(x + 4.0, rect.min.y + 1.0),
                 Pos2::new(x, rect.min.y + 7.0),
             ];
-            painter.add(egui::Shape::convex_polygon(marker, ACCENT, egui::Stroke::NONE));
+            painter.add(egui::Shape::convex_polygon(
+                marker,
+                ACCENT,
+                egui::Stroke::NONE,
+            ));
         }
 
         // Drag-to-create dependency links.
@@ -4714,11 +4718,8 @@ fn render_gantt(
                 } else {
                     format!("{}d", relationship.lag)
                 };
-                let galley = painter.layout_no_wrap(
-                    lag_text,
-                    egui::FontId::proportional(8.0),
-                    palette.text,
-                );
+                let galley =
+                    painter.layout_no_wrap(lag_text, egui::FontId::proportional(8.0), palette.text);
                 let centre = Pos2::new(mid_x, (y0 + y1) / 2.0);
                 let badge = Rect::from_center_size(centre, galley.size() + Vec2::new(6.0, 2.0));
                 painter.rect_filled(badge, 2.0, palette.panel);
