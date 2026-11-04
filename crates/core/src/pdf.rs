@@ -347,9 +347,9 @@ fn image_content(width: u32, height: u32, image_object: u32, bates: Option<&str>
     let mut content =
         format!("q {draw_w:.2} 0 0 {draw_h:.2} {x:.2} {y:.2} cm /Im0 {image_object} 0 R Do Q\n");
     if let Some(bates_text) = bates {
-        let _ = write!(
+        let _ = writeln!(
             content,
-            "BT /F1 {size:.2} Tf 1 0 0 1 {x:.2} {y:.2} Tm ({text}) Tj ET\n",
+            "BT /F1 {size:.2} Tf 1 0 0 1 {x:.2} {y:.2} Tm ({text}) Tj ET",
             size = BATES_SIZE,
             x = (A4_LANDSCAPE.0 - bates_text.len() as f32 * BATES_SIZE * 0.5) / 2.0,
             y = BATES_MARGIN,
