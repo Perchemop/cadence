@@ -21,13 +21,32 @@ they own.
 
 ## Getting started
 
+**For end users (no Rust required):**
+
+1. Download the latest release for your platform from the [releases page](https://github.com/Perchemop/cadence/releases):
+   - Linux x86-64: `cadence-linux-x86_64`
+   - Linux ARM64: `cadence-linux-aarch64`
+   - Windows x86-64: `cadence-windows-x86_64.exe`
+   - macOS ARM64: `cadence-macos-aarch64`
+
+2. Make it executable (Linux/macOS):
+   ```bash
+   chmod +x cadence-linux-x86_64
+   ```
+
+3. Run it:
+   ```bash
+   ./cadence-linux-x86_64                    # open the demo project
+   ./cadence-linux-x86_64 project.sqlite     # open your project file
+   ```
+
+**For developers (requires Rust):**
+
 ```bash
 cargo build --workspace                # build everything
 cargo run -p cadence-app               # open the demo project in the desktop app
 cargo run -p cadence-app -- project.sqlite   # open a project file
 ```
-
-The command line does the same work without a window:
 
 ```bash
 cadence                          # schedule the built-in demo and print it
@@ -45,7 +64,24 @@ without Cadence installed:
 | ID | Activity | Days | Start | Finish | Float | Critical | Resources |
 ```
 
-Prebuilt binaries for Linux (x86-64 and ARM64), Windows and macOS are attached
+### Screenshots
+
+*Main window with Gantt chart and activity table:*
+
+![Main window](docs/assets/main-window.png)
+
+*Resource view with daily usage histogram:*
+
+![Resource view](docs/assets/resource-view.png)
+
+*Gantt chart with critical path highlighting:*
+
+![Gantt chart](docs/assets/gantt-chart.png)
+
+> **Note:** Screenshots are placeholders. Actual screenshots will be added when the
+> GUI reaches visual stability.
+
+Prebuilt binaries for Linux (x86_64 and ARM64), Windows and macOS are attached
 to each [release](https://github.com/Perchemop/cadence/releases), with SHA-256
 checksums and a CycloneDX bill of materials.
 
