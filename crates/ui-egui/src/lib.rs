@@ -4961,16 +4961,14 @@ mod status_message_tests {
 
     #[test]
     fn info_message_expired_is_cleared() {
-        let (shown, later) =
-            shown_plus(STATUS_MESSAGE_TTL + Duration::from_secs(1));
+        let (shown, later) = shown_plus(STATUS_MESSAGE_TTL + Duration::from_secs(1));
         let severity = StatusSeverity::Info;
         assert!(should_auto_clear_status(severity, shown, later));
     }
 
     #[test]
     fn success_message_expired_is_cleared() {
-        let (shown, later) =
-            shown_plus(STATUS_MESSAGE_TTL + Duration::from_secs(1));
+        let (shown, later) = shown_plus(STATUS_MESSAGE_TTL + Duration::from_secs(1));
         let severity = StatusSeverity::Success;
         assert!(should_auto_clear_status(severity, shown, later));
     }
