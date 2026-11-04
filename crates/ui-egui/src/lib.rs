@@ -2782,28 +2782,22 @@ impl eframe::App for CadenceApp {
                                             "Duration: {} days",
                                             activity.original_duration
                                         ));
-                                        ui.label(
-                                            format!(
-                                                "Start: {}",
-                                                self.schedule
-                                                    .as_ref()
-                                                    .ok()
-                                                    .and_then(|s| s.activity(id))
-                                                    .map(|r| r.scheduled_start.to_string())
-                                                    .unwrap_or_else(|| "-".to_string())
-                                            ),
-                                        );
-                                        ui.label(
-                                            format!(
-                                                "Finish: {}",
-                                                self.schedule
-                                                    .as_ref()
-                                                    .ok()
-                                                    .and_then(|s| s.activity(id))
-                                                    .map(|r| r.scheduled_finish.to_string())
-                                                    .unwrap_or_else(|| "-".to_string())
-                                            ),
-                                        );
+                                        let start = self
+                                            .schedule
+                                            .as_ref()
+                                            .ok()
+                                            .and_then(|s| s.activity(id))
+                                            .map(|r| r.scheduled_start.to_string())
+                                            .unwrap_or_else(|| "-".to_string());
+                                        ui.label(format!("Start: {}", start));
+                                        let finish = self
+                                            .schedule
+                                            .as_ref()
+                                            .ok()
+                                            .and_then(|s| s.activity(id))
+                                            .map(|r| r.scheduled_finish.to_string())
+                                            .unwrap_or_else(|| "-".to_string());
+                                        ui.label(format!("Finish: {}", finish));
                                         let critical = self
                                             .schedule
                                             .as_ref()
