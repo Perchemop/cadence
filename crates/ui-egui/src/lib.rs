@@ -11,13 +11,13 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use cadence_commands::{
-    AddResourceToActivity, CaptureBaseline, CommandStack, CreateCalendar,
-    CreateRelationship, CreateResource, DeleteCalendar, DeleteRelationship, DeleteResource,
-    RemoveBaseline, RemoveResourceFromActivity, RenameActivity, RenameCalendar, RenameResource,
+    AddResourceToActivity, CaptureBaseline, CommandStack, CreateCalendar, CreateRelationship,
+    CreateResource, DeleteCalendar, DeleteRelationship, DeleteResource, RemoveBaseline,
+    RemoveResourceFromActivity, RenameActivity, RenameCalendar, RenameResource,
     SetActivityActualCost, SetActivityActualDates, SetActivityBudget, SetActivityCalendar,
-    SetActivityConstraint, SetActivityDuration, SetActivityOwner,
-    SetActivityProgress, SetActivityPromise, SetCalendarDefinition, SetRelationshipLag,
-    SetResourceCapacity, SetResourceKind,
+    SetActivityConstraint, SetActivityDuration, SetActivityOwner, SetActivityProgress,
+    SetActivityPromise, SetCalendarDefinition, SetRelationshipLag, SetResourceCapacity,
+    SetResourceKind,
 };
 use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
