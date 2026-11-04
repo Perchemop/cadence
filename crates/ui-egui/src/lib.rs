@@ -4107,10 +4107,7 @@ impl eframe::App for CadenceApp {
                             if let Some(id) = self.selected_relationship {
                                 if self
                                     .stack
-                                    .execute(
-                                        &mut self.project,
-                                        Box::new(DeleteRelationship { id }),
-                                    )
+                                    .execute(&mut self.project, Box::new(DeleteRelationship { id }))
                                     .is_ok()
                                 {
                                     self.recompute();
