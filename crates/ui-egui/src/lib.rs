@@ -418,11 +418,15 @@ pub struct CadenceApp {
     update_status: update_check::UpdateStatus,
     update_receiver: Option<mpsc::Receiver<update_check::UpdateStatus>>,
     show_update_dialog: bool,
+    /// When we last checked for updates (to avoid excessive API calls).
+    last_update_check: Option<Instant>,
     link_predecessor: Option<ActivityId>,
     link_successor: Option<ActivityId>,
     link_type_index: usize,
     link_lag_buffer: String,
     show_shortcuts_dialog: bool,
+    /// Whether the release notes dialog is open.
+    show_release_notes: bool,
     scroll_to_selection: bool,
     audit_report: Option<AuditReport>,
     audit_status_applied: Option<Date>,
@@ -526,6 +530,8 @@ impl CadenceApp {
             link_type_index: 0,
             link_lag_buffer: "0".to_string(),
             show_shortcuts_dialog: false,
+            show_release_notes: false,
+            last_update_check: None,
             scroll_to_selection: false,
             audit_report: None,
             audit_status_applied: None,
@@ -1577,11 +1583,12 @@ impl eframe::App for CadenceApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
-        // Reflect unsaved state in the window title each frame.
+        // Reflect unsaved state and version in the window title each frame.
         let title = format!(
-            "{}{} — Cadence",
+            "{}{} — Cadence {}",
             self.project.name,
-            if self.dirty { " •" } else { "" }
+            if self.dirty { " •" } else { "" },
+            update_check::current_version()
         );
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
 
@@ -1606,6 +1613,24 @@ impl eframe::App for CadenceApp {
                     );
                 }
             }
+        }
+
+        // Periodic auto-update check: once per day (24 hours), avoiding
+        // excessive GitHub API calls. Runs on a background thread so the
+        // UI never blocks.
+        let now = Instant::now();
+        let should_check = match self.last_update_check {
+            Some(last) => now.duration_since(last) >= Duration::from_secs(24 * 60 * 60),
+            None => true, // first run, check immediately
+        };
+        if should_check {
+            self.last_update_check = Some(now);
+            let (sender, receiver) = mpsc::channel();
+            self.update_receiver = Some(receiver);
+            std::thread::spawn(move || {
+                let status = update_check::check_for_update();
+                let _ = sender.send(status);
+            });
         }
 
         if ctx.input(|input| input.key_pressed(egui::Key::D) && input.modifiers.ctrl) {
@@ -2042,6 +2067,13 @@ impl eframe::App for CadenceApp {
                         .clicked()
                     {
                         self.show_shortcuts_dialog = true;
+                    }
+                    if ui
+                        .small_button(update_check::current_version())
+                        .on_hover_text("Click to view release notes")
+                        .clicked()
+                    {
+                        self.show_release_notes = true;
                     }
                 });
             });
@@ -4025,9 +4057,14 @@ impl eframe::App for CadenceApp {
                         }
                         update_check::UpdateStatus::UpdateAvailable { version, url } => {
                             ui.label(format!("Update available: {version}"));
-                            if ui.button("Open release page").clicked() {
-                                ui.ctx().open_url(egui::OpenUrl::new_tab(url.clone()));
-                            }
+                            ui.horizontal(|ui| {
+                                if ui.button("Open release page").clicked() {
+                                    ui.ctx().open_url(egui::OpenUrl::new_tab(url.clone()));
+                                }
+                                if ui.button("Update now").clicked() {
+                                    ui.ctx().open_url(egui::OpenUrl::new_tab(url.clone()));
+                                }
+                            });
                         }
                         update_check::UpdateStatus::Unavailable(message) => {
                             ui.label(format!("Update check unavailable: {message}"));
@@ -4038,6 +4075,7 @@ impl eframe::App for CadenceApp {
                         ui.label("Checking…");
                     } else if ui.button("Check now").clicked() {
                         self.start_update_check();
+                        self.last_update_check = Some(Instant::now());
                     }
                     ui.add_space(4.0);
                     ui.label(
@@ -4101,6 +4139,44 @@ impl eframe::App for CadenceApp {
                 });
             if !open {
                 self.show_shortcuts_dialog = false;
+            }
+        }
+
+        if self.show_release_notes {
+            let mut open = true;
+            egui::Window::new("Release notes")
+                .collapsible(false)
+                .resizable(true)
+                .default_size([600.0, 500.0])
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            ui.heading(format!("Cadence {}", update_check::current_version()));
+                            ui.add_space(8.0);
+                            ui.label(
+                                "Release notes and token usage metrics will be populated from \
+                                 the CHANGELOG and build metadata in a future update.",
+                            );
+                            ui.add_space(16.0);
+                            ui.separator();
+                            ui.label("Token usage metrics:");
+                            ui.label(
+                                "• Total tokens consumed since project start: TBD\n\
+                                 • Tokens used in current release: TBD",
+                            );
+                            ui.add_space(16.0);
+                            ui.separator();
+                            ui.label("Full release notes:");
+                            ui.label(
+                                "See CHANGELOG.md in the repository for detailed release notes.\n\
+                                 Visit https://github.com/Perchemop/cadence/releases for all releases.",
+                            );
+                        });
+                });
+            if !open {
+                self.show_release_notes = false;
             }
         }
     }
