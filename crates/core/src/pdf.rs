@@ -27,6 +27,10 @@ const A4_LANDSCAPE: (f32, f32) = (841.89, 595.28);
 const BODY_SIZE: f32 = 9.5;
 /// Line spacing factor.
 const LINE_SPACING: f32 = 1.32;
+/// Bates number font size, in points.
+const BATES_SIZE: f32 = 8.0;
+/// Bates number bottom margin, in points.
+const BATES_MARGIN: f32 = 36.0;
 
 /// One line of text on a page.
 #[derive(Debug, Clone, PartialEq)]
@@ -86,6 +90,30 @@ pub enum Page {
     },
 }
 
+/// Configuration for Bates numbering on PDF pages.
+///
+/// Bates numbering is a method of indexing legal documents with a unique
+/// sequential identifier on each page. Common in legal document production.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BatesConfig {
+    /// Prefix string (e.g., "CADENCE-", "DOC-", "EXHIBIT-A-").
+    pub prefix: String,
+    /// Starting number (inclusive).
+    pub start: u32,
+    /// Number of digits for the numeric part (padded with leading zeros).
+    pub digits: usize,
+}
+
+impl Default for BatesConfig {
+    fn default() -> Self {
+        Self {
+            prefix: "CADENCE-".to_string(),
+            start: 1,
+            digits: 6,
+        }
+    }
+}
+
 /// A PDF document under construction.
 ///
 /// ```ignore
@@ -96,13 +124,19 @@ pub enum Page {
 #[derive(Debug, Default)]
 pub struct Pdf {
     pages: Vec<Page>,
+    /// Optional Bates numbering configuration. When set, every page receives a
+    /// unique sequential Bates number in the bottom margin.
+    bates: Option<BatesConfig>,
 }
 
 impl Pdf {
     /// An empty document, with no pages.
     #[must_use]
     pub fn new() -> Self {
-        Self { pages: Vec::new() }
+        Self {
+            pages: Vec::new(),
+            bates: None,
+        }
     }
 
     /// Append a page of text.
@@ -115,6 +149,31 @@ impl Pdf {
     pub fn image_page(&mut self, width: u32, height: u32, rgb: Vec<u8>) -> &mut Self {
         self.pages.push(Page::Image { width, height, rgb });
         self
+    }
+
+    /// Enable Bates numbering for the document.
+    ///
+    /// When set, every page gets a sequential Bates number in the bottom
+    /// margin: `prefix` then the counter, zero-padded to `digits`. The counter
+    /// starts at `start` and increments by one per page.
+    ///
+    /// # Example
+    /// ```
+    /// use cadence_core::pdf::{BatesConfig, Pdf};
+    /// let mut pdf = Pdf::new();
+    /// pdf.enable_bates(BatesConfig { prefix: "DOC-".into(), start: 1, digits: 6 });
+    /// pdf.text_page(vec![]); // page DOC-000001
+    /// ```
+    pub fn enable_bates(&mut self, config: BatesConfig) {
+        self.bates = Some(config);
+    }
+
+    /// The Bates label for the page at `index`, or `None` when disabled.
+    fn bates_label(&self, index: usize) -> Option<String> {
+        self.bates.as_ref().map(|config| {
+            let number = config.start.saturating_add(index as u32);
+            format!("{}{:0width$}", config.prefix, number, width = config.digits)
+        })
     }
 
     /// Serialize the document to PDF bytes.
@@ -139,12 +198,13 @@ impl Pdf {
 
         let mut kids: Vec<String> = Vec::new();
         let mut next_object = 5u32;
-        for page in self.pages() {
+        for (index, page) in self.pages().into_iter().enumerate() {
             let page_object = next_object;
             kids.push(page_object.to_string());
+            let bates = self.bates_label(index);
             match page {
                 Page::Text(lines) => {
-                    let content = text_content(lines);
+                    let content = text_content(lines, bates.as_deref());
                     bodies.push(
                         format!(
                             "<< /Type /Page /Parent {pages} 0 R \
@@ -162,7 +222,7 @@ impl Pdf {
                 }
                 Page::Image { width, height, rgb } => {
                     let image_object = next_object + 2;
-                    let content = image_content(*width, *height, image_object);
+                    let content = image_content(*width, *height, image_object, bates.as_deref());
                     bodies.push(
                         format!(
                             "<< /Type /Page /Parent {pages} 0 R \
@@ -234,7 +294,9 @@ impl Pdf {
 }
 
 /// Build the content stream of a text page, wrapping lines that do not fit.
-fn text_content(lines: &[TextLine]) -> String {
+///
+/// If `bates` is provided, it will be drawn at the bottom margin of the page.
+fn text_content(lines: &[TextLine], bates: Option<&str>) -> String {
     let usable = A4_PORTRAIT.0 - 2.0 * MARGIN;
     let mut content = String::from("BT\n");
     let mut cursor = A4_PORTRAIT.1 - MARGIN;
@@ -254,12 +316,23 @@ fn text_content(lines: &[TextLine]) -> String {
             cursor -= size * LINE_SPACING;
         }
     }
+    if let Some(bates_text) = bates {
+        let font = "/F1";
+        let size = BATES_SIZE;
+        let baseline = BATES_MARGIN;
+        let _ = writeln!(
+            content,
+            "{font} {size:.2} Tf 1 0 0 1 {x:.2} {baseline:.2} Tm ({}) Tj",
+            escape_pdf(bates_text),
+            x = (A4_PORTRAIT.0 / 2.0) - (bates_text.len() as f32 * size * 0.3)
+        );
+    }
     content.push_str("ET\n");
     content
 }
 
 /// Build the content stream of an image page, fitted into the margins.
-fn image_content(width: u32, height: u32, image_object: u32) -> String {
+fn image_content(width: u32, height: u32, image_object: u32, bates: Option<&str>) -> String {
     let usable_w = A4_LANDSCAPE.0 - 2.0 * MARGIN;
     let usable_h = A4_LANDSCAPE.1 - 2.0 * MARGIN;
     let scale = if width == 0 || height == 0 {
@@ -271,7 +344,20 @@ fn image_content(width: u32, height: u32, image_object: u32) -> String {
     let draw_h = height as f32 * scale;
     let x = (A4_LANDSCAPE.0 - draw_w) / 2.0;
     let y = (A4_LANDSCAPE.1 - draw_h) / 2.0;
-    format!("q {draw_w:.2} 0 0 {draw_h:.2} {x:.2} {y:.2} cm /Im0 {image_object} 0 R Do Q\n")
+    let mut content = format!(
+        "q {draw_w:.2} 0 0 {draw_h:.2} {x:.2} {y:.2} cm /Im0 {image_object} 0 R Do Q\n"
+    );
+    if let Some(bates_text) = bates {
+        let _ = write!(
+            content,
+            "BT /F1 {size:.2} Tf 1 0 0 1 {x:.2} {y:.2} Tm ({text}) Tj ET\n",
+            size = BATES_SIZE,
+            x = (A4_LANDSCAPE.0 - bates_text.len() as f32 * BATES_SIZE * 0.5) / 2.0,
+            y = BATES_MARGIN,
+            text = escape_pdf(bates_text),
+        );
+    }
+    content
 }
 
 /// Split a line into segments that fit the usable width.
@@ -529,7 +615,7 @@ mod tests {
 
     #[test]
     fn image_pages_fit_the_landscape_page() {
-        let content = image_content(1600, 1000, 9);
+        let content = image_content(1600, 1000, 9, None);
         assert!(content.contains("/Im0 9 0 R Do"));
         let usable = A4_LANDSCAPE.0 - 2.0 * MARGIN;
         let expected_width =
@@ -558,5 +644,76 @@ mod tests {
             text.contains(">\nendstream"),
             "the image stream must close with endstream"
         );
+    }
+
+    #[test]
+    fn bates_labels_are_sequential_and_padded() {
+        let mut pdf = Pdf::new();
+        pdf.enable_bates(BatesConfig {
+            prefix: "DOC-".to_string(),
+            start: 1,
+            digits: 6,
+        });
+        assert_eq!(pdf.bates_label(0).as_deref(), Some("DOC-000001"));
+        assert_eq!(pdf.bates_label(1).as_deref(), Some("DOC-000002"));
+        assert_eq!(pdf.bates_label(9).as_deref(), Some("DOC-000010"));
+    }
+
+    #[test]
+    fn bates_start_and_digits_are_configurable() {
+        let mut pdf = Pdf::new();
+        pdf.enable_bates(BatesConfig {
+            prefix: "EXHIBIT-A-".to_string(),
+            start: 42,
+            digits: 4,
+        });
+        assert_eq!(pdf.bates_label(0).as_deref(), Some("EXHIBIT-A-0042"));
+        assert_eq!(pdf.bates_label(3).as_deref(), Some("EXHIBIT-A-0045"));
+    }
+
+    #[test]
+    fn no_bates_label_when_disabled() {
+        let pdf = Pdf::new();
+        assert_eq!(pdf.bates_label(0), None);
+    }
+
+    #[test]
+    fn bates_numbers_appear_on_every_page_in_the_document() {
+        let mut pdf = Pdf::new();
+        pdf.enable_bates(BatesConfig {
+            prefix: "CAD-".to_string(),
+            start: 1,
+            digits: 3,
+        });
+        pdf.text_page(vec![TextLine::body("first")]);
+        pdf.text_page(vec![TextLine::body("second")]);
+
+        let text = text_of(&pdf.to_bytes());
+        // The labels are drawn as PDF literal strings and hex-encoded with
+        // every other stream, so a reader decodes them; the test searches the
+        // hex form.
+        assert!(text.contains(&hex_of("CAD-001")));
+        assert!(text.contains(&hex_of("CAD-002")));
+    }
+
+    #[test]
+    fn bates_numbers_appear_on_image_pages_too() {
+        let mut pdf = Pdf::new();
+        pdf.enable_bates(BatesConfig {
+            prefix: "IMG-".to_string(),
+            start: 7,
+            digits: 3,
+        });
+        pdf.image_page(2, 1, vec![255, 255, 255, 0, 0, 0]);
+        let text = text_of(&pdf.to_bytes());
+        assert!(text.contains(&hex_of("IMG-007")));
+    }
+
+    #[test]
+    fn a_document_without_bates_has_no_bates_text() {
+        let mut pdf = Pdf::new();
+        pdf.text_page(vec![TextLine::body("no numbering")]);
+        let text = text_of(&pdf.to_bytes());
+        assert!(!text.contains(&hex_of("CADENCE-000001")));
     }
 }

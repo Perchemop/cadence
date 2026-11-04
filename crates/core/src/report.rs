@@ -69,20 +69,45 @@ pub fn project_report(project: &Project, status_date: Date) -> String {
     transliterate(&report)
 }
 
-/// Render the report as a print-ready PDF.
+/// Render the report as a print-ready PDF with optional Bates numbering.
 ///
 /// The Markdown is the source: headings become bold text at heading sizes,
 /// quoted lines become body text, and everything else keeps the body size.
 /// Long lines wrap and the result paginates over as many A4 pages as it needs,
 /// so a hundred-activity project prints as a hundred-activity document instead
 /// of one very tall page.
+///
+/// If `bates_prefix` is provided, Bates numbering is enabled with the given
+/// prefix, starting number, and digit count.
 #[must_use]
-pub fn project_report_pdf(project: &Project, status_date: Date) -> Vec<u8> {
+pub fn project_report_pdf_with_bates(
+    project: &Project,
+    status_date: Date,
+    bates_prefix: Option<&str>,
+    bates_start: Option<u32>,
+    bates_digits: Option<usize>,
+) -> Pdf {
     let markdown = project_report(project, status_date);
     let mut pdf = Pdf::new();
+    if let Some(prefix) = bates_prefix {
+        let start = bates_start.unwrap_or(1);
+        let digits = bates_digits.unwrap_or(6);
+        pdf.enable_bates(crate::pdf::BatesConfig {
+            prefix: prefix.to_string(),
+            start,
+            digits,
+        });
+    }
     for page in paginate(&pdf_lines(&markdown)) {
         pdf.text_page(page);
     }
+    pdf
+}
+
+/// Render the report as a print-ready PDF (backwards compatible).
+#[must_use]
+pub fn project_report_pdf(project: &Project, status_date: Date) -> Vec<u8> {
+    let pdf = project_report_pdf_with_bates(project, status_date, None, None, None);
     pdf.to_bytes()
 }
 

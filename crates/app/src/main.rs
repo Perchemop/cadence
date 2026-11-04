@@ -40,6 +40,8 @@ Usage:
                                   Reschedule remaining work from recorded progress
   cadence report <file> [out]    Write a Markdown report (stdout if no file)
   cadence print <file> <out.pdf>  Print a project report to PDF
+                                 [--bates-prefix P] [--bates-start N] [--bates-digits D]
+                                 (Bates numbering for legal document production)
   cadence version                Show the version and the last cached update check
   cadence check-updates          Ask GitHub Releases for the latest version
   cadence gui [file]             Open the project in the GUI (demo if no file)
@@ -95,7 +97,7 @@ fn main() -> ExitCode {
         }
         [command, path] if command == "report" => print_report(path, None),
         [command, input, output] if command == "report" => print_report(input, Some(output)),
-        [command, input, output] if command == "print" => print_report_pdf(input, output),
+        [command, rest @ ..] if command == "print" => print_report_pdf(rest),
         [command] if command == "version" => print_version(),
         [command] if command == "check-updates" => check_updates(),
         [command] if command == "gui" => gui_demo(),
@@ -625,13 +627,67 @@ fn print_report(path: &str, output: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
-/// Print a project report to a PDF file.
-fn print_report_pdf(path: &str, output: &str) -> Result<(), String> {
+/// Print a project report to a PDF file with optional Bates numbering.
+/// Print a project report to a PDF file, with optional Bates numbering.
+///
+/// Usage:
+/// `cadence print <in> <out> [--bates-prefix PREFIX] [--bates-start NUMBER]
+/// [--bates-digits DIGITS]`
+fn print_report_pdf(args: &[String]) -> Result<(), String> {
+    if args.len() < 2 {
+        return Err(
+            "usage: cadence print <in> <out> [--bates-prefix PREFIX] \
+             [--bates-start NUMBER] [--bates-digits DIGITS]"
+                .to_string(),
+        );
+    }
+    let path = args[0].as_str();
+    let output = args[1].as_str();
+    let mut bates_prefix: Option<&str> = None;
+    let mut bates_start: Option<u32> = None;
+    let mut bates_digits: Option<usize> = None;
+    let mut index = 2;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--bates-prefix" => {
+                let value = args.get(index + 1).ok_or("--bates-prefix needs a value")?;
+                bates_prefix = Some(value.as_str());
+                index += 2;
+            }
+            "--bates-start" => {
+                let value = args.get(index + 1).ok_or("--bates-start needs a number")?;
+                bates_start = Some(
+                    value
+                        .parse::<u32>()
+                        .map_err(|_| format!("\"{value}\" is not a whole number"))?,
+                );
+                index += 2;
+            }
+            "--bates-digits" => {
+                let value = args.get(index + 1).ok_or("--bates-digits needs a number")?;
+                bates_digits = Some(
+                    value
+                        .parse::<usize>()
+                        .map_err(|_| format!("\"{value}\" is not a whole number"))?,
+                );
+                index += 2;
+            }
+            other => return Err(format!("unexpected argument \"{other}\" for print")),
+        }
+    }
+
     ensure_distinct_files(path, output)?;
     let project = cadence_persistence::load_project(path).map_err(|error| error.to_string())?;
-    let pdf = cadence_core::report::project_report_pdf(&project, today());
-    std::fs::write(output, &pdf).map_err(|error| format!("cannot write {output}: {error}"))?;
-    println!("Printed {} page(s) to {output}", pdf_pages(&pdf));
+    let pdf = cadence_core::report::project_report_pdf_with_bates(
+        &project,
+        today(),
+        bates_prefix,
+        bates_start,
+        bates_digits,
+    );
+    let bytes = pdf.to_bytes();
+    std::fs::write(output, &bytes).map_err(|error| format!("cannot write {output}: {error}"))?;
+    println!("Printed {} page(s) to {output}", pdf_pages(&bytes));
     Ok(())
 }
 
