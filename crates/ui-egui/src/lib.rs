@@ -12,11 +12,12 @@ use std::time::{Duration, Instant};
 
 use cadence_commands::{
     AddResourceToActivity, CaptureBaseline, CommandStack, CreateCalendar, CreateRelationship,
-    CreateResource, DeleteCalendar, DeleteResource, RemoveBaseline, RemoveResourceFromActivity,
-    RenameActivity, RenameCalendar, RenameResource, SetActivityActualCost, SetActivityActualDates,
-    SetActivityBudget, SetActivityCalendar, SetActivityConstraint, SetActivityDuration,
-    SetActivityOwner, SetActivityProgress, SetActivityPromise, SetCalendarDefinition,
-    SetRelationshipLag, SetResourceCapacity, SetResourceKind,
+    CreateResource, DeleteCalendar, DeleteRelationship, DeleteResource, RemoveBaseline,
+    RemoveResourceFromActivity, RenameActivity, RenameCalendar, RenameResource,
+    SetActivityActualCost, SetActivityActualDates, SetActivityBudget, SetActivityCalendar,
+    SetActivityConstraint, SetActivityDuration, SetActivityOwner, SetActivityProgress,
+    SetActivityPromise, SetCalendarDefinition, SetRelationshipLag, SetResourceCapacity,
+    SetResourceKind,
 };
 use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
@@ -383,6 +384,8 @@ pub struct CadenceApp {
     //  so the status bar does not rescan every frame.
     critical_count: usize,
     confirm_delete_activity: bool,
+    confirm_delete_relationship: bool,
+    drag_link_type_index: usize,
     /// Whether the user has confirmed applying leveled dates (destructive).
     confirm_leveling: bool,
     selected_relationship: Option<cadence_core::model::RelationshipId>,
@@ -491,6 +494,8 @@ impl CadenceApp {
             evm_metrics: None,
             critical_count: 0,
             confirm_delete_activity: false,
+            confirm_delete_relationship: false,
+            drag_link_type_index: 0,
             confirm_leveling: false,
             selected_relationship: None,
             lag_buffer: String::new(),
@@ -1088,6 +1093,22 @@ impl CadenceApp {
                 self.select_resource(id);
             }
             Err(error) => self.set_status(error),
+        }
+    }
+
+    /// Create a new activity and select it (used by the toolbar button).
+    fn create_activity(&mut self) {
+        let id = self.project.next_activity_id();
+        let command = cadence_commands::CreateActivity::new(id, "New activity", 1);
+        if self
+            .stack
+            .execute(&mut self.project, Box::new(command))
+            .is_ok()
+        {
+            self.recompute();
+            self.select(id);
+            self.scroll_to_selection = true;
+            self.set_status("Activity created.");
         }
     }
 
@@ -1827,51 +1848,132 @@ impl eframe::App for CadenceApp {
         }
 
         egui::Panel::top("toolbar").show(ui, |ui| {
+            // Menu bar (File/Edit/View/Help) + compact tab strip.
             ui.horizontal_wrapped(|ui| {
                 ui.heading("Cadence");
                 ui.separator();
                 ui.label(&self.project.name);
-                if ui
-                    .button("Open…")
-                    .on_hover_text("Open a Cadence project file (Ctrl+O)")
-                    .clicked()
-                {
-                    self.open_dialog();
-                }
-                if ui
-                    .button("Save")
-                    .on_hover_text("Save the project (Ctrl+S)")
-                    .clicked()
-                {
-                    self.save_or_prompt();
-                }
-                if ui
-                    .button("Save as…")
-                    .on_hover_text("Save the project to a new file")
-                    .clicked()
-                {
-                    self.save_as_dialog();
-                }
-                ui.separator();
-                if ui
-                    .button("New activity")
-                    .on_hover_text("Create a new activity (Ctrl+N)")
-                    .clicked()
-                {
-                    let id = self.project.next_activity_id();
-                    let command = cadence_commands::CreateActivity::new(id, "New activity", 1);
-                    if self
-                        .stack
-                        .execute(&mut self.project, Box::new(command))
-                        .is_ok()
-                    {
-                        self.recompute();
-                        self.select(id);
-                        self.scroll_to_selection = true;
-                        self.set_status("Activity created.");
+
+                // File menu
+                ui.menu_button("File", |ui| {
+                    if ui.button("Open… (Ctrl+O)").clicked() {
+                        self.open_dialog();
                     }
-                }
+                    if ui.button("Save (Ctrl+S)").clicked() {
+                        self.save_or_prompt();
+                    }
+                    if ui.button("Save as…").clicked() {
+                        self.save_as_dialog();
+                    }
+                    ui.separator();
+                    if ui.button("Save report").clicked() {
+                        self.save_report();
+                    }
+                    if ui.button("Print report…").clicked() {
+                        self.print_report_dialog();
+                    }
+                    if ui
+                        .add_enabled(
+                            self.view_mode == ViewMode::Gantt,
+                            egui::Button::new("Print Gantt…"),
+                        )
+                        .clicked()
+                    {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("PDF document", &["pdf"])
+                            .set_file_name(format!("{}-gantt.pdf", file_stem(&self.project.name)))
+                            .save_file()
+                        {
+                            self.gantt_print_path = Some(path);
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
+                                egui::UserData::default(),
+                            ));
+                        }
+                    }
+                });
+
+                // Edit menu
+                ui.menu_button("Edit", |ui| {
+                    if ui
+                        .add_enabled(self.stack.can_undo(), egui::Button::new("Undo (Ctrl+Z)"))
+                        .clicked()
+                    {
+                        let _ = self.stack.undo(&mut self.project);
+                        self.recompute();
+                        self.refresh_selection();
+                    }
+                    if ui
+                        .add_enabled(self.stack.can_redo(), egui::Button::new("Redo (Ctrl+Y)"))
+                        .clicked()
+                    {
+                        let _ = self.stack.redo(&mut self.project);
+                        self.recompute();
+                        self.refresh_selection();
+                    }
+                    ui.separator();
+                    if ui.button("New activity (Ctrl+N)").clicked() {
+                        self.create_activity();
+                    }
+                });
+
+                // View menu
+                ui.menu_button("View", |ui| {
+                    if ui.button("Toggle theme (Ctrl+D)").clicked() {
+                        self.dark = !self.dark;
+                        apply_theme(&ctx, self.dark);
+                    }
+                    if ui
+                        .button(if self.show_split_gantt {
+                            "Hide split Gantt"
+                        } else {
+                            "Show split Gantt"
+                        })
+                        .clicked()
+                    {
+                        self.show_split_gantt = !self.show_split_gantt;
+                    }
+                    ui.separator();
+                    for (mode, label) in [
+                        (ViewMode::Table, "Table (Ctrl+1)"),
+                        (ViewMode::Gantt, "Gantt (Ctrl+2)"),
+                        (ViewMode::Resources, "Resources (Ctrl+3)"),
+                        (ViewMode::Baselines, "Baselines (Ctrl+4)"),
+                        (ViewMode::Calendars, "Calendars (Ctrl+5)"),
+                        (ViewMode::Audit, "Audit (Ctrl+6)"),
+                        (ViewMode::Lookahead, "Lookahead (Ctrl+7)"),
+                        (ViewMode::Diary, "Diary (Ctrl+8)"),
+                        (ViewMode::Production, "Production (Ctrl+9)"),
+                    ] {
+                        if ui.button(label).clicked() {
+                            self.view_mode = mode;
+                        }
+                    }
+                });
+
+                // Help menu
+                ui.menu_button("Help", |ui| {
+                    if ui.button("Keyboard shortcuts (F1)").clicked() {
+                        self.show_shortcuts_dialog = true;
+                    }
+                    if ui.button("Report a bug…").clicked() {
+                        if self.crash_log.is_empty() {
+                            if let Some(log) = crash::read_log() {
+                                self.crash_log = log;
+                            }
+                        }
+                        self.crash_notes.clear();
+                        self.show_crash_dialog = true;
+                    }
+                    if ui.button("Check for updates").clicked() {
+                        self.show_update_dialog = true;
+                    }
+                    if ui.button("Release notes").clicked() {
+                        self.show_release_notes = true;
+                    }
+                });
+
                 ui.separator();
+
                 // View tabs: one tab per workspace, MS Project / P6 style.
                 // Selected tab keeps its fill so the active workspace is obvious.
                 let first = &mut true;
@@ -1966,65 +2068,7 @@ impl eframe::App for CadenceApp {
                     }
                 });
                 columns_menu.response.on_hover_text("Choose which columns show in the activity table (MS Project / P6 column chooser)");
-                if ui
-                    .button("Save report")
-                    .on_hover_text("Write a Markdown report next to the working directory")
-                    .clicked()
-                {
-                    self.save_report();
-                }
-                if ui
-                    .button("Print report…")
-                    .on_hover_text("Save a print-ready PDF of the report via a file dialog")
-                    .clicked()
-                {
-                    self.print_report_dialog();
-                }
-                if ui
-                    .add_enabled(
-                        self.view_mode == ViewMode::Gantt,
-                        egui::Button::new("Print Gantt…"),
-                    )
-                    .on_hover_text("Save a print-ready PDF of the Gantt view via a file dialog")
-                    .clicked()
-                {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("PDF document", &["pdf"])
-                        .set_file_name(format!("{}-gantt.pdf", file_stem(&self.project.name)))
-                        .save_file()
-                    {
-                        self.gantt_print_path = Some(path);
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
-                            egui::UserData::default(),
-                        ));
-                    }
-                }
-                if ui
-                    .button("Report a bug…")
-                    .on_hover_text("Preview and report a problem to the Cadence issue tracker")
-                    .clicked()
-                {
-                    if self.crash_log.is_empty() {
-                        if let Some(log) = crash::read_log() {
-                            self.crash_log = log;
-                        }
-                    }
-                    self.crash_notes.clear();
-                    self.show_crash_dialog = true;
-                }
-                let update_label = match &self.update_status {
-                    update_check::UpdateStatus::UpdateAvailable { version, .. } => {
-                        format!("Update available: {version}")
-                    }
-                    _ => "Updates".to_string(),
-                };
-                if ui
-                    .button(update_label)
-                    .on_hover_text("Check GitHub Releases for a newer Cadence")
-                    .clicked()
-                {
-                    self.show_update_dialog = true;
-                }
+
                 if ui
                     .add_enabled(self.stack.can_undo(), egui::Button::new("Undo"))
                     .on_hover_text("Undo the last edit (Ctrl+Z)")
@@ -2053,21 +2097,6 @@ impl eframe::App for CadenceApp {
                     );
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .button("Toggle theme")
-                        .on_hover_text("Switch between the light and dark theme (Ctrl+D)")
-                        .clicked()
-                    {
-                        self.dark = !self.dark;
-                        apply_theme(&ctx, self.dark);
-                    }
-                    if ui
-                        .button("Shortcuts")
-                        .on_hover_text("Keyboard shortcuts (F1)")
-                        .clicked()
-                    {
-                        self.show_shortcuts_dialog = true;
-                    }
                     if ui
                         .small_button(update_check::current_version())
                         .on_hover_text("Click to view release notes")
@@ -2359,6 +2388,9 @@ impl eframe::App for CadenceApp {
                                                 self.recompute();
                                             }
                                         }
+                                        if ui.button("Delete relationship").clicked() {
+                                            self.confirm_delete_relationship = true;
+                                        }
                                     }
 
                                     ui.separator();
@@ -2445,6 +2477,7 @@ impl eframe::App for CadenceApp {
                                 &activities,
                                 self.pixels_per_day,
                                 &mut self.pixels_per_day,
+                                &mut self.drag_link_type_index,
                                 self.dark,
                                 gantt_selected,
                                 &mut gantt_selected,
@@ -2833,6 +2866,7 @@ impl eframe::App for CadenceApp {
                         &self.sorted_cache,
                         px,
                         &mut self.pixels_per_day,
+                        &mut self.drag_link_type_index,
                         self.dark,
                         selected_id,
                         &mut selected_id,
@@ -4085,6 +4119,39 @@ impl eframe::App for CadenceApp {
             }
         }
 
+        if self.confirm_delete_relationship {
+            let mut open = true;
+            egui::Window::new("Delete relationship?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    ui.label("Delete the selected dependency link? This can be undone.");
+                    ui.horizontal(|ui| {
+                        if ui.button("Delete").clicked() {
+                            if let Some(id) = self.selected_relationship {
+                                if self
+                                    .stack
+                                    .execute(&mut self.project, Box::new(DeleteRelationship { id }))
+                                    .is_ok()
+                                {
+                                    self.recompute();
+                                    self.selected_relationship = None;
+                                    self.set_status("Relationship deleted.");
+                                }
+                            }
+                            self.confirm_delete_relationship = false;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.confirm_delete_relationship = false;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_delete_relationship = false;
+            }
+        }
+
         if self.confirm_close {
             let mut open = true;
             egui::Window::new("Save changes?")
@@ -4576,6 +4643,7 @@ fn render_gantt(
     activities: &[Activity],
     _pixels_per_day: f32,
     pixels_per_day_out: &mut f32,
+    drag_link_type_index: &mut usize,
     dark: bool,
     selected_id: Option<ActivityId>,
     selected_out: &mut Option<ActivityId>,
@@ -4621,6 +4689,15 @@ fn render_gantt(
             *pixels_per_day_out = 14.0;
         }
         ui.label(format!("{:.0}%", *pixels_per_day_out / 14.0 * 100.0));
+        ui.separator();
+        ui.label("Drag new link as:");
+        ComboBox::from_id_salt("drag_link_type")
+            .selected_text(link_type_label(*drag_link_type_index))
+            .show_ui(ui, |ui| {
+                for (index, label) in LINK_TYPE_LABELS.iter().enumerate() {
+                    ui.selectable_value(drag_link_type_index, index, *label);
+                }
+            });
     });
 
     // Apply the (possibly just-changed) zoom before drawing so a button press
@@ -5110,7 +5187,13 @@ fn render_gantt(
             let predecessor = activities[start_row].id;
             let successor = activities[end_row].id;
             let id = project.next_relationship_id();
-            let command = CreateRelationship::new(id, predecessor, successor, LinkType::Fs, 0);
+            let command = CreateRelationship::new(
+                id,
+                predecessor,
+                successor,
+                link_type_from_index(*drag_link_type_index),
+                0,
+            );
             if stack.execute(project, Box::new(command)).is_ok() {
                 *schedule = cadence_core::engine::schedule(project).map_err(|e| e.to_string());
                 if schedule.is_err() {
