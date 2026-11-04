@@ -4574,7 +4574,7 @@ fn render_gantt(
     drag_start: &mut Option<usize>,
     status_message: &mut Option<String>,
     activities: &[Activity],
-    pixels_per_day: f32,
+    _pixels_per_day: f32,
     pixels_per_day_out: &mut f32,
     dark: bool,
     selected_id: Option<ActivityId>,
