@@ -2434,6 +2434,7 @@ impl eframe::App for CadenceApp {
                         .min_size(300.0)
                         .resizable(true)
                         .show(ui, |ui| {
+                            let mut selected_id = self.selected;
                             gantt_changed = render_gantt(
                                 ui,
                                 &mut self.project,
@@ -2445,7 +2446,12 @@ impl eframe::App for CadenceApp {
                                 self.pixels_per_day,
                                 &mut self.pixels_per_day,
                                 self.dark,
+                                selected_id,
+                                &mut selected_id,
                             );
+                            if selected_id != self.selected {
+                                self.select(selected_id.unwrap());
+                            }
                         });
                     if gantt_changed {
                         // A drag-created link changes the schedule; bump the
@@ -2459,6 +2465,7 @@ impl eframe::App for CadenceApp {
                 let selected_id = self.selected;
                 let scroll_to_selection = self.scroll_to_selection;
                 let mut clicked_activity = None;
+                let mut context_menu_activity = None;
                 let mut header_clicked = None;
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
@@ -2580,13 +2587,27 @@ impl eframe::App for CadenceApp {
                                             ui.cursor().min,
                                             Vec2::new(ui.available_width(), row_height),
                                         );
-                                        let row_clicked = ui
-                                            .interact(
-                                                row_rect,
-                                                egui::Id::new(("activity_row", activity.id)),
-                                                Sense::click(),
-                                            )
-                                            .clicked();
+                                        let row_response = ui.interact(
+                                            row_rect,
+                                            egui::Id::new(("activity_row", activity.id)),
+                                            Sense::click(),
+                                        );
+                                        let row_clicked = row_response.clicked();
+                                        let mut context_action = None;
+                                        row_response.context_menu(|ui| {
+                                            if ui.button("New activity below").clicked() {
+                                                context_action = Some("new_below");
+                                            }
+                                            if ui.button("Duplicate activity").clicked() {
+                                                context_action = Some("duplicate");
+                                            }
+                                            if ui.button("Delete activity").clicked() {
+                                                context_action = Some("delete");
+                                            }
+                                        });
+                                        if let Some(action) = context_action {
+                                            context_menu_activity = Some((activity.id, action));
+                                        }
                                         for (col, (key, _label, _w)) in defs.iter().enumerate() {
                                             match key {
                                                 None => {
@@ -2696,10 +2717,114 @@ impl eframe::App for CadenceApp {
                 if let Some(id) = clicked_activity {
                     self.select(id);
                 }
+                if let Some((id, action)) = context_menu_activity {
+                    match action {
+                        "new_below" => {
+                            let new_id = self.project.next_activity_id();
+                            let command =
+                                cadence_commands::CreateActivity::new(new_id, "New activity", 1);
+                            if self
+                                .stack
+                                .execute(&mut self.project, Box::new(command))
+                                .is_ok()
+                            {
+                                self.recompute();
+                                self.select(new_id);
+                                self.scroll_to_selection = true;
+                                self.set_status("Activity created.");
+                            }
+                        }
+                        "duplicate" => {
+                            if let Some(original) = self.project.activity(id).cloned() {
+                                let new_id = self.project.next_activity_id();
+                                let command = cadence_commands::CreateActivity::new(
+                                    new_id,
+                                    format!("{} (copy)", original.name),
+                                    original.original_duration,
+                                );
+                                if self
+                                    .stack
+                                    .execute(&mut self.project, Box::new(command))
+                                    .is_ok()
+                                {
+                                    self.recompute();
+                                    self.select(new_id);
+                                    self.scroll_to_selection = true;
+                                    self.set_status("Activity duplicated.");
+                                }
+                            }
+                        }
+                        "delete" => {
+                            self.select(id);
+                            self.confirm_delete_activity = true;
+                        }
+                        _ => {}
+                    }
+                }
                 self.scroll_to_selection = false;
             }
             ViewMode::Gantt => {
                 let mut gantt_changed = false;
+                let mut selected_id = self.selected;
+                egui::Panel::right("gantt_inspector")
+                    .default_size(260.0)
+                    .show(ui, |ui| {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                ui.heading("Inspector");
+                                if let Some(id) = selected_id {
+                                    if let Some(activity) = self.project.activity(id) {
+                                        ui.label(format!("Activity {}", id));
+                                        ui.label("Name");
+                                        ui.label(&activity.name);
+                                        ui.label(format!(
+                                            "Duration: {} days",
+                                            activity.original_duration
+                                        ));
+                                        ui.label(
+                                            format!(
+                                                "Start: {}",
+                                                self.schedule
+                                                    .as_ref()
+                                                    .ok()
+                                                    .and_then(|s| s.activity(id))
+                                                    .map(|r| r.scheduled_start.to_string())
+                                                    .unwrap_or_else(|| "-".to_string())
+                                            ),
+                                        );
+                                        ui.label(
+                                            format!(
+                                                "Finish: {}",
+                                                self.schedule
+                                                    .as_ref()
+                                                    .ok()
+                                                    .and_then(|s| s.activity(id))
+                                                    .map(|r| r.scheduled_finish.to_string())
+                                                    .unwrap_or_else(|| "-".to_string())
+                                            ),
+                                        );
+                                        let critical = self
+                                            .schedule
+                                            .as_ref()
+                                            .ok()
+                                            .and_then(|s| s.activity(id))
+                                            .map(|r| r.critical)
+                                            .unwrap_or(false);
+                                        ui.label(if critical {
+                                            "Critical: Yes"
+                                        } else {
+                                            "Critical: No"
+                                        });
+                                        if ui.button("Delete activity").clicked() {
+                                            self.confirm_delete_activity = true;
+                                        }
+                                    }
+                                } else {
+                                    ui.label("Select an activity in the Gantt or Table view.");
+                                }
+                            });
+                    });
                 egui::CentralPanel::default().show(ui, |ui| {
                     let px = self.pixels_per_day;
                     gantt_changed = render_gantt(
@@ -2713,8 +2838,15 @@ impl eframe::App for CadenceApp {
                         px,
                         &mut self.pixels_per_day,
                         self.dark,
+                        selected_id,
+                        &mut selected_id,
                     );
                 });
+                if selected_id != self.selected {
+                    if let Some(id) = selected_id {
+                        self.select(id);
+                    }
+                }
                 if gantt_changed {
                     self.recompute();
                 }
@@ -4449,6 +4581,8 @@ fn render_gantt(
     pixels_per_day: f32,
     pixels_per_day_out: &mut f32,
     dark: bool,
+    selected_id: Option<ActivityId>,
+    selected_out: &mut Option<ActivityId>,
 ) -> bool {
     let tokens = DesignTokens::for_dark(dark);
     let palette = design::palette(dark);
@@ -4769,7 +4903,9 @@ fn render_gantt(
                 } else {
                     bar
                 };
-                let color = if is_summary {
+                let color = if selected_id == Some(activity.id) {
+                    tokens.accent
+                } else if is_summary {
                     tokens.normal
                 } else if result.critical {
                     tokens.critical
@@ -4862,6 +4998,22 @@ fn render_gantt(
                     egui::FontId::proportional(10.0),
                     Color32::WHITE,
                 );
+
+                // Click-to-select: clicking a bar selects its activity. A
+                // drag on the bar is drag-to-link, so only a plain click (no
+                // drag) selects.
+                let bar_row = Rect::from_min_max(
+                    Pos2::new(rect.min.x, y),
+                    Pos2::new(rect.max.x, y + row_height),
+                );
+                let row_response = ui.interact(
+                    bar_row,
+                    egui::Id::new(("gantt_row", activity.id)),
+                    Sense::click(),
+                );
+                if row_response.clicked() && !response.drag_started() {
+                    *selected_out = Some(activity.id);
+                }
             }
         }
 
