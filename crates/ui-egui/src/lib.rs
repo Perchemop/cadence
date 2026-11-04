@@ -1974,7 +1974,6 @@ impl eframe::App for CadenceApp {
 
                 ui.separator();
 
-                if ui
                 // View tabs: one tab per workspace, MS Project / P6 style.
                 // Selected tab keeps its fill so the active workspace is obvious.
                 let first = &mut true;
