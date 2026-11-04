@@ -2896,6 +2896,7 @@ impl eframe::App for CadenceApp {
                 });
             }
             ViewMode::Baselines => {
+                let mut status_date: Option<Date> = None;
                 egui::Panel::right("baseline_inspector")
                     .default_size(300.0)
                     .show(ui, |ui| {
@@ -2936,7 +2937,6 @@ impl eframe::App for CadenceApp {
 
                         ui.separator();
                         ui.heading("Earned value");
-                        let mut status_date: Option<Date> = None;
                         status_date = date_field(
                             ui,
                             self.dark,
