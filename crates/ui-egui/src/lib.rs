@@ -576,9 +576,8 @@ impl CadenceApp {
     fn maybe_clear_status(&mut self, now: Instant) {
         let should_clear = self.status_message.as_ref().is_some_and(|message| {
             let severity = StatusSeverity::from_message(message);
-            self.status_shown_at.is_some_and(|shown_at| {
-                should_auto_clear_status(severity, shown_at, now)
-            })
+            self.status_shown_at
+                .is_some_and(|shown_at| should_auto_clear_status(severity, shown_at, now))
         });
         if should_clear {
             self.status_message = None;
