@@ -383,6 +383,8 @@ pub struct CadenceApp {
     //  so the status bar does not rescan every frame.
     critical_count: usize,
     confirm_delete_activity: bool,
+    confirm_delete_relationship: bool,
+    drag_link_type_index: usize,
     /// Whether the user has confirmed applying leveled dates (destructive).
     confirm_leveling: bool,
     selected_relationship: Option<cadence_core::model::RelationshipId>,
@@ -491,6 +493,8 @@ impl CadenceApp {
             evm_metrics: None,
             critical_count: 0,
             confirm_delete_activity: false,
+            confirm_delete_relationship: false,
+            drag_link_type_index: 0,
             confirm_leveling: false,
             selected_relationship: None,
             lag_buffer: String::new(),
@@ -2359,6 +2363,9 @@ impl eframe::App for CadenceApp {
                                                 self.recompute();
                                             }
                                         }
+                                        if ui.button("Delete relationship").clicked() {
+                                            self.confirm_delete_relationship = true;
+                                        }
                                     }
 
                                     ui.separator();
@@ -2445,6 +2452,7 @@ impl eframe::App for CadenceApp {
                                 &activities,
                                 self.pixels_per_day,
                                 &mut self.pixels_per_day,
+                                &mut self.drag_link_type_index,
                                 self.dark,
                                 gantt_selected,
                                 &mut gantt_selected,
@@ -2833,6 +2841,7 @@ impl eframe::App for CadenceApp {
                         &self.sorted_cache,
                         px,
                         &mut self.pixels_per_day,
+                        &mut self.drag_link_type_index,
                         self.dark,
                         selected_id,
                         &mut selected_id,
@@ -4085,6 +4094,42 @@ impl eframe::App for CadenceApp {
             }
         }
 
+        if self.confirm_delete_relationship {
+            let mut open = true;
+            egui::Window::new("Delete relationship?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    ui.label("Delete the selected dependency link? This can be undone.");
+                    ui.horizontal(|ui| {
+                        if ui.button("Delete").clicked() {
+                            if let Some(id) = self.selected_relationship {
+                                if self
+                                    .stack
+                                    .execute(
+                                        &mut self.project,
+                                        Box::new(DeleteRelationship { id }),
+                                    )
+                                    .is_ok()
+                                {
+                                    self.recompute();
+                                    self.selected_relationship = None;
+                                    self.set_status("Relationship deleted.");
+                                }
+                            }
+                            self.confirm_delete_relationship = false;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.confirm_delete_relationship = false;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_delete_relationship = false;
+            }
+        }
+
         if self.confirm_close {
             let mut open = true;
             egui::Window::new("Save changes?")
@@ -4576,6 +4621,7 @@ fn render_gantt(
     activities: &[Activity],
     _pixels_per_day: f32,
     pixels_per_day_out: &mut f32,
+    drag_link_type_index: &mut usize,
     dark: bool,
     selected_id: Option<ActivityId>,
     selected_out: &mut Option<ActivityId>,
@@ -4621,6 +4667,15 @@ fn render_gantt(
             *pixels_per_day_out = 14.0;
         }
         ui.label(format!("{:.0}%", *pixels_per_day_out / 14.0 * 100.0));
+        ui.separator();
+        ui.label("Drag new link as:");
+        ComboBox::from_id_salt("drag_link_type")
+            .selected_text(link_type_label(*drag_link_type_index))
+            .show_ui(ui, |ui| {
+                for (index, label) in LINK_TYPE_LABELS.iter().enumerate() {
+                    ui.selectable_value(drag_link_type_index, index, *label);
+                }
+            });
     });
 
     // Apply the (possibly just-changed) zoom before drawing so a button press
@@ -5110,7 +5165,8 @@ fn render_gantt(
             let predecessor = activities[start_row].id;
             let successor = activities[end_row].id;
             let id = project.next_relationship_id();
-            let command = CreateRelationship::new(id, predecessor, successor, LinkType::Fs, 0);
+            let command =
+                CreateRelationship::new(id, predecessor, successor, link_type_from_index(*drag_link_type_index), 0);
             if stack.execute(project, Box::new(command)).is_ok() {
                 *schedule = cadence_core::engine::schedule(project).map_err(|e| e.to_string());
                 if schedule.is_err() {
