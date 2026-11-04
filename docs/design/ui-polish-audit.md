@@ -24,7 +24,7 @@ PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 4
 
 **S2 majors — partially closed:**
 - **S2-2 Toolbar Undo/Redo:** now call `recompute()` + `refresh_selection()`, carry shortcut tooltips, and are disabled when the command stack is empty (`can_undo()`/`can_redo()`). Fully closed.
-- **S2-3 Status feedback:** `StatusSeverity` (Info/Success/Warning/Error) colours messages by semantic token (`ok`/`warn`/`critical`/`text_muted`). Still open: no auto-clear of success messages.
+- **S2-3 Status feedback:** `StatusSeverity` (Info/Success/Warning/Error) colours messages by semantic token (`ok`/`warn`/`critical`/`text_muted`); info/success messages now auto-clear after five seconds (S2-3b). Errors and warnings persist.
 - **S2-17 Shortcuts dialog:** now lists Ctrl+S, Ctrl+O, Ctrl+N, Production (Ctrl+1..9) and all other bindings. Closed.
 - Still open: S2-1 (status lives in toolbar; menu bar), S2-4 (date field helper), S2-5 (table filter/multi-select), S2-6 (Gantt bar selection/inspector), S2-7 (drag-to-link FS lag-0 only), S2-8 (relationship delete/retype), S2-9 (Location/WBS inspector fields), S2-10 (Diary picker + note edit), S2-11 (per-frame resource work), S2-12 (per-frame lookahead comparison), S2-13 (per-frame critical count), S2-14 (Save report to CWD), S2-15 (leveling undo atomicity), S2-16 (Ctrl+wheel scroll), S2-18 (confirmation consistency), S2-20 (AccessKit labelled_by), S2-21 (Gantt zoom lag), S2-22 (duplicate theme toggle).
 
@@ -75,7 +75,7 @@ these block the current slices; they are queued so they are not missed.
 | S1-1c | Row context menu (New below / Delete / Duplicate / Link to selected) on table rows | S1 | Add a right-click context menu to table rows | P0 |
 | S2-1 | Overloaded toolbar; status message duplicated inside toolbar | S2 | `egui::menu::bar` (File/Edit/View/Help); compact tab strip; status only in bottom bar | P1 |
 | S2-2b | Toolbar Undo/Redo disabled when stack is empty | S2 | `add_enabled(stack.can_undo())` / `can_redo()` | P1 | Done |
-| S2-3b | Success messages never auto-clear; linger indefinitely | S2 | Timed auto-clear for `StatusSeverity::Success`/`Info` | P1 |
+| S2-3b | Success/info messages auto-clear after five seconds; errors and warnings persist | S2 | Timed auto-clear via `maybe_clear_status` using `Instant` + `STATUS_MESSAGE_TTL` | P1 | Done |
 | S2-4 | Raw `YYYY-MM-DD` text fields; parse errors far from the input | S2 | Reusable `date_field` helper with inline validation | P1 |
 | S2-5 | Table: no filter, find, group or multi-select | S2 | Filter field + critical-only toggle; shift/ctrl range selection | P3 |
 | S2-6 | Gantt: bars not hit-testable; inspector unreachable from chart | S2 | Hit-test bars on click; persistent inspector; two-way selection sync | P2 |

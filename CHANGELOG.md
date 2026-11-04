@@ -23,6 +23,9 @@ follows Keep a Changelog; releases use git tags.
   keyboard reference from anywhere (`docs/design/ui-polish-audit.md`).
 
 ### Fixed
+- Status bar: info and success messages now auto-clear after five seconds so
+  they don't linger indefinitely; errors and warnings persist until dismissed
+  or replaced (S2-3b).
 - Move off the yanked `async-executor 1.14.0` pin (superseded by `1.14.1`) so
   the required dependency-advisory check stays green; the lockfile workflow now
   re-resolves this pin explicitly (`DECISIONS.md` D26).
