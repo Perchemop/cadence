@@ -2427,14 +2427,14 @@ impl eframe::App for CadenceApp {
                     });
 
                 if self.show_split_gantt {
-                    let activities = &self.sorted_cache;
+                    let activities = self.sorted_cache.clone();
                     let mut gantt_changed = false;
+                    let mut gantt_selected = self.selected;
                     egui::Panel::right("workbench_gantt")
                         .default_size(420.0)
                         .min_size(300.0)
                         .resizable(true)
                         .show(ui, |ui| {
-                            let mut selected_id = self.selected;
                             gantt_changed = render_gantt(
                                 ui,
                                 &mut self.project,
@@ -2442,17 +2442,19 @@ impl eframe::App for CadenceApp {
                                 &mut self.stack,
                                 &mut self.drag_start,
                                 &mut self.status_message,
-                                activities,
+                                &activities,
                                 self.pixels_per_day,
                                 &mut self.pixels_per_day,
                                 self.dark,
-                                selected_id,
-                                &mut selected_id,
+                                gantt_selected,
+                                &mut gantt_selected,
                             );
-                            if selected_id != self.selected {
-                                self.select(selected_id.unwrap());
-                            }
                         });
+                    if let Some(id) = gantt_selected {
+                        if Some(id) != self.selected {
+                            self.select(id);
+                        }
+                    }
                     if gantt_changed {
                         // A drag-created link changes the schedule; bump the
                         // edit version so cached sort and audit results refresh.
