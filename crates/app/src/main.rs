@@ -635,11 +635,9 @@ fn print_report(path: &str, output: Option<&str>) -> Result<(), String> {
 /// [--bates-digits DIGITS]`
 fn print_report_pdf(args: &[String]) -> Result<(), String> {
     if args.len() < 2 {
-        return Err(
-            "usage: cadence print <in> <out> [--bates-prefix PREFIX] \
+        return Err("usage: cadence print <in> <out> [--bates-prefix PREFIX] \
              [--bates-start NUMBER] [--bates-digits DIGITS]"
-                .to_string(),
-        );
+            .to_string());
     }
     let path = args[0].as_str();
     let output = args[1].as_str();

@@ -344,9 +344,8 @@ fn image_content(width: u32, height: u32, image_object: u32, bates: Option<&str>
     let draw_h = height as f32 * scale;
     let x = (A4_LANDSCAPE.0 - draw_w) / 2.0;
     let y = (A4_LANDSCAPE.1 - draw_h) / 2.0;
-    let mut content = format!(
-        "q {draw_w:.2} 0 0 {draw_h:.2} {x:.2} {y:.2} cm /Im0 {image_object} 0 R Do Q\n"
-    );
+    let mut content =
+        format!("q {draw_w:.2} 0 0 {draw_h:.2} {x:.2} {y:.2} cm /Im0 {image_object} 0 R Do Q\n");
     if let Some(bates_text) = bates {
         let _ = write!(
             content,
