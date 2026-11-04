@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use cadence_commands::{
     AddResourceToActivity, CaptureBaseline, CommandStack, CreateCalendar, CreateRelationship,
@@ -195,6 +195,19 @@ impl StatusSeverity {
     }
 }
 
+/// How long an info or success status message stays visible before it is
+/// auto-cleared. Errors and warnings persist until dismissed or replaced.
+const STATUS_MESSAGE_TTL: Duration = Duration::from_secs(5);
+
+/// Whether a shown status message should be auto-cleared right now.
+///
+/// Info and success messages expire after the TTL; warnings and errors do
+/// not. Pure so it can be unit-tested without an egui context.
+fn should_auto_clear_status(severity: StatusSeverity, shown_at: Instant, now: Instant) -> bool {
+    matches!(severity, StatusSeverity::Info | StatusSeverity::Success)
+        && now.duration_since(shown_at) > STATUS_MESSAGE_TTL
+}
+
 /// One row in the diary view: identifier, date, content, activity link and
 /// lookahead-window link.
 type DiaryRow = (DailyNoteId, Date, String, Option<ActivityId>, Option<Date>);
@@ -361,6 +374,9 @@ pub struct CadenceApp {
     confirm_close: bool,
     /// Whether a baseline is available, shown in the status bar.
     baseline_active: bool,
+    /// When the current `status_message` was first shown, used to auto-clear
+    /// info and success messages after the TTL so they don't linger forever.
+    status_shown_at: Option<Instant>,
     /// Earned-value metrics for the most recent baseline, shown in the status bar.
     evm_metrics: Option<EvmMetrics>,
     confirm_delete_activity: bool,
@@ -459,6 +475,7 @@ impl CadenceApp {
             pixels_per_day: 14.0,
             drag_start: None,
             status_message: None,
+            status_shown_at: None,
             dirty: false,
             confirm_close: false,
             baseline_active: false,
@@ -545,6 +562,28 @@ impl CadenceApp {
             let _ = sender.send(status);
         });
         self.update_receiver = Some(receiver);
+    }
+
+    /// Record a status message, stamping when it was first shown so info and
+    /// success messages can be auto-cleared after the TTL.
+    fn set_status(&mut self, text: impl Into<String>) {
+        self.status_message = Some(text.into());
+        self.status_shown_at = Some(Instant::now());
+    }
+
+    /// Clear an info/success status message once its TTL has elapsed. Errors
+    /// and warnings persist until dismissed or replaced.
+    fn maybe_clear_status(&mut self, now: Instant) {
+        let should_clear = self.status_message.as_ref().is_some_and(|message| {
+            let severity = StatusSeverity::from_message(message);
+            self.status_shown_at.is_some_and(|shown_at| {
+                should_auto_clear_status(severity, shown_at, now)
+            })
+        });
+        if should_clear {
+            self.status_message = None;
+            self.status_shown_at = None;
+        }
     }
 
     fn recompute(&mut self) {
@@ -670,7 +709,7 @@ impl CadenceApp {
                 .stack
                 .execute(&mut self.project, Box::new(SetActivityOwner { id, owner }))
             {
-                self.status_message = Some(error);
+                self.set_status(error);
                 return;
             }
         }
@@ -683,7 +722,7 @@ impl CadenceApp {
                     delay_reason,
                 }),
             ) {
-                self.status_message = Some(error);
+                self.set_status(error);
                 return;
             }
         }
@@ -698,12 +737,12 @@ impl CadenceApp {
         let (predecessor, successor) = match endpoints {
             Ok(pair) => pair,
             Err(message) => {
-                self.status_message = Some(message);
+                self.set_status(message);
                 return;
             }
         };
         let Ok(lag) = self.link_lag_buffer.trim().parse::<i64>() else {
-            self.status_message = Some("Lag must be a whole number of working days".to_string());
+            self.set_status("Lag must be a whole number of working days");
             return;
         };
         let link_type = link_type_from_index(self.link_type_index);
@@ -724,12 +763,12 @@ impl CadenceApp {
                     Err(error) => {
                         let _ = self.stack.undo(&mut self.project);
                         self.recompute();
-                        self.status_message = Some(format!("Cannot add link: {error}"));
+                        self.set_status(format!("Cannot add link: {error}"));
                     }
                     Ok(_) => {
                         self.selected_relationship = Some(id);
                         self.last_rel = None;
-                        self.status_message = Some(format!(
+                        self.set_status(format!(
                             "Added {} link {} → {}",
                             link_type, predecessor, successor
                         ));
@@ -737,7 +776,7 @@ impl CadenceApp {
                 }
             }
             Err(error) => {
-                self.status_message = Some(format!("Cannot add link: {error}"));
+                self.set_status(format!("Cannot add link: {error}"));
             }
         }
     }
@@ -751,7 +790,7 @@ impl CadenceApp {
         };
 
         if self.name_buffer.trim().is_empty() {
-            self.status_message = Some("The activity name must not be empty.".to_string());
+            self.set_status("The activity name must not be empty.");
             return;
         }
         if self.name_buffer != activity.name {
@@ -762,7 +801,7 @@ impl CadenceApp {
                     name: self.name_buffer.clone(),
                 }),
             ) {
-                self.status_message = Some(error);
+                self.set_status(error);
                 return;
             }
         }
@@ -776,14 +815,13 @@ impl CadenceApp {
                             &mut self.project,
                             Box::new(SetActivityDuration { id, duration }),
                         ) {
-                            self.status_message = Some(error);
+                            self.set_status(error);
                             return;
                         }
                     }
                 }
                 Err(_) => {
-                    self.status_message =
-                        Some("Duration must be a whole number of working days.".to_string());
+                    self.set_status("Duration must be a whole number of working days.");
                     return;
                 }
             },
@@ -794,8 +832,7 @@ impl CadenceApp {
             1 => Constraint::AsLateAsPossible,
             kind => {
                 let Some(date) = parse_date(self.constraint_date_buffer.trim()) else {
-                    self.status_message =
-                        Some("A date constraint needs a date in YYYY-MM-DD format.".to_string());
+                    self.set_status("A date constraint needs a date in YYYY-MM-DD format.");
                     return;
                 };
                 match kind {
@@ -812,7 +849,7 @@ impl CadenceApp {
                 &mut self.project,
                 Box::new(SetActivityConstraint { id, constraint }),
             ) {
-                self.status_message = Some(error);
+                self.set_status(error);
                 return;
             }
         }
@@ -820,8 +857,7 @@ impl CadenceApp {
         let percent = match parse_percent(self.progress_buffer.trim()) {
             Some(percent) => percent,
             None => {
-                self.status_message =
-                    Some("Progress must be a percentage between 0 and 100.".to_string());
+                self.set_status("Progress must be a percentage between 0 and 100.");
                 return;
             }
         };
@@ -833,7 +869,7 @@ impl CadenceApp {
                     percent_complete: percent,
                 }),
             ) {
-                self.status_message = Some(error);
+                self.set_status(error);
                 return;
             }
         }
@@ -841,7 +877,7 @@ impl CadenceApp {
         let budget = match parse_optional_money(self.budget_buffer.trim()) {
             Some(value) => value,
             None => {
-                self.status_message = Some("Budget must be a number.".to_string());
+                self.set_status("Budget must be a number.");
                 return;
             }
         };
@@ -853,7 +889,7 @@ impl CadenceApp {
                     budget_at_completion: budget,
                 }),
             ) {
-                self.status_message = Some(error);
+                self.set_status(error);
                 return;
             }
         }
@@ -861,7 +897,7 @@ impl CadenceApp {
         let cost = match parse_optional_money(self.actual_cost_buffer.trim()) {
             Some(value) => value,
             None => {
-                self.status_message = Some("Actual cost must be a number.".to_string());
+                self.set_status("Actual cost must be a number.");
                 return;
             }
         };
@@ -873,7 +909,7 @@ impl CadenceApp {
                     actual_cost: cost,
                 }),
             ) {
-                self.status_message = Some(error);
+                self.set_status(error);
                 return;
             }
         }
@@ -881,16 +917,14 @@ impl CadenceApp {
         let actual_start = match parse_optional_date(self.actual_start_buffer.trim()) {
             Some(date) => date,
             None => {
-                self.status_message =
-                    Some("Actual start must be a date in YYYY-MM-DD format.".to_string());
+                self.set_status("Actual start must be a date in YYYY-MM-DD format.");
                 return;
             }
         };
         let actual_finish = match parse_optional_date(self.actual_finish_buffer.trim()) {
             Some(date) => date,
             None => {
-                self.status_message =
-                    Some("Actual finish must be a date in YYYY-MM-DD format.".to_string());
+                self.set_status("Actual finish must be a date in YYYY-MM-DD format.");
                 return;
             }
         };
@@ -903,7 +937,7 @@ impl CadenceApp {
                     actual_finish,
                 }),
             ) {
-                self.status_message = Some(error);
+                self.set_status(error);
                 return;
             }
         }
@@ -938,7 +972,7 @@ impl CadenceApp {
                 .stack
                 .execute(&mut self.project, Box::new(RenameResource { id, name }))
             {
-                self.status_message = Some(error);
+                self.set_status(error);
             }
         }
 
@@ -948,7 +982,7 @@ impl CadenceApp {
                     &mut self.project,
                     Box::new(SetResourceCapacity { id, capacity }),
                 ) {
-                    self.status_message = Some(error);
+                    self.set_status(error);
                 }
             }
         }
@@ -963,7 +997,7 @@ impl CadenceApp {
                         cost_per_unit: cost_rate,
                     }),
                 ) {
-                    self.status_message = Some(error);
+                    self.set_status(error);
                 }
             }
         }
@@ -974,7 +1008,7 @@ impl CadenceApp {
                 .stack
                 .execute(&mut self.project, Box::new(SetResourceKind { id, kind }))
             {
-                self.status_message = Some(error);
+                self.set_status(error);
             }
         }
 
@@ -986,7 +1020,7 @@ impl CadenceApp {
     fn create_resource(&mut self) {
         let name = self.resource_name_buffer.trim().to_string();
         if name.is_empty() {
-            self.status_message = Some("Resource name must not be empty".to_string());
+            self.set_status("Resource name must not be empty");
             return;
         }
         let id = self.project.next_resource_id();
@@ -1015,14 +1049,14 @@ impl CadenceApp {
                                 cost_per_unit: rate,
                             }),
                         ) {
-                            self.status_message = Some(error);
+                            self.set_status(error);
                         }
                     }
                 }
                 self.recompute();
                 self.select_resource(id);
             }
-            Err(error) => self.status_message = Some(error),
+            Err(error) => self.set_status(error),
         }
     }
 
@@ -1046,7 +1080,7 @@ impl CadenceApp {
     fn create_calendar(&mut self) {
         let name = self.calendar_name_buffer.trim().to_string();
         if name.is_empty() {
-            self.status_message = Some("Calendar name must not be empty".to_string());
+            self.set_status("Calendar name must not be empty");
             return;
         }
         let Some(calendar) = self.build_calendar() else {
@@ -1059,7 +1093,7 @@ impl CadenceApp {
                 self.status_message = None;
                 self.select_calendar(id);
             }
-            Err(error) => self.status_message = Some(error),
+            Err(error) => self.set_status(error),
         }
     }
 
@@ -1079,7 +1113,7 @@ impl CadenceApp {
                 .stack
                 .execute(&mut self.project, Box::new(RenameCalendar { id, name }))
             {
-                self.status_message = Some(error);
+                self.set_status(error);
             } else {
                 changed = true;
             }
@@ -1093,7 +1127,7 @@ impl CadenceApp {
                 &mut self.project,
                 Box::new(SetCalendarDefinition { id, calendar }),
             ) {
-                self.status_message = Some(error);
+                self.set_status(error);
             } else {
                 changed = true;
             }
@@ -1118,7 +1152,7 @@ impl CadenceApp {
             .iter()
             .any(|activity| activity.calendar == Some(id))
         {
-            self.status_message = Some(format!(
+            self.set_status(format!(
                 "{} activity(ies) use this calendar — clear their calendar first",
                 self.project
                     .activities
@@ -1136,14 +1170,14 @@ impl CadenceApp {
                 self.selected_calendar = None;
                 self.status_message = None;
             }
-            Err(error) => self.status_message = Some(error),
+            Err(error) => self.set_status(error),
         }
     }
 
     /// Build a calendar from the editor buffers, reporting why it is invalid.
     fn build_calendar(&mut self) -> Option<Calendar> {
         if !self.calendar_weekdays.iter().any(|working| *working) {
-            self.status_message = Some("A calendar needs at least one working day".to_string());
+            self.set_status("A calendar needs at least one working day");
             return None;
         }
         let mut calendar = Calendar::new(self.calendar_weekdays).ok()?;
@@ -1153,7 +1187,7 @@ impl CadenceApp {
                 continue;
             }
             let Some(date) = parse_date(trimmed) else {
-                self.status_message = Some(format!("\"{trimmed}\" is not a valid date"));
+                self.set_status(format!("\"{trimmed}\" is not a valid date"));
                 return None;
             };
             calendar = calendar.with_holiday(date);
@@ -1175,14 +1209,14 @@ impl CadenceApp {
                 self.status_message = None;
                 self.recompute();
             }
-            Err(error) => self.status_message = Some(error),
+            Err(error) => self.set_status(error),
         }
     }
 
     /// Assign the given resource to the selected activity, or remove it.
     fn toggle_assignment(&mut self, resource_id: ResourceId) {
         let Some(activity_id) = self.selected else {
-            self.status_message = Some("Select an activity first".to_string());
+            self.set_status("Select an activity first");
             return;
         };
         let assigned = self
@@ -1214,7 +1248,7 @@ impl CadenceApp {
                 self.status_message = None;
                 self.recompute();
             }
-            Err(error) => self.status_message = Some(error),
+            Err(error) => self.set_status(error),
         }
     }
 
@@ -1254,11 +1288,11 @@ impl CadenceApp {
     /// Apply the leveled dates as start-no-earlier-than constraints.
     fn apply_leveling(&mut self) {
         let Some(schedule) = self.schedule.clone().ok() else {
-            self.status_message = Some("The project cannot be scheduled".to_string());
+            self.set_status("The project cannot be scheduled");
             return;
         };
         let Ok(result) = level_resources(&self.project, &schedule) else {
-            self.status_message = Some("The project cannot be leveled".to_string());
+            self.set_status("The project cannot be leveled");
             return;
         };
 
@@ -1305,7 +1339,7 @@ impl CadenceApp {
                 self.selected_baseline = self.project.baselines.last().map(|baseline| baseline.id);
                 self.baseline_name_buffer.clear();
             }
-            Err(error) => self.status_message = Some(error),
+            Err(error) => self.set_status(error),
         }
     }
 
@@ -1323,10 +1357,10 @@ impl CadenceApp {
         let pdf = cadence_core::report::project_report_pdf(&self.project, today());
         match std::fs::write(&path, pdf) {
             Ok(()) => {
-                self.status_message = Some(format!("Report printed to {}", path.display()));
+                self.set_status(format!("Report printed to {}", path.display()));
             }
             Err(error) => {
-                self.status_message = Some(format!("Cannot write {}: {error}", path.display()));
+                self.set_status(format!("Cannot write {}: {error}", path.display()));
             }
         }
     }
@@ -1347,12 +1381,12 @@ impl CadenceApp {
     fn save_to(&mut self, path: PathBuf) {
         match cadence_persistence::save_project(&self.project, &path) {
             Ok(()) => {
-                self.status_message = Some(format!("Saved to {}", path.display()));
+                self.set_status(format!("Saved to {}", path.display()));
                 self.project_path = Some(path);
                 self.dirty = false;
             }
             Err(error) => {
-                self.status_message = Some(format!("Cannot save: {error}"));
+                self.set_status(format!("Cannot save: {error}"));
             }
         }
     }
@@ -1398,10 +1432,10 @@ impl CadenceApp {
                 self.selected_lookahead_snapshot = None;
                 self.recompute();
                 self.dirty = false;
-                self.status_message = Some(format!("Opened {}", path.display()));
+                self.set_status(format!("Opened {}", path.display()));
             }
             Err(error) => {
-                self.status_message = Some(format!("Cannot open: {error}"));
+                self.set_status(format!("Cannot open: {error}"));
             }
         }
     }
@@ -1410,8 +1444,8 @@ impl CadenceApp {
         let path = format!("{}.report.md", file_stem(&self.project.name));
         let report = cadence_core::report::project_report(&self.project, today());
         match std::fs::write(&path, report) {
-            Ok(()) => self.status_message = Some(format!("Report written to {path}")),
-            Err(error) => self.status_message = Some(format!("Cannot write {path}: {error}")),
+            Ok(()) => self.set_status(format!("Report written to {path}")),
+            Err(error) => self.set_status(format!("Cannot write {path}: {error}")),
         }
     }
 
@@ -1428,7 +1462,7 @@ impl CadenceApp {
                 self.selected_baseline = None;
                 self.status_message = None;
             }
-            Err(error) => self.status_message = Some(error),
+            Err(error) => self.set_status(error),
         }
     }
 
@@ -1567,7 +1601,7 @@ impl eframe::App for CadenceApp {
                 self.recompute();
                 self.select(id);
                 self.scroll_to_selection = true;
-                self.status_message = Some("Activity created.".to_string());
+                self.set_status("Activity created.");
             }
         }
 
@@ -1724,11 +1758,10 @@ impl eframe::App for CadenceApp {
                 pdf.image_page(width, height, rgb);
                 match std::fs::write(&path, pdf.to_bytes()) {
                     Ok(()) => {
-                        self.status_message = Some(format!("Gantt printed to {}", path.display()));
+                        self.set_status(format!("Gantt printed to {}", path.display()));
                     }
                     Err(error) => {
-                        self.status_message =
-                            Some(format!("Cannot write {}: {error}", path.display()));
+                        self.set_status(format!("Cannot write {}: {error}", path.display()));
                     }
                 }
                 self.gantt_print_path = None;
@@ -1779,7 +1812,7 @@ impl eframe::App for CadenceApp {
                         self.recompute();
                         self.select(id);
                         self.scroll_to_selection = true;
-                        self.status_message = Some("Activity created.".to_string());
+                        self.set_status("Activity created.");
                     }
                 }
                 ui.separator();
@@ -1921,6 +1954,8 @@ impl eframe::App for CadenceApp {
                     self.recompute();
                     self.refresh_selection();
                 }
+                let now = Instant::now();
+                self.maybe_clear_status(now);
                 if let Some(message) = &self.status_message {
                     let severity = StatusSeverity::from_message(message);
                     ui.label(
@@ -2022,6 +2057,8 @@ impl eframe::App for CadenceApp {
                             .color(palette.text_muted),
                     );
                 }
+                let now = Instant::now();
+                self.maybe_clear_status(now);
                 if let Some(message) = &self.status_message {
                     ui.label("   ·   ");
                     let severity = StatusSeverity::from_message(message);
@@ -2828,7 +2865,7 @@ impl eframe::App for CadenceApp {
                                                     self.recompute();
                                                 }
                                                 Err(error) => {
-                                                    self.status_message = Some(error);
+                                                    self.set_status(error);
                                                 }
                                             }
                                         }
@@ -3142,8 +3179,7 @@ impl eframe::App for CadenceApp {
                                 self.audit_status_applied = Some(status);
                                 self.run_audit();
                             } else {
-                                self.status_message =
-                                    Some("Status date must be YYYY-MM-DD".to_string());
+                                self.set_status("Status date must be YYYY-MM-DD");
                             }
                         }
                     });
@@ -3304,8 +3340,7 @@ impl eframe::App for CadenceApp {
                         if ui.button("Publish").clicked() {
                             let name = self.lookahead_snapshot_name_buffer.trim();
                             if name.is_empty() {
-                                self.status_message =
-                                    Some("Snapshot name must not be empty.".to_string());
+                                self.set_status("Snapshot name must not be empty.");
                             } else {
                                 let weeks = [2usize, 4, 6, 12][self.lookahead_weeks.min(3)];
                                 let from = parse_date(self.lookahead_start_buffer.trim())
@@ -3323,11 +3358,9 @@ impl eframe::App for CadenceApp {
                                 {
                                     self.recompute();
                                     self.lookahead_snapshot_name_buffer.clear();
-                                    self.status_message =
-                                        Some("Lookahead snapshot published.".to_string());
+                                    self.set_status("Lookahead snapshot published.");
                                 } else {
-                                    self.status_message =
-                                        Some("Cannot publish snapshot.".to_string());
+                                    self.set_status("Cannot publish snapshot.");
                                 }
                             }
                         }
@@ -3533,17 +3566,13 @@ impl eframe::App for CadenceApp {
                                 {
                                     self.recompute();
                                     self.diary_content_buffer.clear();
-                                    self.status_message = Some("Diary note added.".to_string());
+                                    self.set_status("Diary note added.");
                                 } else {
-                                    self.status_message =
-                                        Some("Cannot add the note; check the content.".to_string());
+                                    self.set_status("Cannot add the note; check the content.");
                                 }
                             }
                             _ => {
-                                self.status_message = Some(
-                                    "The date (and window start, if given) must be YYYY-MM-DD."
-                                        .to_string(),
-                                );
+                                self.set_status("The date (and window start, if given) must be YYYY-MM-DD.");
                             }
                         }
                     }
@@ -3601,7 +3630,7 @@ impl eframe::App for CadenceApp {
                             .is_ok()
                         {
                             self.recompute();
-                            self.status_message = Some("Diary note deleted.".to_string());
+                            self.set_status("Diary note deleted.");
                         }
                     }
                 });
@@ -3650,19 +3679,16 @@ impl eframe::App for CadenceApp {
                                             .is_ok()
                                         {
                                             self.recompute();
-                                            self.status_message =
-                                                Some("Production recorded.".to_string());
+                                            self.set_status("Production recorded.");
                                         }
                                     } else {
-                                        self.status_message =
-                                            Some("Percent must be a number.".to_string());
+                                        self.set_status("Percent must be a number.");
                                     }
                                 } else {
-                                    self.status_message =
-                                        Some("Date must be YYYY-MM-DD.".to_string());
+                                    self.set_status("Date must be YYYY-MM-DD.");
                                 }
                             } else {
-                                self.status_message = Some("Select an activity first.".to_string());
+                                self.set_status("Select an activity first.");
                             }
                         }
                     });
@@ -3688,7 +3714,7 @@ impl eframe::App for CadenceApp {
                             .is_ok()
                         {
                             self.recompute();
-                            self.status_message = Some("Production entry deleted.".to_string());
+                            self.set_status("Production entry deleted.");
                         }
                     }
                     ui.separator();
@@ -3709,17 +3735,16 @@ impl eframe::App for CadenceApp {
                                         date,
                                     ) {
                                         Ok(preview) => {
-                                            self.status_message = Some(format!(
+                                            self.set_status(format!(
                                                 "Reschedule preview: the project finishes {}.",
                                                 preview.project_finish
                                             ));
                                             self.reschedule_preview = Some(preview);
                                         }
-                                        Err(message) => self.status_message = Some(message),
+                                        Err(message) => self.set_status(message),
                                     }
                                 } else {
-                                    self.status_message =
-                                        Some("Status date must be YYYY-MM-DD.".to_string());
+                                    self.set_status("Status date must be YYYY-MM-DD.");
                                 }
                             }
                             if self.reschedule_preview.is_some() && ui.button("Clear").clicked() {
@@ -3783,7 +3808,7 @@ impl eframe::App for CadenceApp {
                                 {
                                     self.recompute();
                                     self.selected = None;
-                                    self.status_message = Some("Activity deleted.".to_string());
+                                    self.set_status("Activity deleted.");
                                 }
                             }
                             self.confirm_delete_activity = false;
@@ -4915,5 +4940,53 @@ mod report_export_tests {
         let report = cadence_core::report::project_report(&project, today());
         assert!(report.starts_with("# Export me"));
         assert_eq!(file_stem(&project.name), "Export-me");
+    }
+}
+
+#[cfg(test)]
+mod status_message_tests {
+    use super::*;
+
+    fn now() -> Instant {
+        Instant::now()
+    }
+
+    #[test]
+    fn info_message_not_expired_is_not_cleared() {
+        let shown = now();
+        let later = shown + Duration::from_secs(1);
+        assert!(!should_auto_clear_status(
+            StatusSeverity::Info,
+            shown,
+            later
+        ));
+    }
+
+    #[test]
+    fn info_message_expired_is_cleared() {
+        let shown = now();
+        let later = shown + STATUS_MESSAGE_TTL + Duration::from_secs(1);
+        assert!(should_auto_clear_status(StatusSeverity::Info, shown, later));
+    }
+
+    #[test]
+    fn success_message_expired_is_cleared() {
+        let shown = now();
+        let later = shown + STATUS_MESSAGE_TTL + Duration::from_secs(1);
+        assert!(should_auto_clear_status(StatusSeverity::Success, shown, later));
+    }
+
+    #[test]
+    fn error_message_never_auto_clears() {
+        let shown = now();
+        let much_later = shown + Duration::from_secs(3600);
+        assert!(!should_auto_clear_status(StatusSeverity::Error, shown, much_later));
+    }
+
+    #[test]
+    fn warning_message_never_auto_clears() {
+        let shown = now();
+        let much_later = shown + Duration::from_secs(3600);
+        assert!(!should_auto_clear_status(StatusSeverity::Warning, shown, much_later));
     }
 }
