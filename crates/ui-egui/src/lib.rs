@@ -5165,8 +5165,13 @@ fn render_gantt(
             let predecessor = activities[start_row].id;
             let successor = activities[end_row].id;
             let id = project.next_relationship_id();
-            let command =
-                CreateRelationship::new(id, predecessor, successor, link_type_from_index(*drag_link_type_index), 0);
+            let command = CreateRelationship::new(
+                id,
+                predecessor,
+                successor,
+                link_type_from_index(*drag_link_type_index),
+                0,
+            );
             if stack.execute(project, Box::new(command)).is_ok() {
                 *schedule = cadence_core::engine::schedule(project).map_err(|e| e.to_string());
                 if schedule.is_err() {
