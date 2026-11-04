@@ -3572,7 +3572,9 @@ impl eframe::App for CadenceApp {
                                 }
                             }
                             _ => {
-                                self.set_status("The date (and window start, if given) must be YYYY-MM-DD.");
+                                self.set_status(
+                                    "The date (and window start, if given) must be YYYY-MM-DD.",
+                                );
                             }
                         }
                     }
