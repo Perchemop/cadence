@@ -16,7 +16,7 @@ Every task has a pointer-free path. The global shortcuts are listed in the
 application's **Keyboard shortcuts** window (toolbar **Shortcuts** or `F1`) and
 in `docs/usage.md`.
 
-- **View switching** — `Ctrl+1`–`Ctrl+5`; every view button is also reachable
+- **View switching** — `Ctrl+1`–`Ctrl+9`; every view button is also reachable
   with `Tab` and activates with `Space` or `Enter`.
 - **Activity table** — `Tab` reaches the sortable column headers; `Tab` reaches
   the row labels and `Space`/`Enter` selects a row. `Up`/`Down` select the

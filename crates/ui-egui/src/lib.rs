@@ -4595,7 +4595,6 @@ fn render_gantt(
     let row_height = 20.0;
     let header_height = 44.0;
     let total_height = activities.len() as f32 * row_height + header_height;
-    let timeline_width = total_days * pixels_per_day + 40.0;
     let summary = gantt_summary(current_schedule);
     ui.label(&summary);
     ui.horizontal(|ui| {
@@ -4627,6 +4626,7 @@ fn render_gantt(
     // Apply the (possibly just-changed) zoom before drawing so a button press
     // takes effect in the same frame instead of the next.
     let pixels_per_day = *pixels_per_day_out;
+    let timeline_width = total_days * pixels_per_day + 40.0;
 
     let mut pending_link = None;
     ScrollArea::both().show(ui, |ui| {
