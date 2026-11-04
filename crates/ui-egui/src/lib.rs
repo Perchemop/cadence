@@ -379,6 +379,9 @@ pub struct CadenceApp {
     status_shown_at: Option<Instant>,
     /// Earned-value metrics for the most recent baseline, shown in the status bar.
     evm_metrics: Option<EvmMetrics>,
+    /// Cached critical-activity count, recomputed once per edit in `recompute`
+    //  so the status bar does not rescan every frame.
+    critical_count: usize,
     confirm_delete_activity: bool,
     selected_relationship: Option<cadence_core::model::RelationshipId>,
     lag_buffer: String,
@@ -480,6 +483,7 @@ impl CadenceApp {
             confirm_close: false,
             baseline_active: false,
             evm_metrics: None,
+            critical_count: 0,
             confirm_delete_activity: false,
             selected_relationship: None,
             lag_buffer: String::new(),
@@ -598,6 +602,25 @@ impl CadenceApp {
             .baselines
             .last()
             .map(|baseline| evm_metrics(&self.project, Some(baseline), today()));
+        // Cache the critical-activity count so the status bar does not rescan
+        // every frame.
+        let schedule = match self.schedule.as_ref() {
+            Ok(schedule) => schedule,
+            Err(_) => {
+                self.critical_count = 0;
+                return;
+            }
+        };
+        self.critical_count = self
+            .project
+            .activities
+            .iter()
+            .filter(|activity| {
+                schedule
+                    .activity(activity.id)
+                    .is_some_and(|result| result.critical)
+            })
+            .count();
     }
 
     /// Reload the inspector buffers for the selected activity after an undo or
@@ -1818,16 +1841,48 @@ impl eframe::App for CadenceApp {
                 // View tabs: one tab per workspace, MS Project / P6 style.
                 // Selected tab keeps its fill so the active workspace is obvious.
                 let first = &mut true;
-                for (mode, label) in [
-                    (ViewMode::Table, "Table"),
-                    (ViewMode::Gantt, "Gantt"),
-                    (ViewMode::Resources, "Resources"),
-                    (ViewMode::Baselines, "Baselines"),
-                    (ViewMode::Calendars, "Calendars"),
-                    (ViewMode::Audit, "Audit"),
-                    (ViewMode::Lookahead, "Lookahead"),
-                    (ViewMode::Diary, "Diary"),
-                    (ViewMode::Production, "Production"),
+                for (mode, label, tooltip) in [
+                    (ViewMode::Table, "Table", "Activity table: list, sort, edit and link activities"),
+                    (
+                        ViewMode::Gantt,
+                        "Gantt",
+                        "Gantt chart: bars, dependencies, milestones and the today line",
+                    ),
+                    (
+                        ViewMode::Resources,
+                        "Resources",
+                        "Resources: assignments, daily usage histograms and cost rates",
+                    ),
+                    (
+                        ViewMode::Baselines,
+                        "Baselines",
+                        "Baselines: saved snapshots of the schedule to compare against",
+                    ),
+                    (
+                        ViewMode::Calendars,
+                        "Calendars",
+                        "Calendars: working-day calendars and holiday exceptions",
+                    ),
+                    (
+                        ViewMode::Audit,
+                        "Audit",
+                        "Schedule-quality audit: DCMA-style checks over the programme",
+                    ),
+                    (
+                        ViewMode::Lookahead,
+                        "Lookahead",
+                        "Lookahead: rolling short-interval window and published snapshots",
+                    ),
+                    (
+                        ViewMode::Diary,
+                        "Diary",
+                        "Diary: dated site notes linked to activities and lookahead windows",
+                    ),
+                    (
+                        ViewMode::Production,
+                        "Production",
+                        "Production: record actual progress per activity and date",
+                    ),
                 ] {
                     let selected = self.view_mode == mode;
                     if *first {
@@ -1837,6 +1892,7 @@ impl eframe::App for CadenceApp {
                     }
                     if ui
                         .add(egui::Button::new(label).selected(selected).frame(selected))
+                        .on_hover_text(tooltip)
                         .clicked()
                     {
                         self.view_mode = mode;
@@ -1990,25 +2046,11 @@ impl eframe::App for CadenceApp {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
-                let (range, critical_count) = match self.schedule.as_ref() {
-                    Ok(schedule) => {
-                        let critical = self
-                            .project
-                            .activities
-                            .iter()
-                            .filter(|activity| {
-                                schedule
-                                    .activity(activity.id)
-                                    .is_some_and(|result| result.critical)
-                            })
-                            .count();
-                        (
-                            format!("{} to {}", schedule.project_start, schedule.project_finish),
-                            critical,
-                        )
-                    }
-                    Err(_) => ("Cannot schedule".to_string(), 0),
+                let range = match self.schedule.as_ref() {
+                    Ok(schedule) => format!("{} to {}", schedule.project_start, schedule.project_finish),
+                    Err(_) => "Cannot schedule".to_string(),
                 };
+                let critical_count = self.critical_count;
                 let palette = design::palette(self.dark);
                 // Left: project range, activity count, and the critical count
                 // (coloured so criticality never relies on the number alone).
@@ -2081,10 +2123,6 @@ impl eframe::App for CadenceApp {
                             .small()
                             .color(palette.text_muted),
                     );
-                    if ui.button("Toggle theme").clicked() {
-                        self.dark = !self.dark;
-                        apply_theme(&ctx, self.dark);
-                    }
                     // F1 footer: the keyboard reference is one click away from
                     // anywhere, matching the F1 binding.
                     if ui
@@ -4830,7 +4868,8 @@ pub fn run(project: Project) -> Result<(), String> {
 
 /// Run the Cadence GUI for a project loaded from `path` (if known).
 pub fn run_with_path(project: Project, path: Option<PathBuf>) -> Result<(), String> {
-    let options = eframe::NativeOptions::default();
+    let mut options = eframe::NativeOptions::default();
+    options.min_inner_size = Some(egui::vec2(1000.0, 700.0));
     eframe::run_native(
         "Cadence",
         options,
