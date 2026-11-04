@@ -3904,8 +3904,10 @@ impl eframe::App for CadenceApp {
                 .resizable(false)
                 .open(&mut open)
                 .show(&ctx, |ui| {
-                    ui.label("Leveling reschedules delayed activities and sets constraints. \
-                             This can be undone in one step.");
+                    ui.label(
+                        "Leveling reschedules delayed activities and sets constraints. \
+                             This can be undone in one step.",
+                    );
                     ui.horizontal(|ui| {
                         if ui.button("Apply").clicked() {
                             self.apply_leveling();
