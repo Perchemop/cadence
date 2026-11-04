@@ -4955,32 +4955,37 @@ mod status_message_tests {
     #[test]
     fn info_message_not_expired_is_not_cleared() {
         let (shown, later) = shown_plus(Duration::from_secs(1));
-        assert!(!should_auto_clear_status(StatusSeverity::Info, shown, later));
+        let severity = StatusSeverity::Info;
+        assert!(!should_auto_clear_status(severity, shown, later));
     }
 
     #[test]
     fn info_message_expired_is_cleared() {
         let (shown, later) =
             shown_plus(STATUS_MESSAGE_TTL + Duration::from_secs(1));
-        assert!(should_auto_clear_status(StatusSeverity::Info, shown, later));
+        let severity = StatusSeverity::Info;
+        assert!(should_auto_clear_status(severity, shown, later));
     }
 
     #[test]
     fn success_message_expired_is_cleared() {
         let (shown, later) =
             shown_plus(STATUS_MESSAGE_TTL + Duration::from_secs(1));
-        assert!(should_auto_clear_status(StatusSeverity::Success, shown, later));
+        let severity = StatusSeverity::Success;
+        assert!(should_auto_clear_status(severity, shown, later));
     }
 
     #[test]
     fn error_message_never_auto_clears() {
         let (shown, much_later) = shown_plus(Duration::from_secs(3600));
-        assert!(!should_auto_clear_status(StatusSeverity::Error, shown, much_later));
+        let severity = StatusSeverity::Error;
+        assert!(!should_auto_clear_status(severity, shown, much_later));
     }
 
     #[test]
     fn warning_message_never_auto_clears() {
         let (shown, much_later) = shown_plus(Duration::from_secs(3600));
-        assert!(!should_auto_clear_status(StatusSeverity::Warning, shown, much_later));
+        let severity = StatusSeverity::Warning;
+        assert!(!should_auto_clear_status(severity, shown, much_later));
     }
 }
