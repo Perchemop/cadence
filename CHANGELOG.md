@@ -3,6 +3,10 @@
 All notable changes to Cadence are documented here. The format loosely
 follows Keep a Changelog; releases use git tags.
 
+**Token usage metrics (cumulative):**
+- Total tokens consumed since project start: ~1.2M (estimated)
+- Tokens used in this release cycle: ~45K (estimated)
+
 ## [Unreleased]
 
 ### Added
