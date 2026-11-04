@@ -4947,46 +4947,40 @@ mod report_export_tests {
 mod status_message_tests {
     use super::*;
 
-    fn now() -> Instant {
-        Instant::now()
+    fn shown_plus(duration: Duration) -> (Instant, Instant) {
+        let shown = Instant::now();
+        (shown, shown + duration)
     }
 
     #[test]
     fn info_message_not_expired_is_not_cleared() {
-        let shown = now();
-        let later = shown + Duration::from_secs(1);
-        assert!(!should_auto_clear_status(
-            StatusSeverity::Info,
-            shown,
-            later
-        ));
+        let (shown, later) = shown_plus(Duration::from_secs(1));
+        assert!(!should_auto_clear_status(StatusSeverity::Info, shown, later));
     }
 
     #[test]
     fn info_message_expired_is_cleared() {
-        let shown = now();
-        let later = shown + STATUS_MESSAGE_TTL + Duration::from_secs(1);
+        let (shown, later) =
+            shown_plus(STATUS_MESSAGE_TTL + Duration::from_secs(1));
         assert!(should_auto_clear_status(StatusSeverity::Info, shown, later));
     }
 
     #[test]
     fn success_message_expired_is_cleared() {
-        let shown = now();
-        let later = shown + STATUS_MESSAGE_TTL + Duration::from_secs(1);
+        let (shown, later) =
+            shown_plus(STATUS_MESSAGE_TTL + Duration::from_secs(1));
         assert!(should_auto_clear_status(StatusSeverity::Success, shown, later));
     }
 
     #[test]
     fn error_message_never_auto_clears() {
-        let shown = now();
-        let much_later = shown + Duration::from_secs(3600);
+        let (shown, much_later) = shown_plus(Duration::from_secs(3600));
         assert!(!should_auto_clear_status(StatusSeverity::Error, shown, much_later));
     }
 
     #[test]
     fn warning_message_never_auto_clears() {
-        let shown = now();
-        let much_later = shown + Duration::from_secs(3600);
+        let (shown, much_later) = shown_plus(Duration::from_secs(3600));
         assert!(!should_auto_clear_status(StatusSeverity::Warning, shown, much_later));
     }
 }
