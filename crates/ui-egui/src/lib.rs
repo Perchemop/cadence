@@ -2056,7 +2056,9 @@ impl eframe::App for CadenceApp {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
                 let range = match self.schedule.as_ref() {
-                    Ok(schedule) => format!("{} to {}", schedule.project_start, schedule.project_finish),
+                    Ok(schedule) => {
+                        format!("{} to {}", schedule.project_start, schedule.project_finish)
+                    }
                     Err(_) => "Cannot schedule".to_string(),
                 };
                 let critical_count = self.critical_count;
