@@ -3680,8 +3680,7 @@ impl eframe::App for CadenceApp {
                                     );
                                 }
                             });
-                        let mut production_date: Option<Date> = None;
-                        production_date = date_field(
+                        let production_date = date_field(
                             ui,
                             self.dark,
                             "Date (YYYY-MM-DD)",
