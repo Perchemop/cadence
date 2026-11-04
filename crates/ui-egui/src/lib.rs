@@ -2936,15 +2936,19 @@ impl eframe::App for CadenceApp {
 
                         ui.separator();
                         ui.heading("Earned value");
-                        ui.label("Status date (YYYY-MM-DD)");
-                        ui.text_edit_singleline(&mut self.status_date_buffer);
+                        let mut status_date: Option<Date> = None;
+                        status_date = date_field(
+                            ui,
+                            self.dark,
+                            "Status date (YYYY-MM-DD)",
+                            &mut self.status_date_buffer,
+                        );
                     });
 
                 let baselines = self.project.baselines.clone();
                 let selected_baseline = self
                     .selected_baseline
                     .and_then(|id| baselines.iter().find(|baseline| baseline.id == id).cloned());
-                let status_date = parse_date(self.status_date_buffer.trim());
                 let metrics = status_date.map(|status_date| {
                     evm_metrics(&self.project, selected_baseline.as_ref(), status_date)
                 });
@@ -3166,19 +3170,28 @@ impl eframe::App for CadenceApp {
                          fix what matters and re-run.",
                     );
                     ui.add_space(4.0);
+                    let mut audit_date: Option<Date> = None;
                     ui.horizontal_wrapped(|ui| {
-                        ui.label("Status date (YYYY-MM-DD, optional)");
-                        ui.text_edit_singleline(&mut self.audit_status_buffer);
+                        audit_date = date_field(
+                            ui,
+                            self.dark,
+                            "Status date (YYYY-MM-DD, optional)",
+                            &mut self.audit_status_buffer,
+                        );
                         if ui.button("Run audit").clicked() {
-                            let trimmed = self.audit_status_buffer.trim().to_string();
-                            if trimmed.is_empty() {
-                                self.audit_status_applied = None;
-                                self.run_audit();
-                            } else if let Some(status) = parse_date(&trimmed) {
-                                self.audit_status_applied = Some(status);
-                                self.run_audit();
-                            } else {
-                                self.set_status("Status date must be YYYY-MM-DD");
+                            match audit_date {
+                                Some(status) => {
+                                    self.audit_status_applied = Some(status);
+                                    self.run_audit();
+                                }
+                                None => {
+                                    if self.audit_status_buffer.trim().is_empty() {
+                                        self.audit_status_applied = None;
+                                        self.run_audit();
+                                    }
+                                    // Invalid dates show the inline hint from
+                                    // `date_field`; nothing more to do here.
+                                }
                             }
                         }
                     });
@@ -3256,9 +3269,14 @@ impl eframe::App for CadenceApp {
                          plan.",
                     );
                     ui.add_space(4.0);
+                    let mut lookahead_from: Option<Date> = None;
                     ui.horizontal_wrapped(|ui| {
-                        ui.label("Window starts (YYYY-MM-DD)");
-                        ui.text_edit_singleline(&mut self.lookahead_start_buffer);
+                        lookahead_from = date_field(
+                            ui,
+                            self.dark,
+                            "Window starts (YYYY-MM-DD)",
+                            &mut self.lookahead_start_buffer,
+                        );
                         ui.label("Length");
                         for (index, weeks) in [2usize, 4, 6, 12].iter().enumerate() {
                             ui.selectable_value(
@@ -3270,8 +3288,7 @@ impl eframe::App for CadenceApp {
                     });
                     ui.add_space(4.0);
                     let weeks = [2usize, 4, 6, 12][self.lookahead_weeks.min(3)];
-                    let Some(from) = parse_date(self.lookahead_start_buffer.trim()) else {
-                        ui.label("The window start must be a date in YYYY-MM-DD format.");
+                    let Some(from) = lookahead_from else {
                         return;
                     };
                     let Ok(schedule) = self.schedule.clone() else {
@@ -3518,10 +3535,15 @@ impl eframe::App for CadenceApp {
                          or to a lookahead window so it sits against the work it \
                          concerns.",
                     );
+                    let mut diary_date: Option<Date> = None;
                     ui.add_space(4.0);
                     ui.horizontal_wrapped(|ui| {
-                        ui.label("Date (YYYY-MM-DD)");
-                        ui.text_edit_singleline(&mut self.diary_date_buffer);
+                        diary_date = date_field(
+                            ui,
+                            self.dark,
+                            "Date (YYYY-MM-DD)",
+                            &mut self.diary_date_buffer,
+                        );
                         ui.label("Activity id (optional)");
                         ui.add(
                             egui::TextEdit::singleline(&mut self.diary_activity_buffer)
@@ -3538,7 +3560,7 @@ impl eframe::App for CadenceApp {
                         egui::TextEdit::multiline(&mut self.diary_content_buffer).desired_rows(3),
                     );
                     if ui.button("Add note").clicked() {
-                        let date = parse_date(self.diary_date_buffer.trim());
+                        let date = diary_date;
                         let activity = self
                             .diary_activity_buffer
                             .trim()
@@ -3658,14 +3680,19 @@ impl eframe::App for CadenceApp {
                                     );
                                 }
                             });
-                        ui.label("Date");
-                        ui.text_edit_singleline(&mut self.production_date_buffer);
+                        let mut production_date: Option<Date> = None;
+                        production_date = date_field(
+                            ui,
+                            self.dark,
+                            "Date (YYYY-MM-DD)",
+                            &mut self.production_date_buffer,
+                        );
                         ui.label("Percent");
                         ui.text_edit_singleline(&mut self.production_percent_buffer);
                         if ui.button("Record").clicked() {
                             if let Ok(activity_id) = self.production_activity_buffer.parse::<u64>()
                             {
-                                if let Some(date) = parse_date(self.production_date_buffer.trim()) {
+                                if let Some(date) = production_date {
                                     if let Ok(percent) =
                                         self.production_percent_buffer.parse::<i64>()
                                     {
@@ -3686,7 +3713,7 @@ impl eframe::App for CadenceApp {
                                         self.set_status("Percent must be a number.");
                                     }
                                 } else {
-                                    self.set_status("Date must be YYYY-MM-DD.");
+                                    // Invalid date is shown inline by `date_field`.
                                 }
                             } else {
                                 self.set_status("Select an activity first.");
@@ -4015,6 +4042,23 @@ fn parse_date(value: &str) -> Option<Date> {
     }
     let month = Month::try_from(month).ok()?;
     Date::from_calendar_date(year, month, day).ok()
+}
+
+/// Draw a labelled date field: a label, a single-line text edit for `buffer`,
+/// and — when `buffer` is non-empty but not a valid `YYYY-MM-DD` — an inline
+/// hint beside the field so a parse failure shows next to its input instead
+/// of in a distant status bar. Returns `Some(date)` when the buffer parses,
+/// `None` when it is empty or invalid.
+fn date_field(ui: &mut Ui, dark: bool, label: &str, buffer: &mut String) -> Option<Date> {
+    ui.label(label);
+    ui.text_edit_singleline(buffer);
+    let trimmed = buffer.trim();
+    let date = parse_date(trimmed);
+    if !trimmed.is_empty() && date.is_none() {
+        let palette = design::palette(dark);
+        ui.colored_label(palette.critical, "Invalid date (YYYY-MM-DD).");
+    }
+    date
 }
 
 /// Describe how one activity is delayed by resource leveling.
