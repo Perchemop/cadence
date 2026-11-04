@@ -383,6 +383,8 @@ pub struct CadenceApp {
     //  so the status bar does not rescan every frame.
     critical_count: usize,
     confirm_delete_activity: bool,
+    /// Whether the user has confirmed applying leveled dates (destructive).
+    confirm_leveling: bool,
     selected_relationship: Option<cadence_core::model::RelationshipId>,
     lag_buffer: String,
     last_rel: Option<cadence_core::model::RelationshipId>,
@@ -485,6 +487,7 @@ impl CadenceApp {
             evm_metrics: None,
             critical_count: 0,
             confirm_delete_activity: false,
+            confirm_leveling: false,
             selected_relationship: None,
             lag_buffer: String::new(),
             last_rel: None,
@@ -1463,11 +1466,17 @@ impl CadenceApp {
     }
 
     fn save_report(&mut self) {
-        let path = format!("{}.report.md", file_stem(&self.project.name));
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Markdown document", &["md"])
+            .set_file_name(format!("{}.report.md", file_stem(&self.project.name)))
+            .save_file()
+        else {
+            return;
+        };
         let report = cadence_core::report::project_report(&self.project, today());
         match std::fs::write(&path, report) {
-            Ok(()) => self.set_status(format!("Report written to {path}")),
-            Err(error) => self.set_status(format!("Cannot write {path}: {error}")),
+            Ok(()) => self.set_status(format!("Report written to {}", path.display())),
+            Err(error) => self.set_status(format!("Cannot write {}: {error}", path.display())),
         }
     }
 
@@ -2718,7 +2727,7 @@ impl eframe::App for CadenceApp {
                             self.preview_leveling();
                         }
                         if ui.button("Apply leveled dates").clicked() {
-                            self.apply_leveling();
+                            self.confirm_leveling = true;
                         }
                         if let Some(report) = &self.leveling_report {
                             ui.label(report);
@@ -3888,6 +3897,30 @@ impl eframe::App for CadenceApp {
             }
         }
 
+        if self.confirm_leveling {
+            let mut open = true;
+            egui::Window::new("Apply leveled dates?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    ui.label("Leveling reschedules delayed activities and sets constraints. \
+                             This can be undone in one step.");
+                    ui.horizontal(|ui| {
+                        if ui.button("Apply").clicked() {
+                            self.apply_leveling();
+                            self.confirm_leveling = false;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.confirm_leveling = false;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_leveling = false;
+            }
+        }
+
         if self.confirm_close {
             let mut open = true;
             egui::Window::new("Save changes?")
@@ -4381,6 +4414,10 @@ fn render_gantt(
         ui.label(format!("{:.0}%", *pixels_per_day_out / 14.0 * 100.0));
     });
 
+    // Apply the (possibly just-changed) zoom before drawing so a button press
+    // takes effect in the same frame instead of the next.
+    let pixels_per_day = *pixels_per_day_out;
+
     let mut pending_link = None;
     ScrollArea::both().show(ui, |ui| {
         let (rect, response) = ui.allocate_exact_size(
@@ -4480,12 +4517,15 @@ fn render_gantt(
             }
         }
 
-        // Zoom with Ctrl + wheel.
+        // Zoom with Ctrl + wheel. Consume the scroll so the parent
+        // ScrollArea does not also scroll the canvas while we zoom.
         if response.hovered() {
             let scroll = ui.ctx().input(|input| input.smooth_scroll_delta.y);
             if scroll != 0.0 && ui.ctx().input(|input| input.modifiers.ctrl) {
                 *pixels_per_day_out =
                     (*pixels_per_day_out * (1.0 + scroll * 0.001)).clamp(2.0, 60.0);
+                ui.ctx()
+                    .input_mut(|input| input.smooth_scroll_delta = Vec2::ZERO);
             }
         }
 
@@ -4869,7 +4909,7 @@ pub fn run(project: Project) -> Result<(), String> {
 /// Run the Cadence GUI for a project loaded from `path` (if known).
 pub fn run_with_path(project: Project, path: Option<PathBuf>) -> Result<(), String> {
     let mut options = eframe::NativeOptions::default();
-    options.min_inner_size = Some(egui::vec2(1000.0, 700.0));
+    options.viewport.min_inner_size = Some(egui::vec2(1000.0, 700.0));
     eframe::run_native(
         "Cadence",
         options,
