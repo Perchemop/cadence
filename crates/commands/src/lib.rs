@@ -587,7 +587,10 @@ impl Command for SetConstraints {
         let mut previous = Vec::with_capacity(self.values.len());
         for (id, constraint) in self.values.iter() {
             let activity = project.activity_mut(*id).expect("validated above");
-            previous.push((*id, std::mem::replace(&mut activity.constraint, *constraint)));
+            previous.push((
+                *id,
+                std::mem::replace(&mut activity.constraint, *constraint),
+            ));
             activity.clear_schedule();
         }
         Ok(Box::new(SetConstraints { values: previous }))
