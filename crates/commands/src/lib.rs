@@ -3841,7 +3841,13 @@ mod tests {
         assert_eq!(project.activity(a).unwrap().constraint, Constraint::StartNoEarlierThan(date));
         assert_eq!(project.activity(b).unwrap().constraint, Constraint::StartNoEarlierThan(date));
         stack.undo(&mut project).expect("undo all at once");
-        assert_eq!(project.activity(a).unwrap().constraint, Constraint::AsSoonAsPossible);
-        assert_eq!(project.activity(b).unwrap().constraint, Constraint::AsSoonAsPossible);
+        assert_eq!(
+            project.activity(a).unwrap().constraint,
+            Constraint::AsSoonAsPossible
+        );
+        assert_eq!(
+            project.activity(b).unwrap().constraint,
+            Constraint::AsSoonAsPossible
+        );
     }
 }
