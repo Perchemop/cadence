@@ -1530,7 +1530,7 @@ impl CadenceApp {
     /// The table used to clone and sort the whole programme every frame; on a
     /// 10,000-activity programme that alone dominated the frame time. The
     /// snapshot is now rebuilt on edits and sort changes only.
-    fn refresh_sorted(&mut self) {
+    fn refresh_sorted(&mut self, filter: &str) {
         if self.sorted_edit_version == self.edit_version
             && self.sorted_key == self.sort_key
             && self.sorted_ascending == self.sort_ascending
@@ -1610,6 +1610,7 @@ impl CadenceApp {
 impl eframe::App for CadenceApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        let mut filter_text = self.table_filter_buffer.clone();
 
         // Reflect unsaved state and version in the window title each frame.
         let title = format!(
@@ -1714,7 +1715,7 @@ impl eframe::App for CadenceApp {
         }
 
         // Refresh the cached sort order once per edit, not once per frame.
-        self.refresh_sorted();
+        self.refresh_sorted(&filter_text);
 
         // Ctrl+1..Ctrl+9: switch views without reaching for the mouse.
         let (ctrl_held, pressed_view) = ctx.input(|input| {
@@ -2773,7 +2774,7 @@ impl eframe::App for CadenceApp {
                         self.sort_key = key;
                         self.sort_ascending = true;
                     }
-                    self.refresh_sorted();
+                    self.refresh_sorted(&filter_text);
                 }
                 if let Some(id) = clicked_activity {
                     self.select(id);
