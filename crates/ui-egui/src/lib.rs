@@ -2223,10 +2223,12 @@ impl eframe::App for CadenceApp {
                                         self.confirm_delete_activity = true;
                                     }
                                     ui.label(format!("Activity {}", id));
-                                    ui.label("Name");
-                                    ui.text_edit_singleline(&mut self.name_buffer);
-                                    ui.label("Duration (working days)");
-                                    ui.text_edit_singleline(&mut self.duration_buffer);
+                                    let name_label = ui.label("Name");
+                                    ui.text_edit_singleline(&mut self.name_buffer)
+                                        .labelled_by(name_label.id);
+                                    let duration_label = ui.label("Duration (working days)");
+                                    ui.text_edit_singleline(&mut self.duration_buffer)
+                                        .labelled_by(duration_label.id);
                                     ui.label("Constraint");
                                     let labels = CONSTRAINT_LABELS;
                                     ComboBox::from_id_salt("constraint_kind")
@@ -2241,8 +2243,10 @@ impl eframe::App for CadenceApp {
                                             }
                                         });
                                     if self.constraint_kind >= 2 {
-                                        ui.label("Constraint date (YYYY-MM-DD)");
-                                        ui.text_edit_singleline(&mut self.constraint_date_buffer);
+                                        let constraint_date_label =
+                                            ui.label("Constraint date (YYYY-MM-DD)");
+                                        ui.text_edit_singleline(&mut self.constraint_date_buffer)
+                                            .labelled_by(constraint_date_label.id);
                                     }
 
                                     ui.separator();
@@ -2302,30 +2306,39 @@ impl eframe::App for CadenceApp {
 
                                     ui.separator();
                                     ui.heading("Field planning");
-                                    ui.label("Owner");
-                                    ui.text_edit_singleline(&mut self.owner_buffer);
+                                    let owner_label = ui.label("Owner");
+                                    ui.text_edit_singleline(&mut self.owner_buffer)
+                                        .labelled_by(owner_label.id);
                                     ui.checkbox(
                                         &mut self.promised_buffer,
                                         "Promised in the lookahead",
                                     );
-                                    ui.label("Delay reason (why dates moved)");
-                                    ui.text_edit_singleline(&mut self.delay_reason_buffer);
+                                    let delay_reason_label =
+                                        ui.label("Delay reason (why dates moved)");
+                                    ui.text_edit_singleline(&mut self.delay_reason_buffer)
+                                        .labelled_by(delay_reason_label.id);
                                     if ui.button("Apply field planning").clicked() {
                                         self.apply_field_planning(id);
                                     }
 
                                     ui.separator();
                                     ui.heading("Progress");
-                                    ui.label("Percent complete");
-                                    ui.text_edit_singleline(&mut self.progress_buffer);
-                                    ui.label("Budget at completion");
-                                    ui.text_edit_singleline(&mut self.budget_buffer);
-                                    ui.label("Actual cost");
-                                    ui.text_edit_singleline(&mut self.actual_cost_buffer);
-                                    ui.label("Actual start (YYYY-MM-DD)");
-                                    ui.text_edit_singleline(&mut self.actual_start_buffer);
-                                    ui.label("Actual finish (YYYY-MM-DD)");
-                                    ui.text_edit_singleline(&mut self.actual_finish_buffer);
+                                    let progress_label = ui.label("Percent complete");
+                                    ui.text_edit_singleline(&mut self.progress_buffer)
+                                        .labelled_by(progress_label.id);
+                                    let budget_label = ui.label("Budget at completion");
+                                    ui.text_edit_singleline(&mut self.budget_buffer)
+                                        .labelled_by(budget_label.id);
+                                    let actual_cost_label = ui.label("Actual cost");
+                                    ui.text_edit_singleline(&mut self.actual_cost_buffer)
+                                        .labelled_by(actual_cost_label.id);
+                                    let actual_start_label = ui.label("Actual start (YYYY-MM-DD)");
+                                    ui.text_edit_singleline(&mut self.actual_start_buffer)
+                                        .labelled_by(actual_start_label.id);
+                                    let actual_finish_label =
+                                        ui.label("Actual finish (YYYY-MM-DD)");
+                                    ui.text_edit_singleline(&mut self.actual_finish_buffer)
+                                        .labelled_by(actual_finish_label.id);
 
                                     if ui.button("Apply").clicked() {
                                         self.apply_edits();
@@ -2374,8 +2387,9 @@ impl eframe::App for CadenceApp {
                                                 LINK_TYPE_LABELS[link_type_index(rel.link_type)]
                                             ));
                                         }
-                                        ui.label("Lag (working days)");
-                                        ui.text_edit_singleline(&mut self.lag_buffer);
+                                        let lag_label = ui.label("Lag (working days)");
+                                        ui.text_edit_singleline(&mut self.lag_buffer)
+                                            .labelled_by(lag_label.id);
                                         if ui.button("Apply lag").clicked() {
                                             if let (Some(id), Ok(lag)) = (
                                                 self.selected_relationship,
