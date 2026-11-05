@@ -2525,24 +2525,6 @@ impl eframe::App for CadenceApp {
                 let mut context_menu_activity = None;
                 let mut header_clicked = None;
 
-                // Table filter: type to narrow rows by activity name.
-                ui.separator();
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.label("Filter:");
-                    let filter_text = self.table_filter_buffer.clone();
-                    ui.text_edit_singleline(&mut self.table_filter_buffer);
-                    let filter = filter_text.trim();
-                    if filter.is_empty() {
-                        ui.label(
-                            egui::RichText::new("(filter by activity name)")
-                                .weak()
-                                .small(),
-                        );
-                    }
-                });
-                ui.add_space(4.0);
-
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
                         ui.colored_label(design::palette(self.dark).critical, format!("Schedule error: {error}"));
@@ -2971,6 +2953,8 @@ impl eframe::App for CadenceApp {
                             ui.label(report);
                         }
                     });
+
+                self.table_filter_buffer = filter_text;
 
                 let schedule = self.schedule.clone();
                 let conflicts = schedule
