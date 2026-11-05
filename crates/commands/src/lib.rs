@@ -3830,8 +3830,14 @@ mod tests {
         };
         let result = stack.execute(&mut project, Box::new(bad));
         assert!(result.is_err());
-        assert_eq!(project.activity(a).unwrap().constraint, Constraint::AsSoonAsPossible);
-        assert_eq!(project.activity(b).unwrap().constraint, Constraint::AsSoonAsPossible);
+        assert_eq!(
+            project.activity(a).unwrap().constraint,
+            Constraint::AsSoonAsPossible
+        );
+        assert_eq!(
+            project.activity(b).unwrap().constraint,
+            Constraint::AsSoonAsPossible
+        );
 
         // Two changes apply as a single undo step.
         let good = SetConstraints {
