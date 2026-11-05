@@ -1610,7 +1610,7 @@ impl CadenceApp {
 impl eframe::App for CadenceApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        let mut filter_text = self.table_filter_buffer.clone();
+        let filter_text = self.table_filter_buffer.clone();
 
         // Reflect unsaved state and version in the window title each frame.
         let title = format!(
