@@ -2335,7 +2335,8 @@ impl eframe::App for CadenceApp {
                                     let actual_start_label = ui.label("Actual start (YYYY-MM-DD)");
                                     ui.text_edit_singleline(&mut self.actual_start_buffer)
                                         .labelled_by(actual_start_label.id);
-                                    let actual_finish_label = ui.label("Actual finish (YYYY-MM-DD)");
+                                    let actual_finish_label =
+                                        ui.label("Actual finish (YYYY-MM-DD)");
                                     ui.text_edit_singleline(&mut self.actual_finish_buffer)
                                         .labelled_by(actual_finish_label.id);
 
