@@ -386,8 +386,6 @@ pub struct CadenceApp {
     confirm_delete_activity: bool,
     confirm_delete_relationship: bool,
     drag_link_type_index: usize,
-    /// Filter text for the activity table (case-insensitive substring match on name).
-    table_filter_buffer: String,
     /// Whether the user has confirmed applying leveled dates (destructive).
     confirm_leveling: bool,
     selected_relationship: Option<cadence_core::model::RelationshipId>,
@@ -498,7 +496,6 @@ impl CadenceApp {
             confirm_delete_activity: false,
             confirm_delete_relationship: false,
             drag_link_type_index: 0,
-            table_filter_buffer: String::new(),
             confirm_leveling: false,
             selected_relationship: None,
             lag_buffer: String::new(),
@@ -1530,7 +1527,7 @@ impl CadenceApp {
     /// The table used to clone and sort the whole programme every frame; on a
     /// 10,000-activity programme that alone dominated the frame time. The
     /// snapshot is now rebuilt on edits and sort changes only.
-    fn refresh_sorted(&mut self, filter: &str) {
+    fn refresh_sorted(&mut self) {
         if self.sorted_edit_version == self.edit_version
             && self.sorted_key == self.sort_key
             && self.sorted_ascending == self.sort_ascending
@@ -1589,12 +1586,6 @@ impl CadenceApp {
                 ordering.reverse()
             }
         });
-        let filter = filter.trim();
-        if !filter.is_empty() {
-            let filter_lower = filter.to_ascii_lowercase();
-            activities
-                .retain(|activity| activity.name.to_ascii_lowercase().contains(&filter_lower));
-        }
         self.sorted_cache = activities;
         self.sorted_edit_version = self.edit_version;
         self.sorted_key = self.sort_key;
@@ -1610,7 +1601,6 @@ impl CadenceApp {
 impl eframe::App for CadenceApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        let filter_text = self.table_filter_buffer.clone();
 
         // Reflect unsaved state and version in the window title each frame.
         let title = format!(
@@ -1715,7 +1705,7 @@ impl eframe::App for CadenceApp {
         }
 
         // Refresh the cached sort order once per edit, not once per frame.
-        self.refresh_sorted(&filter_text);
+        self.refresh_sorted();
 
         // Ctrl+1..Ctrl+9: switch views without reaching for the mouse.
         let (ctrl_held, pressed_view) = ctx.input(|input| {
@@ -2524,13 +2514,9 @@ impl eframe::App for CadenceApp {
                 let mut clicked_activity = None;
                 let mut context_menu_activity = None;
                 let mut header_clicked = None;
-
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
-                        ui.colored_label(
-                            design::palette(self.dark).critical,
-                            format!("Schedule error: {error}"),
-                        );
+                        ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
                     }
                     Ok(schedule) => {
                         let row_height = 20.0;
@@ -2559,7 +2545,6 @@ impl eframe::App for CadenceApp {
                             widths.push(if *w == 0.0 { flexible_budget } else { *w });
                         }
 
-                        ui.separator();
                         // Sticky header: a fixed row of sort buttons above the
                         // virtualised body, so it stays visible while scrolling.
                         ui.horizontal(|ui| {
@@ -2774,7 +2759,7 @@ impl eframe::App for CadenceApp {
                         self.sort_key = key;
                         self.sort_ascending = true;
                     }
-                    self.refresh_sorted(&filter_text);
+                    self.refresh_sorted();
                 }
                 if let Some(id) = clicked_activity {
                     self.select(id);
@@ -2957,8 +2942,6 @@ impl eframe::App for CadenceApp {
                         }
                     });
 
-                self.table_filter_buffer = filter_text;
-
                 let schedule = self.schedule.clone();
                 let conflicts = schedule
                     .as_ref()
@@ -2971,10 +2954,7 @@ impl eframe::App for CadenceApp {
 
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
-                        ui.colored_label(
-                            design::palette(self.dark).critical,
-                            format!("Schedule error: {error}"),
-                        );
+                        ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
                     }
                     Ok(schedule) => {
                         ui.heading("Resource dictionary");
@@ -3239,7 +3219,7 @@ impl eframe::App for CadenceApp {
                     match &metrics {
                         None => {
                             ui.colored_label(
-                                design::palette(self.dark).critical,
+                                egui::Color32::RED,
                                 "Status date must be written as YYYY-MM-DD",
                             );
                         }
