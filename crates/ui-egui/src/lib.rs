@@ -2559,8 +2559,10 @@ impl eframe::App for CadenceApp {
                         ui.add_space(4.0);
                         ui.horizontal(|ui| {
                             ui.label("Filter:");
+                            let filter_text = self.table_filter_buffer.clone();
                             ui.text_edit_singleline(&mut self.table_filter_buffer);
-                            if self.table_filter_buffer.trim().is_empty() {
+                            let filter = filter_text.trim();
+                            if filter.is_empty() {
                                 ui.label(
                                     egui::RichText::new("(filter by activity name)")
                                         .weak()
