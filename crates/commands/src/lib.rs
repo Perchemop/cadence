@@ -3838,8 +3838,14 @@ mod tests {
             values: vec![(a, Constraint::StartNoEarlierThan(date)), (b, Constraint::StartNoEarlierThan(date))],
         };
         stack.execute(&mut project, Box::new(good)).expect("apply");
-        assert_eq!(project.activity(a).unwrap().constraint, Constraint::StartNoEarlierThan(date));
-        assert_eq!(project.activity(b).unwrap().constraint, Constraint::StartNoEarlierThan(date));
+        assert_eq!(
+            project.activity(a).unwrap().constraint,
+            Constraint::StartNoEarlierThan(date)
+        );
+        assert_eq!(
+            project.activity(b).unwrap().constraint,
+            Constraint::StartNoEarlierThan(date)
+        );
         stack.undo(&mut project).expect("undo all at once");
         assert_eq!(
             project.activity(a).unwrap().constraint,
