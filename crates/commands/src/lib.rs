@@ -3835,7 +3835,10 @@ mod tests {
 
         // Two changes apply as a single undo step.
         let good = SetConstraints {
-            values: vec![(a, Constraint::StartNoEarlierThan(date)), (b, Constraint::StartNoEarlierThan(date))],
+            values: vec![
+                (a, Constraint::StartNoEarlierThan(date)),
+                (b, Constraint::StartNoEarlierThan(date)),
+            ],
         };
         stack.execute(&mut project, Box::new(good)).expect("apply");
         assert_eq!(
