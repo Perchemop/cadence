@@ -1589,7 +1589,7 @@ impl CadenceApp {
                 ordering.reverse()
             }
         });
-        let filter = filter_text.trim();
+        let filter = filter.trim();
         if !filter.is_empty() {
             let filter_lower = filter.to_ascii_lowercase();
             activities
