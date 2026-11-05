@@ -1592,7 +1592,8 @@ impl CadenceApp {
         let filter = filter_text.trim();
         if !filter.is_empty() {
             let filter_lower = filter.to_ascii_lowercase();
-            activities.retain(|activity| activity.name.to_ascii_lowercase().contains(&filter_lower));
+            activities
+                .retain(|activity| activity.name.to_ascii_lowercase().contains(&filter_lower));
         }
         self.sorted_cache = activities;
         self.sorted_edit_version = self.edit_version;
