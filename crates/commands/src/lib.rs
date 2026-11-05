@@ -559,6 +559,41 @@ pub struct SetActivityConstraint {
     pub constraint: Constraint,
 }
 
+/// Set multiple activities' constraints atomically (atomic leveling).
+///
+/// The changes apply all-or-nothing: if any activity is missing, the whole
+/// command fails and no constraint is changed. The inverse captures the
+/// previous constraints so a single undo reverts every change at once.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetConstraints {
+    /// (activity id, new constraint) pairs.
+    pub values: Vec<(ActivityId, Constraint)>,
+}
+
+impl Command for SetConstraints {
+    fn description(&self) -> String {
+        format!("set constraints of {} activities", self.values.len())
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        // Validate (all-or-nothing).
+        for (id, _) in &self.values {
+            if project.activity(*id).is_none() {
+                let _ = self.values.iter().map(|(id, _)| id);
+                return Err(format!("activity {id} does not exist"));
+            }
+        }
+        // Apply and capture the previous constraints.
+        let mut previous = Vec::with_capacity(self.values.len());
+        for (id, constraint) in self.values.iter() {
+            let activity = project.activity_mut(*id).expect("validated above");
+            previous.push((*id, std::mem::replace(&mut activity.constraint, *constraint)));
+            activity.clear_schedule();
+        }
+        Ok(Box::new(SetConstraints { values: previous }))
+    }
+}
+
 impl Command for SetActivityConstraint {
     fn description(&self) -> String {
         format!(
@@ -3774,5 +3809,39 @@ mod tests {
         stack.undo(&mut project).expect("undo delete");
         assert_eq!(project.resources.len(), 1);
         assert_eq!(project.activities[0].units_for(ResourceId(1)), 2_500);
+    }
+
+    #[test]
+    fn set_constraints_is_atomic_and_undoes_as_one_step() {
+        use crate::SetConstraints;
+        use cadence_core::model::{Constraint, ActivityId};
+        use time::Date;
+        use time::Month;
+
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 1);
+        let b = add_activity(&mut stack, &mut project, 2, "B", 1);
+        let date = Date::from_calendar_date(2026, Month::January, 5).unwrap();
+
+        // Atomic: one missing activity fails the whole command.
+        let bad = SetConstraints {
+            values: vec![(a, Constraint::StartNoEarlierThan(date)), (ActivityId(999), Constraint::StartNoEarlierThan(date))],
+        };
+        let result = stack.execute(&mut project, Box::new(bad));
+        assert!(result.is_err());
+        assert_eq!(project.activity(a).unwrap().constraint, Constraint::AsSoonAsPossible);
+        assert_eq!(project.activity(b).unwrap().constraint, Constraint::AsSoonAsPossible);
+
+        // Two changes apply as a single undo step.
+        let good = SetConstraints {
+            values: vec![(a, Constraint::StartNoEarlierThan(date)), (b, Constraint::StartNoEarlierThan(date))],
+        };
+        stack.execute(&mut project, Box::new(good)).expect("apply");
+        assert_eq!(project.activity(a).unwrap().constraint, Constraint::StartNoEarlierThan(date));
+        assert_eq!(project.activity(b).unwrap().constraint, Constraint::StartNoEarlierThan(date));
+        stack.undo(&mut project).expect("undo all at once");
+        assert_eq!(project.activity(a).unwrap().constraint, Constraint::AsSoonAsPossible);
+        assert_eq!(project.activity(b).unwrap().constraint, Constraint::AsSoonAsPossible);
     }
 }
