@@ -3826,7 +3826,10 @@ mod tests {
 
         // Atomic: one missing activity fails the whole command.
         let bad = SetConstraints {
-            values: vec![(a, Constraint::StartNoEarlierThan(date)), (ActivityId(999), Constraint::StartNoEarlierThan(date))],
+            values: vec![
+                (a, Constraint::StartNoEarlierThan(date)),
+                (ActivityId(999), Constraint::StartNoEarlierThan(date)),
+            ],
         };
         let result = stack.execute(&mut project, Box::new(bad));
         assert!(result.is_err());
