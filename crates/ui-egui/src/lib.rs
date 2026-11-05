@@ -386,6 +386,8 @@ pub struct CadenceApp {
     confirm_delete_activity: bool,
     confirm_delete_relationship: bool,
     drag_link_type_index: usize,
+    /// Filter text for the activity table (case-insensitive substring match on name).
+    table_filter_buffer: String,
     /// Whether the user has confirmed applying leveled dates (destructive).
     confirm_leveling: bool,
     selected_relationship: Option<cadence_core::model::RelationshipId>,
@@ -496,6 +498,7 @@ impl CadenceApp {
             confirm_delete_activity: false,
             confirm_delete_relationship: false,
             drag_link_type_index: 0,
+            table_filter_buffer: String::new(),
             confirm_leveling: false,
             selected_relationship: None,
             lag_buffer: String::new(),
@@ -1580,6 +1583,13 @@ impl CadenceApp {
                     left_critical.cmp(&right_critical)
                 }
             };
+        let filter = self.table_filter_buffer.trim();
+        if !filter.is_empty() {
+            let filter_lower = filter.to_ascii_lowercase();
+            activities.retain(|activity| {
+                activity.name.to_ascii_lowercase().contains(&filter_lower)
+            });
+        }
             if ascending {
                 ordering
             } else {
@@ -2516,7 +2526,7 @@ impl eframe::App for CadenceApp {
                 let mut header_clicked = None;
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
-                        ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
+                        ui.colored_label(design::palette(self.dark).critical, format!("Schedule error: {error}"));
                     }
                     Ok(schedule) => {
                         let row_height = 20.0;
@@ -2544,6 +2554,21 @@ impl eframe::App for CadenceApp {
                         for (_, _, w) in &defs {
                             widths.push(if *w == 0.0 { flexible_budget } else { *w });
                         }
+
+                        ui.separator();
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.label("Filter:");
+                            ui.text_edit_singleline(&mut self.table_filter_buffer);
+                            if self.table_filter_buffer.trim().is_empty() {
+                                ui.label(
+                                    egui::RichText::new("(filter by activity name)")
+                                        .weak()
+                                        .small(),
+                                );
+                            }
+                        });
+                        ui.add_space(4.0);
 
                         // Sticky header: a fixed row of sort buttons above the
                         // virtualised body, so it stays visible while scrolling.
@@ -2954,7 +2979,7 @@ impl eframe::App for CadenceApp {
 
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
-                        ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
+                        ui.colored_label(design::palette(self.dark).critical, format!("Schedule error: {error}"));
                     }
                     Ok(schedule) => {
                         ui.heading("Resource dictionary");
@@ -3219,7 +3244,7 @@ impl eframe::App for CadenceApp {
                     match &metrics {
                         None => {
                             ui.colored_label(
-                                egui::Color32::RED,
+                                design::palette(self.dark).critical,
                                 "Status date must be written as YYYY-MM-DD",
                             );
                         }
