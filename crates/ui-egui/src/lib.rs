@@ -1355,12 +1355,7 @@ impl CadenceApp {
             .activities
             .iter()
             .filter(|activity| activity.delay > 0)
-            .map(|activity| {
-                (
-                    activity.id,
-                    Constraint::StartNoEarlierThan(activity.start),
-                )
-            })
+            .map(|activity| (activity.id, Constraint::StartNoEarlierThan(activity.start)))
             .collect();
         let applied = values.len();
         match self.stack.execute(
@@ -1369,8 +1364,7 @@ impl CadenceApp {
         ) {
             Ok(()) => {
                 self.recompute();
-                self.leveling_report =
-                    Some(format!("Applied leveling to {applied} activities"));
+                self.leveling_report = Some(format!("Applied leveling to {applied} activities"));
             }
             Err(error) => self.set_status(error),
         }
