@@ -3814,7 +3814,7 @@ mod tests {
     #[test]
     fn set_constraints_is_atomic_and_undoes_as_one_step() {
         use crate::SetConstraints;
-        use cadence_core::model::{Constraint, ActivityId};
+        use cadence_core::model::{ActivityId, Constraint};
         use time::Date;
         use time::Month;
 
