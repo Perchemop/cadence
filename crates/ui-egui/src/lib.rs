@@ -1583,6 +1583,12 @@ impl CadenceApp {
                     left_critical.cmp(&right_critical)
                 }
             };
+            if ascending {
+                ordering
+            } else {
+                ordering.reverse()
+            }
+        });
         let filter = self.table_filter_buffer.trim();
         if !filter.is_empty() {
             let filter_lower = filter.to_ascii_lowercase();
@@ -1590,12 +1596,6 @@ impl CadenceApp {
                 activity.name.to_ascii_lowercase().contains(&filter_lower)
             });
         }
-            if ascending {
-                ordering
-            } else {
-                ordering.reverse()
-            }
-        });
         self.sorted_cache = activities;
         self.sorted_edit_version = self.edit_version;
         self.sorted_key = self.sort_key;
