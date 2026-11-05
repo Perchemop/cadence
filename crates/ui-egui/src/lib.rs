@@ -1348,28 +1348,26 @@ impl CadenceApp {
             return;
         };
 
-        let mut applied = 0usize;
-        for activity in &result.activities {
-            if activity.delay <= 0 {
-                continue;
+        // Atomic leveling (S2-15): a single SetConstraints command applies
+        // every delayed activity's new constraint all-or-nothing, so undo
+        // reverts the whole batch in one step.
+        let values: Vec<(ActivityId, Constraint)> = result
+            .activities
+            .iter()
+            .filter(|activity| activity.delay > 0)
+            .map(|activity| (activity.id, Constraint::StartNoEarlierThan(activity.start)))
+            .collect();
+        let applied = values.len();
+        match self.stack.execute(
+            &mut self.project,
+            Box::new(cadence_commands::SetConstraints { values }),
+        ) {
+            Ok(()) => {
+                self.recompute();
+                self.leveling_report = Some(format!("Applied leveling to {applied} activities"));
             }
-            let constraint = Constraint::StartNoEarlierThan(activity.start);
-            if self
-                .stack
-                .execute(
-                    &mut self.project,
-                    Box::new(SetActivityConstraint {
-                        id: activity.id,
-                        constraint,
-                    }),
-                )
-                .is_ok()
-            {
-                applied += 1;
-            }
+            Err(error) => self.set_status(error),
         }
-        self.recompute();
-        self.leveling_report = Some(format!("Applied leveling to {applied} activities"));
     }
 
     /// Capture the current schedule as a new baseline.
