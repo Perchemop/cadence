@@ -2971,10 +2971,10 @@ impl eframe::App for CadenceApp {
 
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
+                        ui.colored_label(
                             design::palette(self.dark).critical,
                             format!("Schedule error: {error}"),
                         );
-                            );
                     }
                     Ok(schedule) => {
                         ui.heading("Resource dictionary");
