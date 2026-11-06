@@ -72,9 +72,9 @@ impl DesignTokens {
             accent: ACCENT,
             critical: palette.critical,
             normal: palette.normal,
-            primary_bg: palette.accent.linear_multiply(0.15),
-            accent_bg: palette.accent.linear_multiply(0.2),
-            panel_bg: palette.bg.linear_multiply(0.95),
+            primary_bg: ACCENT.linear_multiply(0.15),
+            accent_bg: ACCENT.linear_multiply(0.2),
+            panel_bg: palette.panel.linear_multiply(0.95),
         }
     }
 }
