@@ -7,7 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use cadence_commands::{
@@ -28,7 +28,7 @@ use cadence_core::engine::schedule;
 use cadence_core::engine::Schedule;
 use cadence_core::engine::{
     activity_progress, evm_metrics, level_resources, resource_conflicts, resource_histogram,
-    schedule_with_progress, ProgressState,
+    schedule_with_progress, ProgressState, ResourceConflict, ResourceHistogram,
 };
 use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use cadence_core::model::FULL_UNITS;
@@ -453,6 +453,23 @@ pub struct CadenceApp {
     owner_buffer: String,
     promised_buffer: bool,
     delay_reason_buffer: String,
+    /// Resource conflicts against the current schedule, rebuilt in `recompute`
+    /// against the edit version so the Resources view never recomputes per
+    /// frame. Shared behind an `Arc` because the view's closures borrow `self`
+    /// mutably and need an owned handle to the data.
+    conflicts_cache: Arc<Vec<ResourceConflict>>,
+    conflicts_version: u64,
+    /// The resource-day histogram for the current schedule, rebuilt in
+    /// `recompute` for the same reason; `resource_day_usage` filters it rather
+    /// than rebuilding it per frame.
+    histogram_cache: Arc<ResourceHistogram>,
+    histogram_version: u64,
+    /// The cached lookahead window, keyed by the edit version and the window
+    /// (start date, weeks) the user has chosen, so panning the window or
+    /// editing the programme is the only thing that rebuilds it.
+    lookahead_cache: Option<Arc<Vec<LookaheadEntry>>>,
+    lookahead_version: u64,
+    lookahead_window: Option<(Date, usize)>,
     sorted_cache: Vec<Activity>,
     sorted_edit_version: u64,
     sorted_key: SortKey,
@@ -593,6 +610,15 @@ impl CadenceApp {
             owner_buffer: String::new(),
             promised_buffer: false,
             delay_reason_buffer: String::new(),
+            conflicts_cache: Arc::new(Vec::new()),
+            conflicts_version: u64::MAX,
+            histogram_cache: Arc::new(ResourceHistogram {
+                entries: BTreeMap::new(),
+            }),
+            histogram_version: u64::MAX,
+            lookahead_cache: None,
+            lookahead_version: u64::MAX,
+            lookahead_window: None,
             sorted_cache: Vec::new(),
             sorted_edit_version: u64::MAX,
             sorted_key: SortKey::Name,
@@ -665,6 +691,14 @@ impl CadenceApp {
             Ok(schedule) => schedule,
             Err(_) => {
                 self.critical_count = 0;
+                // An unschedulable programme has no conflicts, no usage and no
+                // lookahead; clear the caches so the views reflect that.
+                self.conflicts_cache = Arc::new(Vec::new());
+                self.histogram_cache = Arc::new(ResourceHistogram {
+                    entries: BTreeMap::new(),
+                });
+                self.conflicts_version = self.edit_version;
+                self.histogram_version = self.edit_version;
                 return;
             }
         };
@@ -678,6 +712,13 @@ impl CadenceApp {
                     .is_some_and(|result| result.critical)
             })
             .count();
+        // Cache the resource conflicts and the day histogram once per edit, so
+        // the Resources view does not rescan the assignments every frame
+        // (S2-11). Shared behind an `Arc`; the views clone the handle.
+        self.conflicts_cache = Arc::new(resource_conflicts(&self.project, schedule));
+        self.histogram_cache = Arc::new(resource_histogram(&self.project, schedule));
+        self.conflicts_version = self.edit_version;
+        self.histogram_version = self.edit_version;
     }
 
     /// Reload the inspector buffers for the selected activity after an undo or
@@ -3089,11 +3130,12 @@ impl eframe::App for CadenceApp {
                     });
 
                 let schedule = self.schedule.clone();
-                let conflicts = schedule
-                    .as_ref()
-                    .ok()
-                    .map(|schedule| resource_conflicts(&self.project, schedule))
-                    .unwrap_or_default();
+                // S2-11: the conflicts and the day histogram are cached against
+                // the edit version in `recompute`; the view only clones the
+                // shared handles here, so a 10,000-activity programme does not
+                // rescan its assignments every frame.
+                let conflicts = self.conflicts_cache.clone();
+                let histogram = self.histogram_cache.clone();
                 let resources = self.project.resources.clone();
                 let activities = self.sorted().to_vec();
                 let selected_resource = self.selected_resource;
@@ -3145,7 +3187,7 @@ impl eframe::App for CadenceApp {
                                         ui.label("0");
                                     } else {
                                         ui.colored_label(
-                                            egui::Color32::from_rgb(0xC0, 0x39, 0x2B),
+                                            design::palette(self.dark).critical,
                                             over.to_string(),
                                         );
                                     }
@@ -3156,7 +3198,7 @@ impl eframe::App for CadenceApp {
                         ui.separator();
                         ui.heading("Usage");
                         if let Some(id) = selected_resource {
-                            let usage = resource_day_usage(&self.project, &schedule, id);
+                            let usage = resource_day_usage(&histogram, id);
                             if usage.is_empty() {
                                 ui.label(
                                     "This resource is not assigned to any scheduled activity.",
@@ -3184,9 +3226,7 @@ impl eframe::App for CadenceApp {
                                                     );
                                                     if units > capacity_units {
                                                         ui.colored_label(
-                                                            egui::Color32::from_rgb(
-                                                                0xC0, 0x39, 0x2B,
-                                                            ),
+                                                            design::palette(self.dark).critical,
                                                             text,
                                                         );
                                                     } else {
@@ -3702,7 +3742,22 @@ impl eframe::App for CadenceApp {
                         );
                         return;
                     };
-                    let entries = lookahead(&self.project, &schedule, from, weeks as u32);
+                    // S2-12: the window is cached against the edit version and
+                    // the chosen (start, weeks) pair, so re-rendering the view
+                    // — or the O(n²) snapshot comparison below — does not
+                    // recompute the window every frame.
+                    let entries = if self.lookahead_version == self.edit_version
+                        && self.lookahead_window == Some((from, weeks))
+                    {
+                        self.lookahead_cache.clone().unwrap_or_default()
+                    } else {
+                        let window = lookahead(&self.project, &schedule, from, weeks as u32);
+                        let computed = Arc::new(window);
+                        self.lookahead_cache = Some(computed.clone());
+                        self.lookahead_version = self.edit_version;
+                        self.lookahead_window = Some((from, weeks));
+                        computed
+                    };
                     let window_end = from
                         .checked_add(time::Duration::weeks(weeks as i64))
                         .unwrap_or(from);
@@ -3830,13 +3885,14 @@ impl eframe::App for CadenceApp {
                                 ));
                                 let snapshot_entries: Vec<&LookaheadSnapshotEntry> =
                                     snapshot.entries.iter().collect();
-                                let current_entries: Vec<&LookaheadEntry> =
-                                    entries.iter().collect();
+                                // Index the current window by activity id, so
+                                // the comparison is linear in the snapshot
+                                // size rather than O(n²) per frame (S2-12).
+                                let current_by_id: BTreeMap<ActivityId, &LookaheadEntry> =
+                                    entries.iter().map(|entry| (entry.id, entry)).collect();
                                 // Compare by activity id.
                                 for entry in &snapshot_entries {
-                                    let current = current_entries
-                                        .iter()
-                                        .find(|current| current.id == entry.activity_id);
+                                    let current = current_by_id.get(&entry.activity_id);
                                     match current {
                                         Some(current) => {
                                             let start_variance =
@@ -4758,13 +4814,11 @@ fn variance_rows(project: &Project, schedule: &Schedule, baseline: &Baseline) ->
 
 /// Units of one resource that are committed on each day that uses it.
 fn resource_day_usage(
-    project: &Project,
-    schedule: &Schedule,
+    histogram: &ResourceHistogram,
     resource_id: ResourceId,
 ) -> BTreeMap<Date, u32> {
     // Units are returned in basis points, the same scale the engine's
     // histogram carries, so a half-unit assignment counts as half.
-    let histogram = resource_histogram(project, schedule);
     let mut usage = BTreeMap::new();
     for (date, assignments) in &histogram.entries {
         let units = assignments
