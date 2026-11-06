@@ -907,7 +907,11 @@ impl CadenceApp {
             return;
         }
         let command = cadence_commands::DeleteActivities { ids };
-        if self.stack.execute(&mut self.project, Box::new(command)).is_ok() {
+        if self
+            .stack
+            .execute(&mut self.project, Box::new(command))
+            .is_ok()
+        {
             self.recompute();
             if self
                 .selected
@@ -2472,10 +2476,7 @@ impl eframe::App for CadenceApp {
                                     // S2-5: the range selection deletes as one
                                     // undoable step.
                                     let count = self.multi_selected.len();
-                                    if ui
-                                        .button(format!("Delete {count} selected"))
-                                        .clicked()
-                                    {
+                                    if ui.button(format!("Delete {count} selected")).clicked() {
                                         self.confirm_delete_selection = true;
                                     }
                                 }
@@ -3083,9 +3084,9 @@ impl eframe::App for CadenceApp {
                     // selection); ctrl/cmd-click toggles a row; shift-click
                     // selects the range from the anchor row. The modifiers are
                     // frame state, so they are read here once, not per row.
-                    let (command_held, shift_held) = ui.ctx().input(|input| {
-                        (input.modifiers.command, input.modifiers.shift)
-                    });
+                    let (command_held, shift_held) = ui
+                        .ctx()
+                        .input(|input| (input.modifiers.command, input.modifiers.shift));
                     if shift_held {
                         self.select_range(id);
                     } else if command_held {

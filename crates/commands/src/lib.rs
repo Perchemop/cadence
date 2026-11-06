@@ -237,7 +237,7 @@ impl DeleteActivity {
     /// Split out of the trait method so the bulk delete
     /// ([`DeleteActivities`]) can reuse the same capture without downcasting
     /// boxed inverses.
-    fn delete_and_capture(self, project: &mut Project) -> Result<RestoreActivity, String> {
+    fn delete_and_capture(&self, project: &mut Project) -> Result<RestoreActivity, String> {
         let Some(position) = project
             .activities
             .iter()
