@@ -2120,7 +2120,7 @@ impl eframe::App for CadenceApp {
         // Zone 2: View tab strip (Table, Gantt, Resources, …)
         // Zone 3: Tool actions (Columns, Undo, Redo, Version)
         egui::Panel::top("toolbar")
-            .frame(egui::Frame::none().fill(self.design_tokens().panel_bg))
+            .frame(egui::Frame::new().fill(self.design_tokens().panel_bg))
             .show(ui, |ui| {
                 ui.add_space(4.0);
                 ui.horizontal_wrapped(|ui| {
