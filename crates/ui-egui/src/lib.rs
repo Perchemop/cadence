@@ -457,8 +457,41 @@ pub struct CadenceApp {
     sorted_edit_version: u64,
     sorted_key: SortKey,
     sorted_ascending: bool,
+    /// Filter text typed into the table view (case-insensitive substring match
+    /// on the activity name; empty means "show everything").
+    table_filter_buffer: String,
+    /// When set, the table shows only activities on the critical path.
+    table_critical_only: bool,
+    /// The filtered table rows, materialised only while a filter is active.
+    table_rows: Vec<Activity>,
+    /// Whether `table_rows` currently holds a filtered subset.
+    table_rows_active: bool,
+    /// Cache keys for `table_rows`: rebuilt when any of these change.
+    table_rows_edit_version: u64,
+    table_rows_filter: String,
+    table_rows_critical_only: bool,
+    table_rows_source_len: usize,
+    table_rows_sorted_key: SortKey,
+    table_rows_sorted_ascending: bool,
     show_split_gantt: bool,
     visible_columns: BTreeSet<SortKey>,
+}
+
+/// Whether an activity passes the table filter: a case-insensitive substring
+/// match on the name (an empty needle matches everything), and — when
+/// `critical_only` is set — only activities on the critical path.
+fn activity_matches_filter(
+    activity: &Activity,
+    needle: &str,
+    critical_only: bool,
+    schedule: Option<&Schedule>,
+) -> bool {
+    (needle.is_empty() || activity.name.to_ascii_lowercase().contains(needle))
+        && (!critical_only
+            || schedule
+                .and_then(|s| s.activity(activity.id))
+                .map(|r| r.critical)
+                .unwrap_or(false))
 }
 
 impl CadenceApp {
@@ -564,6 +597,16 @@ impl CadenceApp {
             sorted_edit_version: u64::MAX,
             sorted_key: SortKey::Name,
             sorted_ascending: true,
+            table_filter_buffer: String::new(),
+            table_critical_only: false,
+            table_rows: Vec::new(),
+            table_rows_active: false,
+            table_rows_edit_version: u64::MAX,
+            table_rows_filter: String::new(),
+            table_rows_critical_only: false,
+            table_rows_source_len: usize::MAX,
+            table_rows_sorted_key: SortKey::Name,
+            table_rows_sorted_ascending: true,
             show_split_gantt: true,
             visible_columns: SortKey::all_columns(),
         }
@@ -1592,15 +1635,90 @@ impl CadenceApp {
         self.sorted_ascending = self.sort_ascending;
     }
 
-    /// The cached sorted activities.
+    /// The cached sorted activities (the full programme, in row order).
     fn sorted(&self) -> &[Activity] {
         &self.sorted_cache
+    }
+
+    /// Rebuild the filtered table rows when the filter, the sort order or the
+    /// programme changed.
+    ///
+    /// The table filter must not leak into the other views: the Gantt and the
+    /// Resources dictionary read [`Self::sorted`] and always see the whole
+    /// programme. This cache is therefore separate from `sorted_cache`, and is
+    /// only materialised when a filter is actually active, so the unfiltered
+    /// hot path is unchanged.
+    fn refresh_table_rows(&mut self, filter: &str, critical_only: bool) {
+        let filter = filter.trim();
+        let active = !filter.is_empty() || critical_only;
+        if active == self.table_rows_active
+            && self.table_rows_edit_version == self.edit_version
+            && self.table_rows_filter == filter
+            && self.table_rows_critical_only == critical_only
+            && self.table_rows_source_len == self.project.activities.len()
+            && self.table_rows_sorted_key == self.sort_key
+            && self.table_rows_sorted_ascending == self.sort_ascending
+        {
+            return;
+        }
+        if active {
+            let needle = filter.to_ascii_lowercase();
+            let schedule = self.schedule.as_ref().ok();
+            let rows: Vec<Activity> = self
+                .sorted_cache
+                .iter()
+                .filter(|activity| {
+                    activity_matches_filter(activity, &needle, critical_only, schedule)
+                })
+                .cloned()
+                .collect();
+            self.table_rows = rows;
+        } else {
+            self.table_rows.clear();
+        }
+        self.table_rows_active = active;
+        self.table_rows_edit_version = self.edit_version;
+        self.table_rows_filter = filter.to_string();
+        self.table_rows_critical_only = critical_only;
+        self.table_rows_source_len = self.project.activities.len();
+        self.table_rows_sorted_key = self.sort_key;
+        self.table_rows_sorted_ascending = self.sort_ascending;
+    }
+
+    /// The rows the activity table draws: the filtered subset when a filter is
+    /// active, otherwise the full sorted programme.
+    fn table_rows(&self) -> &[Activity] {
+        if self.table_rows_active {
+            &self.table_rows
+        } else {
+            &self.sorted_cache
+        }
+    }
+
+    /// How many activities the given filter would show, for the row counter in
+    /// the filter bar. Counted without cloning, so the per-frame cost is one
+    /// pass over the names while a filter is active.
+    fn table_match_count(&self, filter: &str, critical_only: bool) -> usize {
+        let needle = filter.trim().to_ascii_lowercase();
+        let schedule = self.schedule.as_ref().ok();
+        self.sorted_cache
+            .iter()
+            .filter(|activity| {
+                activity_matches_filter(activity, &needle, critical_only, schedule)
+            })
+            .count()
     }
 }
 
 impl eframe::App for CadenceApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+
+        // The table filter is edited into these locals and written back after
+        // the table renders, so the widgets never borrow `self` at the same
+        // time as the view closures do.
+        let mut filter_text = self.table_filter_buffer.clone();
+        let mut critical_only = self.table_critical_only;
 
         // Reflect unsaved state and version in the window title each frame.
         let title = format!(
@@ -1704,8 +1822,10 @@ impl eframe::App for CadenceApp {
             self.refresh_selection();
         }
 
-        // Refresh the cached sort order once per edit, not once per frame.
+        // Refresh the cached sort order once per edit, not once per frame,
+        // and re-derive the (filtered) table rows from it.
         self.refresh_sorted();
+        self.refresh_table_rows(&filter_text, critical_only);
 
         // Ctrl+1..Ctrl+9: switch views without reaching for the mouse.
         let (ctrl_held, pressed_view) = ctx.input(|input| {
@@ -1791,7 +1911,7 @@ impl eframe::App for CadenceApp {
                 )
             });
             if previous || next {
-                let activities = self.sorted();
+                let activities = self.table_rows();
                 if !activities.is_empty() {
                     let current = self
                         .selected
@@ -2507,8 +2627,34 @@ impl eframe::App for CadenceApp {
                     }
                 }
 
+                // Table filter row (S2-5): narrow the rows by name and/or to
+                // the critical path. Rendered as its own top panel so the
+                // widgets never borrow `self` inside the table's CentralPanel.
+                egui::Panel::top("table_filter").show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Filter:");
+                        let filter_response = ui.text_edit_singleline(&mut filter_text);
+                        filter_response.on_hover_text("Show only activities matching this name");
+                        let critical_response = ui.checkbox(&mut critical_only, "Critical only");
+                        critical_response.on_hover_text("Show only critical-path activities");
+                        if !filter_text.trim().is_empty() || critical_only {
+                            let shown = self.table_match_count(&filter_text, critical_only);
+                            let total = self.project.activities.len();
+                            ui.label(
+                                egui::RichText::new(format!("{shown} of {total}"))
+                                    .weak()
+                                    .small(),
+                            );
+                        }
+                    });
+                });
+                // Apply any change from this frame before the rows are drawn.
+                self.table_filter_buffer = filter_text.clone();
+                self.table_critical_only = critical_only;
+                self.refresh_table_rows(&filter_text, critical_only);
+
                 let schedule = self.schedule.as_ref();
-                let sorted = self.sorted();
+                let sorted = self.table_rows();
                 let selected_id = self.selected;
                 let scroll_to_selection = self.scroll_to_selection;
                 let mut clicked_activity = None;
@@ -2516,7 +2662,10 @@ impl eframe::App for CadenceApp {
                 let mut header_clicked = None;
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
-                        ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
+                        ui.colored_label(
+                            design::palette(self.dark).critical,
+                            format!("Schedule error: {error}"),
+                        );
                     }
                     Ok(schedule) => {
                         let row_height = 20.0;
@@ -2596,14 +2745,12 @@ impl eframe::App for CadenceApp {
 
                         if sorted.is_empty() {
                             ui.add_space(8.0);
-                            ui.label(
-                                egui::RichText::new(
-                                    "No activities yet. Use New activity (Ctrl+N) to add the \
-                                     first one.",
-                                )
-                                .weak()
-                                .small(),
-                            );
+                            let message = if !filter_text.trim().is_empty() || critical_only {
+                                "No activities match the filter. Clear the filter to see them all."
+                            } else {
+                                "No activities yet. Use New activity (Ctrl+N) to add the first one."
+                            };
+                            ui.label(egui::RichText::new(message).weak().small());
                         } else {
                             let selected_index = selected_id.and_then(|id| {
                                 sorted.iter().position(|activity| activity.id == id)
@@ -2760,6 +2907,7 @@ impl eframe::App for CadenceApp {
                         self.sort_ascending = true;
                     }
                     self.refresh_sorted();
+                    self.refresh_table_rows(&filter_text, critical_only);
                 }
                 if let Some(id) = clicked_activity {
                     self.select(id);
@@ -2954,7 +3102,10 @@ impl eframe::App for CadenceApp {
 
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
-                        ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
+                        ui.colored_label(
+                            design::palette(self.dark).critical,
+                            format!("Schedule error: {error}"),
+                        );
                     }
                     Ok(schedule) => {
                         ui.heading("Resource dictionary");
@@ -3219,7 +3370,7 @@ impl eframe::App for CadenceApp {
                     match &metrics {
                         None => {
                             ui.colored_label(
-                                egui::Color32::RED,
+                                design::palette(self.dark).critical,
                                 "Status date must be written as YYYY-MM-DD",
                             );
                         }
