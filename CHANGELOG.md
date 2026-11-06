@@ -7,6 +7,15 @@ follows Keep a Changelog; releases use git tags.
 - Total tokens consumed since project start: ~1.2M (estimated)
 - Tokens used in this release cycle: ~45K (estimated)
 
+## [Unreleased]
+
+### Added
+- Table multi-selection (S2-5): ctrl/cmd-click toggles a row and shift-click
+  selects the range from the anchor row; Escape drops the extra rows. A
+  **Delete N selected** action in the inspector removes the whole set through
+  the new atomic `DeleteActivities` command — one undo step restores the lot,
+  relationships included.
+
 ## [0.11.0] — 2026-11-06
 
 ### Added

@@ -226,6 +226,18 @@ impl Command for DeleteActivity {
     }
 
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        self.delete_and_capture(project)
+            .map(|restore| Box::new(restore) as Box<dyn Command>)
+    }
+}
+
+impl DeleteActivity {
+    /// Delete the activity, returning everything needed to restore it.
+    ///
+    /// Split out of the trait method so the bulk delete
+    /// ([`DeleteActivities`]) can reuse the same capture without downcasting
+    /// boxed inverses.
+    fn delete_and_capture(&self, project: &mut Project) -> Result<RestoreActivity, String> {
         let Some(position) = project
             .activities
             .iter()
@@ -281,14 +293,14 @@ impl Command for DeleteActivity {
             }
         }
 
-        Ok(Box::new(RestoreActivity {
+        Ok(RestoreActivity {
             activity,
             position,
             relationships,
             baseline_snapshots,
             lookahead_entries,
             note_links,
-        }))
+        })
     }
 }
 
@@ -379,6 +391,70 @@ impl Command for RestoreActivity {
         }
 
         Ok(Box::new(DeleteActivity { id }))
+    }
+}
+
+/// Delete several activities as one undoable step.
+///
+/// The table's range selection (S2-5) deletes a set of activities in one
+/// confirmed action. The set is atomic: every id is validated before anything
+/// is removed, and undo restores the whole set in one step rather than one
+/// entry per activity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeleteActivities {
+    /// Activities to delete. Every id must exist when the command applies.
+    pub ids: Vec<ActivityId>,
+}
+
+impl Command for DeleteActivities {
+    fn description(&self) -> String {
+        format!("delete {} activities", self.ids.len())
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        // Validate before mutating, so a bad set changes nothing.
+        for id in &self.ids {
+            if project.activity(*id).is_none() {
+                return Err(format!("activity {id} does not exist"));
+            }
+        }
+        // Apply each single-activity delete in order and keep its inverse.
+        // Each delete only touches its own activity, so no delete in the set
+        // can invalidate a later one.
+        let mut restores = Vec::with_capacity(self.ids.len());
+        for id in &self.ids {
+            let restore = DeleteActivity { id: *id }
+                .delete_and_capture(project)
+                .expect("validated above; deletes are independent");
+            restores.push(restore);
+        }
+        // Removal happened front-to-back, so the restores must run back-to-front.
+        restores.reverse();
+        Ok(Box::new(RestoreActivities { restores }))
+    }
+}
+
+/// The inverse of [`DeleteActivities`]: restore the deleted activities in
+/// reverse delete order, with the relationships, baselines, lookahead entries
+/// and note links each carried with it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoreActivities {
+    /// The per-activity restores, in the order they must apply.
+    restores: Vec<RestoreActivity>,
+}
+
+impl Command for RestoreActivities {
+    fn description(&self) -> String {
+        format!("restore {} activities", self.restores.len())
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let mut ids = Vec::with_capacity(self.restores.len());
+        for restore in &mut self.restores {
+            ids.push(restore.activity.id);
+            restore.apply(project)?;
+        }
+        Ok(Box::new(DeleteActivities { ids }))
     }
 }
 
@@ -2593,6 +2669,61 @@ mod tests {
             )
             .expect_err("a missing relationship must be rejected");
         assert!(error.contains("does not exist"));
+    }
+
+    #[test]
+    fn delete_activities_is_atomic_and_restores_in_one_undo() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 2);
+        let b = add_activity(&mut stack, &mut project, 2, "B", 3);
+        let c = add_activity(&mut stack, &mut project, 3, "C", 4);
+        add_relationship(&mut stack, &mut project, 1, a, b, LinkType::Fs, 0);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(DeleteActivities { ids: vec![a, c] }),
+        );
+        assert!(project.activity(a).is_none());
+        assert!(project.activity(c).is_none());
+        assert!(project.activity(b).is_some());
+        // The a→b relationship cascades away with a.
+        assert!(project.relationship(RelationshipId(1)).is_none());
+
+        // One undo restores the whole set, relationships included.
+        stack.undo(&mut project).expect("undo bulk delete");
+        assert!(project.activity(a).is_some());
+        assert!(project.activity(c).is_some());
+        assert_eq!(
+            project
+                .relationship(RelationshipId(1))
+                .map(|r| r.predecessor),
+            Some(a)
+        );
+
+        stack.redo(&mut project).expect("redo bulk delete");
+        assert!(project.activity(a).is_none());
+        assert!(project.activity(c).is_none());
+    }
+
+    #[test]
+    fn delete_activities_with_a_missing_id_changes_nothing() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 2);
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(DeleteActivities {
+                    ids: vec![a, ActivityId(99)],
+                }),
+            )
+            .expect_err("a missing id must reject the whole set");
+        assert!(error.contains("does not exist"));
+        // The valid id in the set must still exist: the delete is all-or-nothing.
+        assert!(project.activity(a).is_some());
     }
 
     #[test]

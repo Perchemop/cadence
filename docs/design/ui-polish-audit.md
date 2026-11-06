@@ -27,10 +27,10 @@ PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 4
 - **S2-3 Status feedback:** `StatusSeverity` (Info/Success/Warning/Error) colours messages by semantic token (`ok`/`warn`/`critical`/`text_muted`); info/success messages now auto-clear after five seconds (S2-3b). Errors and warnings persist.
 - **S2-17 Shortcuts dialog:** now lists Ctrl+S, Ctrl+O, Ctrl+N, Production (Ctrl+1..9) and all other bindings. Closed.
 - Still open: nothing from the S2 list below — every item is closed in the
-  current tree (S2-5 delivers the filter and the critical-only toggle; the
-  table's shift/ctrl range multi-select remains queued and is tracked in the
-  table). The only release-checklist item that cannot be closed by code is the
-  manual screen-reader verification (NVDA/VoiceOver/Orca).
+  current tree, including the table's filter, critical-only toggle and
+  shift/ctrl range multi-selection (S2-5). The only release-checklist item
+  that cannot be closed by code is the manual screen-reader verification
+  (NVDA/VoiceOver/Orca).
 
 **S3 minors — all open** (doc drift, red non-token colours, crash preview, grid loop, tab tooltips, progress hint, focus rings, window min size, etc.), catalogued in the future-slices table below.
 
@@ -81,7 +81,7 @@ these block the current slices; they are queued so they are not missed.
 | S2-2b | Toolbar Undo/Redo disabled when stack is empty | S2 | `add_enabled(stack.can_undo())` / `can_redo()` | P1 | Done |
 | S2-3b | Success/info messages auto-clear after five seconds; errors and warnings persist | S2 | Timed auto-clear via `maybe_clear_status` using `Instant` + `STATUS_MESSAGE_TTL` | P1 | Done |
 | S2-4 | Raw `YYYY-MM-DD` text fields; parse errors far from the input | S2 | Reusable `date_field` helper with inline validation | P1 | Done
-| S2-5 | Table: no filter, find, group or multi-select | S2 | Filter field + critical-only toggle; shift/ctrl range selection | P3 | Partial (filter + critical-only shipped; range multi-select queued)
+| S2-5 | Table: no filter, find, group or multi-select | S2 | Filter field + critical-only toggle; shift/ctrl range selection | P3 | Done
 | S2-6 | Gantt: bars not hit-testable; inspector unreachable from chart | S2 | Hit-test bars on click; persistent inspector; two-way selection sync | P2 | Done
 | S2-7 | Drag-to-link always FS lag-0 regardless of modifier/type | S2 | Default FS; modifier or pop-up for SS/FF/SF + lag | P2 | Done
 | S2-8 | Relationships can be added but never removed or retyped in GUI | S2 | Delete button + confirm; type ComboBox issuing update command | P3 | Done

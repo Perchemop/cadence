@@ -1116,7 +1116,7 @@ checklist is covered by the release run: secret scanning, the personal-data
 scan, dependency licence/advisory checks and the bill-of-materials job are all
 green on the release commit.
 
-## 2026-11-03 — Workbench UI polish and a yanked dependency pin (unreleased)
+## 2026-11-03 — Workbench UI polish and a yanked dependency pin (released in 0.11.0)
 
 A design-review pass over the desktop shell (`docs/design/ui-polish-audit.md`),
 delivering that audit's shippable slices S1–S7 plus the dependency hygiene the
@@ -1155,7 +1155,10 @@ tree, verified slice by slice against `docs/design/ui-polish-audit.md`:
   with a `shown of total` counter. The filtered rows live in their own cache
   (`table_rows`), so the filter never leaks into the Gantt or the Resources
   dictionary, and the unfiltered hot path is unchanged. The table's shift/ctrl
-  range multi-select remains queued.
+  range multi-select is delivered with an atomic `DeleteActivities` command:
+  ctrl/cmd-click toggles a row, shift-click takes the range from the anchor,
+  Escape drops the extra rows, and **Delete N selected** removes the set in
+  one undoable step.
 - **S2-8 Relationship retype:** a new undoable `SetRelationshipType` command
   (with undo/redo and rejection tests) and a type combo in the inspector.
 - **S2-10 Diary note editing:** an **Edit** action per note loads the text and
