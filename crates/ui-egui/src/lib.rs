@@ -16,8 +16,8 @@ use cadence_commands::{
     RemoveResourceFromActivity, RenameActivity, RenameCalendar, RenameResource,
     SetActivityActualCost, SetActivityActualDates, SetActivityBudget, SetActivityCalendar,
     SetActivityConstraint, SetActivityDuration, SetActivityOwner, SetActivityProgress,
-    SetActivityPromise, SetCalendarDefinition, SetRelationshipLag, SetResourceCapacity,
-    SetResourceKind,
+    SetActivityPromise, SetCalendarDefinition, SetRelationshipLag, SetRelationshipType,
+    SetResourceCapacity, SetResourceKind,
 };
 use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
@@ -389,6 +389,11 @@ pub struct CadenceApp {
     /// Whether the user has confirmed applying leveled dates (destructive).
     confirm_leveling: bool,
     selected_relationship: Option<cadence_core::model::RelationshipId>,
+    /// The diary note being edited, if any (S2-10: notes are editable after
+    /// creation via the undoable `UpdateDailyNote` command).
+    editing_note: Option<DailyNoteId>,
+    /// Buffer for the note text while a note is being edited.
+    diary_edit_buffer: String,
     lag_buffer: String,
     last_rel: Option<cadence_core::model::RelationshipId>,
     name_buffer: String,
@@ -548,6 +553,8 @@ impl CadenceApp {
             drag_link_type_index: 0,
             confirm_leveling: false,
             selected_relationship: None,
+            editing_note: None,
+            diary_edit_buffer: String::new(),
             lag_buffer: String::new(),
             last_rel: None,
             name_buffer: String::new(),
@@ -846,6 +853,20 @@ impl CadenceApp {
                 return;
             }
         }
+        self.recompute();
+    }
+
+    /// Change an existing relationship's type, issuing the undoable command
+    /// and recomputing the schedule (S2-8).
+    fn set_relationship_type(
+        &mut self,
+        id: cadence_core::model::RelationshipId,
+        link_type: LinkType,
+    ) {
+        let _ = self.stack.execute(
+            &mut self.project,
+            Box::new(SetRelationshipType { id, link_type }),
+        );
         self.recompute();
     }
 
@@ -2535,14 +2556,36 @@ impl eframe::App for CadenceApp {
                                     }
 
                                     if self.selected_relationship.is_some() {
-                                        if let Some(rel) = self
+                                        let relationship = self
                                             .selected_relationship
                                             .and_then(|id| self.project.relationship(id))
-                                        {
-                                            ui.label(format!(
-                                                "Type: {}",
-                                                LINK_TYPE_LABELS[link_type_index(rel.link_type)]
-                                            ));
+                                            .map(|rel| (rel.id, rel.link_type));
+                                        if let Some((rel_id, current_type)) = relationship {
+                                            // S2-8: retype an existing
+                                            // relationship instead of only
+                                            // reading its type back.
+                                            let current_index = link_type_index(current_type);
+                                            let type_label = ui.label("Type");
+                                            ComboBox::from_id_salt("relationship_type")
+                                                .selected_text(LINK_TYPE_LABELS[current_index])
+                                                .show_ui(ui, |ui| {
+                                                    for (index, label) in
+                                                        LINK_TYPE_LABELS.iter().enumerate()
+                                                    {
+                                                        let response = ui.selectable_label(
+                                                            index == current_index,
+                                                            *label,
+                                                        );
+                                                        if response.clicked() {
+                                                            self.set_relationship_type(
+                                                                rel_id,
+                                                                link_type_from_index(index),
+                                                            );
+                                                        }
+                                                    }
+                                                })
+                                                .response
+                                                .labelled_by(type_label.id);
                                         }
                                         let lag_label = ui.label("Lag (working days)");
                                         ui.text_edit_singleline(&mut self.lag_buffer)
@@ -4100,10 +4143,43 @@ impl eframe::App for CadenceApp {
                             if let Some(window) = window {
                                 ui.label(format!("→ window from {window}"));
                             }
+                            // S2-10: a note can be corrected after it was
+                            // written, through the undoable UpdateDailyNote.
+                            if ui.button("Edit").clicked() {
+                                self.editing_note = Some(*id);
+                                self.diary_edit_buffer = content.clone();
+                            }
                             if ui.button("Delete").clicked() {
                                 to_delete = Some(*id);
                             }
                         });
+                        if self.editing_note == Some(*id) {
+                            ui.horizontal(|ui| {
+                                let edit_label = ui.label("Edited note");
+                                ui.text_edit_singleline(&mut self.diary_edit_buffer)
+                                    .labelled_by(edit_label.id);
+                                if ui.button("Save note").clicked() {
+                                    let command = cadence_commands::UpdateDailyNote {
+                                        id: *id,
+                                        content: self.diary_edit_buffer.clone(),
+                                    };
+                                    if self
+                                        .stack
+                                        .execute(&mut self.project, Box::new(command))
+                                        .is_ok()
+                                    {
+                                        self.recompute();
+                                        self.editing_note = None;
+                                        self.set_status("Diary note updated.");
+                                    } else {
+                                        self.set_status("The note content must not be empty.");
+                                    }
+                                }
+                                if ui.button("Cancel").clicked() {
+                                    self.editing_note = None;
+                                }
+                            });
+                        }
                     }
                     if let Some(id) = to_delete {
                         let command = cadence_commands::DeleteDailyNote { id };
