@@ -7,7 +7,7 @@ follows Keep a Changelog; releases use git tags.
 - Total tokens consumed since project start: ~1.2M (estimated)
 - Tokens used in this release cycle: ~45K (estimated)
 
-## [Unreleased]
+## [0.11.0] — 2026-11-06
 
 ### Added
 - Workbench UI polish: the status bar now shows the critical-activity count,
@@ -25,6 +25,52 @@ follows Keep a Changelog; releases use git tags.
   product's own voice.
 - Discoverability: an **F1: shortcuts** control in the status bar opens the
   keyboard reference from anywhere (`docs/design/ui-polish-audit.md`).
+- Menu bar (S2-1): File/Edit/View/Help menus carry the primary actions, the
+  view tabs move into a compact strip, and the status message lives only in
+  the bottom bar.
+- Table filter (S2-5): a filter field narrows the rows by activity name
+  (case-insensitive) and a **Critical only** toggle shows just the critical
+  path, with a `shown of total` counter while either is active. The filter
+  never leaks into the Gantt or the Resources dictionary.
+- Relationship type editing (S2-8): the inspector's relationship section now
+  offers a type combo (FS/SS/FF/SF) issuing the new undoable
+  `SetRelationshipType` command, alongside the existing lag editor and the
+  confirmed delete.
+- Diary note editing (S2-10): every note gains an **Edit** action that loads
+  the text into the editor and saves through the undoable `UpdateDailyNote`
+  command, so a note can be corrected after it was written.
+- Row context menu (S1-1c): right-clicking a table row offers New below,
+  Duplicate and Delete.
+- Date fields (S2-4): every `YYYY-MM-DD` entry in the GUI goes through one
+  helper that validates inline, so parse errors appear next to the field.
+- Inspector completeness (S2-9): the activity inspector now carries the
+  Location and WBS fields, which the model and commands already supported.
+- Update awareness: the window title carries the app version, and the app
+  checks for a newer release daily; the README explains the download-and-run
+  install for people without Rust.
+
+### Changed
+- Leveling is undoable as one step (S2-15): applying levelled dates issues a
+  single composite `SetConstraints` command, so a mid-batch failure can no
+  longer leave a partially levelled state behind one undo entry.
+- Destructive actions confirm consistently (S2-18): deleting an activity, a
+  relationship, or applying levelled dates all use the same modal pattern.
+- Every label+field pair in the inspectors is linked for screen readers via
+  AccessKit `labelled_by` (S2-20).
+- The theme toggle lives in one place (S2-22): the toolbar keeps it, the status
+  bar no longer duplicates it.
+- Saving a report opens a file dialog like printing one (S2-14), and
+  Ctrl+wheel over the Gantt zooms without also scrolling the canvas (S2-16).
+
+### Performance
+- Resource conflicts and the day-usage histogram are computed once per edit
+  and shared behind an `Arc`, instead of rescanning the assignments every
+  frame (S2-11).
+- The lookahead window is cached against the edit version and the chosen
+  window, and the snapshot comparison is indexed by activity id, so it is
+  linear rather than O(n²) per frame (S2-12).
+- The critical-activity count is computed in `recompute`, not per frame
+  (S2-13).
 
 ### Fixed
 - Status bar: info and success messages now auto-clear after five seconds so
@@ -33,6 +79,13 @@ follows Keep a Changelog; releases use git tags.
 - Move off the yanked `async-executor 1.14.0` pin (superseded by `1.14.1`) so
   the required dependency-advisory check stays green; the lockfile workflow now
   re-resolves this pin explicitly (`DECISIONS.md` D26).
+- Error colours route through the design tokens (S3-1): schedule errors in the
+  Table and Resources views, the earned-value status-date warning and the
+  over-allocation counts now use the palette's critical token instead of raw
+  reds.
+- The nine view tabs carry tooltips (S3-7), the window asserts a minimum size
+  so the toolbar cannot wrap into nonsense (S3-18), and `ACCESSIBILITY.md`
+  documents the full `Ctrl+1`–`Ctrl+9` view range (S3-6).
 
 ## [0.10.0] — 2026-11-02
 

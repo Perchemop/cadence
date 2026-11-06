@@ -1145,6 +1145,45 @@ x86_64/aarch64, Windows and macOS; Package (Linux); Secret scanning; Dependency
 licences and advisories; Dependency review; Static analysis (rust/actions); Bill
 of materials; Lockfile freshness; Personal data scan).
 
+## 2026-11-06 — UI polish audit backlog closed; release 0.11.0
+
+Every item on the UI polish audit's future-slices list is now closed in the
+tree, verified slice by slice against `docs/design/ui-polish-audit.md`:
+
+- **S2-5 Table filter:** a filter field narrows rows by activity name
+  (case-insensitive) and a **Critical only** toggle shows the critical path,
+  with a `shown of total` counter. The filtered rows live in their own cache
+  (`table_rows`), so the filter never leaks into the Gantt or the Resources
+  dictionary, and the unfiltered hot path is unchanged. The table's shift/ctrl
+  range multi-select remains queued.
+- **S2-8 Relationship retype:** a new undoable `SetRelationshipType` command
+  (with undo/redo and rejection tests) and a type combo in the inspector.
+- **S2-10 Diary note editing:** an **Edit** action per note loads the text and
+  saves through the undoable `UpdateDailyNote` command.
+- **S2-11/S2-12 Per-frame work cached:** resource conflicts and the day-usage
+  histogram are computed once per edit in `recompute` and shared behind an
+  `Arc`; the lookahead window is cached against the edit version and the
+  chosen window, and the snapshot comparison is indexed by activity id
+  (linear, not O(n²)).
+- **S3-1 Token colours:** every raw `Color32::RED` and hardcoded red in the
+  Table, Resources and Earned-value views now routes through the palette's
+  critical token. `variance_color` keeps its own WCAG-AA-verified theme pairs
+  by design (tests cover them).
+- Verified already present from earlier slices: S2-1, S2-4, S2-6, S2-7, S2-9,
+  S2-13, S2-14, S2-15, S2-16, S2-18, S2-20, S2-21, S2-22, S1-1c, S3-6, S3-7
+  and S3-18.
+
+**Release 0.11.0** cuts all of the above: the version is bumped across the
+workspace, `CHANGELOG.md` turns the Unreleased section into the dated 0.11.0
+entry, and the audit doc's backlog table records each item's status. The only
+release-checklist item that cannot be closed by code is the manual
+screen-reader verification (NVDA/VoiceOver/Orca), which the audit explicitly
+defers to the release checklist.
+
+Verification: CI green on `opencode/ci` across Linux (x86_64, aarch64),
+Windows and macOS, plus the security, licensing, SBOM, lockfile, semver and
+personal-data checks.
+
 ## Design audit backlog — PR #90 cross-check (future slices)
 
 PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`, 43 findings)
