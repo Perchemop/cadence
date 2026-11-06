@@ -4820,7 +4820,6 @@ impl eframe::App for CadenceApp {
                 self.show_release_notes = false;
             }
         }
-        }
     }
 }
 
