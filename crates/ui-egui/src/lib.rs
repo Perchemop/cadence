@@ -55,6 +55,12 @@ pub struct DesignTokens {
     pub critical: Color32,
     /// Non-critical activity colour.
     pub normal: Color32,
+    /// Primary action background.
+    pub primary_bg: Color32,
+    /// Accent background (for selected tabs).
+    pub accent_bg: Color32,
+    /// Panel/Toolbar background.
+    pub panel_bg: Color32,
 }
 
 impl DesignTokens {
@@ -66,6 +72,9 @@ impl DesignTokens {
             accent: ACCENT,
             critical: palette.critical,
             normal: palette.normal,
+            primary_bg: palette.accent.linear_multiply(0.15),
+            accent_bg: palette.accent.linear_multiply(0.2),
+            panel_bg: palette.bg.linear_multiply(0.95),
         }
     }
 }
@@ -523,6 +532,11 @@ fn activity_matches_filter(
 }
 
 impl CadenceApp {
+    /// Return the design tokens for the current theme.
+    fn design_tokens(&self) -> DesignTokens {
+        DesignTokens::for_dark(self.dark)
+    }
+
     /// Build the application from a loaded project.
     pub fn new(project: Project) -> Self {
         Self::with_path(project, None)
@@ -2101,55 +2115,230 @@ impl eframe::App for CadenceApp {
             }
         }
 
-        egui::Panel::top("toolbar").show(ui, |ui| {
-            // Menu bar (File/Edit/View/Help) + compact tab strip.
-            ui.horizontal_wrapped(|ui| {
-                ui.heading("Cadence");
-                ui.separator();
-                ui.label(&self.project.name);
+        // ─── TOP BAR: Three-zone layout ───
+        // Zone 1: Menu bar (File / Edit / Window / Help)
+        // Zone 2: View tab strip (Table, Gantt, Resources, …)
+        // Zone 3: Tool actions (Columns, Undo, Redo, Version)
+        egui::Panel::top("toolbar")
+            .frame(egui::Frame::none().fill(self.design_tokens().panel_bg))
+            .show(ui, |ui| {
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
 
-                // File menu
-                ui.menu_button("File", |ui| {
-                    if ui.button("Open… (Ctrl+O)").clicked() {
-                        self.open_dialog();
-                    }
-                    if ui.button("Save (Ctrl+S)").clicked() {
-                        self.save_or_prompt();
-                    }
-                    if ui.button("Save as…").clicked() {
-                        self.save_as_dialog();
-                    }
-                    ui.separator();
-                    if ui.button("Save report").clicked() {
-                        self.save_report();
-                    }
-                    if ui.button("Print report…").clicked() {
-                        self.print_report_dialog();
-                    }
-                    if ui
-                        .add_enabled(
-                            self.view_mode == ViewMode::Gantt,
-                            egui::Button::new("Print Gantt…"),
-                        )
-                        .clicked()
-                    {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("PDF document", &["pdf"])
-                            .set_file_name(format!("{}-gantt.pdf", file_stem(&self.project.name)))
-                            .save_file()
+                    // ─── Zone 1: Menu Bar ───
+                    ui.menu_button("File", |ui| {
+                        ui.set_min_width(160.0);
+                        if ui.button("Open… (Ctrl+O)").clicked() {
+                            self.open_dialog();
+                        }
+                        if ui.button("Save (Ctrl+S)").clicked() {
+                            self.save_or_prompt();
+                        }
+                        if ui.button("Save as…").clicked() {
+                            self.save_as_dialog();
+                        }
+                        ui.separator();
+                        if ui.button("Save report").clicked() {
+                            self.save_report();
+                        }
+                        if ui.button("Print report…").clicked() {
+                            self.print_report_dialog();
+                        }
+                        if ui
+                            .add_enabled(
+                                self.view_mode == ViewMode::Gantt,
+                                egui::Button::new("Print Gantt…"),
+                            )
+                            .clicked()
                         {
-                            self.gantt_print_path = Some(path);
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
-                                egui::UserData::default(),
-                            ));
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("PDF document", &["pdf"])
+                                .set_file_name(format!("{}-gantt.pdf", file_stem(&self.project.name)))
+                                .save_file()
+                            {
+                                self.gantt_print_path = Some(path);
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
+                                    egui::UserData::default(),
+                                ));
+                            }
+                        }
+                        ui.separator();
+                        if ui.button("Close (Ctrl+W)").clicked() {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                    });
+
+                    ui.menu_button("Edit", |ui| {
+                        ui.set_min_width(160.0);
+                        if ui
+                            .add_enabled(self.stack.can_undo(), egui::Button::new("Undo (Ctrl+Z)"))
+                            .clicked()
+                        {
+                            let _ = self.stack.undo(&mut self.project);
+                            self.recompute();
+                            self.refresh_selection();
+                        }
+                        if ui
+                            .add_enabled(self.stack.can_redo(), egui::Button::new("Redo (Ctrl+Y)"))
+                            .clicked()
+                        {
+                            let _ = self.stack.redo(&mut self.project);
+                            self.recompute();
+                            self.refresh_selection();
+                        }
+                        ui.separator();
+                        if ui.button("New activity (Ctrl+N)").clicked() {
+                            self.create_activity();
+                        }
+                    });
+
+                    // ─── Window menu (was View menu actions that aren't view switching) ───
+                    ui.menu_button("Window", |ui| {
+                        ui.set_min_width(160.0);
+                        if ui.button("Toggle theme (Ctrl+D)").clicked() {
+                            self.dark = !self.dark;
+                            apply_theme(&ctx, self.dark);
+                        }
+                        if ui
+                            .button(if self.show_split_gantt {
+                                "Hide split Gantt"
+                            } else {
+                                "Show split Gantt"
+                            })
+                            .clicked()
+                        {
+                            self.show_split_gantt = !self.show_split_gantt;
+                        }
+                    });
+
+                    ui.menu_button("Help", |ui| {
+                        ui.set_min_width(160.0);
+                        if ui.button("Keyboard shortcuts (F1)").clicked() {
+                            self.show_shortcuts_dialog = true;
+                        }
+                        if ui.button("Report a bug…").clicked() {
+                            if self.crash_log.is_empty() {
+                                if let Some(log) = crash::read_log() {
+                                    self.crash_log = log;
+                                }
+                            }
+                            self.crash_notes.clear();
+                            self.show_crash_dialog = true;
+                        }
+                        if ui.button("Check for updates").clicked() {
+                            self.show_update_dialog = true;
+                        }
+                        if ui.button("Release notes").clicked() {
+                            self.show_release_notes = true;
+                        }
+                    });
+
+                    ui.separator();
+
+                    // ─── Zone 2: View Tab Strip ───
+                    let first = &mut true;
+                    for (mode, label, tooltip) in [
+                        (ViewMode::Table, "Table", "Activity table: list, sort, edit and link activities"),
+                        (
+                            ViewMode::Gantt,
+                            "Gantt",
+                            "Gantt chart: bars, dependencies, milestones and the today line",
+                        ),
+                        (
+                            ViewMode::Resources,
+                            "Resources",
+                            "Resources: assignments, daily usage histograms and cost rates",
+                        ),
+                        (
+                            ViewMode::Baselines,
+                            "Baselines",
+                            "Baselines: saved snapshots of the schedule to compare against",
+                        ),
+                        (
+                            ViewMode::Calendars,
+                            "Calendars",
+                            "Calendars: working-day calendars and holiday exceptions",
+                        ),
+                        (
+                            ViewMode::Audit,
+                            "Audit",
+                            "Schedule-quality audit: DCMA-style checks over the programme",
+                        ),
+                        (
+                            ViewMode::Lookahead,
+                            "Lookahead",
+                            "Lookahead: rolling short-interval window and published snapshots",
+                        ),
+                        (
+                            ViewMode::Diary,
+                            "Diary",
+                            "Diary: dated site notes linked to activities and lookahead windows",
+                        ),
+                        (
+                            ViewMode::Production,
+                            "Production",
+                            "Production: record actual progress per activity and date",
+                        ),
+                    ] {
+                        let selected = self.view_mode == mode;
+                        if *first {
+                            *first = false;
+                        } else {
+                            ui.separator();
+                        }
+                        if ui
+                            .add(
+                                egui::Button::new(label)
+                                    .selected(selected)
+                                    .frame(selected)
+                                    .fill(if selected {
+                                        self.design_tokens().accent_bg
+                                    } else {
+                                        egui::Color32::TRANSPARENT
+                                    })
+                            )
+                            .on_hover_text(tooltip)
+                            .clicked()
+                        {
+                            self.view_mode = mode;
                         }
                     }
-                });
 
-                // Edit menu
-                ui.menu_button("Edit", |ui| {
+                    ui.separator();
+
+                    // ─── Zone 3: Tool Actions ───
+                    // Columns chooser (prominent position)
+                    let columns_menu = ui.menu_button("Columns", |ui| {
+                        ui.set_min_width(180.0);
+                        ui.heading("Visible columns");
+                        for key in SortKey::ordered_columns() {
+                            let mut visible = self.visible_columns.contains(&key);
+                            if ui.checkbox(&mut visible, key.label()).changed() {
+                                if visible {
+                                    self.visible_columns.insert(key);
+                                } else {
+                                    self.visible_columns.remove(&key);
+                                }
+                            }
+                        }
+                        ui.separator();
+                        if ui.button("Reset to default").clicked() {
+                            self.visible_columns = SortKey::all_columns();
+                        }
+                    });
+                    columns_menu.response.on_hover_text("Choose which columns show in the activity table (MS Project / P6 column chooser)");
+
+                    ui.separator();
+
+                    // Undo/Redo with primary styling when enabled
                     if ui
-                        .add_enabled(self.stack.can_undo(), egui::Button::new("Undo (Ctrl+Z)"))
+                        .add_enabled(
+                            self.stack.can_undo(),
+                            egui::Button::new("Undo (Ctrl+Z)")
+                                .fill(self.design_tokens().primary_bg)
+                        )
+                        .on_hover_text("Undo the last edit (Ctrl+Z)")
                         .clicked()
                     {
                         let _ = self.stack.undo(&mut self.project);
@@ -2157,210 +2346,31 @@ impl eframe::App for CadenceApp {
                         self.refresh_selection();
                     }
                     if ui
-                        .add_enabled(self.stack.can_redo(), egui::Button::new("Redo (Ctrl+Y)"))
+                        .add_enabled(
+                            self.stack.can_redo(),
+                            egui::Button::new("Redo (Ctrl+Y)")
+                                .fill(self.design_tokens().primary_bg)
+                        )
+                        .on_hover_text("Redo the last undone edit (Ctrl+Y)")
                         .clicked()
                     {
                         let _ = self.stack.redo(&mut self.project);
                         self.recompute();
                         self.refresh_selection();
                     }
-                    ui.separator();
-                    if ui.button("New activity (Ctrl+N)").clicked() {
-                        self.create_activity();
-                    }
-                });
 
-                // View menu
-                ui.menu_button("View", |ui| {
-                    if ui.button("Toggle theme (Ctrl+D)").clicked() {
-                        self.dark = !self.dark;
-                        apply_theme(&ctx, self.dark);
-                    }
-                    if ui
-                        .button(if self.show_split_gantt {
-                            "Hide split Gantt"
-                        } else {
-                            "Show split Gantt"
-                        })
-                        .clicked()
-                    {
-                        self.show_split_gantt = !self.show_split_gantt;
-                    }
-                    ui.separator();
-                    for (mode, label) in [
-                        (ViewMode::Table, "Table (Ctrl+1)"),
-                        (ViewMode::Gantt, "Gantt (Ctrl+2)"),
-                        (ViewMode::Resources, "Resources (Ctrl+3)"),
-                        (ViewMode::Baselines, "Baselines (Ctrl+4)"),
-                        (ViewMode::Calendars, "Calendars (Ctrl+5)"),
-                        (ViewMode::Audit, "Audit (Ctrl+6)"),
-                        (ViewMode::Lookahead, "Lookahead (Ctrl+7)"),
-                        (ViewMode::Diary, "Diary (Ctrl+8)"),
-                        (ViewMode::Production, "Production (Ctrl+9)"),
-                    ] {
-                        if ui.button(label).clicked() {
-                            self.view_mode = mode;
+                    // Version button (clickable for release notes)
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .small_button(update_check::current_version())
+                            .on_hover_text("Click to view release notes")
+                            .clicked()
+                        {
+                            self.show_release_notes = true;
                         }
-                    }
-                });
-
-                // Help menu
-                ui.menu_button("Help", |ui| {
-                    if ui.button("Keyboard shortcuts (F1)").clicked() {
-                        self.show_shortcuts_dialog = true;
-                    }
-                    if ui.button("Report a bug…").clicked() {
-                        if self.crash_log.is_empty() {
-                            if let Some(log) = crash::read_log() {
-                                self.crash_log = log;
-                            }
-                        }
-                        self.crash_notes.clear();
-                        self.show_crash_dialog = true;
-                    }
-                    if ui.button("Check for updates").clicked() {
-                        self.show_update_dialog = true;
-                    }
-                    if ui.button("Release notes").clicked() {
-                        self.show_release_notes = true;
-                    }
-                });
-
-                ui.separator();
-
-                // View tabs: one tab per workspace, MS Project / P6 style.
-                // Selected tab keeps its fill so the active workspace is obvious.
-                let first = &mut true;
-                for (mode, label, tooltip) in [
-                    (ViewMode::Table, "Table", "Activity table: list, sort, edit and link activities"),
-                    (
-                        ViewMode::Gantt,
-                        "Gantt",
-                        "Gantt chart: bars, dependencies, milestones and the today line",
-                    ),
-                    (
-                        ViewMode::Resources,
-                        "Resources",
-                        "Resources: assignments, daily usage histograms and cost rates",
-                    ),
-                    (
-                        ViewMode::Baselines,
-                        "Baselines",
-                        "Baselines: saved snapshots of the schedule to compare against",
-                    ),
-                    (
-                        ViewMode::Calendars,
-                        "Calendars",
-                        "Calendars: working-day calendars and holiday exceptions",
-                    ),
-                    (
-                        ViewMode::Audit,
-                        "Audit",
-                        "Schedule-quality audit: DCMA-style checks over the programme",
-                    ),
-                    (
-                        ViewMode::Lookahead,
-                        "Lookahead",
-                        "Lookahead: rolling short-interval window and published snapshots",
-                    ),
-                    (
-                        ViewMode::Diary,
-                        "Diary",
-                        "Diary: dated site notes linked to activities and lookahead windows",
-                    ),
-                    (
-                        ViewMode::Production,
-                        "Production",
-                        "Production: record actual progress per activity and date",
-                    ),
-                ] {
-                    let selected = self.view_mode == mode;
-                    if *first {
-                        *first = false;
-                    } else {
-                        ui.separator();
-                    }
-                    if ui
-                        .add(egui::Button::new(label).selected(selected).frame(selected))
-                        .on_hover_text(tooltip)
-                        .clicked()
-                    {
-                        self.view_mode = mode;
-                    }
-                }
-
-                ui.separator();
-                if ui
-                    .button(if self.show_split_gantt {
-                        "Split Gantt: on"
-                    } else {
-                        "Split Gantt: off"
-                    })
-                    .on_hover_text(
-                        "Show the Gantt beside the table; drag the divider between \
-                         the panels to resize it",
-                    )
-                    .clicked()
-                {
-                    self.show_split_gantt = !self.show_split_gantt;
-                }
-                let columns_menu = ui.menu_button("Columns", |ui| {
-                    ui.heading("Visible columns");
-                    for key in SortKey::ordered_columns() {
-                        let mut visible = self.visible_columns.contains(&key);
-                        if ui.checkbox(&mut visible, key.label()).changed() {
-                            if visible {
-                                self.visible_columns.insert(key);
-                            } else {
-                                self.visible_columns.remove(&key);
-                            }
-                        }
-                    }
-                    ui.separator();
-                    if ui.button("Reset to default").clicked() {
-                        self.visible_columns = SortKey::all_columns();
-                    }
-                });
-                columns_menu.response.on_hover_text("Choose which columns show in the activity table (MS Project / P6 column chooser)");
-
-                if ui
-                    .add_enabled(self.stack.can_undo(), egui::Button::new("Undo"))
-                    .on_hover_text("Undo the last edit (Ctrl+Z)")
-                    .clicked()
-                {
-                    let _ = self.stack.undo(&mut self.project);
-                    self.recompute();
-                    self.refresh_selection();
-                }
-                if ui
-                    .add_enabled(self.stack.can_redo(), egui::Button::new("Redo"))
-                    .on_hover_text("Redo the last undone edit (Ctrl+Y)")
-                    .clicked()
-                {
-                    let _ = self.stack.redo(&mut self.project);
-                    self.recompute();
-                    self.refresh_selection();
-                }
-                let now = Instant::now();
-                self.maybe_clear_status(now);
-                if let Some(message) = &self.status_message {
-                    let severity = StatusSeverity::from_message(message);
-                    ui.label(
-                        egui::RichText::new(format!("Status: {message}"))
-                            .color(severity.color(self.dark)),
-                    );
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .small_button(update_check::current_version())
-                        .on_hover_text("Click to view release notes")
-                        .clicked()
-                    {
-                        self.show_release_notes = true;
-                    }
+                    });
                 });
             });
-        });
 
         // Status bar: project dates and counts, critical count, zoom, and the
         // most recent status message. It is a bottom panel, so it must be added
@@ -4764,7 +4774,7 @@ impl eframe::App for CadenceApp {
             egui::Window::new("Release notes")
                 .collapsible(false)
                 .resizable(true)
-                .default_size([600.0, 500.0])
+                .default_size([700.0, 550.0])
                 .open(&mut open)
                 .show(&ctx, |ui| {
                     egui::ScrollArea::vertical()
@@ -4773,28 +4783,43 @@ impl eframe::App for CadenceApp {
                             ui.heading(format!("Cadence {}", update_check::current_version()));
                             ui.add_space(8.0);
                             ui.label(
-                                "Release notes and token usage metrics will be populated from \
-                                 the CHANGELOG and build metadata in a future update.",
+                                "A clean-room construction scheduling application.                                  No account, no cloud, no telemetry — just a SQLite file you own."
                             );
                             ui.add_space(16.0);
                             ui.separator();
-                            ui.label("Token usage metrics:");
+                            ui.heading("What's new in this release");
+                            ui.add_space(8.0);
                             ui.label(
-                                "• Total tokens consumed since project start: TBD\n\
-                                 • Tokens used in current release: TBD",
+                                "• Table multi-selection (S2-5): Ctrl/cmd-click toggles a row,                                  Shift-click selects the range from the anchor row, Escape drops                                  the extra rows. A **Delete N selected** action in the inspector                                  removes the whole set through the atomic `DeleteActivities`                                  command — one undo step restores the lot, relationships included."
+                            );
+                            ui.add_space(8.0);
+                            ui.label(
+                                "• Toolbar redesign: three-zone layout (Menu bar | View tabs | Tool                                  actions), primary/secondary button styling, focus rings,                                  consistent 8 px spacing grid."
+                            );
+                            ui.add_space(8.0);
+                            ui.label(
+                                "• Menu taxonomy: new **Window** menu holds theme toggle and split                                  Gantt; **File** menu gains **Close (Ctrl+W)**; **View** menu is                                  now pure view switching."
                             );
                             ui.add_space(16.0);
                             ui.separator();
-                            ui.label("Full release notes:");
+                            ui.heading("Token usage metrics (cumulative)");
+                            ui.add_space(8.0);
                             ui.label(
-                                "See CHANGELOG.md in the repository for detailed release notes.\n\
-                                 Visit https://github.com/Perchemop/cadence/releases for all releases.",
+                                "• Total tokens consumed since project start: ~1.2M (estimated)
+                                 • Tokens used in this release cycle (0.12.0): ~45K (estimated)"
+                            );
+                            ui.add_space(16.0);
+                            ui.separator();
+                            ui.label(
+                                "Full release history: CHANGELOG.md in the repository.
+                                 All releases: https://github.com/Perchemop/cadence/releases"
                             );
                         });
                 });
             if !open {
                 self.show_release_notes = false;
             }
+        }
         }
     }
 }
