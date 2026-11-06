@@ -2297,6 +2297,39 @@ impl Command for SetRelationshipLag {
     }
 }
 
+/// Change the type of a relationship (FS, SS, FF or SF).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetRelationshipType {
+    /// Relationship to update.
+    pub id: RelationshipId,
+    /// New relationship type.
+    pub link_type: LinkType,
+}
+
+impl Command for SetRelationshipType {
+    fn description(&self) -> String {
+        format!(
+            "set type of relationship {} to {:?}",
+            self.id, self.link_type
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(relationship) = project.relationship_mut(self.id) else {
+            return Err(format!("relationship {} does not exist", self.id));
+        };
+        let previous = relationship.link_type;
+        relationship.link_type = self.link_type;
+        for activity in &mut project.activities {
+            activity.clear_schedule();
+        }
+        Ok(Box::new(SetRelationshipType {
+            id: self.id,
+            link_type: previous,
+        }))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2509,6 +2542,57 @@ mod tests {
                 .map(|activity| activity.original_duration),
             Some(7)
         );
+    }
+
+    #[test]
+    fn relationship_type_change_is_undoable() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 2);
+        let b = add_activity(&mut stack, &mut project, 2, "B", 3);
+        let rel = add_relationship(&mut stack, &mut project, 1, a, b, LinkType::Fs, 0);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetRelationshipType {
+                id: rel,
+                link_type: LinkType::Ss,
+            }),
+        );
+        assert_eq!(
+            project.relationship(rel).map(|r| r.link_type),
+            Some(LinkType::Ss)
+        );
+
+        stack.undo(&mut project).expect("undo type change");
+        assert_eq!(
+            project.relationship(rel).map(|r| r.link_type),
+            Some(LinkType::Fs)
+        );
+
+        stack.redo(&mut project).expect("redo type change");
+        assert_eq!(
+            project.relationship(rel).map(|r| r.link_type),
+            Some(LinkType::Ss)
+        );
+    }
+
+    #[test]
+    fn relationship_type_change_on_missing_relationship_is_rejected() {
+        let mut project = project();
+        let mut stack = CommandStack::new();
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(SetRelationshipType {
+                    id: RelationshipId(99),
+                    link_type: LinkType::Ss,
+                }),
+            )
+            .expect_err("a missing relationship must be rejected");
+        assert!(error.contains("does not exist"));
     }
 
     #[test]

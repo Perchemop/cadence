@@ -7,7 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use cadence_commands::{
@@ -16,8 +16,8 @@ use cadence_commands::{
     RemoveResourceFromActivity, RenameActivity, RenameCalendar, RenameResource,
     SetActivityActualCost, SetActivityActualDates, SetActivityBudget, SetActivityCalendar,
     SetActivityConstraint, SetActivityDuration, SetActivityOwner, SetActivityProgress,
-    SetActivityPromise, SetCalendarDefinition, SetRelationshipLag, SetResourceCapacity,
-    SetResourceKind,
+    SetActivityPromise, SetCalendarDefinition, SetRelationshipLag, SetRelationshipType,
+    SetResourceCapacity, SetResourceKind,
 };
 use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
@@ -28,7 +28,7 @@ use cadence_core::engine::schedule;
 use cadence_core::engine::Schedule;
 use cadence_core::engine::{
     activity_progress, evm_metrics, level_resources, resource_conflicts, resource_histogram,
-    schedule_with_progress, ProgressState,
+    schedule_with_progress, ProgressState, ResourceConflict, ResourceHistogram,
 };
 use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use cadence_core::model::FULL_UNITS;
@@ -389,6 +389,11 @@ pub struct CadenceApp {
     /// Whether the user has confirmed applying leveled dates (destructive).
     confirm_leveling: bool,
     selected_relationship: Option<cadence_core::model::RelationshipId>,
+    /// The diary note being edited, if any (S2-10: notes are editable after
+    /// creation via the undoable `UpdateDailyNote` command).
+    editing_note: Option<DailyNoteId>,
+    /// Buffer for the note text while a note is being edited.
+    diary_edit_buffer: String,
     lag_buffer: String,
     last_rel: Option<cadence_core::model::RelationshipId>,
     name_buffer: String,
@@ -453,12 +458,62 @@ pub struct CadenceApp {
     owner_buffer: String,
     promised_buffer: bool,
     delay_reason_buffer: String,
+    /// Resource conflicts against the current schedule, rebuilt in `recompute`
+    /// against the edit version so the Resources view never recomputes per
+    /// frame. Shared behind an `Arc` because the view's closures borrow `self`
+    /// mutably and need an owned handle to the data.
+    conflicts_cache: Arc<Vec<ResourceConflict>>,
+    conflicts_version: u64,
+    /// The resource-day histogram for the current schedule, rebuilt in
+    /// `recompute` for the same reason; `resource_day_usage` filters it rather
+    /// than rebuilding it per frame.
+    histogram_cache: Arc<ResourceHistogram>,
+    histogram_version: u64,
+    /// The cached lookahead window, keyed by the edit version and the window
+    /// (start date, weeks) the user has chosen, so panning the window or
+    /// editing the programme is the only thing that rebuilds it.
+    lookahead_cache: Option<Arc<Vec<LookaheadEntry>>>,
+    lookahead_version: u64,
+    lookahead_window: Option<(Date, usize)>,
     sorted_cache: Vec<Activity>,
     sorted_edit_version: u64,
     sorted_key: SortKey,
     sorted_ascending: bool,
+    /// Filter text typed into the table view (case-insensitive substring match
+    /// on the activity name; empty means "show everything").
+    table_filter_buffer: String,
+    /// When set, the table shows only activities on the critical path.
+    table_critical_only: bool,
+    /// The filtered table rows, materialised only while a filter is active.
+    table_rows: Vec<Activity>,
+    /// Whether `table_rows` currently holds a filtered subset.
+    table_rows_active: bool,
+    /// Cache keys for `table_rows`: rebuilt when any of these change.
+    table_rows_edit_version: u64,
+    table_rows_filter: String,
+    table_rows_critical_only: bool,
+    table_rows_source_len: usize,
+    table_rows_sorted_key: SortKey,
+    table_rows_sorted_ascending: bool,
     show_split_gantt: bool,
     visible_columns: BTreeSet<SortKey>,
+}
+
+/// Whether an activity passes the table filter: a case-insensitive substring
+/// match on the name (an empty needle matches everything), and — when
+/// `critical_only` is set — only activities on the critical path.
+fn activity_matches_filter(
+    activity: &Activity,
+    needle: &str,
+    critical_only: bool,
+    schedule: Option<&Schedule>,
+) -> bool {
+    (needle.is_empty() || activity.name.to_ascii_lowercase().contains(needle))
+        && (!critical_only
+            || schedule
+                .and_then(|s| s.activity(activity.id))
+                .map(|r| r.critical)
+                .unwrap_or(false))
 }
 
 impl CadenceApp {
@@ -498,6 +553,8 @@ impl CadenceApp {
             drag_link_type_index: 0,
             confirm_leveling: false,
             selected_relationship: None,
+            editing_note: None,
+            diary_edit_buffer: String::new(),
             lag_buffer: String::new(),
             last_rel: None,
             name_buffer: String::new(),
@@ -560,10 +617,29 @@ impl CadenceApp {
             owner_buffer: String::new(),
             promised_buffer: false,
             delay_reason_buffer: String::new(),
+            conflicts_cache: Arc::new(Vec::new()),
+            conflicts_version: u64::MAX,
+            histogram_cache: Arc::new(ResourceHistogram {
+                entries: BTreeMap::new(),
+            }),
+            histogram_version: u64::MAX,
+            lookahead_cache: None,
+            lookahead_version: u64::MAX,
+            lookahead_window: None,
             sorted_cache: Vec::new(),
             sorted_edit_version: u64::MAX,
             sorted_key: SortKey::Name,
             sorted_ascending: true,
+            table_filter_buffer: String::new(),
+            table_critical_only: false,
+            table_rows: Vec::new(),
+            table_rows_active: false,
+            table_rows_edit_version: u64::MAX,
+            table_rows_filter: String::new(),
+            table_rows_critical_only: false,
+            table_rows_source_len: usize::MAX,
+            table_rows_sorted_key: SortKey::Name,
+            table_rows_sorted_ascending: true,
             show_split_gantt: true,
             visible_columns: SortKey::all_columns(),
         }
@@ -622,6 +698,14 @@ impl CadenceApp {
             Ok(schedule) => schedule,
             Err(_) => {
                 self.critical_count = 0;
+                // An unschedulable programme has no conflicts, no usage and no
+                // lookahead; clear the caches so the views reflect that.
+                self.conflicts_cache = Arc::new(Vec::new());
+                self.histogram_cache = Arc::new(ResourceHistogram {
+                    entries: BTreeMap::new(),
+                });
+                self.conflicts_version = self.edit_version;
+                self.histogram_version = self.edit_version;
                 return;
             }
         };
@@ -635,6 +719,13 @@ impl CadenceApp {
                     .is_some_and(|result| result.critical)
             })
             .count();
+        // Cache the resource conflicts and the day histogram once per edit, so
+        // the Resources view does not rescan the assignments every frame
+        // (S2-11). Shared behind an `Arc`; the views clone the handle.
+        self.conflicts_cache = Arc::new(resource_conflicts(&self.project, schedule));
+        self.histogram_cache = Arc::new(resource_histogram(&self.project, schedule));
+        self.conflicts_version = self.edit_version;
+        self.histogram_version = self.edit_version;
     }
 
     /// Reload the inspector buffers for the selected activity after an undo or
@@ -762,6 +853,20 @@ impl CadenceApp {
                 return;
             }
         }
+        self.recompute();
+    }
+
+    /// Change an existing relationship's type, issuing the undoable command
+    /// and recomputing the schedule (S2-8).
+    fn set_relationship_type(
+        &mut self,
+        id: cadence_core::model::RelationshipId,
+        link_type: LinkType,
+    ) {
+        let _ = self.stack.execute(
+            &mut self.project,
+            Box::new(SetRelationshipType { id, link_type }),
+        );
         self.recompute();
     }
 
@@ -1592,15 +1697,88 @@ impl CadenceApp {
         self.sorted_ascending = self.sort_ascending;
     }
 
-    /// The cached sorted activities.
+    /// The cached sorted activities (the full programme, in row order).
     fn sorted(&self) -> &[Activity] {
         &self.sorted_cache
+    }
+
+    /// Rebuild the filtered table rows when the filter, the sort order or the
+    /// programme changed.
+    ///
+    /// The table filter must not leak into the other views: the Gantt and the
+    /// Resources dictionary read [`Self::sorted`] and always see the whole
+    /// programme. This cache is therefore separate from `sorted_cache`, and is
+    /// only materialised when a filter is actually active, so the unfiltered
+    /// hot path is unchanged.
+    fn refresh_table_rows(&mut self, filter: &str, critical_only: bool) {
+        let filter = filter.trim();
+        let active = !filter.is_empty() || critical_only;
+        if active == self.table_rows_active
+            && self.table_rows_edit_version == self.edit_version
+            && self.table_rows_filter == filter
+            && self.table_rows_critical_only == critical_only
+            && self.table_rows_source_len == self.project.activities.len()
+            && self.table_rows_sorted_key == self.sort_key
+            && self.table_rows_sorted_ascending == self.sort_ascending
+        {
+            return;
+        }
+        if active {
+            let needle = filter.to_ascii_lowercase();
+            let schedule = self.schedule.as_ref().ok();
+            let rows: Vec<Activity> = self
+                .sorted_cache
+                .iter()
+                .filter(|activity| {
+                    activity_matches_filter(activity, &needle, critical_only, schedule)
+                })
+                .cloned()
+                .collect();
+            self.table_rows = rows;
+        } else {
+            self.table_rows.clear();
+        }
+        self.table_rows_active = active;
+        self.table_rows_edit_version = self.edit_version;
+        self.table_rows_filter = filter.to_string();
+        self.table_rows_critical_only = critical_only;
+        self.table_rows_source_len = self.project.activities.len();
+        self.table_rows_sorted_key = self.sort_key;
+        self.table_rows_sorted_ascending = self.sort_ascending;
+    }
+
+    /// The rows the activity table draws: the filtered subset when a filter is
+    /// active, otherwise the full sorted programme.
+    fn table_rows(&self) -> &[Activity] {
+        if self.table_rows_active {
+            &self.table_rows
+        } else {
+            &self.sorted_cache
+        }
+    }
+
+    /// How many activities the given filter would show, for the row counter in
+    /// the filter bar. Counted without cloning, so the per-frame cost is one
+    /// pass over the names while a filter is active.
+    fn table_match_count(&self, filter: &str, critical_only: bool) -> usize {
+        let needle = filter.trim().to_ascii_lowercase();
+        let schedule = self.schedule.as_ref().ok();
+        self.sorted_cache
+            .iter()
+            .filter(|activity| activity_matches_filter(activity, &needle, critical_only, schedule))
+            .count()
     }
 }
 
 impl eframe::App for CadenceApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+
+        // The table filter is edited into these locals and written back after
+        // the table renders, so the widgets never borrow `self` at the same
+        // time as the view closures do.
+        let mut filter_text = self.table_filter_buffer.clone();
+        let mut critical_only = self.table_critical_only;
 
         // Reflect unsaved state and version in the window title each frame.
         let title = format!(
@@ -1704,8 +1882,10 @@ impl eframe::App for CadenceApp {
             self.refresh_selection();
         }
 
-        // Refresh the cached sort order once per edit, not once per frame.
+        // Refresh the cached sort order once per edit, not once per frame,
+        // and re-derive the (filtered) table rows from it.
         self.refresh_sorted();
+        self.refresh_table_rows(&filter_text, critical_only);
 
         // Ctrl+1..Ctrl+9: switch views without reaching for the mouse.
         let (ctrl_held, pressed_view) = ctx.input(|input| {
@@ -1791,7 +1971,7 @@ impl eframe::App for CadenceApp {
                 )
             });
             if previous || next {
-                let activities = self.sorted();
+                let activities = self.table_rows();
                 if !activities.is_empty() {
                     let current = self
                         .selected
@@ -2376,14 +2556,36 @@ impl eframe::App for CadenceApp {
                                     }
 
                                     if self.selected_relationship.is_some() {
-                                        if let Some(rel) = self
+                                        let relationship = self
                                             .selected_relationship
                                             .and_then(|id| self.project.relationship(id))
-                                        {
-                                            ui.label(format!(
-                                                "Type: {}",
-                                                LINK_TYPE_LABELS[link_type_index(rel.link_type)]
-                                            ));
+                                            .map(|rel| (rel.id, rel.link_type));
+                                        if let Some((rel_id, current_type)) = relationship {
+                                            // S2-8: retype an existing
+                                            // relationship instead of only
+                                            // reading its type back.
+                                            let current_index = link_type_index(current_type);
+                                            let type_label = ui.label("Type");
+                                            ComboBox::from_id_salt("relationship_type")
+                                                .selected_text(LINK_TYPE_LABELS[current_index])
+                                                .show_ui(ui, |ui| {
+                                                    for (index, label) in
+                                                        LINK_TYPE_LABELS.iter().enumerate()
+                                                    {
+                                                        let response = ui.selectable_label(
+                                                            index == current_index,
+                                                            *label,
+                                                        );
+                                                        if response.clicked() {
+                                                            self.set_relationship_type(
+                                                                rel_id,
+                                                                link_type_from_index(index),
+                                                            );
+                                                        }
+                                                    }
+                                                })
+                                                .response
+                                                .labelled_by(type_label.id);
                                         }
                                         let lag_label = ui.label("Lag (working days)");
                                         ui.text_edit_singleline(&mut self.lag_buffer)
@@ -2507,8 +2709,34 @@ impl eframe::App for CadenceApp {
                     }
                 }
 
+                // Table filter row (S2-5): narrow the rows by name and/or to
+                // the critical path. Rendered as its own top panel so the
+                // widgets never borrow `self` inside the table's CentralPanel.
+                egui::Panel::top("table_filter").show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Filter:");
+                        let filter_response = ui.text_edit_singleline(&mut filter_text);
+                        filter_response.on_hover_text("Show only activities matching this name");
+                        let critical_response = ui.checkbox(&mut critical_only, "Critical only");
+                        critical_response.on_hover_text("Show only critical-path activities");
+                        if !filter_text.trim().is_empty() || critical_only {
+                            let shown = self.table_match_count(&filter_text, critical_only);
+                            let total = self.project.activities.len();
+                            ui.label(
+                                egui::RichText::new(format!("{shown} of {total}"))
+                                    .weak()
+                                    .small(),
+                            );
+                        }
+                    });
+                });
+                // Apply any change from this frame before the rows are drawn.
+                self.table_filter_buffer = filter_text.clone();
+                self.table_critical_only = critical_only;
+                self.refresh_table_rows(&filter_text, critical_only);
+
                 let schedule = self.schedule.as_ref();
-                let sorted = self.sorted();
+                let sorted = self.table_rows();
                 let selected_id = self.selected;
                 let scroll_to_selection = self.scroll_to_selection;
                 let mut clicked_activity = None;
@@ -2516,7 +2744,10 @@ impl eframe::App for CadenceApp {
                 let mut header_clicked = None;
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
-                        ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
+                        ui.colored_label(
+                            design::palette(self.dark).critical,
+                            format!("Schedule error: {error}"),
+                        );
                     }
                     Ok(schedule) => {
                         let row_height = 20.0;
@@ -2596,14 +2827,12 @@ impl eframe::App for CadenceApp {
 
                         if sorted.is_empty() {
                             ui.add_space(8.0);
-                            ui.label(
-                                egui::RichText::new(
-                                    "No activities yet. Use New activity (Ctrl+N) to add the \
-                                     first one.",
-                                )
-                                .weak()
-                                .small(),
-                            );
+                            let message = if !filter_text.trim().is_empty() || critical_only {
+                                "No activities match the filter. Clear the filter to see them all."
+                            } else {
+                                "No activities yet. Use New activity (Ctrl+N) to add the first one."
+                            };
+                            ui.label(egui::RichText::new(message).weak().small());
                         } else {
                             let selected_index = selected_id.and_then(|id| {
                                 sorted.iter().position(|activity| activity.id == id)
@@ -2760,6 +2989,7 @@ impl eframe::App for CadenceApp {
                         self.sort_ascending = true;
                     }
                     self.refresh_sorted();
+                    self.refresh_table_rows(&filter_text, critical_only);
                 }
                 if let Some(id) = clicked_activity {
                     self.select(id);
@@ -2943,18 +3173,22 @@ impl eframe::App for CadenceApp {
                     });
 
                 let schedule = self.schedule.clone();
-                let conflicts = schedule
-                    .as_ref()
-                    .ok()
-                    .map(|schedule| resource_conflicts(&self.project, schedule))
-                    .unwrap_or_default();
+                // S2-11: the conflicts and the day histogram are cached against
+                // the edit version in `recompute`; the view only clones the
+                // shared handles here, so a 10,000-activity programme does not
+                // rescan its assignments every frame.
+                let conflicts = self.conflicts_cache.clone();
+                let histogram = self.histogram_cache.clone();
                 let resources = self.project.resources.clone();
                 let activities = self.sorted().to_vec();
                 let selected_resource = self.selected_resource;
 
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
-                        ui.colored_label(egui::Color32::RED, format!("Schedule error: {error}"));
+                        ui.colored_label(
+                            design::palette(self.dark).critical,
+                            format!("Schedule error: {error}"),
+                        );
                     }
                     Ok(schedule) => {
                         ui.heading("Resource dictionary");
@@ -2996,7 +3230,7 @@ impl eframe::App for CadenceApp {
                                         ui.label("0");
                                     } else {
                                         ui.colored_label(
-                                            egui::Color32::from_rgb(0xC0, 0x39, 0x2B),
+                                            design::palette(self.dark).critical,
                                             over.to_string(),
                                         );
                                     }
@@ -3007,7 +3241,7 @@ impl eframe::App for CadenceApp {
                         ui.separator();
                         ui.heading("Usage");
                         if let Some(id) = selected_resource {
-                            let usage = resource_day_usage(&self.project, &schedule, id);
+                            let usage = resource_day_usage(&histogram, id);
                             if usage.is_empty() {
                                 ui.label(
                                     "This resource is not assigned to any scheduled activity.",
@@ -3035,9 +3269,7 @@ impl eframe::App for CadenceApp {
                                                     );
                                                     if units > capacity_units {
                                                         ui.colored_label(
-                                                            egui::Color32::from_rgb(
-                                                                0xC0, 0x39, 0x2B,
-                                                            ),
+                                                            design::palette(self.dark).critical,
                                                             text,
                                                         );
                                                     } else {
@@ -3219,7 +3451,7 @@ impl eframe::App for CadenceApp {
                     match &metrics {
                         None => {
                             ui.colored_label(
-                                egui::Color32::RED,
+                                design::palette(self.dark).critical,
                                 "Status date must be written as YYYY-MM-DD",
                             );
                         }
@@ -3553,7 +3785,22 @@ impl eframe::App for CadenceApp {
                         );
                         return;
                     };
-                    let entries = lookahead(&self.project, &schedule, from, weeks as u32);
+                    // S2-12: the window is cached against the edit version and
+                    // the chosen (start, weeks) pair, so re-rendering the view
+                    // — or the O(n²) snapshot comparison below — does not
+                    // recompute the window every frame.
+                    let entries = if self.lookahead_version == self.edit_version
+                        && self.lookahead_window == Some((from, weeks))
+                    {
+                        self.lookahead_cache.clone().unwrap_or_default()
+                    } else {
+                        let window = lookahead(&self.project, &schedule, from, weeks as u32);
+                        let computed = Arc::new(window);
+                        self.lookahead_cache = Some(computed.clone());
+                        self.lookahead_version = self.edit_version;
+                        self.lookahead_window = Some((from, weeks));
+                        computed
+                    };
                     let window_end = from
                         .checked_add(time::Duration::weeks(weeks as i64))
                         .unwrap_or(from);
@@ -3580,7 +3827,7 @@ impl eframe::App for CadenceApp {
                                 ui.label(header);
                             }
                             ui.end_row();
-                            for entry in &entries {
+                            for entry in entries.iter() {
                                 let label = format!("{} ({})", entry.name, entry.id);
                                 if ui.selectable_label(false, &label).clicked() {
                                     self.select(entry.id);
@@ -3681,13 +3928,14 @@ impl eframe::App for CadenceApp {
                                 ));
                                 let snapshot_entries: Vec<&LookaheadSnapshotEntry> =
                                     snapshot.entries.iter().collect();
-                                let current_entries: Vec<&LookaheadEntry> =
-                                    entries.iter().collect();
+                                // Index the current window by activity id, so
+                                // the comparison is linear in the snapshot
+                                // size rather than O(n²) per frame (S2-12).
+                                let current_by_id: BTreeMap<ActivityId, &LookaheadEntry> =
+                                    entries.iter().map(|entry| (entry.id, entry)).collect();
                                 // Compare by activity id.
                                 for entry in &snapshot_entries {
-                                    let current = current_entries
-                                        .iter()
-                                        .find(|current| current.id == entry.activity_id);
+                                    let current = current_by_id.get(&entry.activity_id);
                                     match current {
                                         Some(current) => {
                                             let start_variance =
@@ -3717,7 +3965,7 @@ impl eframe::App for CadenceApp {
                                         }
                                     }
                                 }
-                                for entry in &current_entries {
+                                for entry in entries.iter() {
                                     let in_snapshot = snapshot_entries
                                         .iter()
                                         .any(|snapshot| snapshot.activity_id == entry.id);
@@ -3895,10 +4143,43 @@ impl eframe::App for CadenceApp {
                             if let Some(window) = window {
                                 ui.label(format!("→ window from {window}"));
                             }
+                            // S2-10: a note can be corrected after it was
+                            // written, through the undoable UpdateDailyNote.
+                            if ui.button("Edit").clicked() {
+                                self.editing_note = Some(*id);
+                                self.diary_edit_buffer = content.clone();
+                            }
                             if ui.button("Delete").clicked() {
                                 to_delete = Some(*id);
                             }
                         });
+                        if self.editing_note == Some(*id) {
+                            ui.horizontal(|ui| {
+                                let edit_label = ui.label("Edited note");
+                                ui.text_edit_singleline(&mut self.diary_edit_buffer)
+                                    .labelled_by(edit_label.id);
+                                if ui.button("Save note").clicked() {
+                                    let command = cadence_commands::UpdateDailyNote {
+                                        id: *id,
+                                        content: self.diary_edit_buffer.clone(),
+                                    };
+                                    if self
+                                        .stack
+                                        .execute(&mut self.project, Box::new(command))
+                                        .is_ok()
+                                    {
+                                        self.recompute();
+                                        self.editing_note = None;
+                                        self.set_status("Diary note updated.");
+                                    } else {
+                                        self.set_status("The note content must not be empty.");
+                                    }
+                                }
+                                if ui.button("Cancel").clicked() {
+                                    self.editing_note = None;
+                                }
+                            });
+                        }
                     }
                     if let Some(id) = to_delete {
                         let command = cadence_commands::DeleteDailyNote { id };
@@ -4609,13 +4890,11 @@ fn variance_rows(project: &Project, schedule: &Schedule, baseline: &Baseline) ->
 
 /// Units of one resource that are committed on each day that uses it.
 fn resource_day_usage(
-    project: &Project,
-    schedule: &Schedule,
+    histogram: &ResourceHistogram,
     resource_id: ResourceId,
 ) -> BTreeMap<Date, u32> {
     // Units are returned in basis points, the same scale the engine's
     // histogram carries, so a half-unit assignment counts as half.
-    let histogram = resource_histogram(project, schedule);
     let mut usage = BTreeMap::new();
     for (date, assignments) in &histogram.entries {
         let units = assignments
