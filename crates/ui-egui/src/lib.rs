@@ -2939,7 +2939,7 @@ impl eframe::App for CadenceApp {
                                     // primary selection or part of the
                                     // ctrl/shift multi-selection (S2-5).
                                     let selected = selected_id == Some(activity.id)
-                                        || multi_selected.contains(&activity.id);
+                                        || self.multi_selected.contains(&activity.id);
                                     ui.horizontal(|ui| {
                                         ui.spacing_mut().item_spacing.x = spacing;
                                         // The whole row is a click target, so
