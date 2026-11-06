@@ -3784,7 +3784,7 @@ impl eframe::App for CadenceApp {
                                 ui.label(header);
                             }
                             ui.end_row();
-                            for entry in &entries {
+                            for entry in entries.iter() {
                                 let label = format!("{} ({})", entry.name, entry.id);
                                 if ui.selectable_label(false, &label).clicked() {
                                     self.select(entry.id);
@@ -3922,7 +3922,7 @@ impl eframe::App for CadenceApp {
                                         }
                                     }
                                 }
-                                for entry in &current_entries {
+                                for entry in entries.iter() {
                                     let in_snapshot = snapshot_entries
                                         .iter()
                                         .any(|snapshot| snapshot.activity_id == entry.id);
