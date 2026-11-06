@@ -1155,7 +1155,10 @@ tree, verified slice by slice against `docs/design/ui-polish-audit.md`:
   with a `shown of total` counter. The filtered rows live in their own cache
   (`table_rows`), so the filter never leaks into the Gantt or the Resources
   dictionary, and the unfiltered hot path is unchanged. The table's shift/ctrl
-  range multi-select remains queued.
+  range multi-select is delivered with an atomic `DeleteActivities` command:
+  ctrl/cmd-click toggles a row, shift-click takes the range from the anchor,
+  Escape drops the extra rows, and **Delete N selected** removes the set in
+  one undoable step.
 - **S2-8 Relationship retype:** a new undoable `SetRelationshipType` command
   (with undo/redo and rejection tests) and a type combo in the inspector.
 - **S2-10 Diary note editing:** an **Edit** action per note loads the text and
