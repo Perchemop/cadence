@@ -2308,7 +2308,10 @@ pub struct SetRelationshipType {
 
 impl Command for SetRelationshipType {
     fn description(&self) -> String {
-        format!("set type of relationship {} to {:?}", self.id, self.link_type)
+        format!(
+            "set type of relationship {} to {:?}",
+            self.id, self.link_type
+        )
     }
 
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
