@@ -385,6 +385,12 @@ pub struct CadenceApp {
     critical_count: usize,
     confirm_delete_activity: bool,
     confirm_delete_relationship: bool,
+    /// Extra selected rows beyond the primary selection (S2-5): ctrl-click
+    /// toggles a row, shift-click selects the range from the anchor. The
+    /// primary `selected` row is the anchor and always counts as selected.
+    multi_selected: BTreeSet<ActivityId>,
+    /// Whether the user has confirmed deleting the multi-selection.
+    confirm_delete_selection: bool,
     drag_link_type_index: usize,
     /// Whether the user has confirmed applying leveled dates (destructive).
     confirm_leveling: bool,
@@ -550,6 +556,8 @@ impl CadenceApp {
             critical_count: 0,
             confirm_delete_activity: false,
             confirm_delete_relationship: false,
+            multi_selected: BTreeSet::new(),
+            confirm_delete_selection: false,
             drag_link_type_index: 0,
             confirm_leveling: false,
             selected_relationship: None,
@@ -687,6 +695,10 @@ impl CadenceApp {
         // shows, so they follow edits and undo/redo without recomputing per
         // frame.
         self.baseline_active = self.project.baselines.last().is_some();
+        // Drop multi-selection rows whose activities no longer exist, so the
+        // range selection can never hold a dangling id (S2-5).
+        self.multi_selected
+            .retain(|id| self.project.activity(*id).is_some());
         self.evm_metrics = self
             .project
             .baselines
@@ -854,6 +866,59 @@ impl CadenceApp {
             }
         }
         self.recompute();
+    }
+
+    /// Add the rows between the anchor and `end` (inclusive) to the
+    /// multi-selection, then move the anchor to `end` (S2-5).
+    fn select_range(&mut self, end: ActivityId) {
+        let ids: Vec<ActivityId> = self.table_rows().iter().map(|row| row.id).collect();
+        let Some(anchor) = self.selected else {
+            self.select(end);
+            return;
+        };
+        let Some(from) = ids.iter().position(|id| *id == anchor) else {
+            self.select(end);
+            return;
+        };
+        let Some(to) = ids.iter().position(|id| *id == end) else {
+            self.select(end);
+            return;
+        };
+        let (low, high) = if from <= to { (from, to) } else { (to, from) };
+        for id in &ids[low..=high] {
+            self.multi_selected.insert(*id);
+        }
+        self.select(end);
+    }
+
+    /// Add a row to the multi-selection, or remove it if it is already there.
+    fn toggle_multi_select(&mut self, id: ActivityId) {
+        if self.multi_selected.contains(&id) {
+            self.multi_selected.remove(&id);
+        } else {
+            self.multi_selected.insert(id);
+        }
+    }
+
+    /// Delete the multi-selection as one undoable step.
+    fn delete_selection(&mut self) {
+        let ids: Vec<ActivityId> = self.multi_selected.iter().copied().collect();
+        if ids.is_empty() {
+            return;
+        }
+        let command = cadence_commands::DeleteActivities { ids };
+        if self.stack.execute(&mut self.project, Box::new(command)).is_ok() {
+            self.recompute();
+            if self
+                .selected
+                .is_some_and(|id| self.project.activity(id).is_none())
+            {
+                self.selected = None;
+            }
+            self.multi_selected.clear();
+            self.refresh_selection();
+            self.set_status("Selected activities deleted.");
+        }
     }
 
     /// Change an existing relationship's type, issuing the undoable command
@@ -1986,6 +2051,13 @@ impl eframe::App for CadenceApp {
                     self.scroll_to_selection = true;
                 }
             }
+
+            // Escape drops the extra multi-selection rows; the anchor row
+            // stays selected (S2-5).
+            let escape_pressed = ctx.input(|input| input.key_pressed(egui::Key::Escape));
+            if escape_pressed && !self.multi_selected.is_empty() {
+                self.multi_selected.clear();
+            }
         }
 
         // Consume a captured Gantt screenshot, if one was requested, and write
@@ -2396,6 +2468,17 @@ impl eframe::App for CadenceApp {
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
                                 ui.heading("Inspector");
+                                if !self.multi_selected.is_empty() {
+                                    // S2-5: the range selection deletes as one
+                                    // undoable step.
+                                    let count = self.multi_selected.len();
+                                    if ui
+                                        .button(format!("Delete {count} selected"))
+                                        .clicked()
+                                    {
+                                        self.confirm_delete_selection = true;
+                                    }
+                                }
                                 if let Some(id) = self.selected {
                                     if ui.button("Delete activity").clicked() {
                                         self.confirm_delete_activity = true;
@@ -2851,7 +2934,11 @@ impl eframe::App for CadenceApp {
                                     let Some(result) = schedule.activity(activity.id) else {
                                         continue;
                                     };
-                                    let selected = selected_id == Some(activity.id);
+                                    // A row counts as selected when it is the
+                                    // primary selection or part of the
+                                    // ctrl/shift multi-selection (S2-5).
+                                    let selected = selected_id == Some(activity.id)
+                                        || multi_selected.contains(&activity.id);
                                     ui.horizontal(|ui| {
                                         ui.spacing_mut().item_spacing.x = spacing;
                                         // The whole row is a click target, so
@@ -2992,7 +3079,21 @@ impl eframe::App for CadenceApp {
                     self.refresh_table_rows(&filter_text, critical_only);
                 }
                 if let Some(id) = clicked_activity {
-                    self.select(id);
+                    // S2-5: plain click selects one row (and drops the extra
+                    // selection); ctrl/cmd-click toggles a row; shift-click
+                    // selects the range from the anchor row. The modifiers are
+                    // frame state, so they are read here once, not per row.
+                    let (command_held, shift_held) = ui.ctx().input(|input| {
+                        (input.modifiers.command, input.modifiers.shift)
+                    });
+                    if shift_held {
+                        self.select_range(id);
+                    } else if command_held {
+                        self.toggle_multi_select(id);
+                    } else {
+                        self.multi_selected.clear();
+                        self.select(id);
+                    }
                 }
                 if let Some((id, action)) = context_menu_activity {
                     match action {
@@ -4383,6 +4484,33 @@ impl eframe::App for CadenceApp {
                 });
             if !open {
                 self.confirm_delete_activity = false;
+            }
+        }
+
+        if self.confirm_delete_selection {
+            let mut open = true;
+            let count = self.multi_selected.len();
+            egui::Window::new(format!("Delete {count} activities?"))
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    ui.label(
+                        "Delete the selected activities? They go in one undo \
+                         step, so undo brings the whole set back.",
+                    );
+                    ui.horizontal(|ui| {
+                        if ui.button("Delete").clicked() {
+                            self.delete_selection();
+                            self.confirm_delete_selection = false;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.confirm_delete_selection = false;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_delete_selection = false;
             }
         }
 

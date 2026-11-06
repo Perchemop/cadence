@@ -1116,7 +1116,7 @@ checklist is covered by the release run: secret scanning, the personal-data
 scan, dependency licence/advisory checks and the bill-of-materials job are all
 green on the release commit.
 
-## 2026-11-03 — Workbench UI polish and a yanked dependency pin (unreleased)
+## 2026-11-03 — Workbench UI polish and a yanked dependency pin (released in 0.11.0)
 
 A design-review pass over the desktop shell (`docs/design/ui-polish-audit.md`),
 delivering that audit's shippable slices S1–S7 plus the dependency hygiene the
