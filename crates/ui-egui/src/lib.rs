@@ -1703,9 +1703,7 @@ impl CadenceApp {
         let schedule = self.schedule.as_ref().ok();
         self.sorted_cache
             .iter()
-            .filter(|activity| {
-                activity_matches_filter(activity, &needle, critical_only, schedule)
-            })
+            .filter(|activity| activity_matches_filter(activity, &needle, critical_only, schedule))
             .count()
     }
 }
