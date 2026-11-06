@@ -9,6 +9,8 @@ follows Keep a Changelog; releases use git tags.
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-11-07
+
 ### Added
 - Table multi-selection (S2-5): ctrl/cmd-click toggles a row and shift-click
   selects the range from the anchor row; Escape drops the extra rows. A
