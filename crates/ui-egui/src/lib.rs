@@ -2467,11 +2467,22 @@ impl eframe::App for CadenceApp {
                         ("✓ saved", palette.ok)
                     };
                     ui.label(egui::RichText::new(save_text).small().color(save_color));
+
+                    // Zoom slider with percentage display
                     ui.label(
                         egui::RichText::new(format!("{:.0}%", self.pixels_per_day / 14.0 * 100.0))
                             .small()
                             .color(palette.text_muted),
                     );
+                    ui.add(
+                        egui::Slider::new(&mut self.pixels_per_day, 2.0..=60.0)
+                            .text("Zoom")
+                            .show_value(false)
+                            .clamping(egui::SliderClamping::Always)
+                            .logarithmic(true)
+                            .trailing_fill(true),
+                    );
+
                     // F1 footer: the keyboard reference is one click away from
                     // anywhere, matching the F1 binding.
                     if ui
