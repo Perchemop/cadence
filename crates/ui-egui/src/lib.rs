@@ -2167,6 +2167,9 @@ impl eframe::App for CadenceApp {
                         if ui.button("Close (Ctrl+W)").clicked() {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
+                        if ui.button("Exit").clicked() {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
                     });
 
                     ui.menu_button("Edit", |ui| {
@@ -2462,7 +2465,7 @@ impl eframe::App for CadenceApp {
                     // F1 footer: the keyboard reference is one click away from
                     // anywhere, matching the F1 binding.
                     if ui
-                        .small_button("F1: shortcuts")
+                        .small_button("Shortcuts (F1)")
                         .on_hover_text("Open the keyboard reference (F1)")
                         .clicked()
                     {
