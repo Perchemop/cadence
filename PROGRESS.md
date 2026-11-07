@@ -1145,6 +1145,29 @@ x86_64/aarch64, Windows and macOS; Package (Linux); Secret scanning; Dependency
 licences and advisories; Dependency review; Static analysis (rust/actions); Bill
 of materials; Lockfile freshness; Personal data scan).
 
+## 2026-11-07 — Guide review: §12.1 suite standards reconciled (docs)
+
+Re-read `guide.md` in full and reconciled the repository's records and the
+global agent instructions with the current directives:
+
+- **Addendum archived; guide is the single source of truth** (`guide.md`
+  §12.1). The global instructions no longer point at a non-existent
+  `~/addendum.md`; the merged appendices (A–O) carry the former addendum rules.
+- **Land-on-main universal rule** (`guide.md` §II.20.4, §II.25) recorded in the
+  global `AGENTS.md` and the repo `AGENTS.md`: every change lands on `main` via
+  a **verified PR merge**, authored/merged as `"<App Name> Dev"
+  <dev@example.com>`; direct pushes are disabled by branch protection and must
+  not be forced.
+- **§12.1 suite standards adopted** and recorded in `DECISIONS.md` **D27**, with
+  the deviations that remain open tracked in `ROADMAP.md`: the
+  `docs/tokens.json` ledger is seeded and its CI update is queued; the shared
+  `crates/update-check` submodule, signed releases with a verify-then-install
+  updater, the bottom-right version control → Release Notes popup, and the
+  README screenshot refresh are queued.
+
+No product behaviour changed in this entry; it is a records/instructions
+reconciliation. The prior shell-overhaul work (below) is unaffected.
+
 ## 2026-11-07 — Shell overhaul from the menu/toolbox audit (post-0.12.0)
 
 A designer's audit of the menus, sub-menus and tool cluster against the brand
