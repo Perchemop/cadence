@@ -3572,8 +3572,11 @@ impl eframe::App for CadenceApp {
                                         let current_text =
                                             format!("{:.2}", current_units as f64 / 100.0);
                                         let mut pending_units = None;
-                                        let mut field_focused = false;
                                         let mut bad_units = false;
+                                        // Assigned unconditionally inside the
+                                        // block below, so it is declared
+                                        // without an initializer.
+                                        let field_focused;
                                         {
                                             let entry = self
                                                 .assignment_units_buffers
