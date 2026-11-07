@@ -20,6 +20,12 @@ the repo and never committed). Read the repository's own records first:
   `git push origin main`, which GitHub rejects. Do not bypass, disable or weaken
   the branch protection to force a push. Flow: branch → `ci.sh run` → CI green →
   merge the PR → confirm `main`'s checks are green.
+- **Suite standards (guide §12.1, audited 2026-11-04).** This app tracks token metrics
+  in `docs/tokens.json`, references the ledger in release notes, verifies signatures
+  + `SHA256SUMS.txt` before auto-update, shows version subtly in the bottom-right
+  corner with a standard Release Notes popup, and refreshes README screenshots
+  at v1.0 and every major release. The shared `crates/update-check` is a pinned git
+  submodule.
 - Suggested subagents live in `.opencode/agents/`; the `orchestrator` plans and
   delegates, and never edits code itself.
 
