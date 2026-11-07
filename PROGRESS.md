@@ -3,6 +3,42 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-07 — Full GUI audit + P0 correctness slice
+
+The owner asked for an audit of every visual or manual feature a user would
+use, benchmarked against the inspiration products. Two things landed.
+
+**The audit** (`docs/audit/2026-11-07-full-visual-functional-audit.md`, PR
+#118, merged as `ee62a26`): 25 verified findings (1×S1, 4×S2, 20×S3) with line
+citations, a complete surface inventory, a benchmark matrix against MS Project
+/ P6 / Asta / ProjectLibre / Aphex, and a P0–P4 remediation plan. It
+supersedes the 2026-11-01 set and the stale 2026-11-03 PR (#90, closed as
+superseded): the Gantt now has summary bars, WBS indentation, milestones,
+baseline ghosts, arrowheads and lag badges, so several 2026-11-01 "gaps" are
+closed. Three items recorded "Done" in `docs/design/ui-polish-audit.md` were
+shown not to be done. It also identified the root cause of repeated
+"audit the looks without seeing them" cycles: no render-golden / screenshot
+pipeline exists (P4).
+
+**The P0 slice** (PR #119, merged as `fba8d98`) fixed the findings a user hits
+immediately:
+
+- F1 (S1): Open (Ctrl+O, File ▸ Open…, recent files) no longer discards
+  unsaved changes — a deferred `PendingFileAction` routes Close **and** Open
+  through the Save / Discard / Cancel dialog, and every close request is
+  cancelled while the project is dirty.
+- F5: `load_from_path` clears the previous project's selection, confirms and
+  transient buffers, so a stale multi-selection cannot pre-arm
+  "Delete N selected" for rows the user never picked.
+- F2: the assignment-units field no longer reverts every frame
+  (`SetAssignmentUnits` was unreachable); invalid input is reported.
+- F3/F4: Production ▸ Record and Diary ▸ Add note surface rejected commands
+  instead of failing silently.
+
+Verification: CI green on PR #119 (all required checks; clippy `-D warnings`
+caught an unused `field_focused` assignment in the first run, fixed in
+`e82a6bc`) and on `main` after the merge.
+
 ## 2026-10-28 — Research: MS Project and P6 capability inventories
 
 Documentation slice closing the research-parity gap with the Aphex note:

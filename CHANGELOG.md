@@ -41,6 +41,23 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 
 ## [Unreleased]
 
+### Fixed
+- Opening a project file no longer silently discards unsaved changes
+  (2026-11-07 audit F1): File ▸ Open…, Ctrl+O and the recent-files list route
+  through the Save / Discard / Cancel dialog when the project is dirty, and the
+  window cannot be closed behind that dialog while edits remain.
+- Opening a project clears the previous project's selection and transient edit
+  state (F5): a stale multi-selection can no longer pre-arm "Delete N selected"
+  for rows the user never picked, and leftover diary, lag, link-form, leveling
+  and reschedule-preview state no longer survives the switch.
+- The per-resource assignment-units field is editable again (F2): the buffer is
+  no longer overwritten from the model while the field is focused, so
+  `SetAssignmentUnits` can actually fire; invalid input is reported instead of
+  being silently ignored.
+- Production ▸ Record reports rejected commands (F3), and Diary ▸ Add note
+  distinguishes a blank activity id from a non-numeric one (F4), surfacing the
+  command's own error text instead of blaming the note content.
+
 ## [0.12.0] — 2026-11-07
 
 ### Added

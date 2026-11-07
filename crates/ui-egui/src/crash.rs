@@ -80,10 +80,19 @@ pub fn issue_body(log: &str, notes: &str) -> String {
 /// A pre-filled GitHub new-issue URL for the crash report.
 #[must_use]
 pub fn issue_url(log: &str, notes: &str) -> String {
+    // Limit log size to keep the URL below typical browser limits (~8 KB).
+    // Truncate with an ellipsis marker if needed.
+    let log = if log.len() > 4_000 {
+        let mut truncated = log[..4_000].to_string();
+        truncated.push_str("\n… (log truncated for URL length)");
+        truncated
+    } else {
+        log.to_string()
+    };
     format!(
         "{ISSUES_URL}?title={}&body={}",
-        encode(&issue_title(log)),
-        encode(&issue_body(log, notes))
+        encode(&issue_title(&log)),
+        encode(&issue_body(&log, notes))
     )
 }
 
