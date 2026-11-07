@@ -276,6 +276,26 @@ so they are not missed:
   count), atomic leveling undo, plus S3 polish (token colours, tab tooltips,
   window min size, doc drift).
 
+### Suite standards (guide §12.1, audited 2026-11-04 — queued)
+
+Adopted in `DECISIONS.md` D27; the deviations still open are:
+
+- **Token ledger automation.** `docs/tokens.json` is seeded; the CI step that
+  updates `total_tokens_since_start` / `release_tokens` / `release_version` on
+  each semver tag and commits it is still to be wired.
+- **Shared `crates/update-check`.** Move the inline
+  `crates/ui-egui/src/update_check.rs` to the suite's pinned git submodule and
+  update it with `git submodule update --remote` in CI.
+- **Signed releases + verify-then-install updater.** Sign release artefacts,
+  publish `SHA256SUMS.txt` (already attached), and make the in-app updater
+  verify signature + checksum before install; soft-fail offline.
+- **Version UI.** Move the version to a subtle **bottom-right** control whose
+  click opens the standard Release Notes popup — version history, per-release
+  app usage, token metrics from the ledger, and an Update button — matching the
+  suite layout. The popup exists today but carries a hand-written summary.
+- **README screenshots.** Refresh the placeholder screenshots at v1.0 and every
+  major release.
+
 ## Out of scope (recorded in `docs/scope.md`)
 
 Mobile platforms; any type of telemetry; proprietary file formats.

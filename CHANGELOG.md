@@ -3,9 +3,10 @@
 All notable changes to Cadence are documented here. The format loosely
 follows Keep a Changelog; releases use git tags.
 
-**Token usage metrics (cumulative):**
-- Total tokens consumed since project start: ~1.2M (estimated)
-- Tokens used in this release cycle: ~45K (estimated)
+**Token usage metrics (cumulative):** tracked in `docs/tokens.json` (the
+CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
+~45K in the 0.12.0 cycle. The ledger's CI update on each tag is queued
+(`ROADMAP.md`).
 
 ## [Unreleased]
 
@@ -30,6 +31,13 @@ follows Keep a Changelog; releases use git tags.
 - `Ctrl+W` is now bound (it was advertised in the menu but did nothing).
 - The release-notes dialog no longer prints the placeholder text with its
   spaces collapsed into long runs.
+
+### Docs
+- Reconciled the records with `guide.md` §12.1 and §II.20.4: the addendum is
+  archived (guide is the single source of truth), the land-on-`main`-via-PR
+  rule is recorded in the agent instructions, and the suite standards are
+  adopted in `DECISIONS.md` D27 with the open deviations tracked in
+  `ROADMAP.md`. Added the `docs/tokens.json` ledger seed.
 
 ## [0.12.0] — 2026-11-07
 

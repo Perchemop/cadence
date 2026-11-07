@@ -545,3 +545,45 @@ yank step now re-resolves `async-executor` alongside `clipboard-win`, so the
 next yank of this package is moved by the workflow rather than by hand. No
 advisory-ignore entry was added: relaxation would have hidden every future yank
 instead of resolving this one.
+
+## D27 — Adopt the guide §12.1 suite standards, with recorded deviations (2026-11-07)
+
+Context: `guide.md` §12.1 ("Suite-wide Standards — audit approved 2026-11-04")
+sets five standards every suite app must meet, and §II.28.3 requires any
+deviation to be recorded here rather than silently aligned. This entry records
+adoption, the current state, and the deviations still open.
+
+Adopted as the target:
+
+- **Token metrics ledger.** A CI-managed `docs/tokens.json` carrying
+  `total_tokens_since_start`, `release_tokens` and `release_version`; the
+  release notes reference the ledger values instead of free-text estimates.
+  Seeded now with honest estimates; the CI update step on each semver tag is
+  tracked in `ROADMAP.md`.
+- **Shared `crates/update-check`.** Consumed as a pinned git submodule shared
+  across the suite, updated with `git submodule update --remote` in CI.
+- **Signed auto-update.** Releases signed and carrying `SHA256SUMS.txt`; the
+  in-app updater verifies signature + checksum before install, and soft-fails
+  offline without blocking start.
+- **Version UI.** The version sits subtly in the **bottom-right** corner; a
+  click opens the standard Release Notes popup (version history, per-release app
+  usage, token metrics, Update button) with the same layout suite-wide.
+- **README screenshots.** Screenshots refreshed at v1.0 and every major release.
+
+Deviations recorded (not yet aligned, each tracked as roadmap work):
+
+- `update-check` is currently an **inline module**
+  (`crates/ui-egui/src/update_check.rs`), not the shared submodule. Moving it is
+  a cross-repo change (submodule + CI pin) and is queued.
+- Releases are **not yet signed**, and the updater opens the release page rather
+  than verifying-and-installing. Signing and the verify-then-install flow are
+  queued.
+- The version is currently shown in the **status bar's right edge and the tool
+  cluster**, not a dedicated bottom-right control; the Release Notes popup exists
+  but its body is a hand-written summary, not the ledger-driven, all-versions
+  history the standard specifies.
+
+Consequences: the items above are the remaining §12.1 work; nothing here weakens
+the existing gates (branch protection, the II.29 scan, CI-before-try). The
+`"<App Name> Dev" <dev@example.com>` identity and the land-on-`main`-via-PR rule
+(guide II.20.4, II.25) are reaffirmed unchanged.
