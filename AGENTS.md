@@ -11,6 +11,15 @@ the repo and never committed). Read the repository's own records first:
   any `cargo` command on this machine — not even `cargo fmt`. Verify with
   `~/.config/opencode/scripts/ci.sh run "<description>"`.
 - **Git actions are authored as** `"<App Name> Dev" <dev@example.com>`.
+- **Every change lands on `main`, as `Cadence Dev`.** All work must end up on the
+  default branch, authored and merged as `Cadence Dev <dev@example.com>`; never
+  leave finished work stranded on a feature or `opencode/*` branch. Because
+  `main` is branch-protected — the authoritative CI checks in `.ci-required.txt`
+  are required and **direct pushes are disabled** (`guide.md` II.25) — "landing
+  on main" means **merging the green pull request**, not a raw
+  `git push origin main`, which GitHub rejects. Do not bypass, disable or weaken
+  the branch protection to force a push. Flow: branch → `ci.sh run` → CI green →
+  merge the PR → confirm `main`'s checks are green.
 - Suggested subagents live in `.opencode/agents/`; the `orchestrator` plans and
   delegates, and never edits code itself.
 
