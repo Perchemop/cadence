@@ -1957,6 +1957,11 @@ impl eframe::App for CadenceApp {
                 self.set_status("Activity created.");
             }
         }
+        // Ctrl+W: request close, routed through the same unsaved-changes guard
+        // as the window's own close button.
+        if ctx.input(|input| input.key_pressed(egui::Key::W) && input.modifiers.ctrl) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
 
         // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y: undo and redo from any view. Skip
         // while a text field is focused, where the field's own undo applies.
@@ -3025,6 +3030,14 @@ impl eframe::App for CadenceApp {
                                             if ui.button("Duplicate activity").clicked() {
                                                 context_action = Some("duplicate");
                                             }
+                                            ui.separator();
+                                            if ui.button("Show in Gantt").clicked() {
+                                                context_action = Some("show_in_gantt");
+                                            }
+                                            if ui.button("Add to selection").clicked() {
+                                                context_action = Some("add_to_selection");
+                                            }
+                                            ui.separator();
                                             if ui.button("Delete activity").clicked() {
                                                 context_action = Some("delete");
                                             }
@@ -3192,6 +3205,16 @@ impl eframe::App for CadenceApp {
                                     self.set_status("Activity duplicated.");
                                 }
                             }
+                        }
+                        "show_in_gantt" => {
+                            self.select(id);
+                            self.view_mode = ViewMode::Gantt;
+                            self.scroll_to_selection = true;
+                        }
+                        "add_to_selection" => {
+                            // Grows the multi-selection without dropping the
+                            // anchor row, the pointer-free twin of ctrl-click.
+                            self.toggle_multi_select(id);
                         }
                         "delete" => {
                             self.select(id);
@@ -4840,28 +4863,34 @@ impl eframe::App for CadenceApp {
                             ui.heading("What's new in this release");
                             ui.add_space(8.0);
                             ui.label(
-                                "• Table multi-selection (S2-5): Ctrl/cmd-click toggles a row,                                  Shift-click selects the range from the anchor row, Escape drops                                  the extra rows. A **Delete N selected** action in the inspector                                  removes the whole set through the atomic `DeleteActivities`                                  command — one undo step restores the lot, relationships included."
+                                "• Table multi-selection: ctrl/cmd-click toggles a row, shift-click \
+                                 selects the range from the anchor, and Escape drops the extra rows. \
+                                 Use the inspector's Delete N selected to remove the whole set in \
+                                 one undoable step."
                             );
                             ui.add_space(8.0);
                             ui.label(
-                                "• Toolbar redesign: three-zone layout (Menu bar | View tabs | Tool                                  actions), primary/secondary button styling, focus rings,                                  consistent 8 px spacing grid."
+                                "• Three-zone toolbar: a menu bar, a view-tab strip, and a tool \
+                                 cluster, with focus rings and a zoom slider in the status bar."
                             );
                             ui.add_space(8.0);
                             ui.label(
-                                "• Menu taxonomy: new **Window** menu holds theme toggle and split                                  Gantt; **File** menu gains **Close (Ctrl+W)**; **View** menu is                                  now pure view switching."
+                                "• Menu taxonomy: a new Window menu owns the theme toggle and the \
+                                 split-Gantt switch; the File menu gains Close (Ctrl+W) and Exit; \
+                                 the File menu remembers the ten most recent projects."
                             );
                             ui.add_space(16.0);
                             ui.separator();
                             ui.heading("Token usage metrics (cumulative)");
                             ui.add_space(8.0);
                             ui.label(
-                                "• Total tokens consumed since project start: ~1.2M (estimated)
+                                "• Total tokens consumed since project start: ~1.2M (estimated)\n\
                                  • Tokens used in this release cycle (0.12.0): ~45K (estimated)"
                             );
                             ui.add_space(16.0);
                             ui.separator();
                             ui.label(
-                                "Full release history: CHANGELOG.md in the repository.
+                                "Full release history: CHANGELOG.md in the repository.\n\
                                  All releases: https://github.com/Perchemop/cadence/releases"
                             );
                         });

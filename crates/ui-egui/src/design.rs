@@ -126,9 +126,11 @@ fn install_style(ctx: &Context) {
             text.insert(egui::TextStyle::Button, egui::FontId::proportional(11.0));
             text.insert(egui::TextStyle::Heading, egui::FontId::proportional(16.0));
             text.insert(egui::TextStyle::Monospace, egui::FontId::monospace(11.0));
+            // An 8 px horizontal / 4 px vertical rhythm, so every surface
+            // shares one spacing grid.
             style.spacing.item_spacing = egui::vec2(8.0, 4.0);
             style.spacing.button_padding = egui::vec2(8.0, 4.0);
-            style.spacing.menu_margin = Margin::symmetric(6, 4);
+            style.spacing.menu_margin = Margin::symmetric(8, 4);
             style.spacing.indent = 16.0;
         });
     }
