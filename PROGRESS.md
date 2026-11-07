@@ -3,6 +3,18 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-07 — P1 dialog & feedback polish
+
+PR #120 merged as `0443f4c` — the first P1 tranche from the 2026-11-07 audit:
+
+- F13 Dialog keyboard behaviour: global shortcuts are gated behind any modal, Escape dismisses the front dialog with Cancel semantics, Enter presses the primary button in Save/Discard/Cancel, Delete-activity, Delete-selection, Leveling and Relationship-delete confirms; the Delete-selection ids are frozen at dialog-open time so table clicks behind the modal cannot change what is deleted.
+- F15 "Update now" mislabel: the duplicate "Update now" button removed; only "Open release page" remains.
+- F18 Release-notes content: removed ~30-space run, corrected zoom slider → zoom readout, corrected "File menu remembers ten most recent projects" → "lists ... for this session", token metrics now rendered from `docs/tokens.json` at build time via `include_str!` + serde_json with graceful fallback.
+- F16 Crash dialog: empty-state copy distinguishes missing log, URL size capped by truncating the log to 4 000 bytes before encoding, and the log is cleared only after the dialog is dismissed; copy updated to be honest.
+- F21 Split-Gantt toggle: added hover text "Splits the Table view; drag the divider to resize".
+
+Verification: CI green on PR #120 (all required checks), merged to main.
+
 ## 2026-11-07 — Full GUI audit + P0 correctness slice
 
 The owner asked for an audit of every visual or manual feature a user would

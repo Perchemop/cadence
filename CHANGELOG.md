@@ -57,6 +57,14 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 - Production ▸ Record reports rejected commands (F3), and Diary ▸ Add note
   distinguishes a blank activity id from a non-numeric one (F4), surfacing the
   command's own error text instead of blaming the note content.
+- Dialog keyboard: global shortcuts are gated behind modals, Escape dismisses
+  the front dialog, Enter confirms primary actions (F13).
+- Release-notes dialog now reads token metrics from `docs/tokens.json`, corrects
+  zoom-slider claim, spaces, and recent-files wording (F18).
+- Update dialog no longer shows duplicate "Update now" button (F15).
+- Crash dialog shows honest empty state, caps issue-URL size, and clears log
+  only after dismissal (F16).
+- Split-Gantt toggle shows resize hint (F21).
 
 ## [0.12.0] — 2026-11-07
 
