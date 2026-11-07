@@ -413,6 +413,9 @@ pub struct CadenceApp {
     multi_selected: BTreeSet<ActivityId>,
     /// Whether the user has confirmed deleting the multi-selection.
     confirm_delete_selection: bool,
+    /// Activity ids frozen when the "Delete N activities?" dialog was raised,
+    /// so the count and the deletion cannot drift while the modal is open.
+    confirm_delete_ids: Vec<ActivityId>,
     drag_link_type_index: usize,
     /// Whether the user has confirmed applying leveled dates (destructive).
     confirm_leveling: bool,
@@ -586,6 +589,7 @@ impl CadenceApp {
             confirm_delete_relationship: false,
             multi_selected: BTreeSet::new(),
             confirm_delete_selection: false,
+            confirm_delete_ids: Vec::new(),
             drag_link_type_index: 0,
             confirm_leveling: false,
             selected_relationship: None,
@@ -931,6 +935,13 @@ impl CadenceApp {
     /// Delete the multi-selection as one undoable step.
     fn delete_selection(&mut self) {
         let ids: Vec<ActivityId> = self.multi_selected.iter().copied().collect();
+        self.delete_activities(ids);
+    }
+
+    /// Delete exactly `ids` in one undo step. The confirm dialog calls this
+    /// with the ids frozen when the dialog was raised, so clicks that land on
+    /// the table behind the modal cannot change what "Delete" removes.
+    fn delete_activities(&mut self, ids: Vec<ActivityId>) {
         if ids.is_empty() {
             return;
         }
@@ -1703,6 +1714,7 @@ impl CadenceApp {
                 // pre-arm "Delete N selected" for rows the user never picked).
                 self.multi_selected.clear();
                 self.confirm_delete_selection = false;
+                self.confirm_delete_ids.clear();
                 self.confirm_delete_activity = false;
                 self.confirm_delete_relationship = false;
                 self.editing_note = None;
@@ -1950,6 +1962,45 @@ impl eframe::App for CadenceApp {
             }
         }
 
+        // A modal owns the keyboard while it is open: no global shortcut acts
+        // behind it, and Escape dismisses it. This covers the confirm windows
+        // and the unsaved-changes dialog, not just the information windows.
+        let dialog_open = self.show_crash_dialog
+            || self.show_update_dialog
+            || self.show_shortcuts_dialog
+            || self.show_release_notes
+            || self.confirm_delete_activity
+            || self.confirm_delete_selection
+            || self.confirm_leveling
+            || self.confirm_delete_relationship
+            || self.pending_file_action.is_some();
+
+        // Escape dismisses the front dialog with Cancel semantics, so "Delete
+        // 3 activities?" followed by Escape can never delete nothing while
+        // looking like a confirmed action. The table's own Escape (clearing
+        // the multi-selection) is gated on `!dialog_open` below.
+        if dialog_open && ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+            if self.pending_file_action.is_some() {
+                self.pending_file_action = None;
+            } else if self.confirm_delete_activity {
+                self.confirm_delete_activity = false;
+            } else if self.confirm_delete_selection {
+                self.confirm_delete_selection = false;
+            } else if self.confirm_leveling {
+                self.confirm_leveling = false;
+            } else if self.confirm_delete_relationship {
+                self.confirm_delete_relationship = false;
+            } else if self.show_shortcuts_dialog {
+                self.show_shortcuts_dialog = false;
+            } else if self.show_release_notes {
+                self.show_release_notes = false;
+            } else if self.show_update_dialog {
+                self.show_update_dialog = false;
+            } else {
+                self.show_crash_dialog = false;
+            }
+        }
+
         // Poll the background update check at a low rate; the network request
         // itself happens on its own thread so the UI never blocks.
         if let Some(receiver) = self.update_receiver.take() {
@@ -1985,20 +2036,29 @@ impl eframe::App for CadenceApp {
             });
         }
 
-        if ctx.input(|input| input.key_pressed(egui::Key::D) && input.modifiers.ctrl) {
+        if !dialog_open
+            && ctx.input(|input| input.key_pressed(egui::Key::D) && input.modifiers.ctrl)
+        {
             self.dark = !self.dark;
             apply_theme(&ctx, self.dark);
         }
 
         // Ctrl+S saves, Ctrl+O opens. These act everywhere, including while a
-        // text field has focus (a save never touches the focused text).
-        if ctx.input(|input| input.key_pressed(egui::Key::S) && input.modifiers.ctrl) {
+        // text field has focus (a save never touches the focused text), but
+        // not behind a modal dialog.
+        if !dialog_open
+            && ctx.input(|input| input.key_pressed(egui::Key::S) && input.modifiers.ctrl)
+        {
             self.save_or_prompt();
         }
-        if ctx.input(|input| input.key_pressed(egui::Key::O) && input.modifiers.ctrl) {
+        if !dialog_open
+            && ctx.input(|input| input.key_pressed(egui::Key::O) && input.modifiers.ctrl)
+        {
             self.open_dialog();
         }
-        if ctx.input(|input| input.key_pressed(egui::Key::N) && input.modifiers.ctrl) {
+        if !dialog_open
+            && ctx.input(|input| input.key_pressed(egui::Key::N) && input.modifiers.ctrl)
+        {
             let id = self.project.next_activity_id();
             let command = cadence_commands::CreateActivity::new(id, "New activity", 1);
             if self
@@ -2014,17 +2074,21 @@ impl eframe::App for CadenceApp {
         }
         // Ctrl+W: request close, routed through the same unsaved-changes guard
         // as the window's own close button.
-        if ctx.input(|input| input.key_pressed(egui::Key::W) && input.modifiers.ctrl) {
+        if !dialog_open
+            && ctx.input(|input| input.key_pressed(egui::Key::W) && input.modifiers.ctrl)
+        {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
 
         // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y: undo and redo from any view. Skip
         // while a text field is focused, where the field's own undo applies.
-        let undo_requested = !ctx.text_edit_focused()
+        let undo_requested = !dialog_open
+            && !ctx.text_edit_focused()
             && ctx.input(|input| {
                 input.key_pressed(egui::Key::Z) && input.modifiers.ctrl && !input.modifiers.shift
             });
-        let redo_requested = !ctx.text_edit_focused()
+        let redo_requested = !dialog_open
+            && !ctx.text_edit_focused()
             && ctx.input(|input| {
                 (input.key_pressed(egui::Key::Y) && input.modifiers.ctrl)
                     || (input.key_pressed(egui::Key::Z)
@@ -2067,7 +2131,7 @@ impl eframe::App for CadenceApp {
                 .map(|index| index as u8),
             )
         });
-        if ctrl_held {
+        if ctrl_held && !dialog_open {
             if let Some(index) = pressed_view {
                 self.view_mode = match index {
                     0 => ViewMode::Table,
@@ -2085,14 +2149,9 @@ impl eframe::App for CadenceApp {
         }
 
         // F1 opens the keyboard reference from every view.
-        if ctx.input(|input| input.key_pressed(egui::Key::F1)) {
+        if !dialog_open && ctx.input(|input| input.key_pressed(egui::Key::F1)) {
             self.show_shortcuts_dialog = true;
         }
-
-        // A dialog owns the keyboard while it is open, so the view shortcuts
-        // do not act behind it.
-        let dialog_open =
-            self.show_crash_dialog || self.show_update_dialog || self.show_shortcuts_dialog;
 
         // Gantt zoom from the keyboard; Ctrl+wheel remains the pointer path.
         if self.view_mode == ViewMode::Gantt && !ctx.text_edit_focused() && !dialog_open {
@@ -2319,6 +2378,7 @@ impl eframe::App for CadenceApp {
                             } else {
                                 "Show split Gantt"
                             })
+                            .on_hover_text("Splits the Table view; drag the divider to resize")
                             .clicked()
                         {
                             self.show_split_gantt = !self.show_split_gantt;
@@ -2607,9 +2667,12 @@ impl eframe::App for CadenceApp {
                                 ui.heading("Inspector");
                                 if !self.multi_selected.is_empty() {
                                     // S2-5: the range selection deletes as one
-                                    // undoable step.
+                                    // undoable step. The ids are frozen now so
+                                    // the dialog's count cannot drift.
                                     let count = self.multi_selected.len();
                                     if ui.button(format!("Delete {count} selected")).clicked() {
+                                        self.confirm_delete_ids =
+                                            self.multi_selected.iter().copied().collect();
                                         self.confirm_delete_selection = true;
                                     }
                                 }
@@ -4649,9 +4712,13 @@ impl eframe::App for CadenceApp {
                 .resizable(false)
                 .open(&mut open)
                 .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
                     ui.label("Delete the selected activity? This can be undone.");
                     ui.horizontal(|ui| {
-                        if ui.button("Delete").clicked() {
+                        let delete = ui.button("Delete").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || delete {
                             if let Some(id) = self.selected {
                                 let command = cadence_commands::DeleteActivity { id };
                                 if self
@@ -4666,7 +4733,7 @@ impl eframe::App for CadenceApp {
                             }
                             self.confirm_delete_activity = false;
                         }
-                        if ui.button("Cancel").clicked() {
+                        if cancel {
                             self.confirm_delete_activity = false;
                         }
                     });
@@ -4678,22 +4745,27 @@ impl eframe::App for CadenceApp {
 
         if self.confirm_delete_selection {
             let mut open = true;
-            let count = self.multi_selected.len();
+            let count = self.confirm_delete_ids.len();
             egui::Window::new(format!("Delete {count} activities?"))
                 .collapsible(false)
                 .resizable(false)
                 .open(&mut open)
                 .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
                     ui.label(
                         "Delete the selected activities? They go in one undo \
                          step, so undo brings the whole set back.",
                     );
                     ui.horizontal(|ui| {
-                        if ui.button("Delete").clicked() {
-                            self.delete_selection();
+                        let delete = ui.button("Delete").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || delete {
+                            let ids = std::mem::take(&mut self.confirm_delete_ids);
+                            self.delete_activities(ids);
                             self.confirm_delete_selection = false;
                         }
-                        if ui.button("Cancel").clicked() {
+                        if cancel {
                             self.confirm_delete_selection = false;
                         }
                     });
@@ -4710,16 +4782,20 @@ impl eframe::App for CadenceApp {
                 .resizable(false)
                 .open(&mut open)
                 .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
                     ui.label(
                         "Leveling reschedules delayed activities and sets constraints. \
                              This can be undone in one step.",
                     );
                     ui.horizontal(|ui| {
-                        if ui.button("Apply").clicked() {
+                        let apply = ui.button("Apply").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || apply {
                             self.apply_leveling();
                             self.confirm_leveling = false;
                         }
-                        if ui.button("Cancel").clicked() {
+                        if cancel {
                             self.confirm_leveling = false;
                         }
                     });
@@ -4736,9 +4812,13 @@ impl eframe::App for CadenceApp {
                 .resizable(false)
                 .open(&mut open)
                 .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
                     ui.label("Delete the selected dependency link? This can be undone.");
                     ui.horizontal(|ui| {
-                        if ui.button("Delete").clicked() {
+                        let delete = ui.button("Delete").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || delete {
                             if let Some(id) = self.selected_relationship {
                                 if self
                                     .stack
@@ -4752,7 +4832,7 @@ impl eframe::App for CadenceApp {
                             }
                             self.confirm_delete_relationship = false;
                         }
-                        if ui.button("Cancel").clicked() {
+                        if cancel {
                             self.confirm_delete_relationship = false;
                         }
                     });
@@ -4779,19 +4859,22 @@ impl eframe::App for CadenceApp {
                 .resizable(false)
                 .open(&mut open)
                 .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
                     ui.label(prompt);
                     ui.horizontal(|ui| {
-                        if ui.button("Save").clicked() {
+                        let save = ui.button("Save").clicked();
+                        let discard = ui.button("Discard").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || save {
                             self.save_or_prompt();
                             if !self.dirty {
                                 self.run_pending_file_action(&ctx);
                             }
-                        }
-                        if ui.button("Discard").clicked() {
+                        } else if discard {
                             self.dirty = false;
                             self.run_pending_file_action(&ctx);
-                        }
-                        if ui.button("Cancel").clicked() {
+                        } else if cancel {
                             self.pending_file_action = None;
                         }
                     });
@@ -4808,16 +4891,27 @@ impl eframe::App for CadenceApp {
                 .resizable(true)
                 .open(&mut open)
                 .show(&ctx, |ui| {
-                    ui.label(
-                        "Cadence found a crash log from a previous run. \
-                         Nothing has been sent anywhere.",
-                    );
+                    if self.crash_log.is_empty() {
+                        ui.label(
+                            "No crash log was found. Cadence could not detect a previous crash.\n\
+                             You can still open a bug report with notes."
+                        );
+                    } else {
+                        ui.label(
+                            "Cadence found a crash log from a previous run. \
+                             Nothing has been sent anywhere."
+                        );
+                    }
                     ui.add_space(4.0);
                     ui.label("Preview");
                     egui::ScrollArea::vertical()
                         .max_height(220.0)
                         .show(ui, |ui| {
-                            ui.monospace(self.crash_log.clone());
+                            if self.crash_log.is_empty() {
+                                ui.label("(empty)");
+                            } else {
+                                ui.monospace(self.crash_log.clone());
+                            }
                         });
                     ui.add_space(4.0);
                     ui.label("Optional notes (what were you doing?)");
@@ -4827,9 +4921,6 @@ impl eframe::App for CadenceApp {
                         if ui.button("Open GitHub issue").clicked() {
                             let url = crash::issue_url(&self.crash_log, &self.crash_notes);
                             ui.ctx().open_url(egui::OpenUrl::new_tab(url));
-                            crash::clear_log();
-                            self.crash_log.clear();
-                            self.crash_notes.clear();
                             self.show_crash_dialog = false;
                         }
                         if ui.button("Copy details").clicked() {
@@ -4846,6 +4937,11 @@ impl eframe::App for CadenceApp {
                 });
             if !open {
                 self.show_crash_dialog = false;
+            }
+            // Clear the stored log after the user has acted (dialog closed and log consumed
+            // by the Open GitHub issue button) to avoid stale data on next launch.
+            if !self.show_crash_dialog && !self.crash_log.is_empty() {
+                crash::clear_log();
             }
         }
 
@@ -4869,9 +4965,6 @@ impl eframe::App for CadenceApp {
                             ui.label(format!("Update available: {version}"));
                             ui.horizontal(|ui| {
                                 if ui.button("Open release page").clicked() {
-                                    ui.ctx().open_url(egui::OpenUrl::new_tab(url.clone()));
-                                }
-                                if ui.button("Update now").clicked() {
                                     ui.ctx().open_url(egui::OpenUrl::new_tab(url.clone()));
                                 }
                             });
@@ -4966,13 +5059,23 @@ impl eframe::App for CadenceApp {
                 .default_size([700.0, 550.0])
                 .open(&mut open)
                 .show(&ctx, |ui| {
+                    #[derive(serde::Deserialize)]
+                    struct TokensLedger {
+                        total_tokens_since_start: u64,
+                        release_tokens: u64,
+                        release_version: String,
+                    }
+                    let tokens = serde_json::from_str::<TokensLedger>(
+                        include_str!("../../../docs/tokens.json")
+                    ).ok();
+
                     egui::ScrollArea::vertical()
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
                             ui.heading(format!("Cadence {}", update_check::current_version()));
                             ui.add_space(8.0);
                             ui.label(
-                                "A clean-room construction scheduling application.                                  No account, no cloud, no telemetry — just a SQLite file you own."
+                                "A clean-room construction scheduling application. No account, no cloud, no telemetry — just a SQLite file you own."
                             );
                             ui.add_space(16.0);
                             ui.separator();
@@ -4987,22 +5090,31 @@ impl eframe::App for CadenceApp {
                             ui.add_space(8.0);
                             ui.label(
                                 "• Three-zone toolbar: a menu bar, a view-tab strip, and a tool \
-                                 cluster, with focus rings and a zoom slider in the status bar."
+                                 cluster, with focus rings and a zoom readout in the status bar."
                             );
                             ui.add_space(8.0);
                             ui.label(
                                 "• Menu taxonomy: a new Window menu owns the theme toggle and the \
                                  split-Gantt switch; the File menu gains Close (Ctrl+W) and Exit; \
-                                 the File menu remembers the ten most recent projects."
+                                 the File menu lists the ten most recent projects for this session."
                             );
                             ui.add_space(16.0);
                             ui.separator();
                             ui.heading("Token usage metrics (cumulative)");
                             ui.add_space(8.0);
-                            ui.label(
-                                "• Total tokens consumed since project start: ~1.2M (estimated)\n\
-                                 • Tokens used in this release cycle (0.12.0): ~45K (estimated)"
-                            );
+                            if let Some(t) = &tokens {
+                                ui.label(format!(
+                                    "• Total tokens consumed since project start: {} \n\
+                                     • Tokens used in release {}: {}",
+                                    t.total_tokens_since_start, t.release_version, t.release_tokens
+                                ));
+                            } else {
+                                ui.label(
+                                    "• Total tokens consumed since project start: —\n\
+                                     • Tokens used in this release: —\n\
+                                     (ledger unavailable)"
+                                );
+                            }
                             ui.add_space(16.0);
                             ui.separator();
                             ui.label(
