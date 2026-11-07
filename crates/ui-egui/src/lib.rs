@@ -370,6 +370,8 @@ pub struct CadenceApp {
     project: Project,
     /// Path the project was loaded from or last saved to, if any.
     project_path: Option<PathBuf>,
+    /// Recently opened project files (most recent first, max 10).
+    recent_files: Vec<PathBuf>,
     schedule: Result<Schedule, String>,
     dark: bool,
     stack: CommandStack,
@@ -552,6 +554,7 @@ impl CadenceApp {
         Self {
             project,
             project_path: path,
+            recent_files: Vec::new(),
             schedule,
             dark: true,
             stack: CommandStack::new(),
@@ -1642,7 +1645,8 @@ impl CadenceApp {
             .set_file_name(file_name)
             .save_file()
         {
-            self.save_to(path);
+            self.save_to(path.clone());
+            self.add_to_recent_files(path);
         }
     }
 
@@ -1662,6 +1666,7 @@ impl CadenceApp {
             Ok(project) => {
                 self.project = project;
                 self.project_path = Some(path.clone());
+                self.add_to_recent_files(path.clone());
                 self.stack = CommandStack::new();
                 self.selected = None;
                 self.selected_relationship = None;
@@ -1675,6 +1680,18 @@ impl CadenceApp {
             Err(error) => {
                 self.set_status(format!("Cannot open: {error}"));
             }
+        }
+    }
+
+    /// Add a file to the recent files list, keeping only the 10 most recent.
+    fn add_to_recent_files(&mut self, path: PathBuf) {
+        // Remove if already present
+        self.recent_files.retain(|p| p != &path);
+        // Insert at front
+        self.recent_files.insert(0, path);
+        // Keep only 10 most recent
+        if self.recent_files.len() > 10 {
+            self.recent_files.truncate(10);
         }
     }
 
@@ -2139,6 +2156,18 @@ impl eframe::App for CadenceApp {
                             self.save_as_dialog();
                         }
                         ui.separator();
+                        if !self.recent_files.is_empty() {
+                            ui.menu_button("Recent files", |ui| {
+                                let recent = self.recent_files.clone();
+                                for path in recent {
+                                    let display = path.display().to_string();
+                                    if ui.button(display).clicked() {
+                                        self.open_from(path);
+                                    }
+                                }
+                            });
+                            ui.separator();
+                        }
                         if ui.button("Save report").clicked() {
                             self.save_report();
                         }
