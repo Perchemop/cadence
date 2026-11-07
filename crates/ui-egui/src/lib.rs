@@ -2300,6 +2300,14 @@ impl eframe::App for CadenceApp {
                                     } else {
                                         egui::Color32::TRANSPARENT
                                     })
+                                    .stroke(egui::Stroke::new(
+                                        1.0,
+                                        if selected {
+                                            self.design_tokens().accent
+                                        } else {
+                                            self.design_tokens().critical.linear_multiply(0.2)
+                                        }
+                                    ))
                             )
                             .on_hover_text(tooltip)
                             .clicked()
@@ -2340,6 +2348,7 @@ impl eframe::App for CadenceApp {
                             self.stack.can_undo(),
                             egui::Button::new("Undo (Ctrl+Z)")
                                 .fill(self.design_tokens().primary_bg)
+                                .stroke(egui::Stroke::new(1.0, self.design_tokens().accent))
                         )
                         .on_hover_text("Undo the last edit (Ctrl+Z)")
                         .clicked()
@@ -2353,6 +2362,7 @@ impl eframe::App for CadenceApp {
                             self.stack.can_redo(),
                             egui::Button::new("Redo (Ctrl+Y)")
                                 .fill(self.design_tokens().primary_bg)
+                                .stroke(egui::Stroke::new(1.0, self.design_tokens().accent))
                         )
                         .on_hover_text("Redo the last undone edit (Ctrl+Y)")
                         .clicked()
@@ -2498,6 +2508,18 @@ impl eframe::App for CadenceApp {
                                         self.confirm_delete_activity = true;
                                     }
                                     ui.label(format!("Activity {}", id));
+                                    let tokens = self.design_tokens();
+                                    let mut section = |ui: &mut Ui, title: &str| {
+                                        ui.add_space(4.0);
+                                        ui.separator();
+                                        ui.label(
+                                            egui::RichText::new(title)
+                                                .strong()
+                                                .size(14.0)
+                                                .color(tokens.accent),
+                                        );
+                                    };
+                                    section(ui, "Basic info");
                                     let name_label = ui.label("Name");
                                     ui.text_edit_singleline(&mut self.name_buffer)
                                         .labelled_by(name_label.id);
@@ -2524,8 +2546,7 @@ impl eframe::App for CadenceApp {
                                             .labelled_by(constraint_date_label.id);
                                     }
 
-                                    ui.separator();
-                                    ui.heading("Calendar");
+                                    section(ui, "Calendar");
                                     let calendar_names =
                                         self.project.calendars.calendars().to_vec();
                                     let current = self
@@ -2579,8 +2600,7 @@ impl eframe::App for CadenceApp {
                                             }
                                         });
 
-                                    ui.separator();
-                                    ui.heading("Field planning");
+                                    section(ui, "Field planning");
                                     let owner_label = ui.label("Owner");
                                     ui.text_edit_singleline(&mut self.owner_buffer)
                                         .labelled_by(owner_label.id);
@@ -2596,8 +2616,7 @@ impl eframe::App for CadenceApp {
                                         self.apply_field_planning(id);
                                     }
 
-                                    ui.separator();
-                                    ui.heading("Progress");
+                                    section(ui, "Progress");
                                     let progress_label = ui.label("Percent complete");
                                     ui.text_edit_singleline(&mut self.progress_buffer)
                                         .labelled_by(progress_label.id);
@@ -2619,8 +2638,7 @@ impl eframe::App for CadenceApp {
                                         self.apply_edits();
                                     }
 
-                                    ui.separator();
-                                    ui.heading("Relationships");
+                                    section(ui, "Relationships");
                                     ComboBox::from_id_salt("relationship_select")
                                         .selected_text(
                                             self.selected_relationship
