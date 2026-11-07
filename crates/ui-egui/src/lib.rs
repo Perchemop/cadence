@@ -933,6 +933,7 @@ impl CadenceApp {
     }
 
     /// Delete the multi-selection as one undoable step.
+    #[allow(dead_code)]
     fn delete_selection(&mut self) {
         let ids: Vec<ActivityId> = self.multi_selected.iter().copied().collect();
         self.delete_activities(ids);
@@ -4892,15 +4893,9 @@ impl eframe::App for CadenceApp {
                 .open(&mut open)
                 .show(&ctx, |ui| {
                     if self.crash_log.is_empty() {
-                        ui.label(
-                            "No crash log was found. Cadence could not detect a previous crash.\n\
-                             You can still open a bug report with notes."
-                        );
+                        ui.label("No crash log was found. Cadence could not detect a previous crash.\nYou can still open a bug report with notes.");
                     } else {
-                        ui.label(
-                            "Cadence found a crash log from a previous run. \
-                             Nothing has been sent anywhere."
-                        );
+                        ui.label("Cadence found a crash log from a previous run. Nothing has been sent anywhere.");
                     }
                     ui.add_space(4.0);
                     ui.label("Preview");
