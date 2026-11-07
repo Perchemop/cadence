@@ -364,6 +364,15 @@ impl ReschedulePreview {
     }
 }
 
+/// A file action deferred because the current project has unsaved changes.
+#[derive(Clone)]
+enum PendingFileAction {
+    /// Close the window once the user resolves the unsaved changes.
+    Close,
+    /// Open this project once the user resolves the unsaved changes.
+    Open(PathBuf),
+}
+
 /// The Cadence application state.
 #[allow(dead_code)]
 pub struct CadenceApp {
@@ -383,7 +392,9 @@ pub struct CadenceApp {
     drag_start: Option<usize>,
     status_message: Option<String>,
     dirty: bool,
-    confirm_close: bool,
+    /// Set when a Close or Open request must wait for the user to resolve
+    /// unsaved changes through the Save / Discard / Cancel dialog.
+    pending_file_action: Option<PendingFileAction>,
     /// Whether a baseline is available, shown in the status bar.
     baseline_active: bool,
     /// When the current `status_message` was first shown, used to auto-clear
@@ -567,7 +578,7 @@ impl CadenceApp {
             status_message: None,
             status_shown_at: None,
             dirty: false,
-            confirm_close: false,
+            pending_file_action: None,
             baseline_active: false,
             evm_metrics: None,
             critical_count: 0,
@@ -1661,7 +1672,20 @@ impl CadenceApp {
     }
 
     /// Load a project from `path`, replacing the current one.
+    ///
+    /// If the current project has unsaved changes, the open is deferred until
+    /// the user resolves them through the Save / Discard / Cancel dialog, so
+    /// opening a file can never silently discard edits.
     fn open_from(&mut self, path: PathBuf) {
+        if self.dirty && self.pending_file_action.is_none() {
+            self.pending_file_action = Some(PendingFileAction::Open(path));
+            return;
+        }
+        self.load_from_path(path);
+    }
+
+    /// Replace the current project with the one stored at `path`.
+    fn load_from_path(&mut self, path: PathBuf) {
         match cadence_persistence::load_project(&path) {
             Ok(project) => {
                 self.project = project;
@@ -1673,6 +1697,22 @@ impl CadenceApp {
                 self.selected_resource = None;
                 self.selected_baseline = None;
                 self.selected_lookahead_snapshot = None;
+                // Activity ids restart at 1 per project, so selection and any
+                // transient edit state from the previous project must not
+                // survive the switch (a stale multi-selection would otherwise
+                // pre-arm "Delete N selected" for rows the user never picked).
+                self.multi_selected.clear();
+                self.confirm_delete_selection = false;
+                self.confirm_delete_activity = false;
+                self.confirm_delete_relationship = false;
+                self.editing_note = None;
+                self.diary_edit_buffer.clear();
+                self.lag_buffer.clear();
+                self.link_predecessor = None;
+                self.link_successor = None;
+                self.leveling_report = None;
+                self.reschedule_preview = None;
+                self.pending_file_action = None;
                 self.recompute();
                 self.dirty = false;
                 self.set_status(format!("Opened {}", path.display()));
@@ -1680,6 +1720,17 @@ impl CadenceApp {
             Err(error) => {
                 self.set_status(format!("Cannot open: {error}"));
             }
+        }
+    }
+
+    /// Run the file action that was waiting on the unsaved-changes dialog.
+    fn run_pending_file_action(&mut self, ctx: &egui::Context) {
+        match self.pending_file_action.take() {
+            Some(PendingFileAction::Close) => {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Some(PendingFileAction::Open(path)) => self.load_from_path(path),
+            None => {}
         }
     }
 
@@ -1889,10 +1940,14 @@ impl eframe::App for CadenceApp {
         );
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
 
-        // Guard against closing with unsaved changes.
-        if ctx.input(|i| i.viewport().close_requested()) && self.dirty && !self.confirm_close {
+        // Guard against closing with unsaved changes. While the project is
+        // dirty every close request is cancelled; the modal (or an already
+        // queued Open) is the only way forward.
+        if ctx.input(|i| i.viewport().close_requested()) && self.dirty {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.confirm_close = true;
+            if self.pending_file_action.is_none() {
+                self.pending_file_action = Some(PendingFileAction::Close);
+            }
         }
 
         // Poll the background update check at a low rate; the network request
@@ -3517,6 +3572,8 @@ impl eframe::App for CadenceApp {
                                         let current_text =
                                             format!("{:.2}", current_units as f64 / 100.0);
                                         let mut pending_units = None;
+                                        let mut field_focused = false;
+                                        let mut bad_units = false;
                                         {
                                             let entry = self
                                                 .assignment_units_buffers
@@ -3527,6 +3584,7 @@ impl eframe::App for CadenceApp {
                                                     .desired_width(56.0)
                                                     .hint_text("100.00"),
                                             );
+                                            field_focused = response.has_focus();
                                             if response.lost_focus() {
                                                 if let Ok(percent) = entry.trim().parse::<f64>() {
                                                     let units = ((percent * 100.0).round() as i64)
@@ -3536,8 +3594,13 @@ impl eframe::App for CadenceApp {
                                                         pending_units =
                                                             Some((activity.id, id, units));
                                                     }
+                                                } else {
+                                                    bad_units = true;
                                                 }
                                             }
+                                        }
+                                        if bad_units {
+                                            self.set_status("Assignment units must be a number.");
                                         }
                                         // The buffer borrow has ended, so the
                                         // project may be mutated and repainted.
@@ -3561,16 +3624,26 @@ impl eframe::App for CadenceApp {
                                                 }
                                             }
                                         }
-                                        let shown_units = self
-                                            .project
-                                            .activity(activity.id)
-                                            .map(|activity| activity.units_for(id))
-                                            .unwrap_or(FULL_UNITS);
-                                        if let Some(entry) = self
-                                            .assignment_units_buffers
-                                            .get_mut(&(activity.id, id))
-                                        {
-                                            *entry = format!("{:.2}", shown_units as f64 / 100.0);
+                                        // Only resync the buffer from the model
+                                        // when the field is not being edited, so
+                                        // the value the user types survives to the
+                                        // next frame and the command can fire.
+                                        if !field_focused {
+                                            let shown_units = self
+                                                .project
+                                                .activity(activity.id)
+                                                .map(|activity| activity.units_for(id))
+                                                .unwrap_or(FULL_UNITS);
+                                            if let Some(entry) = self
+                                                .assignment_units_buffers
+                                                .get_mut(&(activity.id, id))
+                                            {
+                                                let model_text =
+                                                    format!("{:.2}", shown_units as f64 / 100.0);
+                                                if *entry != model_text {
+                                                    *entry = model_text;
+                                                }
+                                            }
                                         }
                                         if let Some(result) = schedule.activity(activity.id) {
                                             ui.label(result.scheduled_start.to_string());
@@ -4270,35 +4343,41 @@ impl eframe::App for CadenceApp {
                     );
                     if ui.button("Add note").clicked() {
                         let date = diary_date;
-                        let activity = self
-                            .diary_activity_buffer
-                            .trim()
-                            .parse::<u64>()
-                            .ok()
-                            .map(ActivityId::new);
+                        let activity = if self.diary_activity_buffer.trim().is_empty() {
+                            Some(None)
+                        } else {
+                            self.diary_activity_buffer
+                                .trim()
+                                .parse::<u64>()
+                                .ok()
+                                .map(|id| Some(ActivityId::new(id)))
+                        };
                         let window = if self.diary_window_buffer.trim().is_empty() {
                             Some(None)
                         } else {
                             parse_date(self.diary_window_buffer.trim()).map(Some)
                         };
-                        match (date, window) {
-                            (Some(date), Some(lookahead_window_start)) => {
+                        match (date, activity, window) {
+                            // Explicitly distinguish "left blank" from "typed
+                            // something that is not a number", so a typo does
+                            // not silently detach the note from its activity.
+                            (Some(_), None, _) => {
+                                self.set_status("Activity id must be a number, or empty.");
+                            }
+                            (Some(date), Some(activity), Some(lookahead_window_start)) => {
                                 let command = cadence_commands::CreateDailyNote {
                                     date,
                                     content: self.diary_content_buffer.clone(),
                                     activity_id: activity,
                                     lookahead_window_start,
                                 };
-                                if self
-                                    .stack
-                                    .execute(&mut self.project, Box::new(command))
-                                    .is_ok()
-                                {
-                                    self.recompute();
-                                    self.diary_content_buffer.clear();
-                                    self.set_status("Diary note added.");
-                                } else {
-                                    self.set_status("Cannot add the note; check the content.");
+                                match self.stack.execute(&mut self.project, Box::new(command)) {
+                                    Ok(()) => {
+                                        self.recompute();
+                                        self.diary_content_buffer.clear();
+                                        self.set_status("Diary note added.");
+                                    }
+                                    Err(error) => self.set_status(error),
                                 }
                             }
                             _ => {
@@ -4442,13 +4521,15 @@ impl eframe::App for CadenceApp {
                                             date,
                                             percent_complete: percent * 100,
                                         };
-                                        if self
+                                        match self
                                             .stack
                                             .execute(&mut self.project, Box::new(command))
-                                            .is_ok()
                                         {
-                                            self.recompute();
-                                            self.set_status("Production recorded.");
+                                            Ok(()) => {
+                                                self.recompute();
+                                                self.set_status("Production recorded.");
+                                            }
+                                            Err(error) => self.set_status(error),
                                         }
                                     } else {
                                         self.set_status("Percent must be a number.");
@@ -4678,37 +4759,42 @@ impl eframe::App for CadenceApp {
             }
         }
 
-        if self.confirm_close {
+        if let Some(action) = self.pending_file_action.clone() {
+            let prompt = match &action {
+                PendingFileAction::Close => {
+                    format!("Save changes to {} before closing?", self.project.name)
+                }
+                PendingFileAction::Open(path) => format!(
+                    "Save changes to {} before opening {}?",
+                    self.project.name,
+                    path.display()
+                ),
+            };
             let mut open = true;
             egui::Window::new("Save changes?")
                 .collapsible(false)
                 .resizable(false)
                 .open(&mut open)
                 .show(&ctx, |ui| {
-                    ui.label(format!(
-                        "Save changes to {} before closing?",
-                        self.project.name
-                    ));
+                    ui.label(prompt);
                     ui.horizontal(|ui| {
                         if ui.button("Save").clicked() {
                             self.save_or_prompt();
-                            self.confirm_close = false;
                             if !self.dirty {
-                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                                self.run_pending_file_action(&ctx);
                             }
                         }
                         if ui.button("Discard").clicked() {
                             self.dirty = false;
-                            self.confirm_close = false;
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            self.run_pending_file_action(&ctx);
                         }
                         if ui.button("Cancel").clicked() {
-                            self.confirm_close = false;
+                            self.pending_file_action = None;
                         }
                     });
                 });
             if !open {
-                self.confirm_close = false;
+                self.pending_file_action = None;
             }
         }
 
