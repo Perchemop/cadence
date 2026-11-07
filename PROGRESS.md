@@ -1145,6 +1145,41 @@ x86_64/aarch64, Windows and macOS; Package (Linux); Secret scanning; Dependency
 licences and advisories; Dependency review; Static analysis (rust/actions); Bill
 of materials; Lockfile freshness; Personal data scan).
 
+## 2026-11-07 — Shell overhaul from the menu/toolbox audit (post-0.12.0)
+
+A designer's audit of the menus, sub-menus and tool cluster against the brand
+directives, then the fixes, all verified slice by slice:
+
+- **Three-zone top bar.** Menu bar, view-tab strip and tool cluster are now
+  visually distinct; the status message lives only in the bottom bar instead of
+  competing with the buttons.
+- **Menu taxonomy.** The confusing mix of view-switching and chrome toggles in
+  one menu is split: **Window** owns the theme toggle and split-Gantt switch,
+  **View** is pure view switching (radio items mirroring `Ctrl+1`–`Ctrl+9`),
+  and **File** gains **Close (Ctrl+W)**, **Exit** and a **Recent files**
+  submenu (the ten most recent projects, updated on open and save-as).
+- **Toolbar polish.** Focus rings on the tabs and Undo/Redo; an accent-tinted
+  primary style for Undo/Redo; the column chooser moved ahead of the undo
+  cluster; a zoom slider in the status bar; and one shared 8 px / 4 px spacing
+  grid (the off-grid 6 px menu margin fixed).
+- **Inspector hierarchy.** The activity inspector groups its fields under
+  accent section headers (Basic info, Calendar, Field planning, Progress,
+  Relationships).
+- **Context menu.** The row menu gains **Show in Gantt** and **Add to
+  selection** (the pointer-free twin of ctrl-click) beside the existing New
+  below / Duplicate / Delete.
+- **Bugs fixed.** `Ctrl+W` is now actually bound (the menu advertised it but
+  nothing handled it); the release-notes dialog's placeholder text no longer
+  collapses its spaces into long runs; the dialog now carries the current
+  release's notes.
+- **Docs.** `ACCESSIBILITY.md` documents the Menu-bar, `Ctrl+W` and the
+  multi-selection gestures; the F1 window lists `Ctrl+W`, the selection
+  gestures and `Escape`.
+
+Verification: CI green on `opencode/ci` across Linux (x86_64, aarch64),
+Windows and macOS, plus the security, licensing, SBOM, lockfile, semver and
+personal-data checks.
+
 ## 2026-11-06 — UI polish audit backlog closed; release 0.11.0
 
 Every item on the UI polish audit's future-slices list is now closed in the

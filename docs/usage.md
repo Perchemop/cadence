@@ -193,6 +193,10 @@ without blocking the application.
 |---|---|
 | Ctrl+Z | Undo |
 | Ctrl+Shift+Z or Ctrl+Y | Redo |
+| Ctrl+S | Save the project |
+| Ctrl+O | Open a project file |
+| Ctrl+N | Create a new activity |
+| Ctrl+W | Close the window (asks to save first) |
 | Ctrl+1 | Activity table |
 | Ctrl+2 | Gantt |
 | Ctrl+3 | Resources |
@@ -200,13 +204,23 @@ without blocking the application.
 | Ctrl+5 | Calendars |
 | Ctrl+6 | Audit |
 | Ctrl+7 | Lookahead |
+| Ctrl+8 | Diary |
+| Ctrl+9 | Production |
 | Ctrl+D | Toggle light/dark theme |
 | Ctrl+Plus / Ctrl+Minus | Zoom the Gantt timeline in or out |
 | Ctrl+0 | Reset the Gantt zoom |
 | Up / Down | Select the previous/next activity in the Activity table |
+| Ctrl/⌘-click, Shift-click | Add one row, or a range, to the table selection |
+| Escape | Drop the extra table-selection rows |
 | Tab / Shift+Tab | Move focus between controls |
 | Space / Enter | Activate the focused control or selectable row |
 | F1 | Open the keyboard-shortcuts window |
+
+The top bar is a menu bar (**File**, **Edit**, **View**, **Window**, **Help**)
+followed by the view tabs and a tool cluster. The **View** menu switches views,
+the **Window** menu holds the theme toggle and the split-Gantt switch, and the
+**File** menu carries Open/Save, the report and print actions, a **Recent
+files** list, and Close/Exit.
 
 ## Views
 

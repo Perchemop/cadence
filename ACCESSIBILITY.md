@@ -16,14 +16,23 @@ Every task has a pointer-free path. The global shortcuts are listed in the
 application's **Keyboard shortcuts** window (toolbar **Shortcuts** or `F1`) and
 in `docs/usage.md`.
 
-- **View switching** — `Ctrl+1`–`Ctrl+9`; every view button is also reachable
-  with `Tab` and activates with `Space` or `Enter`.
+- **Menus** — the top bar is a menu bar (**File**, **Edit**, **View**,
+  **Window**, **Help**) followed by the view tabs and a tool cluster, all of
+  which are ordinary buttons reachable with `Tab`. `Ctrl+W` asks to close the
+  window and stops at the unsaved-changes guard; the File menu also carries
+  Close and Exit, a **Recent files** list, and the report/print actions.
+- **View switching** — `Ctrl+1`–`Ctrl+9`; the **View** menu lists the same
+  nine views as radio items, and every view tab is reachable with `Tab` and
+  activates with `Space` or `Enter`.
 - **Activity table** — `Tab` reaches the sortable column headers; `Tab` reaches
   the row labels and `Space`/`Enter` selects a row. `Up`/`Down` select the
-  previous/next activity in the current sort order and scroll it into view. The
-  inspector exposes name, duration, constraint, calendar, progress, cost,
-  resources and relationships as standard text fields, combo boxes, checkboxes
-  and buttons.
+  previous/next activity in the current sort order and scroll it into view.
+  `Ctrl`/`⌘`-click or the row menu's **Add to selection** grows the selection,
+  `Shift`[-click] takes a range from the anchor row, and `Escape` drops the
+  extra rows; the inspector then offers **Delete N selected**, which removes the
+  whole set in one undo step. The inspector exposes name, duration, constraint,
+  calendar, progress, cost, resources and relationships as standard text fields,
+  combo boxes, checkboxes and buttons.
 - **Dependency links** — the inspector's **Add relationship** form chooses a
   predecessor, successor, link type and lag, then adds the link. Dragging
   between Gantt bars is a shortcut for the same command, not the only path.

@@ -9,6 +9,28 @@ follows Keep a Changelog; releases use git tags.
 
 ## [Unreleased]
 
+### Changed
+- Shell overhaul: the top bar is now three visually distinct zones — a
+  **File / Edit / View / Window / Help** menu bar, the view-tab strip, and a
+  tool cluster — and the status message lives only in the bottom status bar.
+- Menu taxonomy: a new **Window** menu owns the theme toggle and the
+  split-Gantt switch; the **View** menu is pure view switching (radio items
+  mirroring `Ctrl+1`–`Ctrl+9`); the **File** menu gains **Close (Ctrl+W)**,
+  **Exit**, and a **Recent files** list of the ten most recent projects.
+- Toolbar polish: focus rings on the tabs and Undo/Redo, an accent-tinted
+  primary style for Undo/Redo, a zoom slider in the status bar, and a shared
+  8 px horizontal / 4 px vertical spacing grid.
+- The activity inspector groups its fields under accent **section headers**
+  (Basic info, Calendar, Field planning, Progress, Relationships).
+- The row context menu gains **Show in Gantt** and **Add to selection**.
+- The F1 shortcuts window documents `Ctrl+W`, the multi-selection gestures and
+  `Escape`; the release-notes window carries the current release's notes.
+
+### Fixed
+- `Ctrl+W` is now bound (it was advertised in the menu but did nothing).
+- The release-notes dialog no longer prints the placeholder text with its
+  spaces collapsed into long runs.
+
 ## [0.12.0] — 2026-11-07
 
 ### Added
