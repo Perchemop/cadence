@@ -2509,7 +2509,7 @@ impl eframe::App for CadenceApp {
                                     }
                                     ui.label(format!("Activity {}", id));
                                     let tokens = self.design_tokens();
-                                    let mut section = |ui: &mut Ui, title: &str| {
+                                    let section = |ui: &mut Ui, title: &str| {
                                         ui.add_space(4.0);
                                         ui.separator();
                                         ui.label(
