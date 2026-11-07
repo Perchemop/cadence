@@ -8,7 +8,7 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 ~45K in the 0.12.0 cycle. The ledger's CI update on each tag is queued
 (`ROADMAP.md`).
 
-## [Unreleased]
+## [0.12.1] — 2026-11-07
 
 ### Changed
 - Shell overhaul: the top bar is now three visually distinct zones — a
@@ -38,6 +38,8 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   rule is recorded in the agent instructions, and the suite standards are
   adopted in `DECISIONS.md` D27 with the open deviations tracked in
   `ROADMAP.md`. Added the `docs/tokens.json` ledger seed.
+
+## [Unreleased]
 
 ## [0.12.0] — 2026-11-07
 
