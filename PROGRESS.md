@@ -13,6 +13,10 @@ PR #120 merged as `0443f4c` — the first P1 tranche from the 2026-11-07 audit:
 - F16 Crash dialog: empty-state copy distinguishes missing log, URL size capped by truncating the log to 4 000 bytes before encoding, and the log is cleared only after the dialog is dismissed; copy updated to be honest.
 - F21 Split-Gantt toggle: added hover text "Splits the Table view; drag the divider to resize".
 
+**Remaining P1 items (post-merge):**
+- F22 Confirm all destructive deletes: resource, baseline, diary note, production entry — each routes through a confirm dialog with Escape/Cancel/Enter support and frozen selection ids at dialog-open time.
+- F17 Terminology/label drift: one term per concept; human units; honest verbs (relationship naming, basis-points display, "New activity below"/"Add to selection" wording).
+
 Verification: CI green on PR #120 (all required checks), merged to main.
 
 ## 2026-11-07 — Full GUI audit + P0 correctness slice

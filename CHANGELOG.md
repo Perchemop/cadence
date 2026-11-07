@@ -65,6 +65,9 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 - Crash dialog shows honest empty state, caps issue-URL size, and clears log
   only after dismissal (F16).
 - Split-Gantt toggle shows resize hint (F21).
+- Confirm deletes for resources, baselines, diary notes and production entries
+  (F22): each destructive delete now routes through a confirm dialog with
+  Escape/Cancel/Enter support and frozen selection ids.
 
 ## [0.12.0] — 2026-11-07
 
