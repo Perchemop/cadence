@@ -2230,7 +2230,28 @@ impl eframe::App for CadenceApp {
                         }
                     });
 
-                    // ─── Window menu (was View menu actions that aren't view switching) ───
+                    // ─── View menu: pure view switching (the tab strip is the
+                    // always-visible twin of this list) ───
+                    ui.menu_button("View", |ui| {
+                        ui.set_min_width(180.0);
+                        for (mode, label) in [
+                            (ViewMode::Table, "Table (Ctrl+1)"),
+                            (ViewMode::Gantt, "Gantt (Ctrl+2)"),
+                            (ViewMode::Resources, "Resources (Ctrl+3)"),
+                            (ViewMode::Baselines, "Baselines (Ctrl+4)"),
+                            (ViewMode::Calendars, "Calendars (Ctrl+5)"),
+                            (ViewMode::Audit, "Audit (Ctrl+6)"),
+                            (ViewMode::Lookahead, "Lookahead (Ctrl+7)"),
+                            (ViewMode::Diary, "Diary (Ctrl+8)"),
+                            (ViewMode::Production, "Production (Ctrl+9)"),
+                        ] {
+                            if ui.radio(self.view_mode == mode, label).clicked() {
+                                self.view_mode = mode;
+                            }
+                        }
+                    });
+
+                    // ─── Window menu: chrome that is not view switching ───
                     ui.menu_button("Window", |ui| {
                         ui.set_min_width(160.0);
                         if ui.button("Toggle theme (Ctrl+D)").clicked() {
@@ -4811,6 +4832,7 @@ impl eframe::App for CadenceApp {
                                 ("Ctrl+S", "Save the project"),
                                 ("Ctrl+O", "Open a project file"),
                                 ("Ctrl+N", "Create a new activity"),
+                                ("Ctrl+W", "Close the window (asks to save first)"),
                                 ("Ctrl+D", "Toggle light/dark theme"),
                                 (
                                     "Ctrl+Plus / Ctrl+Minus",
@@ -4823,6 +4845,11 @@ impl eframe::App for CadenceApp {
                                     "Up / Down",
                                     "Select the previous/next activity in the Table view",
                                 ),
+                                (
+                                    "Ctrl/⌘-click, Shift-click",
+                                    "Add one row, or a range, to the table selection",
+                                ),
+                                ("Escape", "Drop the extra table-selection rows"),
                                 ("F1", "Open this window"),
                             ] {
                                 ui.label(keys);
