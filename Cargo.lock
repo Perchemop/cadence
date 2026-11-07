@@ -564,7 +564,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "cadence-app"
-version = "0.12.0"
+version = "0.12.1"
 dependencies = [
  "cadence-commands",
  "cadence-core",
@@ -576,7 +576,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-commands"
-version = "0.12.0"
+version = "0.12.1"
 dependencies = [
  "cadence-core",
  "serde",
@@ -585,7 +585,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-core"
-version = "0.12.0"
+version = "0.12.1"
 dependencies = [
  "proptest",
  "serde",
@@ -596,7 +596,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-interchange"
-version = "0.12.0"
+version = "0.12.1"
 dependencies = [
  "cadence-core",
  "proptest",
@@ -605,7 +605,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-persistence"
-version = "0.12.0"
+version = "0.12.1"
 dependencies = [
  "cadence-core",
  "rusqlite",
@@ -615,7 +615,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-ui-egui"
-version = "0.12.0"
+version = "0.12.1"
 dependencies = [
  "cadence-commands",
  "cadence-core",
