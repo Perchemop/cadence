@@ -537,6 +537,21 @@ impl CadenceApp {
         DesignTokens::for_dark(self.dark)
     }
 
+    /// Wrap a button with a focus ring when it has keyboard focus.
+    fn focus_button(&self, ui: &mut Ui, button: egui::Button, enabled: bool) -> egui::Response {
+        let response = ui.add_enabled(enabled, button);
+        if response.has_focus() {
+            let rect = response.rect.expand(2.0);
+            ui.painter().rect_stroke(
+                rect,
+                egui::CornerRadius::same(4),
+                egui::Stroke::new(2.0, self.design_tokens().accent),
+                egui::StrokeKind::Middle,
+            );
+        }
+        response
+    }
+
     /// Build the application from a loaded project.
     pub fn new(project: Project) -> Self {
         Self::with_path(project, None)
@@ -2290,25 +2305,23 @@ impl eframe::App for CadenceApp {
                         } else {
                             ui.separator();
                         }
-                        if ui
-                            .add(
-                                egui::Button::new(label)
-                                    .selected(selected)
-                                    .frame(selected)
-                                    .fill(if selected {
-                                        self.design_tokens().accent_bg
-                                    } else {
-                                        egui::Color32::TRANSPARENT
-                                    })
-                                    .stroke(egui::Stroke::new(
-                                        1.0,
-                                        if selected {
-                                            self.design_tokens().accent
-                                        } else {
-                                            self.design_tokens().critical.linear_multiply(0.2)
-                                        }
-                                    ))
-                            )
+                        let btn = egui::Button::new(label)
+                            .selected(selected)
+                            .frame(selected)
+                            .fill(if selected {
+                                self.design_tokens().accent_bg
+                            } else {
+                                egui::Color32::TRANSPARENT
+                            })
+                            .stroke(egui::Stroke::new(
+                                1.0,
+                                if selected {
+                                    self.design_tokens().accent
+                                } else {
+                                    self.design_tokens().critical.linear_multiply(0.2)
+                                }
+                            ));
+                        if self.focus_button(ui, btn, true)
                             .on_hover_text(tooltip)
                             .clicked()
                         {
@@ -2343,12 +2356,14 @@ impl eframe::App for CadenceApp {
                     ui.separator();
 
                     // Undo/Redo with primary styling when enabled
-                    if ui
-                        .add_enabled(
-                            self.stack.can_undo(),
+                    // Undo/Redo with primary styling when enabled
+                    if self
+                        .focus_button(
+                            ui,
                             egui::Button::new("Undo (Ctrl+Z)")
                                 .fill(self.design_tokens().primary_bg)
-                                .stroke(egui::Stroke::new(1.0, self.design_tokens().accent))
+                                .stroke(egui::Stroke::new(1.0, self.design_tokens().accent)),
+                            self.stack.can_undo(),
                         )
                         .on_hover_text("Undo the last edit (Ctrl+Z)")
                         .clicked()
@@ -2357,12 +2372,13 @@ impl eframe::App for CadenceApp {
                         self.recompute();
                         self.refresh_selection();
                     }
-                    if ui
-                        .add_enabled(
-                            self.stack.can_redo(),
+                    if self
+                        .focus_button(
+                            ui,
                             egui::Button::new("Redo (Ctrl+Y)")
                                 .fill(self.design_tokens().primary_bg)
-                                .stroke(egui::Stroke::new(1.0, self.design_tokens().accent))
+                                .stroke(egui::Stroke::new(1.0, self.design_tokens().accent)),
+                            self.stack.can_redo(),
                         )
                         .on_hover_text("Redo the last undone edit (Ctrl+Y)")
                         .clicked()
