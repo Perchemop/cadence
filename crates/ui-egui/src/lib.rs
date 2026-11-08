@@ -3509,6 +3509,7 @@ impl eframe::App for CadenceApp {
                                             self.confirm_delete_resource = false;
                                         }
                                     });
+                                });
                         }
 
                         ui.separator();
@@ -3816,6 +3817,7 @@ impl eframe::App for CadenceApp {
                                             self.confirm_delete_baseline = false;
                                         }
                                     });
+                                });
                         }
                         ui.separator();
                         ui.heading("Earned value");
@@ -4581,6 +4583,7 @@ impl eframe::App for CadenceApp {
                                     self.editing_note = None;
                                 }
                             });
+                                });
                         }
                     if self.confirm_delete_note {
                         let mut open = true;
