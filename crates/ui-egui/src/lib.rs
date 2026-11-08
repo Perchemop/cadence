@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use cadence_commands::{
     AddResourceToActivity, CaptureBaseline, CommandStack, CreateCalendar, CreateRelationship,
-    CreateResource, DeleteCalendar, DeleteRelationship, DeleteResource, RemoveBaseline,
+    CreateResource, DeleteCalendar, DeleteRelationship, DeleteResource, DeleteDailyNote, DeleteProduction, RemoveBaseline,
     RemoveResourceFromActivity, RenameActivity, RenameCalendar, RenameResource,
     SetActivityActualCost, SetActivityActualDates, SetActivityBudget, SetActivityCalendar,
     SetActivityConstraint, SetActivityDuration, SetActivityOwner, SetActivityProgress,
@@ -34,7 +34,7 @@ use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use cadence_core::model::FULL_UNITS;
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, EvmMetrics,
-    LinkType, LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ProductionEntryId,
+    LinkType, LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntryId, Project,
     ResourceId, ResourceKind,
 };
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
