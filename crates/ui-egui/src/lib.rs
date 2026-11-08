@@ -2680,10 +2680,7 @@ impl eframe::App for CadenceApp {
                             .small()
                             .color(palette.text_muted),
                     )
-                    .on_hover_text(format!(
-                        "Gantt zoom: {}\nCtrl+wheel to zoom",
-                        zoom_text
-                    ));
+                    .on_hover_text(format!("Gantt zoom: {zoom_text}\nCtrl+wheel to zoom"));
                     // F1 footer: the keyboard reference is one click away from
                     // anywhere, matching the F1 binding.
                     if ui
