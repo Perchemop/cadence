@@ -336,6 +336,15 @@ proptest! {
                             prop_assert!(item.scheduled_finish <= bound);
                         }
                     }
+
+                    Constraint::MustStartOn(bound)
+                    | Constraint::MustFinishOn(bound) => {
+                        prop_assert_eq!(item.scheduled_start, item.early_start);
+                        prop_assert_eq!(item.scheduled_finish, item.early_finish);
+                        prop_assert_eq!(item.early_start, item.late_start);
+                        prop_assert_eq!(item.early_finish, item.late_finish);
+                        prop_assert_eq!(item.total_float, 0);
+                    }
                 }
             }
             Err(SchedError::ConstraintViolated { activity, .. }) => {

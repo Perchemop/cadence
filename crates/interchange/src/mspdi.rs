@@ -532,6 +532,8 @@ fn import_constraint(task: &Element) -> Result<Constraint, InterchangeError> {
         3 | 6 => Constraint::FinishNoEarlierThan(date),
         5 => Constraint::StartNoLaterThan(date),
         7 => Constraint::FinishNoLaterThan(date),
+        8 => Constraint::MustStartOn(date),
+        9 => Constraint::MustFinishOn(date),
         other => {
             return Err(InterchangeError::InvalidField {
                 field: "Task/ConstraintType".to_string(),
@@ -549,6 +551,8 @@ fn export_constraint(constraint: Constraint) -> (i64, Option<Date>) {
         Constraint::StartNoLaterThan(date) => (5, Some(date)),
         Constraint::FinishNoEarlierThan(date) => (6, Some(date)),
         Constraint::FinishNoLaterThan(date) => (7, Some(date)),
+        Constraint::MustStartOn(date) => (8, Some(date)),
+        Constraint::MustFinishOn(date) => (9, Some(date)),
     }
 }
 

@@ -871,6 +871,19 @@ pub fn schedule_with_minimum_starts(
             start = start.max(calendar.next_working_day_on_or_after(minimum)?);
         }
 
+        // Mandatory constraints pin the activity to an exact date and override
+        // network logic and resource leveling.
+        match constraint {
+            Constraint::MustStartOn(date) => {
+                start = calendar.next_working_day_on_or_after(date)?;
+            }
+            Constraint::MustFinishOn(date) => {
+                let mandated_finish = calendar.next_working_day_on_or_after(date)?;
+                start = start_from_finish(calendar, mandated_finish, duration)?;
+            }
+            _ => {}
+        }
+
         let start = calendar.next_working_day_on_or_after(start)?;
         let finish = finish_from_start(calendar, start, duration)?;
 
@@ -970,6 +983,19 @@ pub fn schedule_with_minimum_starts(
         if let Some(&minimum) = minimum_starts.get(&activity.id) {
             let earliest_start = calendar.next_working_day_on_or_after(minimum)?;
             finish = finish.max(finish_from_start(calendar, earliest_start, duration)?);
+        }
+
+        // Mandatory constraints pin the late dates to the same exact date so the
+        // activity carries zero total float.
+        match constraint {
+            Constraint::MustStartOn(date) => {
+                let mandated = calendar.next_working_day_on_or_after(date)?;
+                finish = finish_from_start(calendar, mandated, duration)?;
+            }
+            Constraint::MustFinishOn(date) => {
+                finish = calendar.prev_working_day_on_or_before(date)?;
+            }
+            _ => {}
         }
 
         late_finish[activity_index] = finish;

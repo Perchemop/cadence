@@ -19,3 +19,5 @@ serde.workspace = true
 serde_json.workspace = true
 time.workspace = true
 ureq.workspace = true
+egui_extras = "0.35.0"
+egui-phosphor = "0.13.0"

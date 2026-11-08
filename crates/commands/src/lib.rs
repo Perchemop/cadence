@@ -694,6 +694,44 @@ impl Command for SetActivityConstraint {
     }
 }
 
+/// Set a mandatory constraint (`MustStartOn` or `MustFinishOn`) on an activity
+/// and re-schedule so the activity is anchored to the given date regardless of
+/// network logic.
+///
+/// Reversible: stores the previous constraint, applies the new one, re-runs the
+/// engine, and undo restores the previous constraint and re-schedules.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetMandatoryConstraint {
+    /// Activity to update.
+    pub activity_id: ActivityId,
+    /// New constraint: `MustStartOn` or `MustFinishOn` only.
+    pub constraint: Constraint,
+}
+
+impl Command for SetMandatoryConstraint {
+    fn description(&self) -> String {
+        format!(
+            "set mandatory constraint of activity {} to {}",
+            self.activity_id, self.constraint
+        )
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.activity_id) else {
+            return Err(format!("activity {} does not exist", self.activity_id));
+        };
+        let previous = std::mem::replace(&mut activity.constraint, self.constraint);
+        activity.clear_schedule();
+        let computed =
+            cadence_core::engine::schedule(project).map_err(|error| error.to_string())?;
+        computed.apply_to(project);
+        Ok(Box::new(SetMandatoryConstraint {
+            activity_id: self.activity_id,
+            constraint: previous,
+        }))
+    }
+}
+
 /// Set the budget at completion of an activity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetActivityBudget {
@@ -4305,6 +4343,57 @@ mod tests {
             project.activity(a).map(|activity| activity.constraint),
             Some(Constraint::StartNoEarlierThan(jan(8)))
         );
+    }
+
+    #[test]
+    fn set_mandatory_constraint_apply_undo_and_redo() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 2);
+
+        // ASAP default schedules from the project start (jan 5).
+        assert_eq!(
+            project.activity(a).map(|activity| activity.constraint),
+            Some(Constraint::AsSoonAsPossible)
+        );
+
+        // Apply a mandatory start-on constraint; it anchors the activity even
+        // though ASAP would have started it earlier.
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetMandatoryConstraint {
+                activity_id: a,
+                constraint: Constraint::MustStartOn(jan(8)),
+            }),
+        );
+        assert_eq!(
+            project.activity(a).map(|activity| activity.constraint),
+            Some(Constraint::MustStartOn(jan(8)))
+        );
+        let scheduled = project.activity(a).unwrap();
+        assert_eq!(scheduled.scheduled_start, Some(jan(8)));
+        assert_eq!(scheduled.scheduled_finish, Some(jan(9)));
+
+        // Undo restores the previous constraint and re-schedules.
+        stack.undo(&mut project).expect("undo mandatory constraint");
+        assert_eq!(
+            project.activity(a).map(|activity| activity.constraint),
+            Some(Constraint::AsSoonAsPossible)
+        );
+        let rescheduled = project.activity(a).unwrap();
+        assert_eq!(rescheduled.scheduled_start, Some(jan(5)));
+        assert_eq!(rescheduled.scheduled_finish, Some(jan(6)));
+
+        // Redo re-applies the mandatory constraint.
+        stack.redo(&mut project).expect("redo mandatory constraint");
+        assert_eq!(
+            project.activity(a).map(|activity| activity.constraint),
+            Some(Constraint::MustStartOn(jan(8)))
+        );
+        let again = project.activity(a).unwrap();
+        assert_eq!(again.scheduled_start, Some(jan(8)));
+        assert_eq!(again.scheduled_finish, Some(jan(9)));
     }
 
     #[test]

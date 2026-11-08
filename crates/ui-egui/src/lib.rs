@@ -5,7 +5,7 @@
 //! source of truth; this crate only displays its results and routes edits
 //! through the command layer.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
@@ -37,6 +37,7 @@ use cadence_core::model::{
     LinkType, LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntryId, Project, ResourceId,
     ResourceKind,
 };
+use cadence_core::wbs::WbsId;
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
 use time::{Date, Month};
 
@@ -537,6 +538,8 @@ pub struct CadenceApp {
     table_rows_sorted_ascending: bool,
     show_split_gantt: bool,
     visible_columns: BTreeSet<SortKey>,
+    /// WBS nodes the user has collapsed in the outline (UI-only state).
+    collapsed_wbs: HashSet<WbsId>,
 }
 
 /// Whether an activity passes the table filter: a case-insensitive substring
@@ -699,6 +702,7 @@ impl CadenceApp {
             table_rows_sorted_ascending: true,
             show_split_gantt: true,
             visible_columns: SortKey::all_columns(),
+            collapsed_wbs: HashSet::new(),
         }
     }
 
@@ -1940,6 +1944,28 @@ impl CadenceApp {
         }
     }
 
+    /// Whether an activity is visible given the current WBS collapse state.
+    fn wbs_visible(&self, activity: &Activity) -> bool {
+        let Some(node) = activity.wbs else {
+            return true;
+        };
+        let mut current = self.project.wbs.node(node).and_then(|n| n.parent);
+        while let Some(parent) = current {
+            if self.collapsed_wbs.contains(&parent) {
+                return false;
+            }
+            current = self.project.wbs.node(parent).and_then(|n| n.parent);
+        }
+        true
+    }
+
+    /// Toggle the collapsed state of a WBS node.
+    fn toggle_wbs_collapse(&mut self, node: WbsId) {
+        if !self.collapsed_wbs.remove(&node) {
+            self.collapsed_wbs.insert(node);
+        }
+    }
+
     /// How many activities the given filter would show, for the row counter in
     /// the filter bar. Counted without cloning, so the per-frame cost is one
     /// pass over the names while a filter is active.
@@ -3002,7 +3028,12 @@ impl eframe::App for CadenceApp {
                     });
 
                 if self.show_split_gantt {
-                    let activities = self.sorted_cache.clone();
+                    let activities: Vec<Activity> = self
+                        .sorted_cache
+                        .iter()
+                        .filter(|activity| self.wbs_visible(activity))
+                        .cloned()
+                        .collect();
                     let mut gantt_changed = false;
                     let mut gantt_selected = self.selected;
                     egui::Panel::right("workbench_gantt")
@@ -3065,7 +3096,12 @@ impl eframe::App for CadenceApp {
                 self.refresh_table_rows(&filter_text, critical_only);
 
                 let schedule = self.schedule.as_ref();
-                let sorted = self.table_rows();
+                let sorted: Vec<Activity> = self
+                    .table_rows()
+                    .iter()
+                    .filter(|activity| self.wbs_visible(activity))
+                    .cloned()
+                    .collect();
                 let selected_id = self.selected;
                 let scroll_to_selection = self.scroll_to_selection;
                 let mut clicked_activity = None;
@@ -3228,16 +3264,36 @@ impl eframe::App for CadenceApp {
                                         for (col, (key, _label, _w)) in defs.iter().enumerate() {
                                             match key {
                                                 None => {
-                                                    ui.add_sized(
-                                                        [widths[col], row_height],
-                                                        egui::Label::new(
-                                                            egui::RichText::new(
-                                                                (index + 1).to_string(),
+                                                    let has_children = activity
+                                                        .wbs
+                                                        .and_then(|node| self.project.wbs.node(node))
+                                                        .map(|node| !node.children.is_empty())
+                                                        .unwrap_or(false);
+                                                    if has_children {
+                                                        let node = activity.wbs.unwrap();
+                                                        let collapsed = self.collapsed_wbs.contains(&node);
+                                                        let glyph = if collapsed { "+" } else { "-" };
+                                                        if ui
+                                                            .add_sized(
+                                                                [widths[col], row_height],
+                                                                egui::Button::new(glyph).frame(false),
                                                             )
-                                                            .monospace()
-                                                            .weak(),
-                                                        ),
-                                                    );
+                                                            .clicked()
+                                                        {
+                                                            self.toggle_wbs_collapse(node);
+                                                        }
+                                                    } else {
+                                                        ui.add_sized(
+                                                            [widths[col], row_height],
+                                                            egui::Label::new(
+                                                                egui::RichText::new(
+                                                                    (index + 1).to_string(),
+                                                                )
+                                                                .monospace()
+                                                                .weak(),
+                                                            ),
+                                                        );
+                                                    }
                                                 }
                                                 Some(SortKey::Name) => {
                                                     if ui
@@ -3464,6 +3520,12 @@ impl eframe::App for CadenceApp {
                                 }
                             });
                     });
+                let gantt_activities: Vec<Activity> = self
+                    .sorted_cache
+                    .iter()
+                    .filter(|activity| self.wbs_visible(activity))
+                    .cloned()
+                    .collect();
                 egui::CentralPanel::default().show(ui, |ui| {
                     let px = self.pixels_per_day;
                     gantt_changed = render_gantt(
@@ -3473,7 +3535,7 @@ impl eframe::App for CadenceApp {
                         &mut self.stack,
                         &mut self.drag_start,
                         &mut self.status_message,
-                        &self.sorted_cache,
+                        &gantt_activities,
                         px,
                         &mut self.pixels_per_day,
                         &mut self.drag_link_type_index,
