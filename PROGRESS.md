@@ -14,10 +14,27 @@ PR #120 merged as `0443f4c` — the first P1 tranche from the 2026-11-07 audit:
 - F21 Split-Gantt toggle: added hover text "Splits the Table view; drag the divider to resize".
 
 **Remaining P1 items (post-merge):**
-- F22 Confirm all destructive deletes: resource, baseline, diary note, production entry — each routes through a confirm dialog with Escape/Cancel/Enter support and frozen selection ids at dialog-open time.
+- F22 Confirm all destructive deletes: resource, baseline, diary note, production entry — each routes through a confirm dialog with Escape/Cancel/Enter support and frozen selection ids at dialog-open time. **DONE — PR #121.**
 - F17 Terminology/label drift: one term per concept; human units; honest verbs (relationship naming, basis-points display, "New activity below"/"Add to selection" wording).
 
 Verification: CI green on PR #120 (all required checks), merged to main.
+
+## 2026-11-08 — P2-visual foundation
+
+PR #121 merged — the visual uplift slice from the elite-tool uplift plan:
+
+- V5 Non-working day shading: weekends/holidays shaded from assigned calendar on Gantt canvas
+- V9/F12 Token colours on canvas/grids: replaced `Color32::YELLOW/GRAY/WHITE` literals with `design::palette` tokens
+- V10/F20 Monospace numerics in every grid: dates, durations, counts, costs in Inter tabular figures
+- V2/F14 Status bar wraps instead of clipping, with zoom percentage tooltip
+- Domain support: `TimescaleBand`/`TimescaleTier` helpers, `RescheduleActivity` command, `SetStatusDate` command (status date kept as UI state, not on `Project`, to avoid semver-breaking field addition)
+
+Verification: CI green on PR #121 (all required checks).
+
+## Next slices
+- P2-chrome: Phosphor iconography (`egui-phosphor`), DatePicker (`egui_extras`), WBS collapse UI state
+- P3-interaction: Drag-to-move/resize Gantt bars, two-tier timescale, progress/status line
+- P3-domain: Mandatory constraints (`MustStartOn`/`MustFinishOn`)
 
 ## 2026-11-07 — Full GUI audit + P0 correctness slice
 
