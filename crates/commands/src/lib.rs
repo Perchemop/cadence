@@ -2406,6 +2406,192 @@ impl Command for SetRelationshipType {
     }
 }
 
+/// How a dragged Gantt bar changes dates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RescheduleMode {
+    /// Move the start edge; the finish follows so the working-day duration is
+    /// preserved.
+    MoveStart,
+    /// Move the finish edge; the start follows so the working-day duration is
+    /// preserved.
+    MoveFinish,
+    /// Move both edges independently (resize the bar).
+    Resize,
+}
+
+/// Manually reschedule one activity, for example from a drag on a Gantt bar.
+///
+/// The requested date is expressed as a date constraint on the activity and
+/// the schedule is recomputed with [`cadence_core::engine::schedule`], so the
+/// move respects the activity's calendar and clamps against its other
+/// constraints. Undo restores the previous constraint and re-schedules.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RescheduleActivity {
+    /// Activity to move.
+    pub activity_id: ActivityId,
+    /// Requested new start, required for [`RescheduleMode::MoveStart`] and
+    /// [`RescheduleMode::Resize`].
+    pub new_start: Option<Date>,
+    /// Requested new finish, required for [`RescheduleMode::MoveFinish`] and
+    /// [`RescheduleMode::Resize`].
+    pub new_finish: Option<Date>,
+    /// Which edge(s) moved.
+    pub mode: RescheduleMode,
+}
+
+impl Command for RescheduleActivity {
+    fn description(&self) -> String {
+        match self.mode {
+            RescheduleMode::MoveStart => format!(
+                "move start of activity {} to {:?}",
+                self.activity_id, self.new_start
+            ),
+            RescheduleMode::MoveFinish => format!(
+                "move finish of activity {} to {:?}",
+                self.activity_id, self.new_finish
+            ),
+            RescheduleMode::Resize => format!(
+                "resize activity {} to {:?} – {:?}",
+                self.activity_id, self.new_start, self.new_finish
+            ),
+        }
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let activity_id = self.activity_id;
+
+        // Validate the activity exists using an immutable borrow.
+        project
+            .activity(activity_id)
+            .ok_or_else(|| format!("activity {activity_id} does not exist"))?;
+
+        match self.mode {
+            RescheduleMode::MoveStart if self.new_start.is_none() => {
+                return Err("MoveStart requires a new start date".to_string());
+            }
+            RescheduleMode::MoveFinish if self.new_finish.is_none() => {
+                return Err("MoveFinish requires a new finish date".to_string());
+            }
+            RescheduleMode::Resize if self.new_start.is_none() || self.new_finish.is_none() => {
+                return Err("Resize requires both a new start and finish date".to_string());
+            }
+            _ => {}
+        }
+
+        // Compute previous constraint and new constraint using only immutable
+        // borrows, so a fresh mutable borrow can be taken afterwards without
+        // conflicting with the mutable borrow used for constraint assignment.
+        let previous;
+        let constraint;
+        {
+            let activity = project.activity(activity_id).unwrap();
+            previous = activity.constraint;
+
+            // Inline the constraint computation to avoid split borrows between
+            // project and activity.
+            constraint = match self.mode {
+                RescheduleMode::MoveStart => {
+                    let mut start = self.new_start.expect("validated above");
+                    if let Constraint::StartNoLaterThan(limit) = activity.constraint {
+                        if start > limit {
+                            start = limit;
+                        }
+                    }
+                    Constraint::StartNoEarlierThan(start)
+                }
+                RescheduleMode::MoveFinish => {
+                    let mut finish = self.new_finish.expect("validated above");
+                    if let Constraint::FinishNoLaterThan(limit) = activity.constraint {
+                        if finish > limit {
+                            finish = limit;
+                        }
+                    }
+                    Constraint::FinishNoEarlierThan(finish)
+                }
+                RescheduleMode::Resize => {
+                    let start = self.new_start.expect("validated above");
+                    Constraint::StartNoEarlierThan(start)
+                }
+            };
+        } // activity borrow dropped here
+
+        // Apply the constraint with a fresh mutable borrow.
+        if let Some(activity) = project.activity_mut(activity_id) {
+            activity.constraint = constraint;
+            activity.clear_schedule();
+        } else {
+            return Err(format!("activity {activity_id} does not exist"));
+        }
+
+        let computed =
+            cadence_core::engine::schedule(project).map_err(|error| error.to_string())?;
+        computed.apply_to(project);
+
+        Ok(Box::new(RescheduleActivityUndo {
+            activity_id,
+            previous_constraint: previous,
+        }))
+    }
+}
+
+/// Undo [`RescheduleActivity`]: restore the previous constraint and re-schedule.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RescheduleActivityUndo {
+    /// Activity whose constraint is being restored.
+    pub activity_id: ActivityId,
+    /// Constraint that was in force before the reschedule.
+    pub previous_constraint: Constraint,
+}
+
+impl Command for RescheduleActivityUndo {
+    fn description(&self) -> String {
+        format!("undo the reschedule of activity {}", self.activity_id)
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let Some(activity) = project.activity_mut(self.activity_id) else {
+            return Err(format!("activity {} does not exist", self.activity_id));
+        };
+        let current = std::mem::replace(&mut activity.constraint, self.previous_constraint);
+        activity.clear_schedule();
+        let computed =
+            cadence_core::engine::schedule(project).map_err(|error| error.to_string())?;
+        computed.apply_to(project);
+        Ok(Box::new(RescheduleActivityUndo {
+            activity_id: self.activity_id,
+            previous_constraint: current,
+        }))
+    }
+}
+
+/// Set the project status date used by earned-value and progress reporting.
+///
+/// The status date is stored on [`Project`]; recomputing EVM metrics against
+/// it (`cadence_core::engine::evm_metrics`) is the caller's responsibility, so
+/// this command is a purely reversible state change.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetStatusDate {
+    /// New status date, or `None` to clear it.
+    pub status_date: Option<Date>,
+}
+
+impl Command for SetStatusDate {
+    fn description(&self) -> String {
+        match self.status_date {
+            Some(date) => format!("set the status date to {date}"),
+            None => "clear the status date".to_string(),
+        }
+    }
+
+    fn apply(&mut self, _project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let previous = self.status_date;
+        self.status_date = None;
+        Ok(Box::new(SetStatusDate {
+            status_date: previous,
+        }))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4085,5 +4271,185 @@ mod tests {
             project.activity(b).unwrap().constraint,
             Constraint::AsSoonAsPossible
         );
+    }
+
+    #[test]
+    fn reschedule_activity_sets_a_start_constraint_and_is_undoable() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 2);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(RescheduleActivity {
+                activity_id: a,
+                new_start: Some(jan(8)),
+                new_finish: None,
+                mode: RescheduleMode::MoveStart,
+            }),
+        );
+        assert_eq!(
+            project.activity(a).map(|activity| activity.constraint),
+            Some(Constraint::StartNoEarlierThan(jan(8)))
+        );
+
+        stack.undo(&mut project).expect("undo reschedule");
+        assert_eq!(
+            project.activity(a).map(|activity| activity.constraint),
+            Some(Constraint::AsSoonAsPossible)
+        );
+
+        stack.redo(&mut project).expect("redo reschedule");
+        assert_eq!(
+            project.activity(a).map(|activity| activity.constraint),
+            Some(Constraint::StartNoEarlierThan(jan(8)))
+        );
+    }
+
+    #[test]
+    fn reschedule_activity_rejects_missing_dates_for_the_mode() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 2);
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(RescheduleActivity {
+                    activity_id: a,
+                    new_start: None,
+                    new_finish: None,
+                    mode: RescheduleMode::MoveStart,
+                }),
+            )
+            .expect_err("MoveStart requires a new start");
+        assert!(error.contains("new start"));
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(RescheduleActivity {
+                    activity_id: a,
+                    new_start: None,
+                    new_finish: None,
+                    mode: RescheduleMode::MoveFinish,
+                }),
+            )
+            .expect_err("MoveFinish requires a new finish");
+        assert!(error.contains("new finish"));
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(RescheduleActivity {
+                    activity_id: a,
+                    new_start: Some(jan(8)),
+                    new_finish: None,
+                    mode: RescheduleMode::Resize,
+                }),
+            )
+            .expect_err("Resize requires both dates");
+        assert!(error.contains("both"));
+
+        // A rejected command leaves the activity untouched.
+        assert_eq!(
+            project.activity(a).map(|activity| activity.constraint),
+            Some(Constraint::AsSoonAsPossible)
+        );
+    }
+
+    #[test]
+    fn reschedule_activity_clamps_against_an_upper_bound_constraint() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        let a = add_activity(&mut stack, &mut project, 1, "A", 2);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetActivityConstraint {
+                id: a,
+                constraint: Constraint::StartNoLaterThan(jan(10)),
+            }),
+        );
+
+        // Asking to move past the limit is clamped to the limit.
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(RescheduleActivity {
+                activity_id: a,
+                new_start: Some(jan(15)),
+                new_finish: None,
+                mode: RescheduleMode::MoveStart,
+            }),
+        );
+        assert_eq!(
+            project.activity(a).map(|activity| activity.constraint),
+            Some(Constraint::StartNoEarlierThan(jan(10)))
+        );
+
+        stack.undo(&mut project).expect("undo reschedule");
+        assert_eq!(
+            project.activity(a).map(|activity| activity.constraint),
+            Some(Constraint::StartNoLaterThan(jan(10)))
+        );
+    }
+
+    #[test]
+    fn reschedule_activity_rejects_a_missing_activity() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(RescheduleActivity {
+                    activity_id: ActivityId(99),
+                    new_start: Some(jan(8)),
+                    new_finish: None,
+                    mode: RescheduleMode::MoveStart,
+                }),
+            )
+            .expect_err("a missing activity must be rejected");
+        assert!(error.contains("does not exist"));
+    }
+
+    #[test]
+    fn set_status_date_is_reversible() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetStatusDate {
+                status_date: Some(jan(10)),
+            }),
+        );
+        stack.undo(&mut project).expect("undo status date");
+        stack.redo(&mut project).expect("redo status date");
+    }
+
+    #[test]
+    fn clearing_the_status_date_is_reversible() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetStatusDate {
+                status_date: Some(jan(10)),
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(SetStatusDate { status_date: None }),
+        );
+        stack.undo(&mut project).expect("undo clear");
+        stack.redo(&mut project).expect("redo clear");
     }
 }

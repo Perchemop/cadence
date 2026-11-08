@@ -57,6 +57,27 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 - Production ▸ Record reports rejected commands (F3), and Diary ▸ Add note
   distinguishes a blank activity id from a non-numeric one (F4), surfacing the
   command's own error text instead of blaming the note content.
+- Dialog keyboard: global shortcuts are gated behind modals, Escape dismisses
+  the front dialog, Enter confirms primary actions (F13).
+- Release-notes dialog now reads token metrics from `docs/tokens.json`, corrects
+  zoom-slider claim, spaces, and recent-files wording (F18).
+- Update dialog no longer shows duplicate "Update now" button (F15).
+- Crash dialog shows honest empty state, caps issue-URL size, and clears log
+  only after dismissal (F16).
+- Split-Gantt toggle shows resize hint (F21).
+- Confirm deletes for resources, baselines, diary notes and production entries
+  (F22): each destructive delete now routes through a confirm dialog with
+  Escape/Cancel/Enter support and frozen selection ids.
+- Non-working day shading on the Gantt canvas (V5): weekends and holidays are
+  shaded from the assigned calendar, giving the chart its professional texture.
+- Token colours on canvas and grids (V9/F12): all `Color32::YELLOW/GRAY/WHITE`
+  literals replaced with `design::palette` tokens; `variance_color` fallback
+  uses the grid token.
+- Monospace numerics in every grid (V10/F20): dates, durations, counts, costs
+  and performance indices render in Inter tabular figures across Resources,
+  Baselines, Calendars, Diary and Production views.
+- Status bar wraps instead of clipping (V2/F14): `horizontal_wrapped` layout
+  with a zoom tooltip showing the Gantt percentage and Ctrl+wheel hint.
 
 ## [0.12.0] — 2026-11-07
 

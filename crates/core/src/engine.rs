@@ -52,7 +52,7 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use time::{Date, Duration};
+use time::{Date, Duration, Month};
 
 use crate::calendar_set::CalendarId;
 use crate::model::{
@@ -1768,12 +1768,370 @@ fn lag_plus_one(lag: i64) -> Result<i64, SchedError> {
     lag.checked_add(1).ok_or(SchedError::ArithmeticOverflow)
 }
 
+/// One band drawn on a tier of the Gantt timescale header.
+///
+/// Bands are pure geometry: start/end dates are real calendar dates and the
+/// label is what the UI paints inside the band. No UI types and no I/O.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TimescaleBand {
+    /// The tier this band belongs to.
+    pub tier: TimescaleTier,
+    /// First date covered by the band.
+    pub start: Date,
+    /// Last date covered by the band, inclusive.
+    pub end: Date,
+    /// Label drawn inside the band, e.g. `"Jan 2026"`, `"Q1"`, `"Wk 2"` or
+    /// `"2026-01-05"`.
+    pub label: String,
+}
+
+/// Tier of the two-tier timescale header.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TimescaleTier {
+    /// Coarse tier: month, quarter or year.
+    Major(MajorTier),
+    /// Fine tier: week or day.
+    Minor(MinorTier),
+}
+
+/// Coarse tier of the timescale header.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MajorTier {
+    Month,
+    Quarter,
+    Year,
+}
+
+/// Fine tier of the timescale header.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MinorTier {
+    Week,
+    Day,
+}
+
+/// Build the two stacked timescale header bands for a date window.
+///
+/// Returns `(major_bands, minor_bands)`; each vector is sorted
+/// chronologically, its bands are disjoint, and together they cover
+/// `[window_start, window_end]`. `pixels_per_day` only hints at which tier is
+/// legible at the current zoom — callers choose the tiers and this function
+/// renders them. Pure calculation: no UI, no I/O, and no panics.
+pub fn timescale_bands(
+    window_start: Date,
+    window_end: Date,
+    pixels_per_day: f64,
+) -> (Vec<TimescaleBand>, Vec<TimescaleBand>) {
+    let major = if pixels_per_day > 12.0 {
+        MajorTier::Month
+    } else if pixels_per_day > 4.0 {
+        MajorTier::Quarter
+    } else {
+        MajorTier::Year
+    };
+    let minor = if pixels_per_day > 3.0 {
+        MinorTier::Day
+    } else {
+        MinorTier::Week
+    };
+
+    let major_bands = match major {
+        MajorTier::Month => month_bands(window_start, window_end),
+        MajorTier::Quarter => quarter_bands(window_start, window_end),
+        MajorTier::Year => year_bands(window_start, window_end),
+    };
+    let minor_bands = match minor {
+        MinorTier::Week => week_bands(window_start, window_end),
+        MinorTier::Day => day_bands(window_start, window_end),
+    };
+    (major_bands, minor_bands)
+}
+
+fn month_bands(window_start: Date, window_end: Date) -> Vec<TimescaleBand> {
+    let mut bands = Vec::new();
+    let mut cursor = month_start(window_start);
+    while cursor <= window_end {
+        let band_end = last_day_of_month(cursor).min(window_end);
+        bands.push(TimescaleBand {
+            tier: TimescaleTier::Major(MajorTier::Month),
+            start: cursor,
+            end: band_end,
+            label: month_label(cursor),
+        });
+        match next_month_start(band_end) {
+            Some(next) => cursor = next,
+            None => break,
+        }
+    }
+    bands
+}
+
+fn quarter_bands(window_start: Date, window_end: Date) -> Vec<TimescaleBand> {
+    let mut bands = Vec::new();
+    let mut cursor = quarter_start(window_start);
+    while cursor <= window_end {
+        let band_end = match next_quarter_start(cursor) {
+            Some(next) => next
+                .checked_sub(Duration::days(1))
+                .unwrap_or(window_end)
+                .min(window_end),
+            None => window_end,
+        };
+        bands.push(TimescaleBand {
+            tier: TimescaleTier::Major(MajorTier::Quarter),
+            start: cursor,
+            end: band_end,
+            label: quarter_label(cursor),
+        });
+        match next_quarter_start(cursor) {
+            Some(next) => cursor = next,
+            None => break,
+        }
+    }
+    bands
+}
+
+fn year_bands(window_start: Date, window_end: Date) -> Vec<TimescaleBand> {
+    let mut bands = Vec::new();
+    let mut cursor =
+        Date::from_calendar_date(window_start.year(), Month::January, 1).expect("January 1 exists");
+    while cursor <= window_end {
+        let band_end = match Date::from_calendar_date(cursor.year() + 1, Month::January, 1) {
+            Ok(next_year) => next_year
+                .checked_sub(Duration::days(1))
+                .unwrap_or(window_end)
+                .min(window_end),
+            Err(_) => window_end,
+        };
+        bands.push(TimescaleBand {
+            tier: TimescaleTier::Major(MajorTier::Year),
+            start: cursor,
+            end: band_end,
+            label: cursor.year().to_string(),
+        });
+        match cursor.checked_add(Duration::days(366)) {
+            Some(next) => {
+                cursor = Date::from_calendar_date(next.year(), Month::January, 1)
+                    .expect("January 1 exists");
+            }
+            None => break,
+        }
+    }
+    bands
+}
+
+fn week_bands(window_start: Date, window_end: Date) -> Vec<TimescaleBand> {
+    let mut bands = Vec::new();
+    let mut cursor = window_start;
+    while cursor <= window_end {
+        let band_end = match cursor.checked_add(Duration::days(6)) {
+            Some(candidate) => candidate.min(window_end),
+            None => window_end,
+        };
+        bands.push(TimescaleBand {
+            tier: TimescaleTier::Minor(MinorTier::Week),
+            start: cursor,
+            end: band_end,
+            label: format!("{} – {}", cursor, band_end),
+        });
+        match band_end.checked_add(Duration::days(1)) {
+            Some(next) => cursor = next,
+            None => break,
+        }
+    }
+    bands
+}
+
+fn day_bands(window_start: Date, window_end: Date) -> Vec<TimescaleBand> {
+    let mut bands = Vec::new();
+    let mut cursor = window_start;
+    while cursor <= window_end {
+        bands.push(TimescaleBand {
+            tier: TimescaleTier::Minor(MinorTier::Day),
+            start: cursor,
+            end: cursor,
+            label: cursor.to_string(),
+        });
+        match cursor.checked_add(Duration::days(1)) {
+            Some(next) => cursor = next,
+            None => break,
+        }
+    }
+    bands
+}
+
+/// First day of the calendar month containing `date`.
+fn month_start(date: Date) -> Date {
+    Date::from_calendar_date(date.year(), date.month(), 1).expect("day 1 of a month exists")
+}
+
+/// Last day of the calendar month containing `date`.
+fn last_day_of_month(date: Date) -> Date {
+    match next_month_start(month_start(date)) {
+        Some(next) => next
+            .checked_sub(Duration::days(1))
+            .expect("a month has a last day"),
+        None => month_start(date)
+            .checked_add(Duration::days(31))
+            .expect("date range stays in range"),
+    }
+}
+
+/// First day of the calendar month after the month containing `date`.
+fn next_month_start(date: Date) -> Option<Date> {
+    let (year, month) = match date.month() {
+        Month::January => (date.year(), Month::February),
+        Month::February => (date.year(), Month::March),
+        Month::March => (date.year(), Month::April),
+        Month::April => (date.year(), Month::May),
+        Month::May => (date.year(), Month::June),
+        Month::June => (date.year(), Month::July),
+        Month::July => (date.year(), Month::August),
+        Month::August => (date.year(), Month::September),
+        Month::September => (date.year(), Month::October),
+        Month::October => (date.year(), Month::November),
+        Month::November => (date.year(), Month::December),
+        Month::December => (date.year().checked_add(1)?, Month::January),
+    };
+    Date::from_calendar_date(year, month, 1).ok()
+}
+
+/// Calendar quarter (1..=4) containing `date`.
+fn quarter_of(date: Date) -> u8 {
+    let index = match date.month() {
+        Month::January => 0,
+        Month::February => 1,
+        Month::March => 2,
+        Month::April => 3,
+        Month::May => 4,
+        Month::June => 5,
+        Month::July => 6,
+        Month::August => 7,
+        Month::September => 8,
+        Month::October => 9,
+        Month::November => 10,
+        Month::December => 11,
+    };
+    index / 3 + 1
+}
+
+/// First month of the calendar quarter containing `date`.
+fn quarter_start(date: Date) -> Date {
+    let month = match quarter_of(date) {
+        1 => Month::January,
+        2 => Month::April,
+        3 => Month::July,
+        _ => Month::October,
+    };
+    Date::from_calendar_date(date.year(), month, 1).expect("first month of a quarter exists")
+}
+
+/// First day of the calendar quarter after the quarter containing `date`.
+fn next_quarter_start(date: Date) -> Option<Date> {
+    let index = match date.month() {
+        Month::January => 0,
+        Month::February => 1,
+        Month::March => 2,
+        Month::April => 3,
+        Month::May => 4,
+        Month::June => 5,
+        Month::July => 6,
+        Month::August => 7,
+        Month::September => 8,
+        Month::October => 9,
+        Month::November => 10,
+        Month::December => 11,
+    };
+    let next = index + 3;
+    let (year, month_index) = if next >= 12 {
+        (date.year().checked_add(1)?, next - 12)
+    } else {
+        (date.year(), next)
+    };
+    let month = match month_index {
+        0 => Month::January,
+        1 => Month::February,
+        2 => Month::March,
+        3 => Month::April,
+        4 => Month::May,
+        5 => Month::June,
+        6 => Month::July,
+        7 => Month::August,
+        8 => Month::September,
+        9 => Month::October,
+        10 => Month::November,
+        _ => Month::December,
+    };
+    Date::from_calendar_date(year, month, 1).ok()
+}
+
+fn month_label(date: Date) -> String {
+    match date.month() {
+        Month::January => format!("January {}", date.year()),
+        Month::February => format!("February {}", date.year()),
+        Month::March => format!("March {}", date.year()),
+        Month::April => format!("April {}", date.year()),
+        Month::May => format!("May {}", date.year()),
+        Month::June => format!("June {}", date.year()),
+        Month::July => format!("July {}", date.year()),
+        Month::August => format!("August {}", date.year()),
+        Month::September => format!("September {}", date.year()),
+        Month::October => format!("October {}", date.year()),
+        Month::November => format!("November {}", date.year()),
+        Month::December => format!("December {}", date.year()),
+    }
+}
+
+fn quarter_label(date: Date) -> String {
+    format!("Q{} {}", quarter_of(date), date.year())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::{Activity, Constraint, LinkType, Relationship, Resource};
     use std::time::Instant;
     use time::Month;
+
+    #[test]
+    fn timescale_bands_cover_the_window_without_gaps() {
+        let window_start = jan(5);
+        let window_end = jan(25);
+        let (major, minor) = timescale_bands(window_start, window_end, 10.0);
+
+        assert!(!major.is_empty(), "the major tier must cover the window");
+        assert!(!minor.is_empty(), "the minor tier must cover the window");
+        assert!(
+            major.first().map(|band| band.start) <= Some(window_start),
+            "the first major band must start no later than the window start"
+        );
+        assert_eq!(
+            major.last().map(|band| band.end),
+            Some(window_end),
+            "the last major band must end at the window end"
+        );
+        assert_eq!(minor.first().map(|band| band.start), Some(window_start));
+        assert_eq!(minor.last().map(|band| band.end), Some(window_end));
+
+        // Bands within each tier are disjoint and in chronological order.
+        for bands in [&major, &minor] {
+            for pair in bands.windows(2) {
+                assert!(
+                    pair[0].end < pair[1].start,
+                    "bands must not overlap: {:?} then {:?}",
+                    pair[0],
+                    pair[1]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn timescale_bands_labels_the_first_month_band() {
+        let (major, _minor) = timescale_bands(jan(5), jan(25), 20.0);
+        let first = &major[0];
+        assert_eq!(first.start, jan(1));
+        assert!(first.label.contains("January"));
+    }
 
     fn jan(day: u8) -> Date {
         Date::from_calendar_date(2026, Month::January, day).expect("valid test date")

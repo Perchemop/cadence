@@ -3,6 +3,39 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-07 — P1 dialog & feedback polish
+
+PR #120 merged as `0443f4c` — the first P1 tranche from the 2026-11-07 audit:
+
+- F13 Dialog keyboard behaviour: global shortcuts are gated behind any modal, Escape dismisses the front dialog with Cancel semantics, Enter presses the primary button in Save/Discard/Cancel, Delete-activity, Delete-selection, Leveling and Relationship-delete confirms; the Delete-selection ids are frozen at dialog-open time so table clicks behind the modal cannot change what is deleted.
+- F15 "Update now" mislabel: the duplicate "Update now" button removed; only "Open release page" remains.
+- F18 Release-notes content: removed ~30-space run, corrected zoom slider → zoom readout, corrected "File menu remembers ten most recent projects" → "lists ... for this session", token metrics now rendered from `docs/tokens.json` at build time via `include_str!` + serde_json with graceful fallback.
+- F16 Crash dialog: empty-state copy distinguishes missing log, URL size capped by truncating the log to 4 000 bytes before encoding, and the log is cleared only after the dialog is dismissed; copy updated to be honest.
+- F21 Split-Gantt toggle: added hover text "Splits the Table view; drag the divider to resize".
+
+**Remaining P1 items (post-merge):**
+- F22 Confirm all destructive deletes: resource, baseline, diary note, production entry — each routes through a confirm dialog with Escape/Cancel/Enter support and frozen selection ids at dialog-open time. **DONE — PR #121.**
+- F17 Terminology/label drift: one term per concept; human units; honest verbs (relationship naming, basis-points display, "New activity below"/"Add to selection" wording).
+
+Verification: CI green on PR #120 (all required checks), merged to main.
+
+## 2026-11-08 — P2-visual foundation
+
+PR #121 merged — the visual uplift slice from the elite-tool uplift plan:
+
+- V5 Non-working day shading: weekends/holidays shaded from assigned calendar on Gantt canvas
+- V9/F12 Token colours on canvas/grids: replaced `Color32::YELLOW/GRAY/WHITE` literals with `design::palette` tokens
+- V10/F20 Monospace numerics in every grid: dates, durations, counts, costs in Inter tabular figures
+- V2/F14 Status bar wraps instead of clipping, with zoom percentage tooltip
+- Domain support: `TimescaleBand`/`TimescaleTier` helpers, `RescheduleActivity` command, `SetStatusDate` command (status date kept as UI state, not on `Project`, to avoid semver-breaking field addition)
+
+Verification: CI green on PR #121 (all required checks).
+
+## Next slices
+- P2-chrome: Phosphor iconography (`egui-phosphor`), DatePicker (`egui_extras`), WBS collapse UI state
+- P3-interaction: Drag-to-move/resize Gantt bars, two-tier timescale, progress/status line
+- P3-domain: Mandatory constraints (`MustStartOn`/`MustFinishOn`)
+
 ## 2026-11-07 — Full GUI audit + P0 correctness slice
 
 The owner asked for an audit of every visual or manual feature a user would

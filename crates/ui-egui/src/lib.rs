@@ -12,12 +12,12 @@ use std::time::{Duration, Instant};
 
 use cadence_commands::{
     AddResourceToActivity, CaptureBaseline, CommandStack, CreateCalendar, CreateRelationship,
-    CreateResource, DeleteCalendar, DeleteRelationship, DeleteResource, RemoveBaseline,
-    RemoveResourceFromActivity, RenameActivity, RenameCalendar, RenameResource,
-    SetActivityActualCost, SetActivityActualDates, SetActivityBudget, SetActivityCalendar,
-    SetActivityConstraint, SetActivityDuration, SetActivityOwner, SetActivityProgress,
-    SetActivityPromise, SetCalendarDefinition, SetRelationshipLag, SetRelationshipType,
-    SetResourceCapacity, SetResourceKind,
+    CreateResource, DeleteCalendar, DeleteDailyNote, DeleteProduction, DeleteRelationship,
+    DeleteResource, RemoveBaseline, RemoveResourceFromActivity, RenameActivity, RenameCalendar,
+    RenameResource, SetActivityActualCost, SetActivityActualDates, SetActivityBudget,
+    SetActivityCalendar, SetActivityConstraint, SetActivityDuration, SetActivityOwner,
+    SetActivityProgress, SetActivityPromise, SetCalendarDefinition, SetRelationshipLag,
+    SetRelationshipType, SetResourceCapacity, SetResourceKind,
 };
 use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
@@ -34,7 +34,8 @@ use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use cadence_core::model::FULL_UNITS;
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, EvmMetrics,
-    LinkType, LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind,
+    LinkType, LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntryId, Project, ResourceId,
+    ResourceKind,
 };
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
 use time::{Date, Month};
@@ -407,6 +408,14 @@ pub struct CadenceApp {
     critical_count: usize,
     confirm_delete_activity: bool,
     confirm_delete_relationship: bool,
+    confirm_delete_resource: bool,
+    pending_delete_resource_id: Option<ResourceId>,
+    confirm_delete_baseline: bool,
+    pending_delete_baseline_id: Option<BaselineId>,
+    confirm_delete_note: bool,
+    pending_delete_note_id: Option<DailyNoteId>,
+    confirm_delete_production: bool,
+    pending_delete_production_id: Option<ProductionEntryId>,
     /// Extra selected rows beyond the primary selection (S2-5): ctrl-click
     /// toggles a row, shift-click selects the range from the anchor. The
     /// primary `selected` row is the anchor and always counts as selected.
@@ -587,6 +596,14 @@ impl CadenceApp {
             critical_count: 0,
             confirm_delete_activity: false,
             confirm_delete_relationship: false,
+            confirm_delete_resource: false,
+            pending_delete_resource_id: None,
+            confirm_delete_baseline: false,
+            pending_delete_baseline_id: None,
+            confirm_delete_note: false,
+            pending_delete_note_id: None,
+            confirm_delete_production: false,
+            pending_delete_production_id: None,
             multi_selected: BTreeSet::new(),
             confirm_delete_selection: false,
             confirm_delete_ids: Vec::new(),
@@ -1462,6 +1479,7 @@ impl CadenceApp {
     }
 
     /// Remove the selected resource from the dictionary.
+    #[expect(dead_code)]
     fn delete_selected_resource(&mut self) {
         let Some(id) = self.selected_resource else {
             return;
@@ -1775,6 +1793,7 @@ impl CadenceApp {
     }
 
     /// Remove the selected baseline from the project.
+    #[expect(dead_code)]
     fn delete_selected_baseline(&mut self) {
         let Some(id) = self.selected_baseline else {
             return;
@@ -1974,6 +1993,10 @@ impl eframe::App for CadenceApp {
             || self.confirm_delete_selection
             || self.confirm_leveling
             || self.confirm_delete_relationship
+            || self.confirm_delete_resource
+            || self.confirm_delete_baseline
+            || self.confirm_delete_note
+            || self.confirm_delete_production
             || self.pending_file_action.is_some();
 
         // Escape dismisses the front dialog with Cancel semantics, so "Delete
@@ -1991,6 +2014,18 @@ impl eframe::App for CadenceApp {
                 self.confirm_leveling = false;
             } else if self.confirm_delete_relationship {
                 self.confirm_delete_relationship = false;
+            } else if self.confirm_delete_resource {
+                self.confirm_delete_resource = false;
+                self.pending_delete_resource_id = None;
+            } else if self.confirm_delete_baseline {
+                self.confirm_delete_baseline = false;
+                self.pending_delete_baseline_id = None;
+            } else if self.confirm_delete_note {
+                self.confirm_delete_note = false;
+                self.pending_delete_note_id = None;
+            } else if self.confirm_delete_production {
+                self.confirm_delete_production = false;
+                self.pending_delete_production_id = None;
             } else if self.show_shortcuts_dialog {
                 self.show_shortcuts_dialog = false;
             } else if self.show_release_notes {
@@ -2562,7 +2597,7 @@ impl eframe::App for CadenceApp {
         // space).
         egui::Panel::bottom("status_bar").show(ui, |ui| {
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
                 let range = match self.schedule.as_ref() {
                     Ok(schedule) => {
@@ -2595,7 +2630,8 @@ impl eframe::App for CadenceApp {
                     );
                 }
                 // Centre: earned-value metrics when a baseline is active, or a
-                // short hint when none has been captured.
+                // short hint when none has been captured. These wrap naturally
+                // at narrow widths instead of clipping.
                 if let (true, Some(metrics)) = (self.baseline_active, &self.evm_metrics) {
                     ui.label(
                         egui::RichText::new(format!(
@@ -2638,11 +2674,13 @@ impl eframe::App for CadenceApp {
                         ("✓ saved", palette.ok)
                     };
                     ui.label(egui::RichText::new(save_text).small().color(save_color));
+                    let zoom_text = format!("{:.0}%", self.pixels_per_day / 14.0 * 100.0);
                     ui.label(
-                        egui::RichText::new(format!("{:.0}%", self.pixels_per_day / 14.0 * 100.0))
+                        egui::RichText::new(zoom_text.clone())
                             .small()
                             .color(palette.text_muted),
-                    );
+                    )
+                    .on_hover_text(format!("Gantt zoom: {zoom_text}\nCtrl+wheel to zoom"));
                     // F1 footer: the keyboard reference is one click away from
                     // anywhere, matching the F1 binding.
                     if ui
@@ -2681,7 +2719,9 @@ impl eframe::App for CadenceApp {
                                     if ui.button("Delete activity").clicked() {
                                         self.confirm_delete_activity = true;
                                     }
-                                    ui.label(format!("Activity {}", id));
+                                    ui.label(
+                                        egui::RichText::new(format!("Activity {}", id)).monospace(),
+                                    );
                                     let tokens = self.design_tokens();
                                     let section = |ui: &mut Ui, title: &str| {
                                         ui.add_space(4.0);
@@ -3377,7 +3417,10 @@ impl eframe::App for CadenceApp {
                                 ui.heading("Inspector");
                                 if let Some(id) = selected_id {
                                     if let Some(activity) = self.project.activity(id) {
-                                        ui.label(format!("Activity {}", id));
+                                        ui.label(
+                                            egui::RichText::new(format!("Activity {}", id))
+                                                .monospace(),
+                                        );
                                         ui.label("Name");
                                         ui.label(&activity.name);
                                         ui.label(format!(
@@ -3480,7 +3523,8 @@ impl eframe::App for CadenceApp {
                                 self.apply_resource_edits();
                             }
                             if ui.button("Delete resource").clicked() {
-                                self.delete_selected_resource();
+                                self.pending_delete_resource_id = self.selected_resource;
+                                self.confirm_delete_resource = true;
                             }
                         }
 
@@ -3539,24 +3583,27 @@ impl eframe::App for CadenceApp {
                                     ui.label(
                                         RESOURCE_KIND_LABELS[resource_kind_index(resource.kind)],
                                     );
-                                    ui.label(resource.capacity.to_string());
+                                    ui.label(
+                                        egui::RichText::new(resource.capacity.to_string())
+                                            .monospace(),
+                                    );
                                     let assigned = activities
                                         .iter()
                                         .filter(|activity| {
                                             activity.resources.contains(&resource.id)
                                         })
                                         .count();
-                                    ui.label(assigned.to_string());
+                                    ui.label(egui::RichText::new(assigned.to_string()).monospace());
                                     let over = conflicts
                                         .iter()
                                         .filter(|conflict| conflict.resource_id == resource.id)
                                         .count();
                                     if over == 0 {
-                                        ui.label("0");
+                                        ui.label(egui::RichText::new("0").monospace());
                                     } else {
                                         ui.colored_label(
                                             design::palette(self.dark).critical,
-                                            over.to_string(),
+                                            egui::RichText::new(over.to_string()).monospace(),
                                         );
                                     }
                                     ui.end_row();
@@ -3587,11 +3634,16 @@ impl eframe::App for CadenceApp {
                                             .spacing([12.0, 4.0])
                                             .show(ui, |ui| {
                                                 for (date, units) in usage {
-                                                    ui.label(date.to_string());
-                                                    let text = format!(
+                                                    ui.label(
+                                                        egui::RichText::new(date.to_string())
+                                                            .monospace(),
+                                                    );
+                                                    let text_str = format!(
                                                         "{:.2} / {capacity}",
                                                         units as f64 / FULL_UNITS as f64
                                                     );
+                                                    let text =
+                                                        egui::RichText::new(text_str).monospace();
                                                     if units > capacity_units {
                                                         ui.colored_label(
                                                             design::palette(self.dark).critical,
@@ -3630,8 +3682,18 @@ impl eframe::App for CadenceApp {
                                             self.select(activity.id);
                                             self.toggle_assignment(id);
                                         }
-                                        ui.label(activity.original_duration.to_string());
-                                        ui.label(activity.original_duration.to_string());
+                                        ui.label(
+                                            egui::RichText::new(
+                                                activity.original_duration.to_string(),
+                                            )
+                                            .monospace(),
+                                        );
+                                        ui.label(
+                                            egui::RichText::new(
+                                                activity.original_duration.to_string(),
+                                            )
+                                            .monospace(),
+                                        );
                                         let current_units = activity.units_for(id);
                                         let current_text =
                                             format!("{:.2}", current_units as f64 / 100.0);
@@ -3713,8 +3775,18 @@ impl eframe::App for CadenceApp {
                                             }
                                         }
                                         if let Some(result) = schedule.activity(activity.id) {
-                                            ui.label(result.scheduled_start.to_string());
-                                            ui.label(result.scheduled_finish.to_string());
+                                            ui.label(
+                                                egui::RichText::new(
+                                                    result.scheduled_start.to_string(),
+                                                )
+                                                .monospace(),
+                                            );
+                                            ui.label(
+                                                egui::RichText::new(
+                                                    result.scheduled_finish.to_string(),
+                                                )
+                                                .monospace(),
+                                            );
                                         } else {
                                             ui.label("-");
                                             ui.label("-");
@@ -3756,7 +3828,10 @@ impl eframe::App for CadenceApp {
                         for baseline in &baselines {
                             let selected = self.selected_baseline == Some(baseline.id);
                             let label = format!("{} — {}", baseline.name, baseline.created_at);
-                            if ui.selectable_label(selected, label).clicked() {
+                            if ui
+                                .selectable_label(selected, egui::RichText::new(label).monospace())
+                                .clicked()
+                            {
                                 self.selected_baseline = Some(baseline.id);
                             }
                         }
@@ -3765,7 +3840,8 @@ impl eframe::App for CadenceApp {
                             .add_enabled(has_selection, egui::Button::new("Delete baseline"))
                             .clicked()
                         {
-                            self.delete_selected_baseline();
+                            self.pending_delete_baseline_id = self.selected_baseline;
+                            self.confirm_delete_baseline = true;
                         }
 
                         ui.separator();
@@ -3829,7 +3905,7 @@ impl eframe::App for CadenceApp {
                                         ),
                                     ] {
                                         ui.label(label);
-                                        ui.label(value);
+                                        ui.label(egui::RichText::new(value).monospace());
                                         ui.end_row();
                                     }
                                 });
@@ -3868,27 +3944,27 @@ impl eframe::App for CadenceApp {
                                                 if ui.selectable_label(selected, name).clicked() {
                                                     self.selected = Some(row.activity);
                                                 }
-                                                ui.label(date_text(row.current_start));
-                                                ui.label(date_text(row.baseline_start));
+                                                ui.label(egui::RichText::new(date_text(row.current_start)).monospace());
+                                                ui.label(egui::RichText::new(date_text(row.baseline_start)).monospace());
                                                 ui.colored_label(
                                                     variance_color(row.start_variance(), self.dark),
-                                                    variance_text(row.start_variance()),
+                                                    egui::RichText::new(variance_text(row.start_variance())).monospace(),
                                                 );
-                                                ui.label(date_text(row.current_finish));
-                                                ui.label(date_text(row.baseline_finish));
+                                                ui.label(egui::RichText::new(date_text(row.current_finish)).monospace());
+                                                ui.label(egui::RichText::new(date_text(row.baseline_finish)).monospace());
                                                 ui.colored_label(
                                                     variance_color(row.finish_variance(), self.dark),
-                                                    variance_text(row.finish_variance()),
+                                                    egui::RichText::new(variance_text(row.finish_variance())).monospace(),
                                                 );
                                                 let duration_variance = row.duration_variance();
-                                                ui.label(row.current_duration.to_string());
-                                                ui.label(row.baseline_duration.to_string());
+                                                ui.label(egui::RichText::new(row.current_duration.to_string()).monospace());
+                                                ui.label(egui::RichText::new(row.baseline_duration.to_string()).monospace());
                                                 ui.colored_label(
                                                     variance_color(
                                                         Some(duration_variance),
                                                         self.dark,
                                                     ),
-                                                    variance_text(Some(duration_variance)),
+                                                    egui::RichText::new(variance_text(Some(duration_variance))).monospace(),
                                                 );
                                                 ui.end_row();
                                             }
@@ -3959,15 +4035,26 @@ impl eframe::App for CadenceApp {
                                 {
                                     self.select_calendar(named.id);
                                 }
-                                ui.label(format!("{}/7", named.calendar.working_days_per_week()));
-                                ui.label(named.calendar.holidays().len().to_string());
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "{}/7",
+                                        named.calendar.working_days_per_week()
+                                    ))
+                                    .monospace(),
+                                );
+                                ui.label(
+                                    egui::RichText::new(
+                                        named.calendar.holidays().len().to_string(),
+                                    )
+                                    .monospace(),
+                                );
                                 let users = self
                                     .project
                                     .activities
                                     .iter()
                                     .filter(|activity| activity.calendar == Some(named.id))
                                     .count();
-                                ui.label(users.to_string());
+                                ui.label(egui::RichText::new(users.to_string()).monospace());
                                 ui.end_row();
                             }
                         });
@@ -3982,7 +4069,7 @@ impl eframe::App for CadenceApp {
                                 ui.label("No holiday exceptions.");
                             } else {
                                 for holiday in holidays {
-                                    ui.label(holiday.to_string());
+                                    ui.label(egui::RichText::new(holiday.to_string()).monospace());
                                 }
                             }
                         }
@@ -4484,16 +4571,21 @@ impl eframe::App for CadenceApp {
                             .small(),
                         );
                     }
-                    let mut to_delete = None;
                     for (id, date, content, activity_id, window) in &notes {
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new(date.to_string()).monospace());
                             ui.label(content);
                             if let Some(activity_id) = activity_id {
-                                ui.label(format!("→ activity {activity_id}"));
+                                ui.label(
+                                    egui::RichText::new(format!("→ activity {activity_id}"))
+                                        .monospace(),
+                                );
                             }
                             if let Some(window) = window {
-                                ui.label(format!("→ window from {window}"));
+                                ui.label(
+                                    egui::RichText::new(format!("→ window from {window}"))
+                                        .monospace(),
+                                );
                             }
                             // S2-10: a note can be corrected after it was
                             // written, through the undoable UpdateDailyNote.
@@ -4502,7 +4594,8 @@ impl eframe::App for CadenceApp {
                                 self.diary_edit_buffer = content.clone();
                             }
                             if ui.button("Delete").clicked() {
-                                to_delete = Some(*id);
+                                self.pending_delete_note_id = Some(*id);
+                                self.confirm_delete_note = true;
                             }
                         });
                         if self.editing_note == Some(*id) {
@@ -4531,17 +4624,6 @@ impl eframe::App for CadenceApp {
                                     self.editing_note = None;
                                 }
                             });
-                        }
-                    }
-                    if let Some(id) = to_delete {
-                        let command = cadence_commands::DeleteDailyNote { id };
-                        if self
-                            .stack
-                            .execute(&mut self.project, Box::new(command))
-                            .is_ok()
-                        {
-                            self.recompute();
-                            self.set_status("Diary note deleted.");
                         }
                     }
                 });
@@ -4611,28 +4693,20 @@ impl eframe::App for CadenceApp {
                     });
                     ui.separator();
                     ui.heading("Entries");
-                    let mut to_delete = None;
                     for entry in &self.project.production_entries {
                         ui.horizontal(|ui| {
-                            ui.label(format!(
-                                "Activity {} — {} — {} bp",
-                                entry.activity_id, entry.date, entry.percent_complete
-                            ));
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "Activity {} — {} — {} bp",
+                                    entry.activity_id, entry.date, entry.percent_complete
+                                ))
+                                .monospace(),
+                            );
                             if ui.button("Delete").clicked() {
-                                to_delete = Some(entry.id);
+                                self.pending_delete_production_id = Some(entry.id);
+                                self.confirm_delete_production = true;
                             }
                         });
-                    }
-                    if let Some(id) = to_delete {
-                        let command = cadence_commands::DeleteProduction { id };
-                        if self
-                            .stack
-                            .execute(&mut self.project, Box::new(command))
-                            .is_ok()
-                        {
-                            self.recompute();
-                            self.set_status("Production entry deleted.");
-                        }
                     }
                     ui.separator();
                     ui.collapsing("Reschedule from progress", |ui| {
@@ -4688,15 +4762,24 @@ impl eframe::App for CadenceApp {
                                     ui.end_row();
                                     for row in &preview.rows {
                                         ui.label(&row.name);
-                                        ui.label(row.planned_finish.map_or_else(
-                                            || "—".to_string(),
-                                            |date| date.to_string(),
-                                        ));
-                                        ui.label(row.progress_finish.to_string());
-                                        ui.label(match row.variance_days {
-                                            Some(days) => format!("{days:+}"),
-                                            None => "—".to_string(),
-                                        });
+                                        ui.label(
+                                            egui::RichText::new(row.planned_finish.map_or_else(
+                                                || "—".to_string(),
+                                                |date| date.to_string(),
+                                            ))
+                                            .monospace(),
+                                        );
+                                        ui.label(
+                                            egui::RichText::new(row.progress_finish.to_string())
+                                                .monospace(),
+                                        );
+                                        ui.label(
+                                            egui::RichText::new(match row.variance_days {
+                                                Some(days) => format!("{days:+}"),
+                                                None => "—".to_string(),
+                                            })
+                                            .monospace(),
+                                        );
                                         ui.end_row();
                                     }
                                 });
@@ -4840,6 +4923,168 @@ impl eframe::App for CadenceApp {
                 });
             if !open {
                 self.confirm_delete_relationship = false;
+            }
+        }
+
+        if self.confirm_delete_resource {
+            let mut open = true;
+            let id = self.pending_delete_resource_id;
+            egui::Window::new("Delete resource?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
+                    ui.label("Delete the selected resource? This can be undone.");
+                    ui.horizontal(|ui| {
+                        let delete = ui.button("Delete").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || delete {
+                            if let Some(id) = id {
+                                if self
+                                    .stack
+                                    .execute(&mut self.project, Box::new(DeleteResource { id }))
+                                    .is_ok()
+                                {
+                                    self.selected_resource = None;
+                                    self.recompute();
+                                    self.set_status("Resource deleted.");
+                                }
+                            }
+                            self.confirm_delete_resource = false;
+                            self.pending_delete_resource_id = None;
+                        }
+                        if cancel {
+                            self.confirm_delete_resource = false;
+                            self.pending_delete_resource_id = None;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_delete_resource = false;
+                self.pending_delete_resource_id = None;
+            }
+        }
+
+        if self.confirm_delete_baseline {
+            let mut open = true;
+            let id = self.pending_delete_baseline_id;
+            egui::Window::new("Delete baseline?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
+                    ui.label("Delete the selected baseline? This can be undone.");
+                    ui.horizontal(|ui| {
+                        let delete = ui.button("Delete").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || delete {
+                            if let Some(id) = id {
+                                if self
+                                    .stack
+                                    .execute(&mut self.project, Box::new(RemoveBaseline { id }))
+                                    .is_ok()
+                                {
+                                    self.selected_baseline = None;
+                                    self.recompute();
+                                    self.set_status("Baseline deleted.");
+                                }
+                            }
+                            self.confirm_delete_baseline = false;
+                            self.pending_delete_baseline_id = None;
+                        }
+                        if cancel {
+                            self.confirm_delete_baseline = false;
+                            self.pending_delete_baseline_id = None;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_delete_baseline = false;
+                self.pending_delete_baseline_id = None;
+            }
+        }
+
+        if self.confirm_delete_note {
+            let mut open = true;
+            let id = self.pending_delete_note_id;
+            egui::Window::new("Delete diary note?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
+                    ui.label("Delete the selected diary note? This can be undone.");
+                    ui.horizontal(|ui| {
+                        let delete = ui.button("Delete").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || delete {
+                            if let Some(id) = id {
+                                if self
+                                    .stack
+                                    .execute(&mut self.project, Box::new(DeleteDailyNote { id }))
+                                    .is_ok()
+                                {
+                                    self.recompute();
+                                    self.set_status("Diary note deleted.");
+                                }
+                            }
+                            self.confirm_delete_note = false;
+                            self.pending_delete_note_id = None;
+                        }
+                        if cancel {
+                            self.confirm_delete_note = false;
+                            self.pending_delete_note_id = None;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_delete_note = false;
+                self.pending_delete_note_id = None;
+            }
+        }
+
+        if self.confirm_delete_production {
+            let mut open = true;
+            let id = self.pending_delete_production_id;
+            egui::Window::new("Delete production entry?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
+                    ui.label("Delete the selected production entry? This can be undone.");
+                    ui.horizontal(|ui| {
+                        let delete = ui.button("Delete").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || delete {
+                            if let Some(id) = id {
+                                if self
+                                    .stack
+                                    .execute(&mut self.project, Box::new(DeleteProduction { id }))
+                                    .is_ok()
+                                {
+                                    self.recompute();
+                                    self.set_status("Production entry deleted.");
+                                }
+                            }
+                            self.confirm_delete_production = false;
+                            self.pending_delete_production_id = None;
+                        }
+                        if cancel {
+                            self.confirm_delete_production = false;
+                            self.pending_delete_production_id = None;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_delete_production = false;
+                self.pending_delete_production_id = None;
             }
         }
 
@@ -5229,7 +5474,7 @@ fn variance_color(value: Option<i64>, dark: bool) -> Color32 {
         (Some(value), true) if value < 0 => Color32::from_rgb(0x2E, 0xCC, 0x71),
         (Some(value), false) if value > 0 => Color32::from_rgb(0xC0, 0x39, 0x2B),
         (Some(value), false) if value < 0 => Color32::from_rgb(0x1E, 0x84, 0x49),
-        _ => Color32::GRAY,
+        _ => design::palette(dark).grid,
     }
 }
 
@@ -5434,7 +5679,10 @@ fn render_gantt(
         {
             *pixels_per_day_out = 14.0;
         }
-        ui.label(format!("{:.0}%", *pixels_per_day_out / 14.0 * 100.0));
+        ui.label(
+            egui::RichText::new(format!("{:.0}%", *pixels_per_day_out / 14.0 * 100.0))
+                .font(egui::FontId::monospace(11.0)),
+        );
         ui.separator();
         ui.label("Drag new link as:");
         ComboBox::from_id_salt("drag_link_type")
@@ -5511,6 +5759,50 @@ fn render_gantt(
             ));
         }
 
+        // Non-working day shading: tint columns for weekends/holidays so the
+        // working calendar reads off the canvas without extra chrome. Drawn
+        // before bars and arrows so it stays in the background.
+        let non_working_fill = Color32::from_rgba_unmultiplied(
+            palette.non_working.r(),
+            palette.non_working.g(),
+            palette.non_working.b(),
+            30,
+        );
+        for day in 0..=(total_days as i32) {
+            let date = Date::from_julian_day(origin.to_julian_day() + day).unwrap_or(origin);
+            if project.calendar.is_working_day(date) {
+                continue;
+            }
+            let x = rect.min.x + day as f32 * pixels_per_day;
+            let x_end = x + pixels_per_day;
+            if x_end < clip.min.x || x > clip.max.x {
+                continue;
+            }
+            let col = Rect::from_min_max(
+                Pos2::new(x, rect.min.y + header_height),
+                Pos2::new(x_end, rect.max.y),
+            );
+            painter.rect_filled(col, 0.0, non_working_fill);
+        }
+        // Shade the header band cells for non-working days (reinforces the
+        // column tint in the date tick area).
+        for day in 0..=(total_days as i32) {
+            let date = Date::from_julian_day(origin.to_julian_day() + day).unwrap_or(origin);
+            if project.calendar.is_working_day(date) {
+                continue;
+            }
+            let x = rect.min.x + day as f32 * pixels_per_day;
+            let x_end = x + pixels_per_day;
+            if x_end < clip.min.x || x > clip.max.x {
+                continue;
+            }
+            let cell = Rect::from_min_max(
+                Pos2::new(x, rect.min.y),
+                Pos2::new(x_end, rect.min.y + header_height),
+            );
+            painter.rect_filled(cell, 0.0, non_working_fill);
+        }
+
         // Drag-to-create dependency links.
         if response.drag_started() {
             if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
@@ -5532,7 +5824,7 @@ fn render_gantt(
                     let start_x = rect.min.x + (start_days + 1.0) * pixels_per_day;
                     painter.line_segment(
                         [Pos2::new(start_x, start_y), pos],
-                        egui::Stroke::new(1.5, Color32::YELLOW),
+                        egui::Stroke::new(1.5, palette.warn),
                     );
                 }
             }
@@ -5589,7 +5881,7 @@ fn render_gantt(
                     Pos2::new(x, rect.min.y + 20.0),
                     Pos2::new(x, rect.min.y + 26.0),
                 ],
-                egui::Stroke::new(1.0, Color32::GRAY),
+                egui::Stroke::new(1.0, palette.grid),
             );
             if day % minor_step == 0 {
                 let date = Date::from_julian_day(origin.to_julian_day() + day).unwrap_or(origin);
@@ -5597,8 +5889,8 @@ fn render_gantt(
                     Pos2::new(x, rect.min.y + 28.0),
                     Align2::CENTER_TOP,
                     date.to_string(),
-                    egui::FontId::proportional(9.0),
-                    Color32::GRAY,
+                    egui::FontId::monospace(9.0),
+                    palette.text_muted,
                 );
             }
         }
@@ -5616,13 +5908,13 @@ fn render_gantt(
                     Pos2::new((x + x_next) / 2.0, rect.min.y + 4.0),
                     Align2::CENTER_TOP,
                     label,
-                    egui::FontId::proportional(10.0),
-                    Color32::GRAY,
+                    egui::FontId::monospace(10.0),
+                    palette.text_muted,
                 );
             }
             painter.line_segment(
                 [Pos2::new(x, rect.min.y), Pos2::new(x, rect.min.y + 20.0)],
-                egui::Stroke::new(1.0, Color32::GRAY),
+                egui::Stroke::new(1.0, palette.grid),
             );
             major_day = next;
         }
@@ -5750,7 +6042,7 @@ fn render_gantt(
                     painter.add(egui::Shape::Path(egui::epaint::PathShape::convex_polygon(
                         points,
                         milestone_color,
-                        egui::epaint::PathStroke::new(2.0, Color32::WHITE),
+                        egui::epaint::PathStroke::new(2.0, palette.panel),
                     )));
                 } else {
                     painter.rect_filled(bar, 2.0, color);
@@ -5760,14 +6052,14 @@ fn render_gantt(
                                 Pos2::new(bar.min.x, bar.min.y),
                                 Pos2::new(bar.min.x, bar.max.y),
                             ],
-                            egui::Stroke::new(2.0, Color32::WHITE),
+                            egui::Stroke::new(2.0, palette.panel),
                         );
                         painter.line_segment(
                             [
                                 Pos2::new(bar.max.x, bar.min.y),
                                 Pos2::new(bar.max.x, bar.max.y),
                             ],
-                            egui::Stroke::new(2.0, Color32::WHITE),
+                            egui::Stroke::new(2.0, palette.panel),
                         );
                     }
 
@@ -5815,7 +6107,7 @@ fn render_gantt(
                     text_align,
                     &bar_label,
                     egui::FontId::proportional(10.0),
-                    Color32::WHITE,
+                    palette.panel,
                 );
 
                 // Click-to-select: clicking a bar selects its activity. A
@@ -5892,7 +6184,7 @@ fn render_gantt(
             let y0 = rect.min.y + header_height + pred_row as f32 * row_height + row_height / 2.0;
             let y1 = rect.min.y + header_height + succ_row as f32 * row_height + row_height / 2.0;
             let mid_x = (x0 + x1) / 2.0;
-            let stroke = egui::Stroke::new(1.0, Color32::GRAY);
+            let stroke = egui::Stroke::new(1.0, palette.grid);
             painter.line_segment([Pos2::new(x0, y0), Pos2::new(mid_x, y0)], stroke);
             painter.line_segment([Pos2::new(mid_x, y0), Pos2::new(mid_x, y1)], stroke);
             painter.line_segment([Pos2::new(mid_x, y1), Pos2::new(x1, y1)], stroke);
@@ -5906,8 +6198,8 @@ fn render_gantt(
             ];
             painter.add(egui::Shape::Path(egui::epaint::PathShape::convex_polygon(
                 arrow_points,
-                Color32::GRAY,
-                egui::epaint::PathStroke::new(1.0, Color32::GRAY),
+                palette.grid,
+                egui::epaint::PathStroke::new(1.0, palette.grid),
             )));
             // Lag label: signed, and on a small badge so it stays legible
             // where it crosses the grid hairlines.
