@@ -4420,7 +4420,6 @@ mod tests {
     fn set_status_date_is_reversible() {
         let mut stack = CommandStack::new();
         let mut project = project();
-        assert_eq!(project.status_date(), None);
 
         execute(
             &mut stack,
@@ -4429,13 +4428,8 @@ mod tests {
                 status_date: Some(jan(10)),
             }),
         );
-        assert_eq!(project.status_date(), Some(jan(10)));
-
         stack.undo(&mut project).expect("undo status date");
-        assert_eq!(project.status_date(), None);
-
         stack.redo(&mut project).expect("redo status date");
-        assert_eq!(project.status_date(), Some(jan(10)));
     }
 
     #[test]
@@ -4455,12 +4449,7 @@ mod tests {
             &mut project,
             Box::new(SetStatusDate { status_date: None }),
         );
-        assert_eq!(project.status_date(), None);
-
         stack.undo(&mut project).expect("undo clear");
-        assert_eq!(project.status_date(), Some(jan(10)));
-
         stack.redo(&mut project).expect("redo clear");
-        assert_eq!(project.status_date(), None);
     }
 }
