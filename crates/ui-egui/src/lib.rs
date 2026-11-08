@@ -2597,7 +2597,7 @@ impl eframe::App for CadenceApp {
         // space).
         egui::Panel::bottom("status_bar").show(ui, |ui| {
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
                 let range = match self.schedule.as_ref() {
                     Ok(schedule) => {
@@ -2630,7 +2630,8 @@ impl eframe::App for CadenceApp {
                     );
                 }
                 // Centre: earned-value metrics when a baseline is active, or a
-                // short hint when none has been captured.
+                // short hint when none has been captured. These wrap naturally
+                // at narrow widths instead of clipping.
                 if let (true, Some(metrics)) = (self.baseline_active, &self.evm_metrics) {
                     ui.label(
                         egui::RichText::new(format!(
@@ -2673,11 +2674,16 @@ impl eframe::App for CadenceApp {
                         ("✓ saved", palette.ok)
                     };
                     ui.label(egui::RichText::new(save_text).small().color(save_color));
+                    let zoom_text = format!("{:.0}%", self.pixels_per_day / 14.0 * 100.0);
                     ui.label(
-                        egui::RichText::new(format!("{:.0}%", self.pixels_per_day / 14.0 * 100.0))
+                        egui::RichText::new(zoom_text.clone())
                             .small()
                             .color(palette.text_muted),
-                    );
+                    )
+                    .on_hover_text(format!(
+                        "Gantt zoom: {}\nCtrl+wheel to zoom",
+                        zoom_text
+                    ));
                     // F1 footer: the keyboard reference is one click away from
                     // anywhere, matching the F1 binding.
                     if ui
@@ -2716,7 +2722,7 @@ impl eframe::App for CadenceApp {
                                     if ui.button("Delete activity").clicked() {
                                         self.confirm_delete_activity = true;
                                     }
-                                    ui.label(format!("Activity {}", id));
+                                    ui.label(egui::RichText::new(format!("Activity {}", id)).monospace());
                                     let tokens = self.design_tokens();
                                     let section = |ui: &mut Ui, title: &str| {
                                         ui.add_space(4.0);
@@ -3412,7 +3418,7 @@ impl eframe::App for CadenceApp {
                                 ui.heading("Inspector");
                                 if let Some(id) = selected_id {
                                     if let Some(activity) = self.project.activity(id) {
-                                        ui.label(format!("Activity {}", id));
+                                        ui.label(egui::RichText::new(format!("Activity {}", id)).monospace());
                                         ui.label("Name");
                                         ui.label(&activity.name);
                                         ui.label(format!(
@@ -3575,24 +3581,24 @@ impl eframe::App for CadenceApp {
                                     ui.label(
                                         RESOURCE_KIND_LABELS[resource_kind_index(resource.kind)],
                                     );
-                                    ui.label(resource.capacity.to_string());
+                                    ui.label(egui::RichText::new(resource.capacity.to_string()).monospace());
                                     let assigned = activities
                                         .iter()
                                         .filter(|activity| {
                                             activity.resources.contains(&resource.id)
                                         })
                                         .count();
-                                    ui.label(assigned.to_string());
+                                    ui.label(egui::RichText::new(assigned.to_string()).monospace());
                                     let over = conflicts
                                         .iter()
                                         .filter(|conflict| conflict.resource_id == resource.id)
                                         .count();
                                     if over == 0 {
-                                        ui.label("0");
+                                        ui.label(egui::RichText::new("0").monospace());
                                     } else {
                                         ui.colored_label(
                                             design::palette(self.dark).critical,
-                                            over.to_string(),
+                                            egui::RichText::new(over.to_string()).monospace(),
                                         );
                                     }
                                     ui.end_row();
@@ -3623,12 +3629,13 @@ impl eframe::App for CadenceApp {
                                             .spacing([12.0, 4.0])
                                             .show(ui, |ui| {
                                                 for (date, units) in usage {
-                                                    ui.label(date.to_string());
-                                                    let text = format!(
+                                                    ui.label(egui::RichText::new(date.to_string()).monospace());
+                                                    let text_str = format!(
                                                         "{:.2} / {capacity}",
                                                         units as f64 / FULL_UNITS as f64
                                                     );
-                                                    if units > capacity_units {
+                                                    let text = egui::RichText::new(text_str).monospace();
+                                                     if units > capacity_units {
                                                         ui.colored_label(
                                                             design::palette(self.dark).critical,
                                                             text,
@@ -3666,8 +3673,8 @@ impl eframe::App for CadenceApp {
                                             self.select(activity.id);
                                             self.toggle_assignment(id);
                                         }
-                                        ui.label(activity.original_duration.to_string());
-                                        ui.label(activity.original_duration.to_string());
+                                        ui.label(egui::RichText::new(activity.original_duration.to_string()).monospace());
+                                        ui.label(egui::RichText::new(activity.original_duration.to_string()).monospace());
                                         let current_units = activity.units_for(id);
                                         let current_text =
                                             format!("{:.2}", current_units as f64 / 100.0);
@@ -3749,8 +3756,8 @@ impl eframe::App for CadenceApp {
                                             }
                                         }
                                         if let Some(result) = schedule.activity(activity.id) {
-                                            ui.label(result.scheduled_start.to_string());
-                                            ui.label(result.scheduled_finish.to_string());
+                                            ui.label(egui::RichText::new(result.scheduled_start.to_string()).monospace());
+                                            ui.label(egui::RichText::new(result.scheduled_finish.to_string()).monospace());
                                         } else {
                                             ui.label("-");
                                             ui.label("-");
@@ -3792,7 +3799,9 @@ impl eframe::App for CadenceApp {
                         for baseline in &baselines {
                             let selected = self.selected_baseline == Some(baseline.id);
                             let label = format!("{} — {}", baseline.name, baseline.created_at);
-                            if ui.selectable_label(selected, label).clicked() {
+                            if ui
+                                .selectable_label(selected, egui::RichText::new(label).monospace())
+                                .clicked() {
                                 self.selected_baseline = Some(baseline.id);
                             }
                         }
@@ -3866,7 +3875,7 @@ impl eframe::App for CadenceApp {
                                         ),
                                     ] {
                                         ui.label(label);
-                                        ui.label(value);
+                                        ui.label(egui::RichText::new(value).monospace());
                                         ui.end_row();
                                     }
                                 });
@@ -3905,27 +3914,27 @@ impl eframe::App for CadenceApp {
                                                 if ui.selectable_label(selected, name).clicked() {
                                                     self.selected = Some(row.activity);
                                                 }
-                                                ui.label(date_text(row.current_start));
-                                                ui.label(date_text(row.baseline_start));
+                                                ui.label(egui::RichText::new(date_text(row.current_start)).monospace());
+                                                ui.label(egui::RichText::new(date_text(row.baseline_start)).monospace());
                                                 ui.colored_label(
                                                     variance_color(row.start_variance(), self.dark),
-                                                    variance_text(row.start_variance()),
+                                                    egui::RichText::new(variance_text(row.start_variance())).monospace(),
                                                 );
-                                                ui.label(date_text(row.current_finish));
-                                                ui.label(date_text(row.baseline_finish));
+                                                ui.label(egui::RichText::new(date_text(row.current_finish)).monospace());
+                                                ui.label(egui::RichText::new(date_text(row.baseline_finish)).monospace());
                                                 ui.colored_label(
                                                     variance_color(row.finish_variance(), self.dark),
-                                                    variance_text(row.finish_variance()),
+                                                    egui::RichText::new(variance_text(row.finish_variance())).monospace(),
                                                 );
                                                 let duration_variance = row.duration_variance();
-                                                ui.label(row.current_duration.to_string());
-                                                ui.label(row.baseline_duration.to_string());
+                                                ui.label(egui::RichText::new(row.current_duration.to_string()).monospace());
+                                                ui.label(egui::RichText::new(row.baseline_duration.to_string()).monospace());
                                                 ui.colored_label(
                                                     variance_color(
                                                         Some(duration_variance),
                                                         self.dark,
                                                     ),
-                                                    variance_text(Some(duration_variance)),
+                                                    egui::RichText::new(variance_text(Some(duration_variance))).monospace(),
                                                 );
                                                 ui.end_row();
                                             }
@@ -3996,15 +4005,15 @@ impl eframe::App for CadenceApp {
                                 {
                                     self.select_calendar(named.id);
                                 }
-                                ui.label(format!("{}/7", named.calendar.working_days_per_week()));
-                                ui.label(named.calendar.holidays().len().to_string());
+                                ui.label(egui::RichText::new(format!("{}/7", named.calendar.working_days_per_week())).monospace());
+                                ui.label(egui::RichText::new(named.calendar.holidays().len().to_string()).monospace());
                                 let users = self
                                     .project
                                     .activities
                                     .iter()
                                     .filter(|activity| activity.calendar == Some(named.id))
                                     .count();
-                                ui.label(users.to_string());
+                                ui.label(egui::RichText::new(users.to_string()).monospace());
                                 ui.end_row();
                             }
                         });
@@ -4019,7 +4028,7 @@ impl eframe::App for CadenceApp {
                                 ui.label("No holiday exceptions.");
                             } else {
                                 for holiday in holidays {
-                                    ui.label(holiday.to_string());
+                                    ui.label(egui::RichText::new(holiday.to_string()).monospace());
                                 }
                             }
                         }
@@ -4526,10 +4535,10 @@ impl eframe::App for CadenceApp {
                             ui.label(egui::RichText::new(date.to_string()).monospace());
                             ui.label(content);
                             if let Some(activity_id) = activity_id {
-                                ui.label(format!("→ activity {activity_id}"));
+                                ui.label(egui::RichText::new(format!("→ activity {activity_id}")).monospace());
                             }
                             if let Some(window) = window {
-                                ui.label(format!("→ window from {window}"));
+                                ui.label(egui::RichText::new(format!("→ window from {window}")).monospace());
                             }
                             // S2-10: a note can be corrected after it was
                             // written, through the undoable UpdateDailyNote.
@@ -4639,10 +4648,11 @@ impl eframe::App for CadenceApp {
                     ui.heading("Entries");
                     for entry in &self.project.production_entries {
                         ui.horizontal(|ui| {
-                            ui.label(format!(
+                            ui.label(egui::RichText::new(format!(
                                 "Activity {} — {} — {} bp",
                                 entry.activity_id, entry.date, entry.percent_complete
-                            ));
+                            ))
+                            .monospace());
                             if ui.button("Delete").clicked() {
                                 self.pending_delete_production_id = Some(entry.id);
                                 self.confirm_delete_production = true;
@@ -4703,15 +4713,17 @@ impl eframe::App for CadenceApp {
                                     ui.end_row();
                                     for row in &preview.rows {
                                         ui.label(&row.name);
-                                        ui.label(row.planned_finish.map_or_else(
+                                        ui.label(egui::RichText::new(row.planned_finish.map_or_else(
                                             || "—".to_string(),
                                             |date| date.to_string(),
-                                        ));
-                                        ui.label(row.progress_finish.to_string());
-                                        ui.label(match row.variance_days {
+                                        ))
+                                        .monospace());
+                                        ui.label(egui::RichText::new(row.progress_finish.to_string()).monospace());
+                                        ui.label(egui::RichText::new(match row.variance_days {
                                             Some(days) => format!("{days:+}"),
                                             None => "—".to_string(),
-                                        });
+                                        })
+                                        .monospace());
                                         ui.end_row();
                                     }
                                 });
