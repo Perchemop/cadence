@@ -117,6 +117,10 @@ pub fn install_fonts(ctx: &Context) {
             .or_default()
             .insert(0, name.to_string());
     }
+    // Phosphor Icons (MIT) supply the Private Use Area glyphs the command bar
+    // and inspector use; registered once here beside Inter so the icon face is
+    // deterministic at startup.
+    egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
     ctx.set_fonts(fonts);
 }
 
