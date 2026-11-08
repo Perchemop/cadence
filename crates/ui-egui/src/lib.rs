@@ -3756,8 +3756,14 @@ impl eframe::App for CadenceApp {
                                             }
                                         }
                                         if let Some(result) = schedule.activity(activity.id) {
-                                            ui.label(egui::RichText::new(result.scheduled_start.to_string()).monospace());
-                                            ui.label(egui::RichText::new(result.scheduled_finish.to_string()).monospace());
+                                            ui.label(
+                                                egui::RichText::new(result.scheduled_start.to_string())
+                                                    .monospace(),
+                                            );
+                                            ui.label(
+                                                egui::RichText::new(result.scheduled_finish.to_string())
+                                                    .monospace(),
+                                            );
                                         } else {
                                             ui.label("-");
                                             ui.label("-");
@@ -4713,12 +4719,17 @@ impl eframe::App for CadenceApp {
                                     ui.end_row();
                                     for row in &preview.rows {
                                         ui.label(&row.name);
-                                        ui.label(egui::RichText::new(row.planned_finish.map_or_else(
-                                            || "—".to_string(),
-                                            |date| date.to_string(),
-                                        ))
-                                        .monospace());
-                                        ui.label(egui::RichText::new(row.progress_finish.to_string()).monospace());
+                                        ui.label(
+                                            egui::RichText::new(
+                                                row.planned_finish
+                                                    .map_or_else(|| "—".to_string(), |date| date.to_string()),
+                                            )
+                                            .monospace(),
+                                        );
+                                        ui.label(
+                                            egui::RichText::new(row.progress_finish.to_string())
+                                                .monospace(),
+                                        );
                                         ui.label(egui::RichText::new(match row.variance_days {
                                             Some(days) => format!("{days:+}"),
                                             None => "—".to_string(),

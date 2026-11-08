@@ -2472,9 +2472,7 @@ impl Command for RescheduleActivity {
             RescheduleMode::MoveFinish if self.new_finish.is_none() => {
                 return Err("MoveFinish requires a new finish date".to_string());
             }
-            RescheduleMode::Resize
-                if self.new_start.is_none() || self.new_finish.is_none() =>
-            {
+            RescheduleMode::Resize if self.new_start.is_none() || self.new_finish.is_none() => {
                 return Err("Resize requires both a new start and finish date".to_string());
             }
             _ => {}
@@ -2512,23 +2510,6 @@ impl Command for RescheduleActivity {
                 }
                 RescheduleMode::Resize => {
                     let start = self.new_start.expect("validated above");
-                    let mut finish = self.new_finish.expect("validated above");
-                    if let Constraint::FinishNoLaterThan(limit) = activity.constraint {
-                        if finish > limit {
-                            finish = limit;
-                        }
-                    }
-                    if activity.original_duration > 0 {
-                        let calendar = project
-                            .resolve_calendar(activity.calendar)
-                            .unwrap_or(&project.calendar);
-                        let reachable = calendar
-                            .add_working_days(start, i64::from(activity.original_duration) - 1)
-                            .unwrap_or(finish);
-                        if finish > reachable {
-                            finish = reachable;
-                        }
-                    }
                     Constraint::StartNoEarlierThan(start)
                 }
             };
