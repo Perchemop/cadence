@@ -855,6 +855,7 @@ impl Relationship {
 
 /// Root aggregate for a scheduling project.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Project {
     /// Project name.
     pub name: String,

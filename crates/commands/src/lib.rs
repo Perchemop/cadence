@@ -2458,9 +2458,14 @@ impl Command for RescheduleActivity {
     }
 
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
-        let Some(activity) = project.activity_mut(self.activity_id) else {
-            return Err(format!("activity {} does not exist", self.activity_id));
-        };
+        let activity_id = self.activity_id;
+
+        // Validate the activity exists using an immutable borrow so the
+        // mutable borrow for constraint assignment can happen later without
+        // conflicting with requested_constraint's immutable project borrow.
+        project
+            .activity(activity_id)
+            .ok_or_else(|| format!("activity {activity_id} does not exist"))?;
 
         match self.mode {
             RescheduleMode::MoveStart if self.new_start.is_none() => {
@@ -2477,15 +2482,29 @@ impl Command for RescheduleActivity {
             _ => {}
         }
 
-        let previous = activity.constraint;
-        activity.constraint = requested_constraint(project, activity, self);
+        // Compute the constraint using only immutable borrows.
+        let previous;
+        let constraint;
+        {
+            let activity = project.activity(activity_id).unwrap();
+            previous = activity.constraint;
+            constraint = requested_constraint(project, activity, self);
+        } // activity borrow dropped here
+
+        // Apply the constraint with a fresh mutable borrow.
+        let Some(activity) = project.activity_mut(activity_id) else {
+            return Err(format!("activity {activity_id} does not exist"));
+        };
+        activity.constraint = constraint;
         activity.clear_schedule();
+        drop(activity);
+
         let computed =
             cadence_core::engine::schedule(project).map_err(|error| error.to_string())?;
         computed.apply_to(project);
 
         Ok(Box::new(RescheduleActivityUndo {
-            activity_id: self.activity_id,
+            activity_id,
             previous_constraint: previous,
         }))
     }
