@@ -35,6 +35,8 @@ pub struct Palette {
     pub warn: Color32,
     /// Extreme background (e.g. the Gantt canvas inside a panel).
     pub deep: Color32,
+    /// Non-working day background tint (weekends/holidays on Gantt canvas).
+    pub non_working: Color32,
 }
 
 /// The palette for the requested theme.
@@ -51,6 +53,7 @@ pub const fn palette(dark: bool) -> Palette {
             ok: Color32::from_rgb(0x4A, 0xDE, 0x80),
             warn: Color32::from_rgb(0xFB, 0xBF, 0x24),
             deep: Color32::from_rgb(0x11, 0x13, 0x18),
+            non_working: Color32::from_rgb(0x1A, 0x1E, 0x27),
         }
     } else {
         Palette {
@@ -64,6 +67,7 @@ pub const fn palette(dark: bool) -> Palette {
             ok: Color32::from_rgb(0x15, 0x80, 0x3D),
             warn: Color32::from_rgb(0xB4, 0x53, 0x09),
             deep: Color32::from_rgb(0xEC, 0xEE, 0xF1),
+            non_working: Color32::from_rgb(0xEA, 0xEC, 0xEF),
         }
     }
 }

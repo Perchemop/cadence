@@ -5229,7 +5229,7 @@ fn variance_color(value: Option<i64>, dark: bool) -> Color32 {
         (Some(value), true) if value < 0 => Color32::from_rgb(0x2E, 0xCC, 0x71),
         (Some(value), false) if value > 0 => Color32::from_rgb(0xC0, 0x39, 0x2B),
         (Some(value), false) if value < 0 => Color32::from_rgb(0x1E, 0x84, 0x49),
-        _ => Color32::GRAY,
+        _ => design::palette(dark).grid,
     }
 }
 
@@ -5434,7 +5434,10 @@ fn render_gantt(
         {
             *pixels_per_day_out = 14.0;
         }
-        ui.label(format!("{:.0}%", *pixels_per_day_out / 14.0 * 100.0));
+        ui.label(
+            egui::RichText::new(format!("{:.0}%", *pixels_per_day_out / 14.0 * 100.0))
+                .font(egui::FontId::monospace(11.0)),
+        );
         ui.separator();
         ui.label("Drag new link as:");
         ComboBox::from_id_salt("drag_link_type")
@@ -5511,6 +5514,50 @@ fn render_gantt(
             ));
         }
 
+        // Non-working day shading: tint columns for weekends/holidays so the
+        // working calendar reads off the canvas without extra chrome. Drawn
+        // before bars and arrows so it stays in the background.
+        let non_working_fill = Color32::from_rgba_unmultiplied(
+            palette.non_working.r(),
+            palette.non_working.g(),
+            palette.non_working.b(),
+            30,
+        );
+        for day in 0..=(total_days as i32) {
+            let date = Date::from_julian_day(origin.to_julian_day() + day).unwrap_or(origin);
+            if project.calendar.is_working_day(date) {
+                continue;
+            }
+            let x = rect.min.x + day as f32 * pixels_per_day;
+            let x_end = x + pixels_per_day;
+            if x_end < clip.min.x || x > clip.max.x {
+                continue;
+            }
+            let col = Rect::from_min_max(
+                Pos2::new(x, rect.min.y + header_height),
+                Pos2::new(x_end, rect.max.y),
+            );
+            painter.rect_filled(col, 0.0, non_working_fill);
+        }
+        // Shade the header band cells for non-working days (reinforces the
+        // column tint in the date tick area).
+        for day in 0..=(total_days as i32) {
+            let date = Date::from_julian_day(origin.to_julian_day() + day).unwrap_or(origin);
+            if project.calendar.is_working_day(date) {
+                continue;
+            }
+            let x = rect.min.x + day as f32 * pixels_per_day;
+            let x_end = x + pixels_per_day;
+            if x_end < clip.min.x || x > clip.max.x {
+                continue;
+            }
+            let cell = Rect::from_min_max(
+                Pos2::new(x, rect.min.y),
+                Pos2::new(x_end, rect.min.y + header_height),
+            );
+            painter.rect_filled(cell, 0.0, non_working_fill);
+        }
+
         // Drag-to-create dependency links.
         if response.drag_started() {
             if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
@@ -5532,7 +5579,7 @@ fn render_gantt(
                     let start_x = rect.min.x + (start_days + 1.0) * pixels_per_day;
                     painter.line_segment(
                         [Pos2::new(start_x, start_y), pos],
-                        egui::Stroke::new(1.5, Color32::YELLOW),
+                        egui::Stroke::new(1.5, palette.warn),
                     );
                 }
             }
@@ -5589,7 +5636,7 @@ fn render_gantt(
                     Pos2::new(x, rect.min.y + 20.0),
                     Pos2::new(x, rect.min.y + 26.0),
                 ],
-                egui::Stroke::new(1.0, Color32::GRAY),
+                egui::Stroke::new(1.0, palette.grid),
             );
             if day % minor_step == 0 {
                 let date = Date::from_julian_day(origin.to_julian_day() + day).unwrap_or(origin);
@@ -5597,8 +5644,8 @@ fn render_gantt(
                     Pos2::new(x, rect.min.y + 28.0),
                     Align2::CENTER_TOP,
                     date.to_string(),
-                    egui::FontId::proportional(9.0),
-                    Color32::GRAY,
+                    egui::FontId::monospace(9.0),
+                    palette.text_muted,
                 );
             }
         }
@@ -5616,13 +5663,13 @@ fn render_gantt(
                     Pos2::new((x + x_next) / 2.0, rect.min.y + 4.0),
                     Align2::CENTER_TOP,
                     label,
-                    egui::FontId::proportional(10.0),
-                    Color32::GRAY,
+                    egui::FontId::monospace(10.0),
+                    palette.text_muted,
                 );
             }
             painter.line_segment(
                 [Pos2::new(x, rect.min.y), Pos2::new(x, rect.min.y + 20.0)],
-                egui::Stroke::new(1.0, Color32::GRAY),
+                egui::Stroke::new(1.0, palette.grid),
             );
             major_day = next;
         }
@@ -5750,7 +5797,7 @@ fn render_gantt(
                     painter.add(egui::Shape::Path(egui::epaint::PathShape::convex_polygon(
                         points,
                         milestone_color,
-                        egui::epaint::PathStroke::new(2.0, Color32::WHITE),
+                        egui::epaint::PathStroke::new(2.0, palette.panel),
                     )));
                 } else {
                     painter.rect_filled(bar, 2.0, color);
@@ -5760,14 +5807,14 @@ fn render_gantt(
                                 Pos2::new(bar.min.x, bar.min.y),
                                 Pos2::new(bar.min.x, bar.max.y),
                             ],
-                            egui::Stroke::new(2.0, Color32::WHITE),
+                            egui::Stroke::new(2.0, palette.panel),
                         );
                         painter.line_segment(
                             [
                                 Pos2::new(bar.max.x, bar.min.y),
                                 Pos2::new(bar.max.x, bar.max.y),
                             ],
-                            egui::Stroke::new(2.0, Color32::WHITE),
+                            egui::Stroke::new(2.0, palette.panel),
                         );
                     }
 
@@ -5815,7 +5862,7 @@ fn render_gantt(
                     text_align,
                     &bar_label,
                     egui::FontId::proportional(10.0),
-                    Color32::WHITE,
+                    palette.panel,
                 );
 
                 // Click-to-select: clicking a bar selects its activity. A
@@ -5892,7 +5939,7 @@ fn render_gantt(
             let y0 = rect.min.y + header_height + pred_row as f32 * row_height + row_height / 2.0;
             let y1 = rect.min.y + header_height + succ_row as f32 * row_height + row_height / 2.0;
             let mid_x = (x0 + x1) / 2.0;
-            let stroke = egui::Stroke::new(1.0, Color32::GRAY);
+            let stroke = egui::Stroke::new(1.0, palette.grid);
             painter.line_segment([Pos2::new(x0, y0), Pos2::new(mid_x, y0)], stroke);
             painter.line_segment([Pos2::new(mid_x, y0), Pos2::new(mid_x, y1)], stroke);
             painter.line_segment([Pos2::new(mid_x, y1), Pos2::new(x1, y1)], stroke);
@@ -5906,8 +5953,8 @@ fn render_gantt(
             ];
             painter.add(egui::Shape::Path(egui::epaint::PathShape::convex_polygon(
                 arrow_points,
-                Color32::GRAY,
-                egui::epaint::PathStroke::new(1.0, Color32::GRAY),
+                palette.grid,
+                egui::epaint::PathStroke::new(1.0, palette.grid),
             )));
             // Lag label: signed, and on a small badge so it stays legible
             // where it crosses the grid hairlines.
