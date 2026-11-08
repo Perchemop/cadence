@@ -10,7 +10,7 @@
 //! never need to inspect project state heuristically.
 
 use cadence_core::calendar_set::{CalendarId, NamedCalendar};
-use cadence_core::engine::{capture_baseline, capture_lookahead_snapshot, schedule, Schedule};
+use cadence_core::engine::{capture_baseline, capture_lookahead_snapshot, schedule};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
     DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
@@ -2535,12 +2535,12 @@ impl Command for RescheduleActivity {
         } // activity borrow dropped here
 
         // Apply the constraint with a fresh mutable borrow.
-        let Some(activity) = project.activity_mut(activity_id) else {
+        if let Some(activity) = project.activity_mut(activity_id) {
+            activity.constraint = constraint;
+            activity.clear_schedule();
+        } else {
             return Err(format!("activity {activity_id} does not exist"));
-        };
-        activity.constraint = constraint;
-        activity.clear_schedule();
-        drop(activity);
+        }
 
         let computed =
             cadence_core::engine::schedule(project).map_err(|error| error.to_string())?;
