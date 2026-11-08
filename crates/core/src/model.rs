@@ -855,7 +855,6 @@ impl Relationship {
 
 /// Root aggregate for a scheduling project.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[non_exhaustive]
 pub struct Project {
     /// Project name.
     pub name: String,
@@ -894,7 +893,7 @@ pub struct Project {
     pub production_entries: Vec<ProductionEntry>,
     /// Status date used for earned value and progress reporting, if set.
     #[serde(default)]
-    pub status_date: Option<Date>,
+    status_date: Option<Date>,
 }
 
 impl Project {
@@ -915,6 +914,16 @@ impl Project {
             production_entries: Vec::new(),
             status_date: None,
         }
+    }
+
+    /// Status date used for earned value and progress reporting, if set.
+    pub fn status_date(&self) -> Option<Date> {
+        self.status_date
+    }
+
+    /// Set the status date used for earned value and progress reporting.
+    pub fn set_status_date(&mut self, date: Option<Date>) {
+        self.status_date = date;
     }
 
     /// Next unused activity identifier.

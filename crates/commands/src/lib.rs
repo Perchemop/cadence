@@ -2460,9 +2460,7 @@ impl Command for RescheduleActivity {
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
         let activity_id = self.activity_id;
 
-        // Validate the activity exists using an immutable borrow so the
-        // mutable borrow for constraint assignment can happen later without
-        // conflicting with requested_constraint's immutable project borrow.
+        // Validate the activity exists using an immutable borrow.
         project
             .activity(activity_id)
             .ok_or_else(|| format!("activity {activity_id} does not exist"))?;
@@ -2482,13 +2480,58 @@ impl Command for RescheduleActivity {
             _ => {}
         }
 
-        // Compute the constraint using only immutable borrows.
+        // Compute previous constraint and new constraint using only immutable
+        // borrows, so a fresh mutable borrow can be taken afterwards without
+        // conflicting with the mutable borrow used for constraint assignment.
         let previous;
         let constraint;
         {
             let activity = project.activity(activity_id).unwrap();
             previous = activity.constraint;
-            constraint = requested_constraint(project, activity, self);
+
+            // Inline the constraint computation to avoid split borrows between
+            // project and activity.
+            constraint = match self.mode {
+                RescheduleMode::MoveStart => {
+                    let mut start = self.new_start.expect("validated above");
+                    if let Constraint::StartNoLaterThan(limit) = activity.constraint {
+                        if start > limit {
+                            start = limit;
+                        }
+                    }
+                    Constraint::StartNoEarlierThan(start)
+                }
+                RescheduleMode::MoveFinish => {
+                    let mut finish = self.new_finish.expect("validated above");
+                    if let Constraint::FinishNoLaterThan(limit) = activity.constraint {
+                        if finish > limit {
+                            finish = limit;
+                        }
+                    }
+                    Constraint::FinishNoEarlierThan(finish)
+                }
+                RescheduleMode::Resize => {
+                    let start = self.new_start.expect("validated above");
+                    let mut finish = self.new_finish.expect("validated above");
+                    if let Constraint::FinishNoLaterThan(limit) = activity.constraint {
+                        if finish > limit {
+                            finish = limit;
+                        }
+                    }
+                    if activity.original_duration > 0 {
+                        let calendar = project
+                            .resolve_calendar(activity.calendar)
+                            .unwrap_or(&project.calendar);
+                        let reachable = calendar
+                            .add_working_days(start, i64::from(activity.original_duration) - 1)
+                            .unwrap_or(finish);
+                        if finish > reachable {
+                            finish = reachable;
+                        }
+                    }
+                    Constraint::StartNoEarlierThan(start)
+                }
+            };
         } // activity borrow dropped here
 
         // Apply the constraint with a fresh mutable borrow.
@@ -2507,61 +2550,6 @@ impl Command for RescheduleActivity {
             activity_id,
             previous_constraint: previous,
         }))
-    }
-}
-
-/// The constraint the requested dates translate into for each mode.
-///
-/// The move is clamped against an existing upper-bound constraint on the
-/// activity: a start or finish that would pass the limit is pulled back to it.
-fn requested_constraint(
-    project: &Project,
-    activity: &Activity,
-    command: &RescheduleActivity,
-) -> Constraint {
-    let calendar = project
-        .resolve_calendar(activity.calendar)
-        .unwrap_or(&project.calendar);
-    match command.mode {
-        RescheduleMode::MoveStart => {
-            let mut start = command.new_start.expect("validated above");
-            if let Constraint::StartNoLaterThan(limit) = activity.constraint {
-                if start > limit {
-                    start = limit;
-                }
-            }
-            Constraint::StartNoEarlierThan(start)
-        }
-        RescheduleMode::MoveFinish => {
-            let mut finish = command.new_finish.expect("validated above");
-            if let Constraint::FinishNoLaterThan(limit) = activity.constraint {
-                if finish > limit {
-                    finish = limit;
-                }
-            }
-            Constraint::FinishNoEarlierThan(finish)
-        }
-        RescheduleMode::Resize => {
-            let start = command.new_start.expect("validated above");
-            let mut finish = command.new_finish.expect("validated above");
-            if let Constraint::FinishNoLaterThan(limit) = activity.constraint {
-                if finish > limit {
-                    finish = limit;
-                }
-            }
-            // Keep the span achievable within the activity's duration on its
-            // own calendar; otherwise pull the finish back to the last reachable
-            // working day.
-            if activity.original_duration > 0 {
-                let reachable = calendar
-                    .add_working_days(start, i64::from(activity.original_duration) - 1)
-                    .unwrap_or(finish);
-                if finish > reachable {
-                    finish = reachable;
-                }
-            }
-            Constraint::StartNoEarlierThan(start)
-        }
     }
 }
 
@@ -2615,7 +2603,8 @@ impl Command for SetStatusDate {
     }
 
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
-        let previous = std::mem::replace(&mut project.status_date, self.status_date);
+        let previous = project.status_date();
+        project.set_status_date(self.status_date);
         Ok(Box::new(SetStatusDate {
             status_date: previous,
         }))
