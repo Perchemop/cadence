@@ -891,9 +891,6 @@ pub struct Project {
     /// Production entries: dated actual progress recorded against activities.
     #[serde(default)]
     pub production_entries: Vec<ProductionEntry>,
-    /// Status date used for earned value and progress reporting, if set.
-    #[serde(default)]
-    status_date: Option<Date>,
 }
 
 impl Project {
@@ -912,18 +909,7 @@ impl Project {
             lookahead_snapshots: Vec::new(),
             daily_notes: Vec::new(),
             production_entries: Vec::new(),
-            status_date: None,
         }
-    }
-
-    /// Status date used for earned value and progress reporting, if set.
-    pub fn status_date(&self) -> Option<Date> {
-        self.status_date
-    }
-
-    /// Set the status date used for earned value and progress reporting.
-    pub fn set_status_date(&mut self, date: Option<Date>) {
-        self.status_date = date;
     }
 
     /// Next unused activity identifier.

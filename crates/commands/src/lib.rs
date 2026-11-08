@@ -2583,9 +2583,9 @@ impl Command for SetStatusDate {
         }
     }
 
-    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
-        let previous = project.status_date();
-        project.set_status_date(self.status_date);
+    fn apply(&mut self, _project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let previous = self.status_date;
+        self.status_date = None;
         Ok(Box::new(SetStatusDate {
             status_date: previous,
         }))
