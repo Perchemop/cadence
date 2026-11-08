@@ -34,7 +34,8 @@ use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use cadence_core::model::FULL_UNITS;
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, EvmMetrics,
-    LinkType, LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ResourceId, ResourceKind,
+    LinkType, LookaheadSnapshotEntry, LookaheadSnapshotId, Project, ProductionEntryId,
+    ResourceId, ResourceKind,
 };
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
 use time::{Date, Month};
@@ -407,6 +408,14 @@ pub struct CadenceApp {
     critical_count: usize,
     confirm_delete_activity: bool,
     confirm_delete_relationship: bool,
+    confirm_delete_resource: bool,
+    pending_delete_resource_id: Option<ResourceId>,
+    confirm_delete_baseline: bool,
+    pending_delete_baseline_id: Option<BaselineId>,
+    confirm_delete_note: bool,
+    pending_delete_note_id: Option<DailyNoteId>,
+    confirm_delete_production: bool,
+    pending_delete_production_id: Option<ProductionEntryId>,
     /// Extra selected rows beyond the primary selection (S2-5): ctrl-click
     /// toggles a row, shift-click selects the range from the anchor. The
     /// primary `selected` row is the anchor and always counts as selected.
@@ -587,6 +596,14 @@ impl CadenceApp {
             critical_count: 0,
             confirm_delete_activity: false,
             confirm_delete_relationship: false,
+            confirm_delete_resource: false,
+            pending_delete_resource_id: None,
+            confirm_delete_baseline: false,
+            pending_delete_baseline_id: None,
+            confirm_delete_note: false,
+            pending_delete_note_id: None,
+            confirm_delete_production: false,
+            pending_delete_production_id: None,
             multi_selected: BTreeSet::new(),
             confirm_delete_selection: false,
             confirm_delete_ids: Vec::new(),
@@ -1974,6 +1991,10 @@ impl eframe::App for CadenceApp {
             || self.confirm_delete_selection
             || self.confirm_leveling
             || self.confirm_delete_relationship
+            || self.confirm_delete_resource
+            || self.confirm_delete_baseline
+            || self.confirm_delete_note
+            || self.confirm_delete_production
             || self.pending_file_action.is_some();
 
         // Escape dismisses the front dialog with Cancel semantics, so "Delete
@@ -1991,6 +2012,18 @@ impl eframe::App for CadenceApp {
                 self.confirm_leveling = false;
             } else if self.confirm_delete_relationship {
                 self.confirm_delete_relationship = false;
+            } else if self.confirm_delete_resource {
+                self.confirm_delete_resource = false;
+                self.pending_delete_resource_id = None;
+            } else if self.confirm_delete_baseline {
+                self.confirm_delete_baseline = false;
+                self.pending_delete_baseline_id = None;
+            } else if self.confirm_delete_note {
+                self.confirm_delete_note = false;
+                self.pending_delete_note_id = None;
+            } else if self.confirm_delete_production {
+                self.confirm_delete_production = false;
+                self.pending_delete_production_id = None;
             } else if self.show_shortcuts_dialog {
                 self.show_shortcuts_dialog = false;
             } else if self.show_release_notes {
@@ -3480,7 +3513,8 @@ impl eframe::App for CadenceApp {
                                 self.apply_resource_edits();
                             }
                             if ui.button("Delete resource").clicked() {
-                                self.delete_selected_resource();
+                                self.pending_delete_resource_id = self.selected_resource;
+                                self.confirm_delete_resource = true;
                             }
                         }
 
@@ -3765,7 +3799,8 @@ impl eframe::App for CadenceApp {
                             .add_enabled(has_selection, egui::Button::new("Delete baseline"))
                             .clicked()
                         {
-                            self.delete_selected_baseline();
+                            self.pending_delete_baseline_id = self.selected_baseline;
+                            self.confirm_delete_baseline = true;
                         }
 
                         ui.separator();
@@ -4484,7 +4519,6 @@ impl eframe::App for CadenceApp {
                             .small(),
                         );
                     }
-                    let mut to_delete = None;
                     for (id, date, content, activity_id, window) in &notes {
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new(date.to_string()).monospace());
@@ -4502,7 +4536,8 @@ impl eframe::App for CadenceApp {
                                 self.diary_edit_buffer = content.clone();
                             }
                             if ui.button("Delete").clicked() {
-                                to_delete = Some(*id);
+                                self.pending_delete_note_id = Some(*id);
+                                self.confirm_delete_note = true;
                             }
                         });
                         if self.editing_note == Some(*id) {
@@ -4531,17 +4566,6 @@ impl eframe::App for CadenceApp {
                                     self.editing_note = None;
                                 }
                             });
-                        }
-                    }
-                    if let Some(id) = to_delete {
-                        let command = cadence_commands::DeleteDailyNote { id };
-                        if self
-                            .stack
-                            .execute(&mut self.project, Box::new(command))
-                            .is_ok()
-                        {
-                            self.recompute();
-                            self.set_status("Diary note deleted.");
                         }
                     }
                 });
@@ -4611,7 +4635,6 @@ impl eframe::App for CadenceApp {
                     });
                     ui.separator();
                     ui.heading("Entries");
-                    let mut to_delete = None;
                     for entry in &self.project.production_entries {
                         ui.horizontal(|ui| {
                             ui.label(format!(
@@ -4619,20 +4642,10 @@ impl eframe::App for CadenceApp {
                                 entry.activity_id, entry.date, entry.percent_complete
                             ));
                             if ui.button("Delete").clicked() {
-                                to_delete = Some(entry.id);
+                                self.pending_delete_production_id = Some(entry.id);
+                                self.confirm_delete_production = true;
                             }
                         });
-                    }
-                    if let Some(id) = to_delete {
-                        let command = cadence_commands::DeleteProduction { id };
-                        if self
-                            .stack
-                            .execute(&mut self.project, Box::new(command))
-                            .is_ok()
-                        {
-                            self.recompute();
-                            self.set_status("Production entry deleted.");
-                        }
                     }
                     ui.separator();
                     ui.collapsing("Reschedule from progress", |ui| {
@@ -4840,6 +4853,168 @@ impl eframe::App for CadenceApp {
                 });
             if !open {
                 self.confirm_delete_relationship = false;
+            }
+        }
+
+        if self.confirm_delete_resource {
+            let mut open = true;
+            let id = self.pending_delete_resource_id;
+            egui::Window::new("Delete resource?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
+                    ui.label("Delete the selected resource? This can be undone.");
+                    ui.horizontal(|ui| {
+                        let delete = ui.button("Delete").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || delete {
+                            if let Some(id) = id {
+                                if self
+                                    .stack
+                                    .execute(&mut self.project, Box::new(DeleteResource { id }))
+                                    .is_ok()
+                                {
+                                    self.selected_resource = None;
+                                    self.recompute();
+                                    self.set_status("Resource deleted.");
+                                }
+                            }
+                            self.confirm_delete_resource = false;
+                            self.pending_delete_resource_id = None;
+                        }
+                        if cancel {
+                            self.confirm_delete_resource = false;
+                            self.pending_delete_resource_id = None;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_delete_resource = false;
+                self.pending_delete_resource_id = None;
+            }
+        }
+
+        if self.confirm_delete_baseline {
+            let mut open = true;
+            let id = self.pending_delete_baseline_id;
+            egui::Window::new("Delete baseline?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
+                    ui.label("Delete the selected baseline? This can be undone.");
+                    ui.horizontal(|ui| {
+                        let delete = ui.button("Delete").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || delete {
+                            if let Some(id) = id {
+                                if self
+                                    .stack
+                                    .execute(&mut self.project, Box::new(RemoveBaseline { id }))
+                                    .is_ok()
+                                {
+                                    self.selected_baseline = None;
+                                    self.recompute();
+                                    self.set_status("Baseline deleted.");
+                                }
+                            }
+                            self.confirm_delete_baseline = false;
+                            self.pending_delete_baseline_id = None;
+                        }
+                        if cancel {
+                            self.confirm_delete_baseline = false;
+                            self.pending_delete_baseline_id = None;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_delete_baseline = false;
+                self.pending_delete_baseline_id = None;
+            }
+        }
+
+        if self.confirm_delete_note {
+            let mut open = true;
+            let id = self.pending_delete_note_id;
+            egui::Window::new("Delete diary note?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
+                    ui.label("Delete the selected diary note? This can be undone.");
+                    ui.horizontal(|ui| {
+                        let delete = ui.button("Delete").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || delete {
+                            if let Some(id) = id {
+                                if self
+                                    .stack
+                                    .execute(&mut self.project, Box::new(DeleteDailyNote { id }))
+                                    .is_ok()
+                                {
+                                    self.recompute();
+                                    self.set_status("Diary note deleted.");
+                                }
+                            }
+                            self.confirm_delete_note = false;
+                            self.pending_delete_note_id = None;
+                        }
+                        if cancel {
+                            self.confirm_delete_note = false;
+                            self.pending_delete_note_id = None;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_delete_note = false;
+                self.pending_delete_note_id = None;
+            }
+        }
+
+        if self.confirm_delete_production {
+            let mut open = true;
+            let id = self.pending_delete_production_id;
+            egui::Window::new("Delete production entry?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
+                    ui.label("Delete the selected production entry? This can be undone.");
+                    ui.horizontal(|ui| {
+                        let delete = ui.button("Delete").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || delete {
+                            if let Some(id) = id {
+                                if self
+                                    .stack
+                                    .execute(&mut self.project, Box::new(DeleteProduction { id }))
+                                    .is_ok()
+                                {
+                                    self.recompute();
+                                    self.set_status("Production entry deleted.");
+                                }
+                            }
+                            self.confirm_delete_production = false;
+                            self.pending_delete_production_id = None;
+                        }
+                        if cancel {
+                            self.confirm_delete_production = false;
+                            self.pending_delete_production_id = None;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_delete_production = false;
+                self.pending_delete_production_id = None;
             }
         }
 
