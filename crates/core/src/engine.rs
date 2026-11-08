@@ -1892,7 +1892,8 @@ fn quarter_bands(window_start: Date, window_end: Date) -> Vec<TimescaleBand> {
 
 fn year_bands(window_start: Date, window_end: Date) -> Vec<TimescaleBand> {
     let mut bands = Vec::new();
-    let mut cursor = Date::from_calendar_date(window_start.year(), Month::January, 1).expect("January 1 exists");
+    let mut cursor =
+        Date::from_calendar_date(window_start.year(), Month::January, 1).expect("January 1 exists");
     while cursor <= window_end {
         let band_end = match Date::from_calendar_date(cursor.year() + 1, Month::January, 1) {
             Ok(next_year) => next_year
