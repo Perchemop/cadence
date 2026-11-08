@@ -12,12 +12,12 @@ use std::time::{Duration, Instant};
 
 use cadence_commands::{
     AddResourceToActivity, CaptureBaseline, CommandStack, CreateCalendar, CreateRelationship,
-    CreateResource, DeleteCalendar, DeleteRelationship, DeleteResource, DeleteDailyNote, DeleteProduction, RemoveBaseline,
-    RemoveResourceFromActivity, RenameActivity, RenameCalendar, RenameResource,
-    SetActivityActualCost, SetActivityActualDates, SetActivityBudget, SetActivityCalendar,
-    SetActivityConstraint, SetActivityDuration, SetActivityOwner, SetActivityProgress,
-    SetActivityPromise, SetCalendarDefinition, SetRelationshipLag, SetRelationshipType,
-    SetResourceCapacity, SetResourceKind,
+    CreateResource, DeleteCalendar, DeleteDailyNote, DeleteProduction, DeleteRelationship,
+    DeleteResource, RemoveBaseline, RemoveResourceFromActivity, RenameActivity, RenameCalendar,
+    RenameResource, SetActivityActualCost, SetActivityActualDates, SetActivityBudget,
+    SetActivityCalendar, SetActivityConstraint, SetActivityDuration, SetActivityOwner,
+    SetActivityProgress, SetActivityPromise, SetCalendarDefinition, SetRelationshipLag,
+    SetRelationshipType, SetResourceCapacity, SetResourceKind,
 };
 use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
@@ -34,8 +34,8 @@ use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use cadence_core::model::FULL_UNITS;
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, EvmMetrics,
-    LinkType, LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntryId, Project,
-    ResourceId, ResourceKind,
+    LinkType, LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntryId, Project, ResourceId,
+    ResourceKind,
 };
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
 use time::{Date, Month};
@@ -1479,6 +1479,7 @@ impl CadenceApp {
     }
 
     /// Remove the selected resource from the dictionary.
+    #[expect(dead_code)]
     fn delete_selected_resource(&mut self) {
         let Some(id) = self.selected_resource else {
             return;
@@ -1792,6 +1793,7 @@ impl CadenceApp {
     }
 
     /// Remove the selected baseline from the project.
+    #[expect(dead_code)]
     fn delete_selected_baseline(&mut self) {
         let Some(id) = self.selected_baseline else {
             return;
