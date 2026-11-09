@@ -64,7 +64,7 @@ pub struct DesignTokens {
     pub accent_bg: Color32,
     /// Panel/Toolbar background.
     pub panel_bg: Color32,
-}
+        }
 
 impl DesignTokens {
     /// Tokens for the requested theme, sourced from the design palette so
@@ -78,14 +78,14 @@ impl DesignTokens {
             primary_bg: ACCENT.linear_multiply(0.15),
             accent_bg: ACCENT.linear_multiply(0.2),
             panel_bg: palette.panel.linear_multiply(0.95),
-        }
     }
-}
+    }
+        }
 
 /// Apply a theme to an egui context.
 pub fn apply_theme(ctx: &Context, dark: bool) {
     design::apply(ctx, dark);
-}
+        }
 
 /// Sort key for the activity table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -96,7 +96,7 @@ enum SortKey {
     Finish,
     Float,
     Critical,
-}
+        }
 
 impl SortKey {
     /// Every data column that can be shown in the activity table, in the order
@@ -126,7 +126,7 @@ impl SortKey {
             SortKey::Finish => "Finish",
             SortKey::Float => "Float",
             SortKey::Critical => "Critical",
-        }
+    }
     }
 
     /// Fixed pixel width of the column, or `0.0` when it flexes to fill.
@@ -138,9 +138,9 @@ impl SortKey {
             SortKey::Finish => 96.0,
             SortKey::Float => 56.0,
             SortKey::Critical => 64.0,
-        }
     }
-}
+    }
+        }
 
 /// Which top-level view is shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,7 +154,7 @@ enum ViewMode {
     Lookahead,
     Diary,
     Production,
-}
+        }
 
 /// Severity of a `status_message`, used to pick its colour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,7 +163,7 @@ pub enum StatusSeverity {
     Success,
     Warning,
     Error,
-}
+        }
 
 impl StatusSeverity {
     /// Classify a status message by its wording.
@@ -178,7 +178,7 @@ impl StatusSeverity {
             || lower.contains("not a valid")
         {
             return Self::Error;
-        }
+    }
         if lower.starts_with("saved")
             || lower.starts_with("opened")
             || lower.starts_with("activity created")
@@ -189,10 +189,10 @@ impl StatusSeverity {
             || lower.starts_with("activity deleted")
         {
             return Self::Success;
-        }
+    }
         if lower.contains("warning") || lower.contains("warn") {
             return Self::Warning;
-        }
+    }
         Self::Info
     }
 
@@ -204,9 +204,9 @@ impl StatusSeverity {
             Self::Success => palette.ok,
             Self::Warning => palette.warn,
             Self::Error => palette.critical,
-        }
     }
-}
+    }
+        }
 
 /// How long an info or success status message stays visible before it is
 /// auto-cleared. Errors and warnings persist until dismissed or replaced.
@@ -219,7 +219,7 @@ const STATUS_MESSAGE_TTL: Duration = Duration::from_secs(5);
 fn should_auto_clear_status(severity: StatusSeverity, shown_at: Instant, now: Instant) -> bool {
     matches!(severity, StatusSeverity::Info | StatusSeverity::Success)
         && now.duration_since(shown_at) > STATUS_MESSAGE_TTL
-}
+        }
 
 /// One row in the diary view: identifier, date, content, activity link and
 /// lookahead-window link.
@@ -253,17 +253,17 @@ fn link_type_index(link_type: LinkType) -> usize {
         .iter()
         .position(|candidate| *candidate == link_type)
         .unwrap_or(0)
-}
+        }
 
 /// Convert a relationship-type index back into a [`LinkType`].
 fn link_type_from_index(index: usize) -> LinkType {
     LinkType::ALL[index.min(LinkType::ALL.len() - 1)]
-}
+        }
 
 /// The display label for a relationship-type index.
 fn link_type_label(index: usize) -> &'static str {
     LINK_TYPE_LABELS[index.min(LINK_TYPE_LABELS.len() - 1)]
-}
+        }
 
 /// Validate the inspector's predecessor/successor choice.
 fn link_endpoints(
@@ -273,11 +273,11 @@ fn link_endpoints(
     match (predecessor, successor) {
         (Some(predecessor), Some(successor)) if predecessor != successor => {
             Ok((predecessor, successor))
-        }
+    }
         (Some(_), Some(_)) => Err("A link needs two different activities".to_string()),
         _ => Err("Choose both a predecessor and a successor".to_string()),
     }
-}
+        }
 
 /// Convert a resource kind into its index in [`RESOURCE_KIND_LABELS`].
 fn resource_kind_index(kind: ResourceKind) -> usize {
@@ -286,7 +286,7 @@ fn resource_kind_index(kind: ResourceKind) -> usize {
         ResourceKind::Equipment => 1,
         ResourceKind::Material => 2,
     }
-}
+        }
 
 /// Convert a resource kind index back into a [`ResourceKind`].
 fn resource_kind_from_index(index: usize) -> ResourceKind {
@@ -295,7 +295,7 @@ fn resource_kind_from_index(index: usize) -> ResourceKind {
         2 => ResourceKind::Material,
         _ => ResourceKind::Labour,
     }
-}
+        }
 
 /// One activity's planned-versus-rescheduled finish in the progress preview.
 #[derive(Debug, Clone)]
@@ -304,7 +304,7 @@ struct RescheduleRow {
     planned_finish: Option<Date>,
     progress_finish: Date,
     variance_days: Option<i64>,
-}
+        }
 
 /// A non-destructive preview of progress-driven rescheduling.
 ///
@@ -319,7 +319,7 @@ struct ReschedulePreview {
     in_progress: u32,
     complete: u32,
     rows: Vec<RescheduleRow>,
-}
+        }
 
 impl ReschedulePreview {
     /// Reschedule the project from recorded progress and collect the result.
@@ -357,7 +357,7 @@ impl ReschedulePreview {
                 progress_finish: result.scheduled_finish,
                 variance_days,
             });
-        }
+    }
         Ok(Self {
             data_date,
             project_finish: schedule.project_finish,
@@ -367,7 +367,7 @@ impl ReschedulePreview {
             rows,
         })
     }
-}
+        }
 
 /// A file action deferred because the current project has unsaved changes.
 #[derive(Clone)]
@@ -376,7 +376,7 @@ enum PendingFileAction {
     Close,
     /// Open this project once the user resolves the unsaved changes.
     Open(PathBuf),
-}
+        }
 
 /// The Cadence application state.
 #[allow(dead_code)]
@@ -545,7 +545,7 @@ pub struct CadenceApp {
     visible_columns: BTreeSet<SortKey>,
     /// WBS nodes the user has collapsed in the outline (UI-only state).
     collapsed_wbs: HashSet<WbsId>,
-}
+        }
 
 /// Whether an activity passes the table filter: a case-insensitive substring
 /// match on the name (an empty needle matches everything), and — when
@@ -562,7 +562,7 @@ fn activity_matches_filter(
                 .and_then(|s| s.activity(activity.id))
                 .map(|r| r.critical)
                 .unwrap_or(false))
-}
+        }
 
 impl CadenceApp {
     /// Return the design tokens for the current theme.
@@ -709,14 +709,14 @@ impl CadenceApp {
             show_split_gantt: true,
             visible_columns: SortKey::all_columns(),
             collapsed_wbs: HashSet::new(),
-        }
+    }
     }
 
     /// Start a background update check unless one is already running.
     fn start_update_check(&mut self) {
         if self.update_receiver.is_some() {
             return;
-        }
+    }
         let (sender, receiver) = mpsc::channel();
         std::thread::spawn(move || {
             let status = update_check::check_for_update();
@@ -743,7 +743,7 @@ impl CadenceApp {
         if should_clear {
             self.status_message = None;
             self.status_shown_at = None;
-        }
+    }
     }
 
     fn recompute(&mut self) {
@@ -805,7 +805,7 @@ impl CadenceApp {
         match self.selected {
             Some(id) if self.project.activity(id).is_some() => self.select(id),
             _ => self.selected = None,
-        }
+    }
     }
 
     /// Run the programme audit with the applied status date.
@@ -867,16 +867,16 @@ impl CadenceApp {
                 .budget_at_completion
                 .map(format_money)
                 .unwrap_or_default();
-        }
+    }
         self.link_predecessor = Some(id);
         if self.link_successor == Some(id) {
             self.link_successor = None;
-        }
+    }
         if let Some(activity) = self.project.activity(id) {
             self.owner_buffer = activity.owner.clone().unwrap_or_default();
             self.promised_buffer = activity.promised;
             self.delay_reason_buffer = activity.delay_reason.clone().unwrap_or_default();
-        }
+    }
     }
 
     /// Apply the field-planning buffers through the command layer.
@@ -912,7 +912,7 @@ impl CadenceApp {
                 self.set_status(error);
                 return;
             }
-        }
+    }
         if self.promised_buffer != activity.promised || delay_reason != activity.delay_reason {
             if let Err(error) = self.stack.execute(
                 &mut self.project,
@@ -925,7 +925,7 @@ impl CadenceApp {
                 self.set_status(error);
                 return;
             }
-        }
+    }
         self.recompute();
     }
 
@@ -948,7 +948,7 @@ impl CadenceApp {
         let (low, high) = if from <= to { (from, to) } else { (to, from) };
         for id in &ids[low..=high] {
             self.multi_selected.insert(*id);
-        }
+    }
         self.select(end);
     }
 
@@ -958,7 +958,7 @@ impl CadenceApp {
             self.multi_selected.remove(&id);
         } else {
             self.multi_selected.insert(id);
-        }
+    }
     }
 
     /// Delete the multi-selection as one undoable step.
@@ -974,7 +974,7 @@ impl CadenceApp {
     fn delete_activities(&mut self, ids: Vec<ActivityId>) {
         if ids.is_empty() {
             return;
-        }
+    }
         let command = cadence_commands::DeleteActivities { ids };
         if self
             .stack
@@ -991,7 +991,7 @@ impl CadenceApp {
             self.multi_selected.clear();
             self.refresh_selection();
             self.set_status("Selected activities deleted.");
-        }
+    }
     }
 
     /// Change an existing relationship's type, issuing the undoable command
@@ -1057,7 +1057,7 @@ impl CadenceApp {
             Err(error) => {
                 self.set_status(format!("Cannot add link: {error}"));
             }
-        }
+    }
     }
 
     fn apply_edits(&mut self) {
@@ -1071,7 +1071,7 @@ impl CadenceApp {
         if self.name_buffer.trim().is_empty() {
             self.set_status("The activity name must not be empty.");
             return;
-        }
+    }
         if self.name_buffer != activity.name {
             if let Err(error) = self.stack.execute(
                 &mut self.project,
@@ -1083,7 +1083,7 @@ impl CadenceApp {
                 self.set_status(error);
                 return;
             }
-        }
+    }
 
         match self.duration_buffer.trim() {
             "" => {}
@@ -1104,7 +1104,7 @@ impl CadenceApp {
                     return;
                 }
             },
-        }
+    }
 
         let constraint = match self.constraint_kind {
             0 => Constraint::AsSoonAsPossible,
@@ -1133,7 +1133,7 @@ impl CadenceApp {
                 self.set_status(error);
                 return;
             }
-        }
+    }
 
         let percent = match parse_percent(self.progress_buffer.trim()) {
             Some(percent) => percent,
@@ -1153,7 +1153,7 @@ impl CadenceApp {
                 self.set_status(error);
                 return;
             }
-        }
+    }
 
         let budget = match parse_optional_money(self.budget_buffer.trim()) {
             Some(value) => value,
@@ -1173,7 +1173,7 @@ impl CadenceApp {
                 self.set_status(error);
                 return;
             }
-        }
+    }
 
         let cost = match parse_optional_money(self.actual_cost_buffer.trim()) {
             Some(value) => value,
@@ -1193,7 +1193,7 @@ impl CadenceApp {
                 self.set_status(error);
                 return;
             }
-        }
+    }
 
         let actual_start = match parse_optional_date(self.actual_start_buffer.trim()) {
             Some(date) => date,
@@ -1221,7 +1221,7 @@ impl CadenceApp {
                 self.set_status(error);
                 return;
             }
-        }
+    }
 
         self.recompute();
         self.select(id);
@@ -1235,7 +1235,7 @@ impl CadenceApp {
             self.resource_capacity_buffer = resource.capacity.to_string();
             self.resource_cost_rate_buffer = format_money(resource.cost_per_unit);
             self.resource_kind_index = resource_kind_index(resource.kind);
-        }
+    }
     }
 
     /// Apply the resource editor buffers through the command stack.
@@ -1255,7 +1255,7 @@ impl CadenceApp {
             {
                 self.set_status(error);
             }
-        }
+    }
 
         if let Ok(capacity) = self.resource_capacity_buffer.trim().parse::<u32>() {
             if capacity != resource.capacity {
@@ -1266,7 +1266,7 @@ impl CadenceApp {
                     self.set_status(error);
                 }
             }
-        }
+    }
 
         // The rate is typed as a decimal amount, like every other money field.
         if let Some(cost_rate) = parse_money(self.resource_cost_rate_buffer.trim()) {
@@ -1281,7 +1281,7 @@ impl CadenceApp {
                     self.set_status(error);
                 }
             }
-        }
+    }
 
         let kind = resource_kind_from_index(self.resource_kind_index);
         if kind != resource.kind {
@@ -1291,7 +1291,7 @@ impl CadenceApp {
             {
                 self.set_status(error);
             }
-        }
+    }
 
         self.recompute();
         self.select_resource(id);
@@ -1303,7 +1303,7 @@ impl CadenceApp {
         if name.is_empty() {
             self.set_status("Resource name must not be empty");
             return;
-        }
+    }
         let id = self.project.next_resource_id();
         let command = CreateResource {
             id,
@@ -1338,7 +1338,7 @@ impl CadenceApp {
                 self.select_resource(id);
             }
             Err(error) => self.set_status(error),
-        }
+    }
     }
 
     /// Create a new activity and select it (used by the toolbar button).
@@ -1354,7 +1354,7 @@ impl CadenceApp {
             self.select(id);
             self.scroll_to_selection = true;
             self.set_status("Activity created.");
-        }
+    }
     }
 
     /// Load the calendar editor buffers for the given calendar.
@@ -1370,7 +1370,7 @@ impl CadenceApp {
                 .map(|date| date.to_string())
                 .collect::<Vec<_>>()
                 .join(", ");
-        }
+    }
     }
 
     /// Create a calendar from the editor buffers.
@@ -1379,7 +1379,7 @@ impl CadenceApp {
         if name.is_empty() {
             self.set_status("Calendar name must not be empty");
             return;
-        }
+    }
         let Some(calendar) = self.build_calendar() else {
             return;
         };
@@ -1391,7 +1391,7 @@ impl CadenceApp {
                 self.select_calendar(id);
             }
             Err(error) => self.set_status(error),
-        }
+    }
     }
 
     /// Apply the editor buffers to the selected calendar.
@@ -1414,7 +1414,7 @@ impl CadenceApp {
             } else {
                 changed = true;
             }
-        }
+    }
 
         let Some(calendar) = self.build_calendar() else {
             return;
@@ -1428,13 +1428,13 @@ impl CadenceApp {
             } else {
                 changed = true;
             }
-        }
+    }
 
         if changed {
             // A working-day change moves every activity that uses the
             // calendar, so the schedule must be recomputed.
             self.recompute();
-        }
+    }
         self.select_calendar(id);
     }
 
@@ -1458,7 +1458,7 @@ impl CadenceApp {
                     .count()
             ));
             return;
-        }
+    }
         match self
             .stack
             .execute(&mut self.project, Box::new(DeleteCalendar { id }))
@@ -1468,7 +1468,7 @@ impl CadenceApp {
                 self.status_message = None;
             }
             Err(error) => self.set_status(error),
-        }
+    }
     }
 
     /// Build a calendar from the editor buffers, reporting why it is invalid.
@@ -1476,7 +1476,7 @@ impl CadenceApp {
         if !self.calendar_weekdays.iter().any(|working| *working) {
             self.set_status("A calendar needs at least one working day");
             return None;
-        }
+    }
         let mut calendar = Calendar::new(self.calendar_weekdays).ok()?;
         for entry in self.calendar_holidays_buffer.split(',') {
             let trimmed = entry.trim();
@@ -1488,7 +1488,7 @@ impl CadenceApp {
                 return None;
             };
             calendar = calendar.with_holiday(date);
-        }
+    }
         Some(calendar)
     }
 
@@ -1508,7 +1508,7 @@ impl CadenceApp {
                 self.recompute();
             }
             Err(error) => self.set_status(error),
-        }
+    }
     }
 
     /// Assign the given resource to the selected activity, or remove it.
@@ -1547,7 +1547,7 @@ impl CadenceApp {
                 self.recompute();
             }
             Err(error) => self.set_status(error),
-        }
+    }
     }
 
     /// Compute the leveled schedule and report what it would change.
@@ -1580,7 +1580,7 @@ impl CadenceApp {
                 }
             }
             Err(error) => self.leveling_report = Some(format!("Leveling failed: {error}")),
-        }
+    }
     }
 
     /// Apply the leveled dates as start-no-earlier-than constraints.
@@ -1613,7 +1613,7 @@ impl CadenceApp {
                 self.leveling_report = Some(format!("Applied leveling to {applied} activities"));
             }
             Err(error) => self.set_status(error),
-        }
+    }
     }
 
     /// Capture the current schedule as a new baseline.
@@ -1636,7 +1636,7 @@ impl CadenceApp {
                 self.baseline_name_buffer.clear();
             }
             Err(error) => self.set_status(error),
-        }
+    }
     }
 
     /// Print the project report to a PDF chosen with a native save dialog.
@@ -1658,7 +1658,7 @@ impl CadenceApp {
             Err(error) => {
                 self.set_status(format!("Cannot write {}: {error}", path.display()));
             }
-        }
+    }
     }
 
     /// Write the Markdown report next to the working directory.
@@ -1670,7 +1670,7 @@ impl CadenceApp {
         match self.project_path.clone() {
             Some(path) => self.save_to(path),
             None => self.save_as_dialog(),
-        }
+    }
     }
 
     /// Write the project to `path` and remember it as the current file.
@@ -1684,7 +1684,7 @@ impl CadenceApp {
             Err(error) => {
                 self.set_status(format!("Cannot save: {error}"));
             }
-        }
+    }
     }
 
     /// Prompt for a path and save there.
@@ -1702,7 +1702,7 @@ impl CadenceApp {
         {
             self.save_to(path.clone());
             self.add_to_recent_files(path);
-        }
+    }
     }
 
     /// Prompt for a project file and open it.
@@ -1712,7 +1712,7 @@ impl CadenceApp {
             .pick_file()
         {
             self.open_from(path);
-        }
+    }
     }
 
     /// Load a project from `path`, replacing the current one.
@@ -1724,7 +1724,7 @@ impl CadenceApp {
         if self.dirty && self.pending_file_action.is_none() {
             self.pending_file_action = Some(PendingFileAction::Open(path));
             return;
-        }
+    }
         self.load_from_path(path);
     }
 
@@ -1765,7 +1765,7 @@ impl CadenceApp {
             Err(error) => {
                 self.set_status(format!("Cannot open: {error}"));
             }
-        }
+    }
     }
 
     /// Run the file action that was waiting on the unsaved-changes dialog.
@@ -1776,7 +1776,7 @@ impl CadenceApp {
             }
             Some(PendingFileAction::Open(path)) => self.load_from_path(path),
             None => {}
-        }
+    }
     }
 
     /// Add a file to the recent files list, keeping only the 10 most recent.
@@ -1788,7 +1788,7 @@ impl CadenceApp {
         // Keep only 10 most recent
         if self.recent_files.len() > 10 {
             self.recent_files.truncate(10);
-        }
+    }
     }
 
     fn save_report(&mut self) {
@@ -1803,7 +1803,7 @@ impl CadenceApp {
         match std::fs::write(&path, report) {
             Ok(()) => self.set_status(format!("Report written to {}", path.display())),
             Err(error) => self.set_status(format!("Cannot write {}: {error}", path.display())),
-        }
+    }
     }
 
     /// Remove the selected baseline from the project.
@@ -1821,7 +1821,7 @@ impl CadenceApp {
                 self.status_message = None;
             }
             Err(error) => self.set_status(error),
-        }
+    }
     }
 
     /// Rebuild the sorted snapshot only when the data or sort order changed.
@@ -1836,7 +1836,7 @@ impl CadenceApp {
             && self.sorted_cache.len() == self.project.activities.len()
         {
             return;
-        }
+    }
         let mut activities = self.project.activities.clone();
         let schedule = self.schedule.as_ref().ok();
         let sort_key = self.sort_key;
@@ -1919,7 +1919,7 @@ impl CadenceApp {
             && self.table_rows_sorted_ascending == self.sort_ascending
         {
             return;
-        }
+    }
         if active {
             let needle = filter.to_ascii_lowercase();
             let schedule = self.schedule.as_ref().ok();
@@ -1934,7 +1934,7 @@ impl CadenceApp {
             self.table_rows = rows;
         } else {
             self.table_rows.clear();
-        }
+    }
         self.table_rows_active = active;
         self.table_rows_edit_version = self.edit_version;
         self.table_rows_filter = filter.to_string();
@@ -1951,7 +1951,7 @@ impl CadenceApp {
             &self.table_rows
         } else {
             &self.sorted_cache
-        }
+    }
     }
 
     /// Whether an activity is visible given the current WBS collapse state.
@@ -1965,7 +1965,7 @@ impl CadenceApp {
                 return false;
             }
             current = self.project.wbs.node(parent).and_then(|n| n.parent);
-        }
+    }
         true
     }
 
@@ -1973,7 +1973,7 @@ impl CadenceApp {
     fn toggle_wbs_collapse(&mut self, node: WbsId) {
         if !self.collapsed_wbs.remove(&node) {
             self.collapsed_wbs.insert(node);
-        }
+    }
     }
 
     /// How many activities the given filter would show, for the row counter in
@@ -1987,7 +1987,7 @@ impl CadenceApp {
             .filter(|activity| activity_matches_filter(activity, &needle, critical_only, schedule))
             .count()
     }
-}
+        }
 
 impl eframe::App for CadenceApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
@@ -2016,7 +2016,7 @@ impl eframe::App for CadenceApp {
             if self.pending_file_action.is_none() {
                 self.pending_file_action = Some(PendingFileAction::Close);
             }
-        }
+    }
 
         // A modal owns the keyboard while it is open: no global shortcut acts
         // behind it, and Escape dismisses it. This covers the confirm windows
@@ -2071,7 +2071,7 @@ impl eframe::App for CadenceApp {
             } else {
                 self.show_crash_dialog = false;
             }
-        }
+    }
 
         // Poll the background update check at a low rate; the network request
         // itself happens on its own thread so the UI never blocks.
@@ -2088,7 +2088,7 @@ impl eframe::App for CadenceApp {
                     );
                 }
             }
-        }
+    }
 
         // Periodic auto-update check: once per day (24 hours), avoiding
         // excessive GitHub API calls. Runs on a background thread so the
@@ -2106,14 +2106,14 @@ impl eframe::App for CadenceApp {
                 let status = update_check::check_for_update();
                 let _ = sender.send(status);
             });
-        }
+    }
 
         if !dialog_open
             && ctx.input(|input| input.key_pressed(egui::Key::D) && input.modifiers.ctrl)
         {
             self.dark = !self.dark;
             apply_theme(&ctx, self.dark);
-        }
+    }
 
         // Ctrl+S saves, Ctrl+O opens. These act everywhere, including while a
         // text field has focus (a save never touches the focused text), but
@@ -2122,12 +2122,12 @@ impl eframe::App for CadenceApp {
             && ctx.input(|input| input.key_pressed(egui::Key::S) && input.modifiers.ctrl)
         {
             self.save_or_prompt();
-        }
+    }
         if !dialog_open
             && ctx.input(|input| input.key_pressed(egui::Key::O) && input.modifiers.ctrl)
         {
             self.open_dialog();
-        }
+    }
         if !dialog_open
             && ctx.input(|input| input.key_pressed(egui::Key::N) && input.modifiers.ctrl)
         {
@@ -2143,14 +2143,14 @@ impl eframe::App for CadenceApp {
                 self.scroll_to_selection = true;
                 self.set_status("Activity created.");
             }
-        }
+    }
         // Ctrl+W: request close, routed through the same unsaved-changes guard
         // as the window's own close button.
         if !dialog_open
             && ctx.input(|input| input.key_pressed(egui::Key::W) && input.modifiers.ctrl)
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-        }
+    }
 
         // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y: undo and redo from any view. Skip
         // while a text field is focused, where the field's own undo applies.
@@ -2171,12 +2171,12 @@ impl eframe::App for CadenceApp {
             let _ = self.stack.undo(&mut self.project);
             self.recompute();
             self.refresh_selection();
-        }
+    }
         if redo_requested {
             let _ = self.stack.redo(&mut self.project);
             self.recompute();
             self.refresh_selection();
-        }
+    }
 
         // Refresh the cached sort order once per edit, not once per frame,
         // and re-derive the (filtered) table rows from it.
@@ -2218,12 +2218,12 @@ impl eframe::App for CadenceApp {
                     _ => ViewMode::Diary,
                 };
             }
-        }
+    }
 
         // F1 opens the keyboard reference from every view.
         if !dialog_open && ctx.input(|input| input.key_pressed(egui::Key::F1)) {
             self.show_shortcuts_dialog = true;
-        }
+    }
 
         // Gantt zoom from the keyboard; Ctrl+wheel remains the pointer path.
         if self.view_mode == ViewMode::Gantt && !ctx.text_edit_focused() && !dialog_open {
@@ -2246,7 +2246,7 @@ impl eframe::App for CadenceApp {
             if zoom_reset {
                 self.pixels_per_day = 14.0;
             }
-        }
+    }
 
         // Up/Down select the previous/next activity in the Table view. Skip
         // while a text field or a combo popup is using the keyboard.
@@ -2284,7 +2284,7 @@ impl eframe::App for CadenceApp {
             if escape_pressed && !self.multi_selected.is_empty() {
                 self.multi_selected.clear();
             }
-        }
+    }
 
         // Consume a captured Gantt screenshot, if one was requested, and write
         // the resulting PDF to the path chosen by the user.
@@ -2321,7 +2321,7 @@ impl eframe::App for CadenceApp {
             } else {
                 ctx.request_repaint();
             }
-        }
+    }
 
         // ─── TOP BAR: Three-zone layout ───
         // Zone 1: Menu bar (File / Edit / Window / Help)
@@ -4908,7 +4908,7 @@ impl eframe::App for CadenceApp {
                     });
                 });
             }
-        }
+    }
 
         if self.confirm_delete_activity {
             let mut open = true;
@@ -4946,7 +4946,7 @@ impl eframe::App for CadenceApp {
             if !open {
                 self.confirm_delete_activity = false;
             }
-        }
+    }
 
         if self.confirm_delete_selection {
             let mut open = true;
@@ -4978,7 +4978,7 @@ impl eframe::App for CadenceApp {
             if !open {
                 self.confirm_delete_selection = false;
             }
-        }
+    }
 
         if self.confirm_leveling {
             let mut open = true;
@@ -5008,7 +5008,7 @@ impl eframe::App for CadenceApp {
             if !open {
                 self.confirm_leveling = false;
             }
-        }
+    }
 
         if self.confirm_delete_relationship {
             let mut open = true;
@@ -5045,7 +5045,7 @@ impl eframe::App for CadenceApp {
             if !open {
                 self.confirm_delete_relationship = false;
             }
-        }
+    }
 
         if self.confirm_delete_resource {
             let mut open = true;
@@ -5086,7 +5086,7 @@ impl eframe::App for CadenceApp {
                 self.confirm_delete_resource = false;
                 self.pending_delete_resource_id = None;
             }
-        }
+    }
 
         if self.confirm_delete_baseline {
             let mut open = true;
@@ -5127,7 +5127,7 @@ impl eframe::App for CadenceApp {
                 self.confirm_delete_baseline = false;
                 self.pending_delete_baseline_id = None;
             }
-        }
+    }
 
         if self.confirm_delete_note {
             let mut open = true;
@@ -5167,7 +5167,7 @@ impl eframe::App for CadenceApp {
                 self.confirm_delete_note = false;
                 self.pending_delete_note_id = None;
             }
-        }
+    }
 
         if self.confirm_delete_production {
             let mut open = true;
@@ -5207,7 +5207,7 @@ impl eframe::App for CadenceApp {
                 self.confirm_delete_production = false;
                 self.pending_delete_production_id = None;
             }
-        }
+    }
 
         if let Some(action) = self.pending_file_action.clone() {
             let prompt = match &action {
@@ -5249,7 +5249,7 @@ impl eframe::App for CadenceApp {
             if !open {
                 self.pending_file_action = None;
             }
-        }
+    }
 
         if self.show_crash_dialog {
             let mut open = true;
@@ -5304,7 +5304,7 @@ impl eframe::App for CadenceApp {
             if !self.show_crash_dialog && !self.crash_log.is_empty() {
                 crash::clear_log();
             }
-        }
+    }
 
         if self.show_update_dialog {
             let mut open = true;
@@ -5351,7 +5351,7 @@ impl eframe::App for CadenceApp {
             if !open {
                 self.show_update_dialog = false;
             }
-        }
+    }
 
         if self.show_shortcuts_dialog {
             let mut open = true;
@@ -5410,7 +5410,7 @@ impl eframe::App for CadenceApp {
             if !open {
                 self.show_shortcuts_dialog = false;
             }
-        }
+    }
 
         if self.show_release_notes {
             let mut open = true;
@@ -5487,9 +5487,9 @@ impl eframe::App for CadenceApp {
             if !open {
                 self.show_release_notes = false;
             }
-        }
     }
-}
+    }
+        }
 
 fn parse_date(value: &str) -> Option<Date> {
     let mut parts = value.split('-');
@@ -5501,7 +5501,7 @@ fn parse_date(value: &str) -> Option<Date> {
     }
     let month = Month::try_from(month).ok()?;
     Date::from_calendar_date(year, month, day).ok()
-}
+        }
 
 /// Draw a labelled date field: a label, a single-line text edit for `buffer`,
 /// and — when `buffer` is non-empty but not a valid `YYYY-MM-DD` — an inline
@@ -5519,7 +5519,7 @@ fn to_jiff(date: Date) -> Option<jiff::civil::Date> {
         date.day() as i8,
     )
     .ok()
-}
+        }
 
 /// Convert a `jiff::civil::Date` chosen in the picker back to `time::Date`.
 /// Falls back to `today()` only for a date Cadence cannot represent.
@@ -5527,7 +5527,7 @@ fn from_jiff(date: jiff::civil::Date) -> Date {
     let month = Month::try_from(date.month() as u8).unwrap_or(Month::January);
     Date::from_calendar_date(date.year() as i32, month, date.day() as u8)
         .unwrap_or_else(|_| today())
-}
+        }
 
 fn date_field(ui: &mut Ui, dark: bool, label: &str, buffer: &mut String) -> Option<Date> {
     ui.label(label);
@@ -5545,7 +5545,7 @@ fn date_field(ui: &mut Ui, dark: bool, label: &str, buffer: &mut String) -> Opti
             {
                 *buffer = from_jiff(picked).to_string();
             }
-        }
+    }
     });
     let trimmed = buffer.trim();
     let date = parse_date(trimmed);
@@ -5554,7 +5554,7 @@ fn date_field(ui: &mut Ui, dark: bool, label: &str, buffer: &mut String) -> Opti
         ui.colored_label(palette.critical, "Invalid date (YYYY-MM-DD).");
     }
     date
-}
+        }
 
 /// Describe how one activity is delayed by resource leveling.
 fn describe_delay(activity: &cadence_core::engine::LeveledActivity) -> String {
@@ -5562,12 +5562,12 @@ fn describe_delay(activity: &cadence_core::engine::LeveledActivity) -> String {
         "activity {} by {} working days ({} to {})",
         activity.id, activity.delay, activity.original_start, activity.start
     )
-}
+        }
 
 /// Today, as a date, used as the default baseline capture and status date.
 fn today() -> Date {
     time::OffsetDateTime::now_utc().date()
-}
+        }
 
 /// Turn a project name into a safe file stem for exported reports.
 fn file_stem(name: &str) -> String {
@@ -5577,7 +5577,7 @@ fn file_stem(name: &str) -> String {
             stem.push(character);
         } else if !stem.ends_with('-') {
             stem.push('-');
-        }
+    }
     }
     let trimmed = stem.trim_matches(['-', '_']).to_string();
     if trimmed.is_empty() {
@@ -5585,12 +5585,12 @@ fn file_stem(name: &str) -> String {
     } else {
         trimmed
     }
-}
+        }
 
 /// Render a date for a table cell, using `-` when it is not known.
 fn date_text(date: Option<Date>) -> String {
     date.map_or_else(|| "-".to_string(), |date| date.to_string())
-}
+        }
 
 /// Signed whole-day difference between a baseline date and the current date.
 ///
@@ -5599,7 +5599,7 @@ fn day_variance(baseline: Option<Date>, current: Option<Date>) -> Option<i64> {
     Some(i64::from(
         current?.to_julian_day() - baseline?.to_julian_day(),
     ))
-}
+        }
 
 /// Render a signed variance, prefixing positive values with `+`.
 fn variance_text(value: Option<i64>) -> String {
@@ -5608,7 +5608,7 @@ fn variance_text(value: Option<i64>) -> String {
         Some(value) if value > 0 => format!("+{value}"),
         Some(value) => value.to_string(),
     }
-}
+        }
 
 #[cfg(test)]
 mod gantt_print_tests {
@@ -5619,7 +5619,7 @@ mod gantt_print_tests {
         let bytes = pdf.to_bytes();
         assert!(!bytes.is_empty());
     }
-}
+        }
 
 /// Colour a variance: delays and overspends in red, improvements in green.
 ///
@@ -5633,13 +5633,13 @@ fn variance_color(value: Option<i64>, dark: bool) -> Color32 {
         (Some(value), false) if value < 0 => Color32::from_rgb(0x1E, 0x84, 0x49),
         _ => design::palette(dark).grid,
     }
-}
+        }
 
 /// Format money held in minor units as a decimal amount.
 fn format_money(minor_units: i64) -> String {
     let units = minor_units as f64 / 100.0;
     format!("{units:.2}")
-}
+        }
 
 /// Parse a decimal amount into minor currency units.
 ///
@@ -5650,7 +5650,7 @@ fn parse_money(text: &str) -> Option<i64> {
         return None;
     }
     Some((value * 100.0).round() as i64)
-}
+        }
 
 /// Parse an optional money field: `Some(None)` for empty (clear the value),
 /// `Some(Some(v))` for a value, `None` when text is present but not a number.
@@ -5660,7 +5660,7 @@ fn parse_optional_money(text: &str) -> Option<Option<i64>> {
     } else {
         parse_money(text).map(Some)
     }
-}
+        }
 
 /// Parse an optional date field: `Some(None)` for empty, `Some(Some(date))` for
 /// a value, `None` when text is present but not a date.
@@ -5670,7 +5670,7 @@ fn parse_optional_date(text: &str) -> Option<Option<Date>> {
     } else {
         parse_date(text).map(Some)
     }
-}
+        }
 
 /// Parse a percentage into basis points (0 to 10000).
 ///
@@ -5684,7 +5684,7 @@ fn parse_percent(text: &str) -> Option<Option<i64>> {
         return None;
     }
     Some(Some((value * 100.0).round() as i64))
-}
+        }
 
 /// Format a performance index, or `n/a` when it is undefined.
 fn format_index(value: Option<f64>) -> String {
@@ -5692,7 +5692,7 @@ fn format_index(value: Option<f64>) -> String {
         Some(value) => format!("{value:.3}"),
         None => "n/a".to_string(),
     }
-}
+        }
 
 /// One row of the baseline variance table.
 struct VarianceRow {
@@ -5704,7 +5704,7 @@ struct VarianceRow {
     baseline_finish: Option<Date>,
     current_start: Option<Date>,
     current_finish: Option<Date>,
-}
+        }
 
 impl VarianceRow {
     fn duration_variance(&self) -> i64 {
@@ -5718,7 +5718,7 @@ impl VarianceRow {
     fn finish_variance(&self) -> Option<i64> {
         day_variance(self.baseline_finish, self.current_finish)
     }
-}
+        }
 
 /// Build one variance row per activity, pairing the baseline with the schedule.
 fn variance_rows(project: &Project, schedule: &Schedule, baseline: &Baseline) -> Vec<VarianceRow> {
@@ -5743,7 +5743,7 @@ fn variance_rows(project: &Project, schedule: &Schedule, baseline: &Baseline) ->
             }
         })
         .collect()
-}
+        }
 
 /// Units of one resource that are committed on each day that uses it.
 fn resource_day_usage(
@@ -5760,10 +5760,10 @@ fn resource_day_usage(
             .fold(0u32, |sum, assignment| sum.saturating_add(assignment.units));
         if units > 0 {
             usage.insert(*date, units);
-        }
+    }
     }
     usage
-}
+        }
 
 /// One-line description of the Gantt canvas for screen readers and sighted
 /// users alike.
@@ -5778,7 +5778,7 @@ fn gantt_summary(schedule: &Schedule) -> String {
         schedule.project_start,
         schedule.project_finish
     )
-}
+        }
 
 /// What a Gantt bar drag changes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -5789,7 +5789,7 @@ enum GanttDragKind {
     ResizeStart,
     /// Move the finish edge.
     ResizeFinish,
-}
+        }
 
 /// An in-flight Gantt bar move/resize, held in the app state across frames.
 ///
@@ -5810,7 +5810,7 @@ struct GanttDrag {
     original_start: Date,
     /// Scheduled finish when the drag began.
     original_finish: Date,
-}
+        }
 
 /// Pointer distance, in pixels, from a bar edge that begins a resize.
 const GANTT_EDGE_GRAB_PX: f32 = 6.0;
@@ -5847,7 +5847,7 @@ fn gantt_hit_test(bar: Rect, pos: Pos2) -> Option<GanttDragKind> {
     } else {
         None
     }
-}
+        }
 
 /// Convert a horizontal pointer delta into a whole-day offset.
 ///
@@ -5859,7 +5859,7 @@ fn gantt_drag_day_delta(pixel_delta: f32, pixels_per_day: f32) -> i64 {
         return 0;
     }
     (pixel_delta / pixels_per_day).round() as i64
-}
+        }
 
 /// The status-bar reason a drag must be refused, when the activity is pinned.
 ///
@@ -5871,7 +5871,7 @@ fn gantt_drag_blocked(constraint: Constraint) -> Option<&'static str> {
         Constraint::MustFinishOn(_) => Some("activity is pinned with a must-finish-on constraint"),
         _ => None,
     }
-}
+        }
 
 /// Pixel rectangle of a draggable activity bar, or `None` when the bar has no
 /// single movable start/finish edge (summary roll-up or milestone).
@@ -5905,7 +5905,7 @@ fn gantt_draggable_bar(
         Pos2::new(x0, y + 2.0),
         Pos2::new(x0 + width, y + row_height - 2.0),
     ))
-}
+        }
 
 #[cfg(test)]
 mod gantt_bar_drag_tests {
@@ -5977,7 +5977,7 @@ mod gantt_bar_drag_tests {
         assert!(gantt_drag_blocked(Constraint::MustStartOn(day)).is_some());
         assert!(gantt_drag_blocked(Constraint::MustFinishOn(day)).is_some());
     }
-}
+        }
 
 #[allow(clippy::too_many_arguments)]
 fn render_gantt(
@@ -6004,7 +6004,7 @@ fn render_gantt(
         Err(error) => {
             ui.colored_label(tokens.critical, format!("Schedule error: {error}"));
             return false;
-        }
+    }
     };
     let origin = project.start_date;
     let finish = current_schedule.project_finish;
@@ -6022,21 +6022,21 @@ fn render_gantt(
             .clicked()
         {
             *pixels_per_day_out = (*pixels_per_day_out / 1.25).clamp(2.0, 60.0);
-        }
+    }
         if ui
             .button("+")
             .on_hover_text("Zoom in (Ctrl+Plus)")
             .clicked()
         {
             *pixels_per_day_out = (*pixels_per_day_out * 1.25).clamp(2.0, 60.0);
-        }
+    }
         if ui
             .button("Reset")
             .on_hover_text("Reset zoom (Ctrl+0)")
             .clicked()
         {
             *pixels_per_day_out = 14.0;
-        }
+    }
         ui.label(
             egui::RichText::new(format!("{:.0}%", *pixels_per_day_out / 14.0 * 100.0))
                 .font(egui::FontId::monospace(11.0)),
@@ -6095,7 +6095,7 @@ fn render_gantt(
                 .calendar
                 .add_working_days(week_origin, 5)
                 .unwrap_or(week_origin);
-        }
+    }
         let now = today();
         if now >= origin && now <= finish {
             let x =
@@ -6116,7 +6116,7 @@ fn render_gantt(
                 ACCENT,
                 egui::Stroke::NONE,
             ));
-        }
+    }
 
         // Non-working day shading: tint columns for weekends/holidays so the
         // working calendar reads off the canvas without extra chrome. Drawn
@@ -6142,7 +6142,7 @@ fn render_gantt(
                 Pos2::new(x_end, rect.max.y),
             );
             painter.rect_filled(col, 0.0, non_working_fill);
-        }
+    }
         // Shade the header band cells for non-working days (reinforces the
         // column tint in the date tick area).
         for day in 0..=(total_days as i32) {
@@ -6160,7 +6160,7 @@ fn render_gantt(
                 Pos2::new(x_end, rect.min.y + header_height),
             );
             painter.rect_filled(cell, 0.0, non_working_fill);
-        }
+    }
 
         // Drag-to-create dependency links.
         if response.drag_started() {
@@ -6170,7 +6170,7 @@ fn render_gantt(
                     *drag_start = Some(row);
                 }
             }
-        }
+    }
 
         if let Some(start_row) = *drag_start {
             if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
@@ -6187,7 +6187,7 @@ fn render_gantt(
                     );
                 }
             }
-        }
+    }
 
         if response.drag_stopped() {
             if let Some(active) = drag.take() {
@@ -6203,7 +6203,7 @@ fn render_gantt(
                     }
                 }
             }
-        }
+    }
 
         // Visible row window for virtualised drawing, computed before the drag
         // hit-test and the row loop so both share one range.
@@ -6222,7 +6222,7 @@ fn render_gantt(
             if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
                 active.day_offset = gantt_drag_day_delta(pos.x - active.origin_x, pixels_per_day);
             }
-        }
+    }
 
         // Bar drag start: hit-test against existing bars when the user presses
         // on a bar (not on the row background). We only start a bar drag if
@@ -6263,12 +6263,12 @@ fn render_gantt(
                     }
                 }
             }
-        }
+    }
 
         // Escape cancels an in-flight bar drag.
         if drag.is_some() && ui.ctx().input(|input| input.key_pressed(egui::Key::Escape)) {
             *drag = None;
-        }
+    }
 
         // Zoom with Ctrl + wheel. Consume the scroll so the parent
         // ScrollArea does not also scroll the canvas while we zoom.
@@ -6280,7 +6280,7 @@ fn render_gantt(
                 ui.ctx()
                     .input_mut(|input| input.smooth_scroll_delta = Vec2::ZERO);
             }
-        }
+    }
 
         // Two-tier timescale driven by the zoom level, from the shared
         // `timescale_bands` helper: a coarse band (month/quarter/year) on the
@@ -6312,7 +6312,7 @@ fn render_gantt(
                 [Pos2::new(x0, major_top), Pos2::new(x0, minor_bottom)],
                 egui::Stroke::new(1.0, palette.grid),
             );
-        }
+    }
         painter.line_segment(
             [
                 Pos2::new(rect.min.x, major_bottom),
@@ -6341,7 +6341,7 @@ fn render_gantt(
                 [Pos2::new(x0, major_bottom), Pos2::new(x0, minor_bottom)],
                 egui::Stroke::new(1.0, palette.grid),
             );
-        }
+    }
 
         for (row, activity) in activities.iter().enumerate().take(last_row).skip(first_row) {
             let y = rect.min.y + header_height + row as f32 * row_height;
@@ -6572,7 +6572,7 @@ fn render_gantt(
                     *selected_out = Some(activity.id);
                 }
             }
-        }
+    }
 
         // Drag preview: the bar's requested position while a move/resize is in
         // flight, in a warning-token colour so it never reads as a real bar.
@@ -6614,7 +6614,7 @@ fn render_gantt(
                     painter.line_segment([a, b], edge);
                 }
             }
-        }
+    }
 
         // Dependency arrows. Build the id→row index once per frame so the
         // relationship pass is O(relationships) instead of O(activities ×
@@ -6704,7 +6704,7 @@ fn render_gantt(
                 painter.rect_filled(badge, 2.0, palette.panel);
                 painter.galley(badge.left_top() + Vec2::new(3.0, 1.0), galley, palette.text);
             }
-        }
+    }
     });
 
     let mut changed = false;
@@ -6733,7 +6733,7 @@ fn render_gantt(
             } else {
                 *status_message = Some("Cannot add link".to_string());
             }
-        }
+    }
     }
     if let Some(active) = pending_reschedule {
         let delta = time::Duration::days(active.day_offset);
@@ -6803,15 +6803,15 @@ fn render_gantt(
             }
             *schedule = cadence_core::engine::schedule(project).map_err(|e| e.to_string());
             *status_message = Some("Cannot reschedule activity".to_string());
-        }
+    }
     }
     changed
-}
+        }
 
 /// Run the Cadence GUI with the given project.
 pub fn run(project: Project) -> Result<(), String> {
     run_with_path(project, None)
-}
+        }
 
 /// Run the Cadence GUI for a project loaded from `path` (if known).
 pub fn run_with_path(project: Project, path: Option<PathBuf>) -> Result<(), String> {
@@ -6827,7 +6827,7 @@ pub fn run_with_path(project: Project, path: Option<PathBuf>) -> Result<(), Stri
         }),
     )
     .map_err(|error| error.to_string())
-}
+        }
 
 #[cfg(test)]
 mod accessibility_tests {
@@ -6847,7 +6847,7 @@ mod accessibility_tests {
             } else {
                 ((scaled + 0.055) / 1.055).powf(2.4)
             }
-        }
+    }
         0.212_6 * channel(color.r()) + 0.715_2 * channel(color.g()) + 0.072_2 * channel(color.b())
     }
 
@@ -6877,7 +6877,7 @@ mod accessibility_tests {
                 ratio >= 4.5,
                 "{name} contrast ratio {ratio:.2} is below the WCAG AA body-text minimum of 4.5"
             );
-        }
+    }
         for (color, name) in [
             (dark_red, "dark-theme red"),
             (dark_green, "dark-theme green"),
@@ -6887,7 +6887,7 @@ mod accessibility_tests {
                 ratio >= 4.5,
                 "{name} contrast ratio {ratio:.2} is below the WCAG AA body-text minimum of 4.5"
             );
-        }
+    }
     }
 
     #[test]
@@ -6914,7 +6914,7 @@ mod accessibility_tests {
             let index = link_type_index(link_type);
             assert_eq!(link_type_from_index(index), link_type);
             assert!(LINK_TYPE_LABELS[index].contains(link_type.abbreviation()));
-        }
+    }
     }
 
     #[test]
@@ -6945,7 +6945,7 @@ mod accessibility_tests {
         assert!(summary.contains("critical"));
         assert!(summary.contains("Table view"));
     }
-}
+        }
 
 #[cfg(test)]
 mod report_export_tests {
@@ -6971,7 +6971,7 @@ mod report_export_tests {
         assert!(report.starts_with("# Export me"));
         assert_eq!(file_stem(&project.name), "Export-me");
     }
-}
+        }
 
 #[cfg(test)]
 mod status_message_tests {
@@ -7016,4 +7016,4 @@ mod status_message_tests {
         let severity = StatusSeverity::Warning;
         assert!(!should_auto_clear_status(severity, shown, much_later));
     }
-}
+        }
