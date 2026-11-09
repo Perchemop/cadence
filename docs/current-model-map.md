@@ -7,6 +7,20 @@ later session knows where it left off. Update it when the mapping changes.
 Provider order is **OpenCode free -> NVIDIA free -> paid API keys**, enforced by
 the failover plugin, so the structure never depends on which model is running.
 
+## Guide sync (§12.3)
+
+- `guide.md` revision **2026-11-09** — added **II.30 "Rust GUI/UX — stack
+  matching, tokens and evidence"** and cross-referenced it from II.27.11, K.7,
+  Appendix O and the canonical session prompt; header hierarchy corrected to
+  name `guide.md` the single source of truth.
+- Adopted in `DECISIONS.md` **D28**; the GUI stack is recorded in
+  `docs/design/gui-stack.md`; new deps (`egui_extras`, `egui-phosphor`, `jiff`)
+  are in `ATTRIBUTION.md`.
+- Global ruleset updated to match before continuing work:
+  `~/.config/opencode/AGENTS.md` (II.30 stanza + hierarchy wording) and
+  `~/.config/opencode/instructions/rust-skills.md` (GUI section). MCP config
+  needed no change (Context7 already enabled).
+
 ## Active provider
 
 - Tier 1 (OpenCode free): Not exhausted at last check

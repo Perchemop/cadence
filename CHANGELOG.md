@@ -41,6 +41,37 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 
 ## [Unreleased]
 
+### Added
+- Iconography (V1/V16): Phosphor Icons (MIT, via `egui-phosphor`) on the menu
+  bar, view tabs, tool cluster and inspector section headers, each beside its
+  text label so meaning is never icon-only. Font and licence in
+  `ATTRIBUTION.md`.
+- Calendar date picker (V12): `egui_extras::DatePickerButton` beside every
+  editable date field, which stays typeable (`YYYY-MM-DD`) with the inline
+  invalid-date hint. The 0.35 button works on `jiff::civil::Date`; a small
+  `jiff` dependency is added and dates convert to/from `time::Date` at the field
+  boundary (D28).
+- WBS expand/collapse (V7): `+`/`-` toggles in the outline's first column; a
+  collapsed node hides its descendants in both the table and the Gantt. UI-only
+  state, no project mutation.
+- Drag-to-move / resize Gantt bars (V8): a hit-tested drag issues the undoable
+  `RescheduleActivity` command; bars pinned by a mandatory constraint are
+  refused with a status message.
+- Progress and status-date lines (V8) on the Gantt chart.
+- Mandatory constraints: `Constraint::MustStartOn` / `MustFinishOn` in the model
+  and engine (pinning early and late dates, so total float is zero), MSPDI
+  import/export codes 8/9, the undoable `SetMandatoryConstraint` command with
+  tests, and an eight-kind constraint combo in the inspector.
+
+### Changed
+- Two-tier Gantt timescale (V6): the header is drawn from the shared
+  `cadence_core::engine::timescale_bands` helper — a coarse
+  (month/quarter/year) band over a fine (day/week) band — replacing the earlier
+  inline tick loop.
+- Reconciled with `guide.md` 2026-11-09: adopted **II.30** (Rust GUI/UX — stack
+  matching, tokens, a11y-as-code, evidence) in D28 and recorded the GUI stack in
+  `docs/design/gui-stack.md`.
+
 ### Fixed
 - Opening a project file no longer silently discards unsaved changes
   (2026-11-07 audit F1): File ▸ Open…, Ctrl+O and the recent-files list route

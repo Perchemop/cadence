@@ -19,5 +19,8 @@ serde.workspace = true
 serde_json.workspace = true
 time.workspace = true
 ureq.workspace = true
-egui_extras = "0.35.0"
+egui_extras = { version = "0.35.0", features = ["datepicker"] }
 egui-phosphor = "0.13.0"
+# The egui_extras date picker works on jiff calendar dates; Cadence keeps the
+# `time` crate for scheduling, so the two are converted at the field boundary.
+jiff = { version = "0.2", default-features = false, features = ["std"] }

@@ -40,7 +40,7 @@ use cadence_core::model::{
 use cadence_core::wbs::WbsId;
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
 use egui_extras::DatePickerButton;
-use time::{Date, Duration, Month};
+use time::{Date, Month};
 
 pub mod crash;
 pub mod design;
@@ -225,13 +225,15 @@ fn should_auto_clear_status(severity: StatusSeverity, shown_at: Instant, now: In
 /// lookahead-window link.
 type DiaryRow = (DailyNoteId, Date, String, Option<ActivityId>, Option<Date>);
 
-const CONSTRAINT_LABELS: [&str; 6] = [
+const CONSTRAINT_LABELS: [&str; 8] = [
     "As soon as possible",
     "As late as possible",
     "Start no earlier than",
     "Start no later than",
     "Finish no earlier than",
     "Finish no later than",
+    "Must start on",
+    "Must finish on",
 ];
 
 /// Labels for the resource kinds, in the order of [`ResourceKind`].
@@ -843,6 +845,8 @@ impl CadenceApp {
                 Constraint::StartNoLaterThan(date) => (3, Some(date)),
                 Constraint::FinishNoEarlierThan(date) => (4, Some(date)),
                 Constraint::FinishNoLaterThan(date) => (5, Some(date)),
+                Constraint::MustStartOn(date) => (6, Some(date)),
+                Constraint::MustFinishOn(date) => (7, Some(date)),
             };
             self.constraint_kind = kind;
             self.constraint_date_buffer = date.map(|d| d.to_string()).unwrap_or_default();
@@ -1114,7 +1118,9 @@ impl CadenceApp {
                     2 => Constraint::StartNoEarlierThan(date),
                     3 => Constraint::StartNoLaterThan(date),
                     4 => Constraint::FinishNoEarlierThan(date),
-                    _ => Constraint::FinishNoLaterThan(date),
+                    5 => Constraint::FinishNoLaterThan(date),
+                    6 => Constraint::MustStartOn(date),
+                    _ => Constraint::MustFinishOn(date),
                 }
             }
         };
@@ -3142,6 +3148,10 @@ impl eframe::App for CadenceApp {
                 let mut clicked_activity = None;
                 let mut context_menu_activity = None;
                 let mut header_clicked = None;
+                // WBS collapse toggles are collected here and applied after the
+                // panel closure, because the closure already holds an
+                // immutable borrow of `self.schedule`.
+                let mut toggle_wbs: Option<WbsId> = None;
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
                         ui.colored_label(
@@ -3315,7 +3325,7 @@ impl eframe::App for CadenceApp {
                                                             )
                                                             .clicked()
                                                         {
-                                                            self.toggle_wbs_collapse(node);
+                                                            toggle_wbs = Some(node);
                                                         }
                                                     } else {
                                                         ui.add_sized(
@@ -3555,6 +3565,9 @@ impl eframe::App for CadenceApp {
                                 }
                             });
                     });
+                if let Some(node) = toggle_wbs {
+                    self.toggle_wbs_collapse(node);
+                }
                 let gantt_activities: Vec<Activity> = self
                     .sorted_cache
                     .iter()
@@ -5488,9 +5501,45 @@ fn parse_date(value: &str) -> Option<Date> {
 /// hint beside the field so a parse failure shows next to its input instead
 /// of in a distant status bar. Returns `Some(date)` when the buffer parses,
 /// `None` when it is empty or invalid.
+/// Convert a `time::Date` to the `jiff::civil::Date` the `egui_extras` date
+/// picker works on. Both are proleptic Gregorian calendar dates, so the
+/// conversion is exact for every year Cadence accepts; `None` only for a year
+/// outside `i16` (unreachable from a real project).
+fn to_jiff(date: Date) -> Option<jiff::civil::Date> {
+    jiff::civil::Date::new(
+        date.year() as i16,
+        u8::from(date.month()) as i8,
+        date.day() as i8,
+    )
+    .ok()
+}
+
+/// Convert a `jiff::civil::Date` chosen in the picker back to `time::Date`.
+/// Falls back to `today()` only for a date Cadence cannot represent.
+fn from_jiff(date: jiff::civil::Date) -> Date {
+    let month = Month::try_from(date.month() as u8).unwrap_or(Month::January);
+    Date::from_calendar_date(date.year() as i32, month, date.day() as u8)
+        .unwrap_or_else(|_| today())
+}
+
 fn date_field(ui: &mut Ui, dark: bool, label: &str, buffer: &mut String) -> Option<Date> {
     ui.label(label);
-    ui.add(egui_extras::DatePickerButton::new(buffer));
+    // The value is editable both ways: type `YYYY-MM-DD` directly, or use the
+    // calendar button, which writes the chosen day back into the same buffer.
+    ui.horizontal(|ui| {
+        ui.text_edit_singleline(buffer);
+        if let Some(mut picked) = parse_date(buffer.trim())
+            .and_then(to_jiff)
+            .or_else(|| to_jiff(today()))
+        {
+            if ui
+                .add(DatePickerButton::new(&mut picked).id_salt(label))
+                .changed()
+            {
+                *buffer = from_jiff(picked).to_string();
+            }
+        }
+    });
     let trimmed = buffer.trim();
     let date = parse_date(trimmed);
     if !trimmed.is_empty() && date.is_none() {
@@ -6149,6 +6198,17 @@ fn render_gantt(
             }
         }
 
+        // Visible row window for virtualised drawing, computed before the drag
+        // hit-test and the row loop so both share one range.
+        let first_row = ((clip.min.y - rect.min.y - header_height) / row_height)
+            .floor()
+            .max(0.0) as usize;
+        let last_row = ((clip.max.y - rect.min.y - header_height) / row_height)
+            .ceil()
+            .max(0.0) as usize
+            + 1;
+        let last_row = last_row.min(activities.len());
+
         // In-flight drag handling: hit-test on pointer down, update offset on
         // pointer move, preview the new bar position.
         if let Some(active) = drag.as_mut() {
@@ -6214,15 +6274,6 @@ fn render_gantt(
                     .input_mut(|input| input.smooth_scroll_delta = Vec2::ZERO);
             }
         }
-
-        let first_row = ((clip.min.y - rect.min.y - header_height) / row_height)
-            .floor()
-            .max(0.0) as usize;
-        let last_row = ((clip.max.y - rect.min.y - header_height) / row_height)
-            .ceil()
-            .max(0.0) as usize
-            + 1;
-        let last_row = last_row.min(activities.len());
 
         // Two-tier timescale driven by the zoom level, from the shared
         // `timescale_bands` helper: a coarse band (month/quarter/year) on the

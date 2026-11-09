@@ -587,3 +587,47 @@ Consequences: the items above are the remaining §12.1 work; nothing here weaken
 the existing gates (branch protection, the II.29 scan, CI-before-try). The
 `"<App Name> Dev" <dev@example.com>` identity and the land-on-`main`-via-PR rule
 (guide II.20.4, II.25) are reaffirmed unchanged.
+
+## D28 — Adopt guide II.30 (Rust GUI/UX); the date picker uses jiff at the boundary (2026-11-09)
+
+Context: `guide.md` gained **II.30 "Rust GUI/UX — stack matching, tokens and
+evidence"** on 2026-11-09, and §12.3 makes guide synchronisation a process gate.
+Cadence is a native **egui/eframe 0.35** desktop app, so II.30 applies directly.
+
+Decision and adoption:
+
+- **Stack record.** The toolkit and its **resolved** versions are recorded in
+  [`docs/design/gui-stack.md`](docs/design/gui-stack.md) (egui/eframe 0.35.0,
+  egui_extras 0.35.0 + `datepicker`, egui-phosphor 0.13.0), together with the
+  shell shape and the layout model.
+- **One design path (II.30.1, II.30.14).** Cadence uses only the project's own
+  token module plus first-party `egui`/`egui_extras` and the `egui-phosphor`
+  icon font. No shadcn-egui, spaceui, egui-material3, Fluent, or any web/CSS
+  design system is added to this native GUI; those remain inspiration only.
+- **Tokens (II.30.6).** `crates/ui-egui/src/design.rs` is the single token
+  source (`palette(dark)`, type scale, spacing, accent). **Deviation recorded:**
+  the theme module lives at `design.rs`, not a `src/theme/` directory, so an
+  II.30.6 raw-colour grep gate must target `crates/ui-egui/src/design.rs` as the
+  excluded path — wiring that gate is queued.
+- **Iconography.** Adopt `egui-phosphor` (MIT) for command-bar, tab-strip and
+  inspector icons, each rendered beside its text label so meaning is never
+  icon-only (II.30.7.4); the glyph font and licence are recorded in
+  `ATTRIBUTION.md`.
+- **Date picker.** Adopt first-party `egui_extras::DatePickerButton` (II.30.4:
+  prefer first-party widgets) but **confirm the API from the resolved version**:
+  in 0.35 it works on `jiff::civil::Date`, not a string. Hence `jiff`
+  (Unlicense OR MIT, allow-listed in `deny.toml`) is added and dates are
+  converted to/from `time::Date` at the field boundary. The field stays
+  **typeable** (a text edit beside the calendar button), keeping full keyboard
+  entry and the inline invalid-date validation.
+- **No toolkit bump.** This slice does not change `egui`/`eframe`; per II.30.3 a
+  dependency move is its own green slice.
+
+Deviations / consequences:
+
+- `egui_kittest` visual assertions are **not** available yet: the shell renders
+  through `eframe::App::update`, not a plain `&mut Ui` (II.27.12 row 1). A seam
+  refactor to make that possible is its own slice; until then, evidence is the
+  built app reviewed hands-on and offscreen captures as CI artefacts, never
+  committed and with no pixel baselines (II.30.8).
+- The §12.1 version-UI and token-ledger deviations from D27 are unchanged.
