@@ -380,6 +380,7 @@ fn export_constraint(constraint: Constraint) -> (&'static str, Option<Date>) {
         Constraint::FinishNoLaterThan(date) => ("FNLT", Some(date)),
         Constraint::MustStartOn(date) => ("MSO", Some(date)),
         Constraint::MustFinishOn(date) => ("MFO", Some(date)),
+        _ => todo!(),
     }
 }
 
