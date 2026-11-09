@@ -624,7 +624,6 @@ impl Constraint {
             ("mso", Some(date)) => Some(Self::MustStartOn(date)),
             ("mfo", Some(date)) => Some(Self::MustFinishOn(date)),
             _ => None,
-            _ => None,
         }
     }
 }
