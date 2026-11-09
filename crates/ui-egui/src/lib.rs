@@ -847,6 +847,7 @@ impl CadenceApp {
                 Constraint::FinishNoLaterThan(date) => (5, Some(date)),
                 Constraint::MustStartOn(date) => (6, Some(date)),
                 Constraint::MustFinishOn(date) => (7, Some(date)),
+                _ => (0, None),
             };
             self.constraint_kind = kind;
             self.constraint_date_buffer = date.map(|d| d.to_string()).unwrap_or_default();
@@ -3428,6 +3429,9 @@ impl eframe::App for CadenceApp {
                         }
                     }
                 });
+                if let Some(node) = toggle_wbs {
+                    self.toggle_wbs_collapse(node);
+                }
                 if let Some(key) = header_clicked {
                     if self.sort_key == key {
                         self.sort_ascending = !self.sort_ascending;
@@ -3570,9 +3574,6 @@ impl eframe::App for CadenceApp {
                                 }
                             });
                     });
-                if let Some(node) = toggle_wbs {
-                    self.toggle_wbs_collapse(node);
-                }
                 let gantt_activities: Vec<Activity> = self
                     .sorted_cache
                     .iter()

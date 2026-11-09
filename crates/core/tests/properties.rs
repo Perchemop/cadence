@@ -345,6 +345,9 @@ proptest! {
                         prop_assert_eq!(item.early_finish, item.late_finish);
                         prop_assert_eq!(item.total_float, 0);
                     }
+                    _ => {
+                        prop_assert!(false, "unexpected constraint: {constraint:?}");
+                    }
                 }
             }
             Err(SchedError::ConstraintViolated { activity, .. }) => {
