@@ -3311,17 +3311,22 @@ impl eframe::App for CadenceApp {
                                                 None => {
                                                     let has_children = activity
                                                         .wbs
-                                                        .and_then(|node| self.project.wbs.node(node))
+                                                        .and_then(|node| {
+                                                            self.project.wbs.node(node)
+                                                        })
                                                         .map(|node| !node.children.is_empty())
                                                         .unwrap_or(false);
                                                     if has_children {
                                                         let node = activity.wbs.unwrap();
-                                                        let collapsed = self.collapsed_wbs.contains(&node);
-                                                        let glyph = if collapsed { "+" } else { "-" };
+                                                        let collapsed =
+                                                            self.collapsed_wbs.contains(&node);
+                                                        let glyph =
+                                                            if collapsed { "+" } else { "-" };
                                                         if ui
                                                             .add_sized(
                                                                 [widths[col], row_height],
-                                                                egui::Button::new(glyph).frame(false),
+                                                                egui::Button::new(glyph)
+                                                                    .frame(false),
                                                             )
                                                             .clicked()
                                                         {
@@ -6764,7 +6769,9 @@ fn render_gantt(
                 .ok()
                 .and_then(|s| s.activity(active.activity));
             let moved_as_requested = match (active.kind, actual) {
-                (GanttDragKind::ResizeFinish, Some(result)) => result.scheduled_finish == new_finish,
+                (GanttDragKind::ResizeFinish, Some(result)) => {
+                    result.scheduled_finish == new_finish
+                }
                 (_, Some(result)) => result.scheduled_start == new_start,
                 (_, None) => true,
             };

@@ -1725,7 +1725,10 @@ mod tests {
         );
         assert_eq!(Constraint::from_parts("asap", Some(jan(5))), None);
         assert_eq!(Constraint::from_parts("snet", None), None);
-        assert_eq!(Constraint::from_parts("mfo", Some(jan(5))), Some(Constraint::MustFinishOn(jan(5))));
+        assert_eq!(
+            Constraint::from_parts("mfo", Some(jan(5))),
+            Some(Constraint::MustFinishOn(jan(5)))
+        );
     }
 
     #[test]
