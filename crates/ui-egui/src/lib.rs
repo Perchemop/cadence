@@ -3570,6 +3570,8 @@ impl eframe::App for CadenceApp {
                                 }
                             });
                     });
+            });
+                let mut toggle_wbs: Option<WbsId> = None;
                 if let Some(node) = toggle_wbs {
                     self.toggle_wbs_collapse(node);
                 }
@@ -5990,7 +5992,7 @@ fn render_gantt(
     pixels_per_day_out: &mut f32,
     drag_link_type_index: &mut usize,
     drag: &mut Option<GanttDrag>,
-    status_date: Option<Date>,
+    _status_date: Option<Date>,
     dark: bool,
     selected_id: Option<ActivityId>,
     selected_out: &mut Option<ActivityId>,
