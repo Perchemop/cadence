@@ -591,6 +591,7 @@ impl Constraint {
             Self::FinishNoLaterThan(_) => "fnlt",
             Self::MustStartOn(_) => "mso",
             Self::MustFinishOn(_) => "mfo",
+            #[allow(unreachable_patterns)]
             _ => "unknown",
         }
     }
