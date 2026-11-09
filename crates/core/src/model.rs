@@ -558,6 +558,7 @@ fn weekday_index(date: Date) -> usize {
 /// allow, without moving any successor earlier. It never delays the project
 /// finish.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[non_exhaustive]
 pub enum Constraint {
     /// Schedule as early as the logic and lower-bound constraints allow.
     #[default]
@@ -590,6 +591,7 @@ impl Constraint {
             Self::FinishNoLaterThan(_) => "fnlt",
             Self::MustStartOn(_) => "mso",
             Self::MustFinishOn(_) => "mfo",
+            _ => "unknown",
         }
     }
 
@@ -621,6 +623,7 @@ impl Constraint {
             ("fnlt", Some(date)) => Some(Self::FinishNoLaterThan(date)),
             ("mso", Some(date)) => Some(Self::MustStartOn(date)),
             ("mfo", Some(date)) => Some(Self::MustFinishOn(date)),
+            _ => None,
             _ => None,
         }
     }
