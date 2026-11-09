@@ -553,6 +553,7 @@ fn export_constraint(constraint: Constraint) -> (i64, Option<Date>) {
         Constraint::FinishNoLaterThan(date) => (7, Some(date)),
         Constraint::MustStartOn(date) => (8, Some(date)),
         Constraint::MustFinishOn(date) => (9, Some(date)),
+        _ => todo!(),
     }
 }
 
