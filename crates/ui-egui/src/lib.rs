@@ -5,7 +5,7 @@
 //! source of truth; this crate only displays its results and routes edits
 //! through the command layer.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
@@ -37,7 +37,9 @@ use cadence_core::model::{
     LinkType, LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntryId, Project, ResourceId,
     ResourceKind,
 };
+use cadence_core::wbs::WbsId;
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
+use egui_extras::DatePickerButton;
 use time::{Date, Month};
 
 pub mod crash;
@@ -223,13 +225,15 @@ fn should_auto_clear_status(severity: StatusSeverity, shown_at: Instant, now: In
 /// lookahead-window link.
 type DiaryRow = (DailyNoteId, Date, String, Option<ActivityId>, Option<Date>);
 
-const CONSTRAINT_LABELS: [&str; 6] = [
+const CONSTRAINT_LABELS: [&str; 8] = [
     "As soon as possible",
     "As late as possible",
     "Start no earlier than",
     "Start no later than",
     "Finish no earlier than",
     "Finish no later than",
+    "Must start on",
+    "Must finish on",
 ];
 
 /// Labels for the resource kinds, in the order of [`ResourceKind`].
@@ -391,6 +395,8 @@ pub struct CadenceApp {
     view_mode: ViewMode,
     pixels_per_day: f32,
     drag_start: Option<usize>,
+    /// In-flight Gantt bar move/resize drag, if any (P3-interaction).
+    gantt_drag: Option<GanttDrag>,
     status_message: Option<String>,
     dirty: bool,
     /// Set when a Close or Open request must wait for the user to resolve
@@ -537,6 +543,8 @@ pub struct CadenceApp {
     table_rows_sorted_ascending: bool,
     show_split_gantt: bool,
     visible_columns: BTreeSet<SortKey>,
+    /// WBS nodes the user has collapsed in the outline (UI-only state).
+    collapsed_wbs: HashSet<WbsId>,
 }
 
 /// Whether an activity passes the table filter: a case-insensitive substring
@@ -587,6 +595,7 @@ impl CadenceApp {
             view_mode: ViewMode::Table,
             pixels_per_day: 14.0,
             drag_start: None,
+            gantt_drag: None,
             status_message: None,
             status_shown_at: None,
             dirty: false,
@@ -699,6 +708,7 @@ impl CadenceApp {
             table_rows_sorted_ascending: true,
             show_split_gantt: true,
             visible_columns: SortKey::all_columns(),
+            collapsed_wbs: HashSet::new(),
         }
     }
 
@@ -835,6 +845,9 @@ impl CadenceApp {
                 Constraint::StartNoLaterThan(date) => (3, Some(date)),
                 Constraint::FinishNoEarlierThan(date) => (4, Some(date)),
                 Constraint::FinishNoLaterThan(date) => (5, Some(date)),
+                Constraint::MustStartOn(date) => (6, Some(date)),
+                Constraint::MustFinishOn(date) => (7, Some(date)),
+                _ => (0, None),
             };
             self.constraint_kind = kind;
             self.constraint_date_buffer = date.map(|d| d.to_string()).unwrap_or_default();
@@ -1106,7 +1119,9 @@ impl CadenceApp {
                     2 => Constraint::StartNoEarlierThan(date),
                     3 => Constraint::StartNoLaterThan(date),
                     4 => Constraint::FinishNoEarlierThan(date),
-                    _ => Constraint::FinishNoLaterThan(date),
+                    5 => Constraint::FinishNoLaterThan(date),
+                    6 => Constraint::MustStartOn(date),
+                    _ => Constraint::MustFinishOn(date),
                 }
             }
         };
@@ -1940,6 +1955,28 @@ impl CadenceApp {
         }
     }
 
+    /// Whether an activity is visible given the current WBS collapse state.
+    fn wbs_visible(&self, activity: &Activity) -> bool {
+        let Some(node) = activity.wbs else {
+            return true;
+        };
+        let mut current = self.project.wbs.node(node).and_then(|n| n.parent);
+        while let Some(parent) = current {
+            if self.collapsed_wbs.contains(&parent) {
+                return false;
+            }
+            current = self.project.wbs.node(parent).and_then(|n| n.parent);
+        }
+        true
+    }
+
+    /// Toggle the collapsed state of a WBS node.
+    fn toggle_wbs_collapse(&mut self, node: WbsId) {
+        if !self.collapsed_wbs.remove(&node) {
+            self.collapsed_wbs.insert(node);
+        }
+    }
+
     /// How many activities the given filter would show, for the row counter in
     /// the filter bar. Counted without cloning, so the per-frame cost is one
     /// pass over the names while a filter is active.
@@ -2298,8 +2335,19 @@ impl eframe::App for CadenceApp {
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
 
+                    // Phosphor Icons (MIT) glyphs for the command bar; each
+                    // sits beside a text label so meaning is never icon-only.
+                    let icon_file = egui_phosphor::regular::FOLDER;
+                    let icon_edit = egui_phosphor::regular::PENCIL;
+                    let icon_view = egui_phosphor::regular::EYE;
+                    let icon_window = egui_phosphor::regular::APP_WINDOW;
+                    let icon_help = egui_phosphor::regular::QUESTION;
+                    let icon_columns = egui_phosphor::regular::COLUMNS;
+                    let icon_undo = egui_phosphor::regular::ARROW_COUNTER_CLOCKWISE;
+                    let icon_redo = egui_phosphor::regular::ARROW_CLOCKWISE;
+
                     // ─── Zone 1: Menu Bar ───
-                    ui.menu_button("File", |ui| {
+                    ui.menu_button(format!("{icon_file} File"), |ui| {
                         ui.set_min_width(160.0);
                         if ui.button("Open… (Ctrl+O)").clicked() {
                             self.open_dialog();
@@ -2356,7 +2404,7 @@ impl eframe::App for CadenceApp {
                         }
                     });
 
-                    ui.menu_button("Edit", |ui| {
+                    ui.menu_button(format!("{icon_edit} Edit"), |ui| {
                         ui.set_min_width(160.0);
                         if ui
                             .add_enabled(self.stack.can_undo(), egui::Button::new("Undo (Ctrl+Z)"))
@@ -2382,7 +2430,7 @@ impl eframe::App for CadenceApp {
 
                     // ─── View menu: pure view switching (the tab strip is the
                     // always-visible twin of this list) ───
-                    ui.menu_button("View", |ui| {
+                    ui.menu_button(format!("{icon_view} View"), |ui| {
                         ui.set_min_width(180.0);
                         for (mode, label) in [
                             (ViewMode::Table, "Table (Ctrl+1)"),
@@ -2402,7 +2450,7 @@ impl eframe::App for CadenceApp {
                     });
 
                     // ─── Window menu: chrome that is not view switching ───
-                    ui.menu_button("Window", |ui| {
+                    ui.menu_button(format!("{icon_window} Window"), |ui| {
                         ui.set_min_width(160.0);
                         if ui.button("Toggle theme (Ctrl+D)").clicked() {
                             self.dark = !self.dark;
@@ -2421,7 +2469,7 @@ impl eframe::App for CadenceApp {
                         }
                     });
 
-                    ui.menu_button("Help", |ui| {
+                    ui.menu_button(format!("{icon_help} Help"), |ui| {
                         ui.set_min_width(160.0);
                         if ui.button("Keyboard shortcuts (F1)").clicked() {
                             self.show_shortcuts_dialog = true;
@@ -2491,6 +2539,17 @@ impl eframe::App for CadenceApp {
                         ),
                     ] {
                         let selected = self.view_mode == mode;
+                        let icon = match mode {
+                            ViewMode::Table => egui_phosphor::regular::TABLE,
+                            ViewMode::Gantt => egui_phosphor::regular::CHART_BAR,
+                            ViewMode::Resources => egui_phosphor::regular::USERS,
+                            ViewMode::Baselines => egui_phosphor::regular::STACK,
+                            ViewMode::Calendars => egui_phosphor::regular::CALENDAR,
+                            ViewMode::Audit => egui_phosphor::regular::SHIELD_CHECK,
+                            ViewMode::Lookahead => egui_phosphor::regular::MAGNIFYING_GLASS,
+                            ViewMode::Diary => egui_phosphor::regular::NOTE_PENCIL,
+                            ViewMode::Production => egui_phosphor::regular::GAUGE,
+                        };
                         if *first {
                             *first = false;
                         } else {
@@ -2498,7 +2557,7 @@ impl eframe::App for CadenceApp {
                         }
                         if ui
                             .add(
-                                egui::Button::new(label)
+                                egui::Button::new(format!("{icon} {label}"))
                                     .selected(selected)
                                     .frame(selected)
                                     .fill(if selected {
@@ -2526,7 +2585,7 @@ impl eframe::App for CadenceApp {
 
                     // ─── Zone 3: Tool Actions ───
                     // Columns chooser (prominent position)
-                    let columns_menu = ui.menu_button("Columns", |ui| {
+                    let columns_menu = ui.menu_button(format!("{icon_columns} Columns"), |ui| {
                         ui.set_min_width(180.0);
                         ui.heading("Visible columns");
                         for key in SortKey::ordered_columns() {
@@ -2552,7 +2611,7 @@ impl eframe::App for CadenceApp {
                     if ui
                         .add_enabled(
                             self.stack.can_undo(),
-                            egui::Button::new("Undo (Ctrl+Z)")
+                            egui::Button::new(format!("{icon_undo} Undo (Ctrl+Z)"))
                                 .fill(self.design_tokens().primary_bg)
                                 .stroke(egui::Stroke::new(1.0, self.design_tokens().accent))
                         )
@@ -2566,7 +2625,7 @@ impl eframe::App for CadenceApp {
                     if ui
                         .add_enabled(
                             self.stack.can_redo(),
-                            egui::Button::new("Redo (Ctrl+Y)")
+                            egui::Button::new(format!("{icon_redo} Redo (Ctrl+Y)"))
                                 .fill(self.design_tokens().primary_bg)
                                 .stroke(egui::Stroke::new(1.0, self.design_tokens().accent))
                         )
@@ -2723,17 +2782,22 @@ impl eframe::App for CadenceApp {
                                         egui::RichText::new(format!("Activity {}", id)).monospace(),
                                     );
                                     let tokens = self.design_tokens();
-                                    let section = |ui: &mut Ui, title: &str| {
+                                    let section = |ui: &mut Ui, icon: &str, title: &str| {
                                         ui.add_space(4.0);
                                         ui.separator();
                                         ui.label(
-                                            egui::RichText::new(title)
+                                            egui::RichText::new(format!("{icon} {title}"))
                                                 .strong()
                                                 .size(14.0)
                                                 .color(tokens.accent),
                                         );
                                     };
-                                    section(ui, "Basic info");
+                                    let icon_basic = egui_phosphor::regular::INFO;
+                                    let icon_calendar = egui_phosphor::regular::CALENDAR;
+                                    let icon_plan = egui_phosphor::regular::TARGET;
+                                    let icon_progress = egui_phosphor::regular::TREND_UP;
+                                    let icon_links = egui_phosphor::regular::TREE_STRUCTURE;
+                                    section(ui, icon_basic, "Basic info");
                                     let name_label = ui.label("Name");
                                     ui.text_edit_singleline(&mut self.name_buffer)
                                         .labelled_by(name_label.id);
@@ -2760,7 +2824,7 @@ impl eframe::App for CadenceApp {
                                             .labelled_by(constraint_date_label.id);
                                     }
 
-                                    section(ui, "Calendar");
+                                    section(ui, icon_calendar, "Calendar");
                                     let calendar_names =
                                         self.project.calendars.calendars().to_vec();
                                     let current = self
@@ -2814,7 +2878,7 @@ impl eframe::App for CadenceApp {
                                             }
                                         });
 
-                                    section(ui, "Field planning");
+                                    section(ui, icon_plan, "Field planning");
                                     let owner_label = ui.label("Owner");
                                     ui.text_edit_singleline(&mut self.owner_buffer)
                                         .labelled_by(owner_label.id);
@@ -2830,7 +2894,7 @@ impl eframe::App for CadenceApp {
                                         self.apply_field_planning(id);
                                     }
 
-                                    section(ui, "Progress");
+                                    section(ui, icon_progress, "Progress");
                                     let progress_label = ui.label("Percent complete");
                                     ui.text_edit_singleline(&mut self.progress_buffer)
                                         .labelled_by(progress_label.id);
@@ -2852,7 +2916,7 @@ impl eframe::App for CadenceApp {
                                         self.apply_edits();
                                     }
 
-                                    section(ui, "Relationships");
+                                    section(ui, icon_links, "Relationships");
                                     ComboBox::from_id_salt("relationship_select")
                                         .selected_text(
                                             self.selected_relationship
@@ -3002,9 +3066,16 @@ impl eframe::App for CadenceApp {
                     });
 
                 if self.show_split_gantt {
-                    let activities = self.sorted_cache.clone();
+                    let activities: Vec<Activity> = self
+                        .sorted_cache
+                        .iter()
+                        .filter(|activity| self.wbs_visible(activity))
+                        .cloned()
+                        .collect();
                     let mut gantt_changed = false;
                     let mut gantt_selected = self.selected;
+                    let gantt_status_date =
+                        parse_optional_date(self.status_date_buffer.trim()).flatten();
                     egui::Panel::right("workbench_gantt")
                         .default_size(420.0)
                         .min_size(300.0)
@@ -3021,6 +3092,8 @@ impl eframe::App for CadenceApp {
                                 self.pixels_per_day,
                                 &mut self.pixels_per_day,
                                 &mut self.drag_link_type_index,
+                                &mut self.gantt_drag,
+                                gantt_status_date,
                                 self.dark,
                                 gantt_selected,
                                 &mut gantt_selected,
@@ -3065,12 +3138,21 @@ impl eframe::App for CadenceApp {
                 self.refresh_table_rows(&filter_text, critical_only);
 
                 let schedule = self.schedule.as_ref();
-                let sorted = self.table_rows();
+                let sorted: Vec<Activity> = self
+                    .table_rows()
+                    .iter()
+                    .filter(|activity| self.wbs_visible(activity))
+                    .cloned()
+                    .collect();
                 let selected_id = self.selected;
                 let scroll_to_selection = self.scroll_to_selection;
                 let mut clicked_activity = None;
                 let mut context_menu_activity = None;
                 let mut header_clicked = None;
+                // WBS collapse toggles are collected here and applied after the
+                // panel closure, because the closure already holds an
+                // immutable borrow of `self.schedule`.
+                let mut toggle_wbs: Option<WbsId> = None;
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
                         ui.colored_label(
@@ -3228,16 +3310,41 @@ impl eframe::App for CadenceApp {
                                         for (col, (key, _label, _w)) in defs.iter().enumerate() {
                                             match key {
                                                 None => {
-                                                    ui.add_sized(
-                                                        [widths[col], row_height],
-                                                        egui::Label::new(
-                                                            egui::RichText::new(
-                                                                (index + 1).to_string(),
+                                                    let has_children = activity
+                                                        .wbs
+                                                        .and_then(|node| {
+                                                            self.project.wbs.node(node)
+                                                        })
+                                                        .map(|node| !node.children.is_empty())
+                                                        .unwrap_or(false);
+                                                    if has_children {
+                                                        let node = activity.wbs.unwrap();
+                                                        let collapsed =
+                                                            self.collapsed_wbs.contains(&node);
+                                                        let glyph =
+                                                            if collapsed { "+" } else { "-" };
+                                                        if ui
+                                                            .add_sized(
+                                                                [widths[col], row_height],
+                                                                egui::Button::new(glyph)
+                                                                    .frame(false),
                                                             )
-                                                            .monospace()
-                                                            .weak(),
-                                                        ),
-                                                    );
+                                                            .clicked()
+                                                        {
+                                                            toggle_wbs = Some(node);
+                                                        }
+                                                    } else {
+                                                        ui.add_sized(
+                                                            [widths[col], row_height],
+                                                            egui::Label::new(
+                                                                egui::RichText::new(
+                                                                    (index + 1).to_string(),
+                                                                )
+                                                                .monospace()
+                                                                .weak(),
+                                                            ),
+                                                        );
+                                                    }
                                                 }
                                                 Some(SortKey::Name) => {
                                                     if ui
@@ -3322,6 +3429,9 @@ impl eframe::App for CadenceApp {
                         }
                     }
                 });
+                if let Some(node) = toggle_wbs {
+                    self.toggle_wbs_collapse(node);
+                }
                 if let Some(key) = header_clicked {
                     if self.sort_key == key {
                         self.sort_ascending = !self.sort_ascending;
@@ -3464,6 +3574,14 @@ impl eframe::App for CadenceApp {
                                 }
                             });
                     });
+                let gantt_activities: Vec<Activity> = self
+                    .sorted_cache
+                    .iter()
+                    .filter(|activity| self.wbs_visible(activity))
+                    .cloned()
+                    .collect();
+                let gantt_status_date =
+                    parse_optional_date(self.status_date_buffer.trim()).flatten();
                 egui::CentralPanel::default().show(ui, |ui| {
                     let px = self.pixels_per_day;
                     gantt_changed = render_gantt(
@@ -3473,10 +3591,12 @@ impl eframe::App for CadenceApp {
                         &mut self.stack,
                         &mut self.drag_start,
                         &mut self.status_message,
-                        &self.sorted_cache,
+                        &gantt_activities,
                         px,
                         &mut self.pixels_per_day,
                         &mut self.drag_link_type_index,
+                        &mut self.gantt_drag,
+                        gantt_status_date,
                         self.dark,
                         selected_id,
                         &mut selected_id,
@@ -5387,9 +5507,45 @@ fn parse_date(value: &str) -> Option<Date> {
 /// hint beside the field so a parse failure shows next to its input instead
 /// of in a distant status bar. Returns `Some(date)` when the buffer parses,
 /// `None` when it is empty or invalid.
+/// Convert a `time::Date` to the `jiff::civil::Date` the `egui_extras` date
+/// picker works on. Both are proleptic Gregorian calendar dates, so the
+/// conversion is exact for every year Cadence accepts; `None` only for a year
+/// outside `i16` (unreachable from a real project).
+fn to_jiff(date: Date) -> Option<jiff::civil::Date> {
+    jiff::civil::Date::new(
+        date.year() as i16,
+        u8::from(date.month()) as i8,
+        date.day() as i8,
+    )
+    .ok()
+}
+
+/// Convert a `jiff::civil::Date` chosen in the picker back to `time::Date`.
+/// Falls back to `today()` only for a date Cadence cannot represent.
+fn from_jiff(date: jiff::civil::Date) -> Date {
+    let month = Month::try_from(date.month() as u8).unwrap_or(Month::January);
+    Date::from_calendar_date(date.year() as i32, month, date.day() as u8)
+        .unwrap_or_else(|_| today())
+}
+
 fn date_field(ui: &mut Ui, dark: bool, label: &str, buffer: &mut String) -> Option<Date> {
     ui.label(label);
-    ui.text_edit_singleline(buffer);
+    // The value is editable both ways: type `YYYY-MM-DD` directly, or use the
+    // calendar button, which writes the chosen day back into the same buffer.
+    ui.horizontal(|ui| {
+        ui.text_edit_singleline(buffer);
+        if let Some(mut picked) = parse_date(buffer.trim())
+            .and_then(to_jiff)
+            .or_else(|| to_jiff(today()))
+        {
+            if ui
+                .add(DatePickerButton::new(&mut picked).id_salt(label))
+                .changed()
+            {
+                *buffer = from_jiff(picked).to_string();
+            }
+        }
+    });
     let trimmed = buffer.trim();
     let date = parse_date(trimmed);
     if !trimmed.is_empty() && date.is_none() {
@@ -5623,6 +5779,205 @@ fn gantt_summary(schedule: &Schedule) -> String {
     )
 }
 
+/// What a Gantt bar drag changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GanttDragKind {
+    /// Move the whole bar, preserving its working-day duration.
+    Move,
+    /// Move the start edge.
+    ResizeStart,
+    /// Move the finish edge.
+    ResizeFinish,
+}
+
+/// An in-flight Gantt bar move/resize, held in the app state across frames.
+///
+/// The `original_*` dates and `origin_x` are frozen when the drag begins;
+/// `day_offset` is recomputed from the pointer each frame, so the offset never
+/// accumulates rounding error.
+#[derive(Debug, Clone)]
+struct GanttDrag {
+    /// Activity whose bar is being dragged.
+    activity: ActivityId,
+    /// Which edge(s) the drag moves.
+    kind: GanttDragKind,
+    /// Pointer x where the drag began, in screen coordinates.
+    origin_x: f32,
+    /// Whole-day offset from the frozen dates, recomputed each frame.
+    day_offset: i64,
+    /// Scheduled start when the drag began.
+    original_start: Date,
+    /// Scheduled finish when the drag began.
+    original_finish: Date,
+}
+
+/// Pointer distance, in pixels, from a bar edge that begins a resize.
+const GANTT_EDGE_GRAB_PX: f32 = 6.0;
+
+/// Hit-test a pointer press against a bar.
+///
+/// A press inside the bar body and clear of both ends moves the bar; a press
+/// within [`GANTT_EDGE_GRAB_PX`] of an end resizes that end. A press outside
+/// the bar's row band or beyond the grab distance is not a hit.
+fn gantt_hit_test(bar: Rect, pos: Pos2) -> Option<GanttDragKind> {
+    if pos.y < bar.min.y || pos.y > bar.max.y {
+        return None;
+    }
+    if pos.x < bar.min.x - GANTT_EDGE_GRAB_PX || pos.x > bar.max.x + GANTT_EDGE_GRAB_PX {
+        return None;
+    }
+    let from_left = pos.x - bar.min.x;
+    let from_right = bar.max.x - pos.x;
+    let near_left = from_left.abs() <= GANTT_EDGE_GRAB_PX;
+    let near_right = from_right.abs() <= GANTT_EDGE_GRAB_PX;
+    if near_left && near_right {
+        // A short bar whose two grab zones overlap: the nearer end wins.
+        Some(if from_left <= from_right {
+            GanttDragKind::ResizeStart
+        } else {
+            GanttDragKind::ResizeFinish
+        })
+    } else if near_left {
+        Some(GanttDragKind::ResizeStart)
+    } else if near_right {
+        Some(GanttDragKind::ResizeFinish)
+    } else if pos.x >= bar.min.x && pos.x <= bar.max.x {
+        Some(GanttDragKind::Move)
+    } else {
+        None
+    }
+}
+
+/// Convert a horizontal pointer delta into a whole-day offset.
+///
+/// The result counts calendar days; the reschedule command re-anchors the
+/// activity on its own calendar, so a delta landing on a non-working day snaps
+/// forward rather than being discarded.
+fn gantt_drag_day_delta(pixel_delta: f32, pixels_per_day: f32) -> i64 {
+    if pixels_per_day <= 0.0 {
+        return 0;
+    }
+    (pixel_delta / pixels_per_day).round() as i64
+}
+
+/// The status-bar reason a drag must be refused, when the activity is pinned.
+///
+/// `MustStartOn`/`MustFinishOn` anchor an activity to an exact date regardless
+/// of network logic, so a manual drag cannot move it and is rejected.
+fn gantt_drag_blocked(constraint: Constraint) -> Option<&'static str> {
+    match constraint {
+        Constraint::MustStartOn(_) => Some("activity is pinned with a must-start-on constraint"),
+        Constraint::MustFinishOn(_) => Some("activity is pinned with a must-finish-on constraint"),
+        _ => None,
+    }
+}
+
+/// Pixel rectangle of a draggable activity bar, or `None` when the bar has no
+/// single movable start/finish edge (summary roll-up or milestone).
+#[allow(clippy::too_many_arguments)]
+fn gantt_draggable_bar(
+    rect: Rect,
+    row: usize,
+    row_height: f32,
+    header_height: f32,
+    origin: Date,
+    pixels_per_day: f32,
+    schedule: &Schedule,
+    project: &Project,
+    activity: &Activity,
+) -> Option<Rect> {
+    let is_summary = activity
+        .wbs
+        .and_then(|node| project.wbs.node(node))
+        .map(|node| !node.children.is_empty())
+        .unwrap_or(false);
+    if is_summary || activity.original_duration == 0 {
+        return None;
+    }
+    let result = schedule.activity(activity.id)?;
+    let start_days = (result.scheduled_start.to_julian_day() - origin.to_julian_day()) as f32;
+    let finish_days = (result.scheduled_finish.to_julian_day() - origin.to_julian_day()) as f32;
+    let x0 = rect.min.x + start_days * pixels_per_day;
+    let width = ((finish_days - start_days + 1.0) * pixels_per_day).max(6.0);
+    let y = rect.min.y + header_height + row as f32 * row_height;
+    Some(Rect::from_min_max(
+        Pos2::new(x0, y + 2.0),
+        Pos2::new(x0 + width, y + row_height - 2.0),
+    ))
+}
+
+#[cfg(test)]
+mod gantt_bar_drag_tests {
+    use super::*;
+
+    fn bar() -> Rect {
+        Rect::from_min_max(Pos2::new(100.0, 40.0), Pos2::new(200.0, 56.0))
+    }
+
+    #[test]
+    fn pressing_the_bar_body_moves_it() {
+        assert_eq!(
+            gantt_hit_test(bar(), Pos2::new(150.0, 48.0)),
+            Some(GanttDragKind::Move)
+        );
+    }
+
+    #[test]
+    fn pressing_within_six_pixels_of_an_end_resizes_that_end() {
+        assert_eq!(
+            gantt_hit_test(bar(), Pos2::new(103.0, 48.0)),
+            Some(GanttDragKind::ResizeStart)
+        );
+        assert_eq!(
+            gantt_hit_test(bar(), Pos2::new(197.0, 48.0)),
+            Some(GanttDragKind::ResizeFinish)
+        );
+    }
+
+    #[test]
+    fn pressing_outside_the_bar_row_is_not_a_hit() {
+        assert_eq!(gantt_hit_test(bar(), Pos2::new(150.0, 39.0)), None);
+        assert_eq!(gantt_hit_test(bar(), Pos2::new(150.0, 57.0)), None);
+    }
+
+    #[test]
+    fn pressing_beyond_the_grab_distance_is_not_a_hit() {
+        assert_eq!(gantt_hit_test(bar(), Pos2::new(90.0, 48.0)), None);
+        assert_eq!(gantt_hit_test(bar(), Pos2::new(210.0, 48.0)), None);
+    }
+
+    #[test]
+    fn the_nearer_end_wins_on_a_short_bar() {
+        let short = Rect::from_min_max(Pos2::new(100.0, 40.0), Pos2::new(110.0, 56.0));
+        assert_eq!(
+            gantt_hit_test(short, Pos2::new(101.0, 48.0)),
+            Some(GanttDragKind::ResizeStart)
+        );
+        assert_eq!(
+            gantt_hit_test(short, Pos2::new(109.0, 48.0)),
+            Some(GanttDragKind::ResizeFinish)
+        );
+    }
+
+    #[test]
+    fn a_pixel_delta_rounds_to_whole_days() {
+        assert_eq!(gantt_drag_day_delta(0.0, 10.0), 0);
+        assert_eq!(gantt_drag_day_delta(9.0, 10.0), 1);
+        assert_eq!(gantt_drag_day_delta(-14.0, 10.0), -1);
+        assert_eq!(gantt_drag_day_delta(25.0, 10.0), 3);
+        assert_eq!(gantt_drag_day_delta(5.0, 0.0), 0);
+    }
+
+    #[test]
+    fn mandatory_constraints_block_a_drag() {
+        let day = Date::from_calendar_date(2026, Month::January, 5).expect("date");
+        assert!(gantt_drag_blocked(Constraint::AsSoonAsPossible).is_none());
+        assert!(gantt_drag_blocked(Constraint::StartNoEarlierThan(day)).is_none());
+        assert!(gantt_drag_blocked(Constraint::MustStartOn(day)).is_some());
+        assert!(gantt_drag_blocked(Constraint::MustFinishOn(day)).is_some());
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn render_gantt(
     ui: &mut Ui,
@@ -5635,6 +5990,8 @@ fn render_gantt(
     _pixels_per_day: f32,
     pixels_per_day_out: &mut f32,
     drag_link_type_index: &mut usize,
+    drag: &mut Option<GanttDrag>,
+    _status_date: Option<Date>,
     dark: bool,
     selected_id: Option<ActivityId>,
     selected_out: &mut Option<ActivityId>,
@@ -5700,6 +6057,7 @@ fn render_gantt(
     let timeline_width = total_days * pixels_per_day + 40.0;
 
     let mut pending_link = None;
+    let mut pending_reschedule = None;
     ScrollArea::both().show(ui, |ui| {
         let (rect, response) = ui.allocate_exact_size(
             Vec2::new(timeline_width, total_height),
@@ -5831,7 +6189,11 @@ fn render_gantt(
         }
 
         if response.drag_stopped() {
-            if let Some(start_row) = drag_start.take() {
+            if let Some(active) = drag.take() {
+                if active.day_offset != 0 {
+                    pending_reschedule = Some(active);
+                }
+            } else if let Some(start_row) = drag_start.take() {
                 if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
                     let end_row =
                         ((pos.y - rect.min.y - header_height) / row_height).floor() as usize;
@@ -5840,6 +6202,71 @@ fn render_gantt(
                     }
                 }
             }
+        }
+
+        // Visible row window for virtualised drawing, computed before the drag
+        // hit-test and the row loop so both share one range.
+        let first_row = ((clip.min.y - rect.min.y - header_height) / row_height)
+            .floor()
+            .max(0.0) as usize;
+        let last_row = ((clip.max.y - rect.min.y - header_height) / row_height)
+            .ceil()
+            .max(0.0) as usize
+            + 1;
+        let last_row = last_row.min(activities.len());
+
+        // In-flight drag handling: hit-test on pointer down, update offset on
+        // pointer move, preview the new bar position.
+        if let Some(active) = drag.as_mut() {
+            if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
+                active.day_offset = gantt_drag_day_delta(pos.x - active.origin_x, pixels_per_day);
+            }
+        }
+
+        // Bar drag start: hit-test against existing bars when the user presses
+        // on a bar (not on the row background). We only start a bar drag if
+        // the pointer is over a draggable bar.
+        if response.drag_started() && drag.is_none() {
+            if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
+                for (row, activity) in activities.iter().enumerate() {
+                    if row < first_row || row >= last_row {
+                        continue;
+                    }
+                    if let Some(bar) = gantt_draggable_bar(
+                        rect,
+                        row,
+                        row_height,
+                        header_height,
+                        origin,
+                        pixels_per_day,
+                        current_schedule,
+                        project,
+                        activity,
+                    ) {
+                        if let Some(kind) = gantt_hit_test(bar, pos) {
+                            // Check for mandatory constraints that block manual drag
+                            if let Some(reason) = gantt_drag_blocked(activity.constraint) {
+                                *status_message = Some(reason.to_string());
+                            } else if let Some(result) = current_schedule.activity(activity.id) {
+                                *drag = Some(GanttDrag {
+                                    activity: activity.id,
+                                    kind,
+                                    origin_x: pos.x,
+                                    day_offset: 0,
+                                    original_start: result.scheduled_start,
+                                    original_finish: result.scheduled_finish,
+                                });
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Escape cancels an in-flight bar drag.
+        if drag.is_some() && ui.ctx().input(|input| input.key_pressed(egui::Key::Escape)) {
+            *drag = None;
         }
 
         // Zoom with Ctrl + wheel. Consume the scroll so the parent
@@ -5854,79 +6281,66 @@ fn render_gantt(
             }
         }
 
-        let minor_step = if pixels_per_day < 4.0 {
-            10
-        } else if pixels_per_day < 10.0 {
-            5
-        } else {
-            1
-        };
-        // Major tier step: coarser grouping for the upper header band.
-        let major_step = if pixels_per_day < 2.0 {
-            90
-        } else if pixels_per_day < 6.0 {
-            30
-        } else {
-            7
-        };
-
-        // Minor tier: day/week ticks and labels.
-        for day in 0..=(total_days as i32) {
-            let x = rect.min.x + day as f32 * pixels_per_day;
-            if x < clip.min.x || x > clip.max.x {
+        // Two-tier timescale driven by the zoom level, from the shared
+        // `timescale_bands` helper: a coarse band (month/quarter/year) on the
+        // top row and a fine band (day/week) below it. Tiers are chosen by the
+        // helper; this draw code only maps bands to pixels.
+        let (major_bands, minor_bands) =
+            cadence_core::engine::timescale_bands(origin, finish, f64::from(pixels_per_day));
+        let major_top = rect.min.y;
+        let major_bottom = rect.min.y + header_height / 2.0;
+        let minor_bottom = rect.min.y + header_height;
+        for band in &major_bands {
+            let x0 = rect.min.x
+                + (band.start.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
+            let x1 = rect.min.x
+                + (band.end.to_julian_day() + 1 - origin.to_julian_day()) as f32 * pixels_per_day;
+            if x1 < clip.min.x || x0 > clip.max.x {
                 continue;
             }
+            if x1 - x0 >= 30.0 {
+                painter.text(
+                    Pos2::new((x0 + x1) / 2.0, (major_top + major_bottom) / 2.0),
+                    Align2::CENTER_CENTER,
+                    &band.label,
+                    egui::FontId::proportional(10.0),
+                    palette.text_muted,
+                );
+            }
             painter.line_segment(
-                [
-                    Pos2::new(x, rect.min.y + 20.0),
-                    Pos2::new(x, rect.min.y + 26.0),
-                ],
+                [Pos2::new(x0, major_top), Pos2::new(x0, minor_bottom)],
                 egui::Stroke::new(1.0, palette.grid),
             );
-            if day % minor_step == 0 {
-                let date = Date::from_julian_day(origin.to_julian_day() + day).unwrap_or(origin);
+        }
+        painter.line_segment(
+            [
+                Pos2::new(rect.min.x, major_bottom),
+                Pos2::new(rect.max.x, major_bottom),
+            ],
+            egui::Stroke::new(1.0, palette.grid),
+        );
+        for band in &minor_bands {
+            let x0 = rect.min.x
+                + (band.start.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
+            let x1 = rect.min.x
+                + (band.end.to_julian_day() + 1 - origin.to_julian_day()) as f32 * pixels_per_day;
+            if x1 < clip.min.x || x0 > clip.max.x {
+                continue;
+            }
+            if x1 - x0 >= 26.0 {
                 painter.text(
-                    Pos2::new(x, rect.min.y + 28.0),
-                    Align2::CENTER_TOP,
-                    date.to_string(),
+                    Pos2::new((x0 + x1) / 2.0, (major_bottom + minor_bottom) / 2.0),
+                    Align2::CENTER_CENTER,
+                    &band.label,
                     egui::FontId::monospace(9.0),
                     palette.text_muted,
                 );
             }
-        }
-        // Major tier: month/year grouping labels across the top band.
-        let mut major_day = 0i32;
-        while major_day <= total_days as i32 {
-            let x = rect.min.x + major_day as f32 * pixels_per_day;
-            let next = (major_day + major_step).min(total_days as i32 + 1);
-            let x_next = rect.min.x + next as f32 * pixels_per_day;
-            if x >= clip.min.x && x <= clip.max.x {
-                let date =
-                    Date::from_julian_day(origin.to_julian_day() + major_day).unwrap_or(origin);
-                let label = format!("{} {}", date.month(), date.year());
-                painter.text(
-                    Pos2::new((x + x_next) / 2.0, rect.min.y + 4.0),
-                    Align2::CENTER_TOP,
-                    label,
-                    egui::FontId::monospace(10.0),
-                    palette.text_muted,
-                );
-            }
             painter.line_segment(
-                [Pos2::new(x, rect.min.y), Pos2::new(x, rect.min.y + 20.0)],
+                [Pos2::new(x0, major_bottom), Pos2::new(x0, minor_bottom)],
                 egui::Stroke::new(1.0, palette.grid),
             );
-            major_day = next;
         }
-
-        let first_row = ((clip.min.y - rect.min.y - header_height) / row_height)
-            .floor()
-            .max(0.0) as usize;
-        let last_row = ((clip.max.y - rect.min.y - header_height) / row_height)
-            .ceil()
-            .max(0.0) as usize
-            + 1;
-        let last_row = last_row.min(activities.len());
 
         for (row, activity) in activities.iter().enumerate().take(last_row).skip(first_row) {
             let y = rect.min.y + header_height + row as f32 * row_height;
@@ -6076,6 +6490,37 @@ fn render_gantt(
                             painter.rect_filled(progress, 2.0, tokens.accent);
                         }
                     }
+
+                    // Progress line: a vertical rule at the percent-complete
+                    // position, with a tick at the recorded actual start, so
+                    // in-progress work reads even where the accent fill is
+                    // faint. Both are clipped to the bar's own extent.
+                    if let Some(percent) = activity.percent_complete {
+                        if percent > 0 && percent < 10_000 {
+                            let fraction = percent.clamp(0, 10_000) as f32 / 10_000.0;
+                            let progress_x = bar.min.x + bar.width() * fraction;
+                            painter.line_segment(
+                                [
+                                    Pos2::new(progress_x, bar.min.y),
+                                    Pos2::new(progress_x, bar.max.y),
+                                ],
+                                egui::Stroke::new(1.5, palette.panel),
+                            );
+                            if let Some(actual_start) = activity.actual_start {
+                                let start_days =
+                                    (actual_start.to_julian_day() - origin.to_julian_day()) as f32;
+                                let actual_x = (rect.min.x + start_days * pixels_per_day)
+                                    .clamp(bar.min.x, bar.max.x);
+                                painter.line_segment(
+                                    [
+                                        Pos2::new(actual_x, bar.min.y),
+                                        Pos2::new(actual_x, bar.max.y),
+                                    ],
+                                    egui::Stroke::new(1.0, palette.text_muted),
+                                );
+                            }
+                        }
+                    }
                 }
 
                 let depth = activity
@@ -6124,6 +6569,48 @@ fn render_gantt(
                 );
                 if row_response.clicked() && !response.drag_started() {
                     *selected_out = Some(activity.id);
+                }
+            }
+        }
+
+        // Drag preview: the bar's requested position while a move/resize is in
+        // flight, in a warning-token colour so it never reads as a real bar.
+        if let Some(active) = drag.as_ref() {
+            if let Some(row) = activities.iter().position(|a| a.id == active.activity) {
+                let delta = active.day_offset as f32;
+                let orig_start =
+                    (active.original_start.to_julian_day() - origin.to_julian_day()) as f32;
+                let orig_finish =
+                    (active.original_finish.to_julian_day() - origin.to_julian_day()) as f32;
+                let (start_days, finish_days) = match active.kind {
+                    GanttDragKind::Move => (orig_start + delta, orig_finish + delta),
+                    GanttDragKind::ResizeStart => (orig_start + delta, orig_finish),
+                    GanttDragKind::ResizeFinish => (orig_start, orig_finish + delta),
+                };
+                let start_days = start_days.max(0.0);
+                let finish_days = finish_days.max(start_days);
+                let y = rect.min.y + header_height + row as f32 * row_height;
+                let x0 = rect.min.x + start_days * pixels_per_day;
+                let width = ((finish_days - start_days + 1.0) * pixels_per_day).max(6.0);
+                let preview = Rect::from_min_max(
+                    Pos2::new(x0, y + 2.0),
+                    Pos2::new(x0 + width, y + row_height - 2.0),
+                );
+                let fill = Color32::from_rgba_unmultiplied(
+                    palette.warn.r(),
+                    palette.warn.g(),
+                    palette.warn.b(),
+                    140,
+                );
+                painter.rect_filled(preview, 2.0, fill);
+                let edge = egui::Stroke::new(1.5, palette.warn);
+                for (a, b) in [
+                    (preview.left_top(), preview.right_top()),
+                    (preview.left_bottom(), preview.right_bottom()),
+                    (preview.left_top(), preview.left_bottom()),
+                    (preview.right_top(), preview.right_bottom()),
+                ] {
+                    painter.line_segment([a, b], edge);
                 }
             }
         }
@@ -6245,6 +6732,76 @@ fn render_gantt(
             } else {
                 *status_message = Some("Cannot add link".to_string());
             }
+        }
+    }
+    if let Some(active) = pending_reschedule {
+        let delta = time::Duration::days(active.day_offset);
+        let new_start = active
+            .original_start
+            .checked_add(delta)
+            .unwrap_or(active.original_start);
+        let new_finish = active
+            .original_finish
+            .checked_add(delta)
+            .unwrap_or(active.original_finish);
+        let (mode, requested_start, requested_finish) = match active.kind {
+            GanttDragKind::Move | GanttDragKind::ResizeStart => (
+                cadence_commands::RescheduleMode::MoveStart,
+                Some(new_start),
+                None,
+            ),
+            GanttDragKind::ResizeFinish => (
+                cadence_commands::RescheduleMode::MoveFinish,
+                None,
+                Some(new_finish),
+            ),
+        };
+        let previous = project.activity(active.activity).map(|a| a.constraint);
+        let command = cadence_commands::RescheduleActivity {
+            activity_id: active.activity,
+            new_start: requested_start,
+            new_finish: requested_finish,
+            mode,
+        };
+        if stack.execute(project, Box::new(command)).is_ok() {
+            *schedule = cadence_core::engine::schedule(project).map_err(|e| e.to_string());
+            let actual = schedule
+                .as_ref()
+                .ok()
+                .and_then(|s| s.activity(active.activity));
+            let moved_as_requested = match (active.kind, actual) {
+                (GanttDragKind::ResizeFinish, Some(result)) => {
+                    result.scheduled_finish == new_finish
+                }
+                (_, Some(result)) => result.scheduled_start == new_start,
+                (_, None) => true,
+            };
+            let upper_bound = matches!(
+                previous,
+                Some(
+                    Constraint::StartNoLaterThan(_)
+                        | Constraint::FinishNoLaterThan(_)
+                        | Constraint::MustStartOn(_)
+                        | Constraint::MustFinishOn(_)
+                )
+            );
+            if upper_bound && !moved_as_requested {
+                *status_message = Some("Rescheduled up to the activity's constraint".to_string());
+            } else {
+                *status_message = None;
+            }
+            changed = true;
+        } else {
+            // The command mutates the constraint before it re-schedules, so
+            // restore it when the schedule rejected the move.
+            if let Some(previous) = previous {
+                if let Some(activity) = project.activity_mut(active.activity) {
+                    activity.constraint = previous;
+                    activity.clear_schedule();
+                }
+            }
+            *schedule = cadence_core::engine::schedule(project).map_err(|e| e.to_string());
+            *status_message = Some("Cannot reschedule activity".to_string());
         }
     }
     changed

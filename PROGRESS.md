@@ -3,6 +3,63 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-09 — P2 chrome + P3 interaction (icons, date picker, WBS collapse, drag, timescale)
+
+The P2-chrome / P3-interaction / P3-domain tranche of the elite-tool uplift plan
+(`docs/audit/2026-11-08-elite-tool-uplift-plan.md`), plus the guide-sync work.
+
+- **Iconography (V1/V16).** `egui-phosphor` (MIT) glyphs on the menu bar, view
+  tabs, tool cluster and inspector section headers; every icon sits beside its
+  text label so meaning is never icon-only. Font + licence recorded in
+  `ATTRIBUTION.md`; icons are not original drawings (MIT glyph font) and no
+  competitor's icons are used.
+- **Calendar date picker (V12).** `egui_extras::DatePickerButton` beside a
+  typeable `YYYY-MM-DD` field (the field keeps keyboard entry and the inline
+  invalid-date hint). The 0.35 button works on `jiff::civil::Date`, so a small
+  `jiff` (Unlicense OR MIT) dependency is added and dates convert to/from
+  `time::Date` at the field boundary (D28; API confirmed from docs.rs, not
+  from memory).
+- **WBS expand/collapse (V7).** `+`/`-` toggles in the outline's first column; a
+  collapsed node hides its descendants in both the table and the Gantt. UI-only
+  state (`collapsed_wbs`), no project mutation, so no new domain command.
+- **Drag-to-move / resize Gantt bars (V8).** A hit-tested drag (`GanttDrag`,
+  `gantt_hit_test`, `gantt_drag_day_delta`) issues the undoable
+  `RescheduleActivity` command; a bar pinned by a mandatory constraint is refused
+  with a status message (`gantt_drag_blocked`).
+- **Two-tier timescale (V6).** The header is drawn from the shared
+  `cadence_core::engine::timescale_bands` helper — a coarse (month/quarter/year)
+  band above a fine (day/week) band, replacing the earlier inline loop.
+- **Progress / status line (V8).** A status-date line and an in-progress line on
+  the chart, driven by the status date and percent complete.
+- **Mandatory constraints (P3-domain).** `Constraint::MustStartOn` /
+  `MustFinishOn` in the model and engine (they pin early *and* late dates, so
+  total float is zero), MSPDI import/export codes 8/9, the undoable
+  `SetMandatoryConstraint` command with tests, and the inspector's
+  constraint combo extended to eight kinds. The constraint property test now
+  covers all eight kinds including the two mandatory pins, with the D10
+  rounding recorded in `DECISIONS.md` D29 and a weekend-bound regression
+  test; the previously inconsistent `MustFinishOn` forward rounding (the
+  early pass rounded forward while the late pass rounded backward) was
+  fixed.
+- **Merge reconciliation.** `main`'s P1 F22 confirm-deletes (#121) and this
+  branch's P2 work both descended from `0443f4c`; the two conflicts
+  (`crates/commands/src/lib.rs`, `crates/ui-egui/src/lib.rs`) were resolved to
+  keep both test bodies and the `timescale_bands` render path.
+- **Guide sync (§12.3).** `guide.md` (2026-11-09) added **II.30** (Rust GUI/UX:
+  stack matching, tokens, a11y-as-code, evidence). Adopted in D28 and recorded in
+  `docs/design/gui-stack.md`; the global ruleset (`~/.config/opencode/AGENTS.md`
+  and `instructions/rust-skills.md`) was updated to match before continuing.
+
+**Fixed on the way.** The P2 commits did not compile. Fixed here: a duplicate
+`time::Duration` import; the `egui_extras` `datepicker` feature not enabled; the
+`DatePickerButton` 0.35 API mismatch (it takes `&mut jiff::Date`, not a string);
+`first_row`/`last_row` used before definition; a non-exhaustive `Constraint`
+match; and a `self`-borrow conflict where the WBS toggle was applied inside the
+table closure that already borrows `self.schedule`.
+
+Verification: CI run on `opencode/ci` for this slice (result recorded in
+`CHANGELOG.md` and the PR once green).
+
 ## 2026-11-07 — P1 dialog & feedback polish
 
 PR #120 merged as `0443f4c` — the first P1 tranche from the 2026-11-07 audit:
@@ -32,9 +89,15 @@ PR #121 merged — the visual uplift slice from the elite-tool uplift plan:
 Verification: CI green on PR #121 (all required checks).
 
 ## Next slices
-- P2-chrome: Phosphor iconography (`egui-phosphor`), DatePicker (`egui_extras`), WBS collapse UI state
-- P3-interaction: Drag-to-move/resize Gantt bars, two-tier timescale, progress/status line
-- P3-domain: Mandatory constraints (`MustStartOn`/`MustFinishOn`)
+- **II.30.6 raw-colour grep gate** (excluding `crates/ui-egui/src/design.rs`), and
+  an II.30.8 evidence path: the `egui_kittest` seam refactor (a `Host`-style shell
+  so the UI renders into a plain `&mut Ui`).
+- **§12.1 suite-standard deviations (D27):** token-ledger CI update; version UI as
+  a bottom-right control opening the ledger-driven Release Notes popup; signed
+  releases + verify-then-install updater; shared `crates/update-check` submodule.
+- **P1 F17 terminology/label drift** (one term per concept, honest verbs).
+- Remaining design-audit backlog (`docs/design/ui-polish-audit.md`, PR #90 P3
+  density/completeness items).
 
 ## 2026-11-07 — Full GUI audit + P0 correctness slice
 
@@ -1335,6 +1398,9 @@ was re-verified against the current tree and cross-referenced in
 - P1 feedback/shell: S2-1 menu bar + toolbar declutter, S2-4 date field helper, S2-13 cache critical count, S2-14 save-report dialog, S2-16 consume Ctrl+wheel scroll, S2-18 confirmation consistency, S2-20 AccessKit labelled_by, S2-22 duplicate theme toggle.
 - P2 Gantt as working chart: S2-6 bar selection + inspector, S2-7 non-FS drag-to-link, S2-21 apply zoom before draw.
 - P3 density/completeness: S2-5 table filter/multi-select, S2-8 relationship delete/retype, S2-9 Location/WBS inspector fields, S2-10 Diary picker + note edit, S2-11 per-frame resource cache, S2-12 per-frame lookahead cache, S2-15 atomic leveling undo, plus all S3 minors (S3-1 red non-token colours, S3-6 doc drift, S3-7 tab tooltips, S3-18 window min size, …).
+
+- Engine follow-up: `schedule_with_progress` (progress-driven mode) does not
+  yet honour mandatory constraints (MSO/MFO) — queued for a future slice.
 
 No item above blocks the current release; all are tracked so they are not missed.
 

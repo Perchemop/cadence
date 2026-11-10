@@ -268,7 +268,7 @@ proptest! {
     #[test]
     fn constraint_bounds_are_respected_or_reported(
         duration in 0u32..7,
-        kind in 0u8..6,
+        kind in 0u8..8,
         day in 5u8..23,
     ) {
         let constraint = match kind {
@@ -283,7 +283,13 @@ proptest! {
             4 => Constraint::FinishNoEarlierThan(
                 Date::from_calendar_date(2026, Month::January, day).expect("date"),
             ),
-            _ => Constraint::FinishNoLaterThan(
+            5 => Constraint::FinishNoLaterThan(
+                Date::from_calendar_date(2026, Month::January, day).expect("date"),
+            ),
+            6 => Constraint::MustStartOn(
+                Date::from_calendar_date(2026, Month::January, day).expect("date"),
+            ),
+            _ => Constraint::MustFinishOn(
                 Date::from_calendar_date(2026, Month::January, day).expect("date"),
             ),
         };
@@ -335,6 +341,36 @@ proptest! {
                             prop_assert!(item.early_finish <= bound);
                             prop_assert!(item.scheduled_finish <= bound);
                         }
+                    }
+
+                    Constraint::MustStartOn(bound) => {
+                        prop_assert_eq!(item.scheduled_start, item.early_start);
+                        prop_assert_eq!(item.scheduled_finish, item.early_finish);
+                        prop_assert_eq!(item.early_start, item.late_start);
+                        prop_assert_eq!(item.early_finish, item.late_finish);
+                        prop_assert_eq!(item.total_float, 0);
+                        prop_assert_eq!(
+                            item.scheduled_start,
+                            calendar
+                                .next_working_day_on_or_after(bound)
+                                .expect("working-day bound")
+                        );
+                    }
+                    Constraint::MustFinishOn(bound) => {
+                        prop_assert_eq!(item.scheduled_start, item.early_start);
+                        prop_assert_eq!(item.scheduled_finish, item.early_finish);
+                        prop_assert_eq!(item.early_start, item.late_start);
+                        prop_assert_eq!(item.early_finish, item.late_finish);
+                        prop_assert_eq!(item.total_float, 0);
+                        prop_assert_eq!(
+                            item.scheduled_finish,
+                            calendar
+                                .prev_working_day_on_or_before(bound)
+                                .expect("working-day bound")
+                        );
+                    }
+                    _ => {
+                        prop_assert!(false, "unexpected constraint: {constraint:?}");
                     }
                 }
             }
@@ -442,4 +478,60 @@ proptest! {
         prop_assert!(calendar.is_working_day(shifted));
         prop_assert_eq!(calendar.working_days_between(anchor, shifted), offset);
     }
+}
+
+/// Regression: a mandatory constraint whose date is a non-working day must be
+/// rounded by the D10 rule in *both* passes — `MustFinishOn` backward to the
+/// previous working day, `MustStartOn` forward to the next — so the forward
+/// and backward passes pin the very same date, the early and late dates agree
+/// and the activity carries zero total float.
+///
+/// 10 January 2026 is a Saturday and the default calendar (`Project::new` →
+/// `Calendar::default` → `Calendar::weekend`) works Monday to Friday, so the
+/// bound below really is a non-working day.
+#[test]
+fn mandatory_constraint_rounding_agrees_between_early_and_late_passes() {
+    fn build_with(constraint: Constraint) -> (Project, ActivityId) {
+        let mut project = base_project();
+        let a = ActivityId(1);
+        let mut activity = Activity::new(a, "Constrained", 2);
+        activity.constraint = constraint;
+        project.activities.push(activity);
+        project
+            .activities
+            .push(Activity::new(ActivityId(2), "Independent", 8));
+        (project, a)
+    }
+
+    let bound = Date::from_calendar_date(2026, Month::January, 10).expect("valid date");
+
+    // MustFinishOn: a finish-typed pin rounds backward (D10).
+    let (project, a) = build_with(Constraint::MustFinishOn(bound));
+    assert!(
+        !project.calendar.is_working_day(bound),
+        "the bound must be a non-working day for this regression"
+    );
+    let expected_finish = project
+        .calendar
+        .prev_working_day_on_or_before(bound)
+        .expect("working-day bound");
+    let result = schedule(&project).expect("must-finish-on schedules");
+    let item = result.activity(a).expect("scheduled activity");
+    assert_eq!(item.scheduled_finish, expected_finish);
+    assert_eq!(item.early_finish, item.scheduled_finish);
+    assert_eq!(item.late_finish, item.scheduled_finish);
+    assert_eq!(item.total_float, 0);
+
+    // MustStartOn: a start-typed pin rounds forward (D10).
+    let (project, a) = build_with(Constraint::MustStartOn(bound));
+    let expected_start = project
+        .calendar
+        .next_working_day_on_or_after(bound)
+        .expect("working-day bound");
+    let result = schedule(&project).expect("must-start-on schedules");
+    let item = result.activity(a).expect("scheduled activity");
+    assert_eq!(item.scheduled_start, expected_start);
+    assert_eq!(item.early_start, item.scheduled_start);
+    assert_eq!(item.late_start, item.scheduled_start);
+    assert_eq!(item.total_float, 0);
 }

@@ -558,6 +558,7 @@ fn weekday_index(date: Date) -> usize {
 /// allow, without moving any successor earlier. It never delays the project
 /// finish.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[non_exhaustive]
 pub enum Constraint {
     /// Schedule as early as the logic and lower-bound constraints allow.
     #[default]
@@ -572,6 +573,10 @@ pub enum Constraint {
     FinishNoEarlierThan(Date),
     /// Finish no later than the given date.
     FinishNoLaterThan(Date),
+    /// Must start on the given date, regardless of network logic.
+    MustStartOn(Date),
+    /// Must finish on the given date, regardless of network logic.
+    MustFinishOn(Date),
 }
 
 impl Constraint {
@@ -584,6 +589,10 @@ impl Constraint {
             Self::StartNoLaterThan(_) => "snlt",
             Self::FinishNoEarlierThan(_) => "fnet",
             Self::FinishNoLaterThan(_) => "fnlt",
+            Self::MustStartOn(_) => "mso",
+            Self::MustFinishOn(_) => "mfo",
+            #[allow(unreachable_patterns)]
+            _ => "unknown",
         }
     }
 
@@ -593,7 +602,9 @@ impl Constraint {
             Self::StartNoEarlierThan(date)
             | Self::StartNoLaterThan(date)
             | Self::FinishNoEarlierThan(date)
-            | Self::FinishNoLaterThan(date) => Some(date),
+            | Self::FinishNoLaterThan(date)
+            | Self::MustStartOn(date)
+            | Self::MustFinishOn(date) => Some(date),
             Self::AsSoonAsPossible | Self::AsLateAsPossible => None,
         }
     }
@@ -611,6 +622,8 @@ impl Constraint {
             ("snlt", Some(date)) => Some(Self::StartNoLaterThan(date)),
             ("fnet", Some(date)) => Some(Self::FinishNoEarlierThan(date)),
             ("fnlt", Some(date)) => Some(Self::FinishNoLaterThan(date)),
+            ("mso", Some(date)) => Some(Self::MustStartOn(date)),
+            ("mfo", Some(date)) => Some(Self::MustFinishOn(date)),
             _ => None,
         }
     }
@@ -629,6 +642,8 @@ impl std::fmt::Display for Constraint {
                 write!(formatter, "finish no earlier than {date}")
             }
             Self::FinishNoLaterThan(date) => write!(formatter, "finish no later than {date}"),
+            Self::MustStartOn(date) => write!(formatter, "must start on {date}"),
+            Self::MustFinishOn(date) => write!(formatter, "must finish on {date}"),
         }
     }
 }
@@ -1692,6 +1707,8 @@ mod tests {
             Constraint::StartNoLaterThan(jan(9)),
             Constraint::FinishNoEarlierThan(jan(12)),
             Constraint::FinishNoLaterThan(jan(16)),
+            Constraint::MustStartOn(jan(20)),
+            Constraint::MustFinishOn(jan(25)),
         ];
 
         for constraint in constraints {
@@ -1711,7 +1728,10 @@ mod tests {
         );
         assert_eq!(Constraint::from_parts("asap", Some(jan(5))), None);
         assert_eq!(Constraint::from_parts("snet", None), None);
-        assert_eq!(Constraint::from_parts("mfo", Some(jan(5))), None);
+        assert_eq!(
+            Constraint::from_parts("mfo", Some(jan(5))),
+            Some(Constraint::MustFinishOn(jan(5)))
+        );
     }
 
     #[test]

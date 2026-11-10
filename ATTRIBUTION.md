@@ -24,25 +24,32 @@ fails CI rather than being discovered later. Nothing in this project is
 
 ## Fonts, icons, and artwork
 
-All visual design in Cadence is original — original shapes drawn with the GUI
-toolkit's own primitives and original colour choices. No commercial product's
-icons, string tables or trade dress have been copied, and none will be.
+The layout, colour system and interaction design in Cadence are original — built
+from the toolkit's own primitives, the project's own token palette, and the
+public behavioural patterns recorded in `docs/inspiration.md`. No commercial
+product's icons, string tables or trade dress have been copied, and none will
+be.
 
-Fonts are bundled with the application. The UI face is Inter (SIL OFL 1.1),
-shipped as `crates/ui-egui/assets/fonts/Inter-{Regular,Medium,SemiBold,Bold}.ttf`
-and registered by `cadence-ui-egui::design::install_fonts`. The GUI toolkit's
-own `epaint_default_fonts` crate (embedded by `eframe`) also ships third-party
-font assets used as fallback, and they carry their own licences:
+Fonts and the icon set are bundled with the application. The UI face is Inter
+(SIL OFL 1.1), shipped as
+`crates/ui-egui/assets/fonts/Inter-{Regular,Medium,SemiBold,Bold}.ttf` and
+registered by `cadence-ui-egui::design::install_fonts`. Command-bar, tab-strip
+and inspector icons are the **Phosphor Icons** glyph font (MIT), embedded by the
+`egui-phosphor` crate and registered beside Inter; every icon sits next to a text
+label so meaning is never icon-only. The GUI toolkit's own
+`epaint_default_fonts` crate (embedded by `eframe`) also ships third-party font
+assets used as fallback, and they carry their own licences:
 
 | Asset | Licence | Source |
 |---|---|---|
 | Inter (Regular/Medium/SemiBold/Bold) | SIL Open Font License 1.1 | https://github.com/rsms/inter (v4.1) |
+| Phosphor Icons (icon glyph font) | MIT | https://github.com/phosphor-icons/phosphor-icons, via the `egui-phosphor` crate |
 | Ubuntu (fallback proportional font) | Ubuntu Font Licence 1.0 | embedded by `epaint_default_fonts` |
 | Noto Emoji | SIL Open Font License 1.1 | embedded by `epaint_default_fonts` |
 
-Both are permissive, OSI-approved font licences, allow-listed in `deny.toml`
-for exactly this purpose and checked by the security workflow. Any further
-non-code asset is listed here with its licence before it ships.
+All are permissive, OSI-approved licences (font and icon), allow-listed in
+`deny.toml` for exactly this purpose and checked by the security workflow. Any
+further non-code asset is listed here with its licence before it ships.
 
 ## Software dependencies
 
@@ -57,6 +64,9 @@ Direct dependencies of the workspace crates:
 | `rusqlite` (bundled SQLite) | MIT (SQLite itself is public domain) | persistence | SQLite project files |
 | `egui` | MIT OR Apache-2.0 | ui-egui | Immediate-mode GUI |
 | `eframe` | MIT OR Apache-2.0 | ui-egui | Windowing and the egui frame |
+| `egui_extras` (with the `datepicker` feature) | MIT OR Apache-2.0 | ui-egui | First-party extra widgets; the calendar date picker |
+| `egui-phosphor` | MIT | ui-egui | Phosphor icon glyph font for the command bar, tabs and inspector |
+| `jiff` | Unlicense OR MIT | ui-egui | Calendar dates for the `egui_extras` date picker (II.30; converted to `time` at the field boundary) |
 | `rfd` | MIT | app, ui-egui | Native save dialog for the PDF report (D16) |
 | `ureq` | MIT OR Apache-2.0 | ui-egui | Opt-in GitHub Releases update check (D22) |
 

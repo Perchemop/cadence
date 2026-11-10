@@ -64,13 +64,14 @@ and relationship references are rejected before writing. Cached schedule
 fields are deliberately not persisted; the schedule is derived data and is
 recomputed on load.
 
-## D10 — Constraint semantics (2026-10-21)
+## D10 — Constraint semantics (2026-10-21; exact pins implemented 2026-11-09/10 — see D29)
 
 Activities support ASAP (default), ALAP, SNET, SNLT, FNET, and FNLT.
 Constraint dates are inclusive bounds interpreted on the activity's own
 calendar: lower bounds round forward to the next working day, upper bounds
 round backward to the previous working day. Exact "must start/finish on"
-constraints are deferred until the UI can resolve conflicts.
+constraints are deferred until the UI can resolve conflicts (implemented
+2026-11-09/10; see D29).
 
 A lower bound raises the forward-pass dates. An upper bound caps the
 backward-pass dates and tightens float. If the earliest feasible schedule
@@ -587,3 +588,77 @@ Consequences: the items above are the remaining §12.1 work; nothing here weaken
 the existing gates (branch protection, the II.29 scan, CI-before-try). The
 `"<App Name> Dev" <dev@example.com>` identity and the land-on-`main`-via-PR rule
 (guide II.20.4, II.25) are reaffirmed unchanged.
+
+## D28 — Adopt guide II.30 (Rust GUI/UX); the date picker uses jiff at the boundary (2026-11-09)
+
+Context: `guide.md` gained **II.30 "Rust GUI/UX — stack matching, tokens and
+evidence"** on 2026-11-09, and §12.3 makes guide synchronisation a process gate.
+Cadence is a native **egui/eframe 0.35** desktop app, so II.30 applies directly.
+
+Decision and adoption:
+
+- **Stack record.** The toolkit and its **resolved** versions are recorded in
+  [`docs/design/gui-stack.md`](docs/design/gui-stack.md) (egui/eframe 0.35.0,
+  egui_extras 0.35.0 + `datepicker`, egui-phosphor 0.13.0), together with the
+  shell shape and the layout model.
+- **One design path (II.30.1, II.30.14).** Cadence uses only the project's own
+  token module plus first-party `egui`/`egui_extras` and the `egui-phosphor`
+  icon font. No shadcn-egui, spaceui, egui-material3, Fluent, or any web/CSS
+  design system is added to this native GUI; those remain inspiration only.
+- **Tokens (II.30.6).** `crates/ui-egui/src/design.rs` is the single token
+  source (`palette(dark)`, type scale, spacing, accent). **Deviation recorded:**
+  the theme module lives at `design.rs`, not a `src/theme/` directory, so an
+  II.30.6 raw-colour grep gate must target `crates/ui-egui/src/design.rs` as the
+  excluded path — wiring that gate is queued.
+- **Iconography.** Adopt `egui-phosphor` (MIT) for command-bar, tab-strip and
+  inspector icons, each rendered beside its text label so meaning is never
+  icon-only (II.30.7.4); the glyph font and licence are recorded in
+  `ATTRIBUTION.md`.
+- **Date picker.** Adopt first-party `egui_extras::DatePickerButton` (II.30.4:
+  prefer first-party widgets) but **confirm the API from the resolved version**:
+  in 0.35 it works on `jiff::civil::Date`, not a string. Hence `jiff`
+  (Unlicense OR MIT, allow-listed in `deny.toml`) is added and dates are
+  converted to/from `time::Date` at the field boundary. The field stays
+  **typeable** (a text edit beside the calendar button), keeping full keyboard
+  entry and the inline invalid-date validation.
+- **No toolkit bump.** This slice does not change `egui`/`eframe`; per II.30.3 a
+  dependency move is its own green slice.
+
+Deviations / consequences:
+
+- `egui_kittest` visual assertions are **not** available yet: the shell renders
+  through `eframe::App::update`, not a plain `&mut Ui` (II.27.12 row 1). A seam
+  refactor to make that possible is its own slice; until then, evidence is the
+  built app reviewed hands-on and offscreen captures as CI artefacts, never
+  committed and with no pixel baselines (II.30.8).
+- The §12.1 version-UI and token-ledger deviations from D27 are unchanged.
+
+## D29 — Mandatory-constraint rounding (2026-11-10)
+
+D10 deferred exact "must start/finish on" constraints until conflicts could
+be resolved; they are now implemented, and this entry records their
+semantics. `Constraint::MustStartOn(date)` is a **start-typed** pin: both the
+early and the late pass round the bound **forward** to the next working day.
+`Constraint::MustFinishOn(date)` is a **finish-typed** pin: both passes round
+the bound **backward** to the previous working day. A start bound follows the
+lower-bound direction and a finish bound the upper-bound direction — the same
+convention D10 set for the four bound kinds (SNET, SNLT, FNET, FNLT), which
+keep their recorded semantics unchanged.
+
+Because both passes apply the same rounding to the same bound, they pin the
+identical working day and the activity carries zero total float even when
+the mandatory date falls on a weekend or holiday. The date is mandatory; the
+day it lands on is the nearest working day on the activity's own calendar.
+Alternatives considered: rejecting a bound that falls on a non-working day
+(turns a data-entry nuisance into a scheduling error), and leaving the exact
+date unpinned while reporting the collision (D10 already refuses to silently
+emit negative float for an impossible hard constraint).
+
+Defect fixed with this entry: the first implementation rounded the
+`MustFinishOn` bound **forward** in the early pass only, while the late pass
+rounded it backward, so a weekend bound produced two different pin dates and
+phantom total float. The forward pass now rounds backward like the late
+pass. The deterministic regression test
+`mandatory_constraint_rounding_agrees_between_early_and_late_passes` pins
+the weekend case, and the constraint property test now generates and checks
+all eight kinds, including the two mandatory pins.
