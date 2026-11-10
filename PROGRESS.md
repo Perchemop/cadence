@@ -3,6 +3,28 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-11 — II.30.6 token hygiene + CI raw-colour gate; S3-5 hang fix; audit-status refresh
+
+- **Token hygiene (II.30.6).** The remaining raw colour constructs outside the
+  theme module — `ACCENT`, the variance colours, the hairlines and the alpha
+  constructs — are centralized into `crates/ui-egui/src/design.rs`, and the
+  ubuntu Verify job gains a **Token discipline (raw colours)** step: a grep
+  gate that fails the build when raw colour literals appear outside the theme
+  module.
+- **S3-5 hang fix.** The Gantt week-grid loop now breaks when
+  `add_working_days` cannot advance, so a calendar with zero working weekdays
+  can no longer spin it forever (guard verified in the working tree).
+- **Audit-status refresh.** A fresh audit of the design-audit backlog against
+  the tree (main @ `1248382` plus this slice) found the records both
+  over-claiming closures — S2-9 never shipped, S2-1's focus rings were not
+  merged, S2-4/S2-12/S2-16/S2-20 are partial or open — and still listing
+  long-closed items as open. The affected entries below are annotated in
+  place; "Next slices" and the PR #90 cross-check's "Still open — verified
+  backlog" list are the corrected, authoritative queue.
+
+Verification: CI run for this slice on `opencode/ci` (result recorded in
+`CHANGELOG.md` and the PR once green).
+
 ## 2026-11-09 — P2 chrome + P3 interaction (icons, date picker, WBS collapse, drag, timescale)
 
 The P2-chrome / P3-interaction / P3-domain tranche of the elite-tool uplift plan
@@ -89,15 +111,17 @@ PR #121 merged — the visual uplift slice from the elite-tool uplift plan:
 Verification: CI green on PR #121 (all required checks).
 
 ## Next slices
-- **II.30.6 raw-colour grep gate** (excluding `crates/ui-egui/src/design.rs`), and
-  an II.30.8 evidence path: the `egui_kittest` seam refactor (a `Host`-style shell
-  so the UI renders into a plain `&mut Ui`).
+- **II.30.6 raw-colour grep gate — landing now** (the 2026-11-11 slice above).
+  The II.30.8 evidence path remains: the `egui_kittest` seam refactor (a
+  `Host`-style shell so the UI renders into a plain `&mut Ui`), then rendered
+  screenshots — the README images are currently broken placeholders.
 - **§12.1 suite-standard deviations (D27):** token-ledger CI update; version UI as
   a bottom-right control opening the ledger-driven Release Notes popup; signed
   releases + verify-then-install updater; shared `crates/update-check` submodule.
 - **P1 F17 terminology/label drift** (one term per concept, honest verbs).
-- Remaining design-audit backlog (`docs/design/ui-polish-audit.md`, PR #90 P3
-  density/completeness items).
+- The verified design-audit backlog — "Still open — verified backlog
+  (2026-11-11 audit)" in the PR #90 cross-check below — plus the engine
+  follow-up listed there.
 
 ## 2026-11-07 — Full GUI audit + P0 correctness slice
 
@@ -1316,7 +1340,9 @@ directives, then the fixes, all verified slice by slice:
 - **Toolbar polish.** Focus rings on the tabs and Undo/Redo; an accent-tinted
   primary style for Undo/Redo; the column chooser moved ahead of the undo
   cluster; a zoom slider in the status bar; and one shared 8 px / 4 px spacing
-  grid (the off-grid 6 px menu margin fixed).
+  grid (the off-grid 6 px menu margin fixed). (Correction, 2026-11-11 audit:
+  the focus rings were not merged — they exist only on the unmerged
+  `opencode/focus-rings` branch and are tracked for a future release.)
 - **Inspector hierarchy.** The activity inspector groups its fields under
   accent section headers (Basic info, Calendar, Field planning, Progress,
   Relationships).
@@ -1335,10 +1361,14 @@ Verification: CI green on `opencode/ci` across Linux (x86_64, aarch64),
 Windows and macOS, plus the security, licensing, SBOM, lockfile, semver and
 personal-data checks.
 
-## 2026-11-06 — UI polish audit backlog closed; release 0.11.0
+## 2026-11-06 — UI polish audit backlog closed; release 0.11.0 (statuses corrected 2026-11-11)
 
 Every item on the UI polish audit's future-slices list is now closed in the
-tree, verified slice by slice against `docs/design/ui-polish-audit.md`:
+tree, verified slice by slice against `docs/design/ui-polish-audit.md`
+(correction, 2026-11-11 audit: this headline over-claims — S2-9 was never
+shipped, S2-1's focus rings were not merged, and S2-4, S2-12, S2-16 and S2-20
+are partial or open; see the annotations below and the "Still open — verified
+backlog" list in the PR #90 cross-check):
 
 - **S2-5 Table filter:** a filter field narrows rows by activity name
   (case-insensitive) and a **Critical only** toggle shows the critical path,
@@ -1357,7 +1387,9 @@ tree, verified slice by slice against `docs/design/ui-polish-audit.md`:
   histogram are computed once per edit in `recompute` and shared behind an
   `Arc`; the lookahead window is cached against the edit version and the
   chosen window, and the snapshot comparison is indexed by activity id
-  (linear, not O(n²)).
+  (linear, not O(n²)). (Correction, 2026-11-11 audit: S2-12 is partial — the
+  window cache stands, but the "new in window" comparison loop is still
+  O(n×m) per frame.)
 - **S3-1 Token colours:** every raw `Color32::RED` and hardcoded red in the
   Table, Resources and Earned-value views now routes through the palette's
   critical token. `variance_color` keeps its own WCAG-AA-verified theme pairs
@@ -1365,6 +1397,22 @@ tree, verified slice by slice against `docs/design/ui-polish-audit.md`:
 - Verified already present from earlier slices: S2-1, S2-4, S2-6, S2-7, S2-9,
   S2-13, S2-14, S2-15, S2-16, S2-18, S2-20, S2-21, S2-22, S1-1c, S3-6, S3-7
   and S3-18.
+  - Correction (2026-11-11 audit): that line over-claims. Verified done:
+    S2-6, S2-7, S2-13, S2-14, S2-15, S2-21, S2-22, S1-1c, S3-7 and S3-18.
+    S2-18 is done with one exception (Delete calendar still deletes
+    immediately, though undoable). S3-6 is done for `ACCESSIBILITY.md` only
+    (stale "Ctrl+1..5" copies remain in `docs/parity.md` and historical
+    docs); S3-1 is done for the original finding (residual literals are
+    being centralized in the 2026-11-11 token-hygiene slice). Not done:
+    S2-9 is open (`SetActivityLocation`/`AssignActivityWbs` exist but have
+    no UI usage); S2-1 is partial (focus rings never merged); S2-4 is
+    partial (the helper covers 5 sites — raw date fields remain: the
+    inspector constraint date, actual start, actual finish and reschedule
+    status date); S2-16 is functionally open (the Ctrl+wheel handler is dead
+    code under egui 0.35 — the chart does not zoom, and the keyboard
+    Ctrl+Plus/Minus/0 zoom may double-zoom the whole GUI); S2-20 is partial
+    (13 fields wired; ~15 visible-label sites plus all combo boxes still
+    unlinked).
 
 **Release 0.11.0** cuts all of the above: the version is bumped across the
 workspace, `CHANGELOG.md` turns the Unreleased section into the dated 0.11.0
@@ -1392,15 +1440,39 @@ was re-verified against the current tree and cross-referenced in
 - S2-3 Status messages coloured by `StatusSeverity` (Info/Success/Warning/Error → palette tokens); info/success messages auto-clear after five seconds (S2-3b), errors and warnings persist.
 - S2-17 F1 shortcuts dialog lists Ctrl+S/O/N, Production (Ctrl+1..9) and all bindings.
 
-**Still open — queued as future slices** (see `docs/design/ui-polish-audit.md`
-"Future slices (from PR #90 backlog)"):
-- P0 authoring: S1-1c row context menu.
-- P1 feedback/shell: S2-1 menu bar + toolbar declutter, S2-4 date field helper, S2-13 cache critical count, S2-14 save-report dialog, S2-16 consume Ctrl+wheel scroll, S2-18 confirmation consistency, S2-20 AccessKit labelled_by, S2-22 duplicate theme toggle.
-- P2 Gantt as working chart: S2-6 bar selection + inspector, S2-7 non-FS drag-to-link, S2-21 apply zoom before draw.
-- P3 density/completeness: S2-5 table filter/multi-select, S2-8 relationship delete/retype, S2-9 Location/WBS inspector fields, S2-10 Diary picker + note edit, S2-11 per-frame resource cache, S2-12 per-frame lookahead cache, S2-15 atomic leveling undo, plus all S3 minors (S3-1 red non-token colours, S3-6 doc drift, S3-7 tab tooltips, S3-18 window min size, …).
+**Still open — verified backlog (2026-11-11 audit; the authoritative
+next-slices list):**
 
-- Engine follow-up: `schedule_with_progress` (progress-driven mode) does not
-  yet honour mandatory constraints (MSO/MFO) — queued for a future slice.
+- **P0 correctness/UX:** S2-16 consume Ctrl+wheel — functionally open (the
+  handler is dead code under egui 0.35: ctrl+wheel goes to egui's zoom path
+  and nothing consumes it, so the chart does not zoom; the keyboard
+  Ctrl+Plus/Minus/0 zoom may also double-zoom the whole GUI); S2-1 focus
+  rings — revive the unmerged `opencode/focus-rings` branch or reimplement.
+- **P1 feedback/shell:** S2-9 Location/WBS inspector fields (the
+  `SetActivityLocation`/`AssignActivityWbs` commands exist but have no UI
+  usage); S2-4 remaining raw date fields (the inspector constraint date,
+  actual start, actual finish and the reschedule status date); S2-20
+  AccessKit `labelled_by` sweep (13 fields wired; ~15 visible-label field
+  sites plus all combo boxes still unlinked); S2-18 exception — Delete
+  calendar still deletes immediately (undoable).
+- **P2 Gantt/density:** S2-12 lookahead comparison loop (still O(n×m) per
+  frame despite the window cache); S2-10 diary activity picker (still a raw
+  numeric text field — the Production view's ComboBox is the intended
+  pattern); S3-9 column chooser / split-Gantt gating; S3-11 empty inspectors
+  beyond a sentence; S3-13/S3-14 diary click-through/jump; S3-15 disabled
+  Print Gantt tooltip.
+- **S3 minors:** S3-4 crash preview clones the whole log every frame; S3-17
+  font symbol coverage for non-Latin imports (unverified/open); S3-10
+  progress range hint (partial); stale "Ctrl+1..5" copies in
+  `docs/parity.md` and historical docs (S3-6 residual); Gantt and Production
+  empty states.
+- **II.30 items:** the evidence pipeline (egui_kittest seam refactor →
+  rendered screenshots; the README images are currently broken) and the
+  reduced-motion record in `ACCESSIBILITY.md` (being added in the current
+  docs refresh); the II.30.6 raw-colour gate is landing in the 2026-11-11
+  slice above.
+- **Engine follow-up:** `schedule_with_progress` (progress-driven mode) does
+  not yet honour mandatory constraints (MSO/MFO) — queued for a future slice.
 
 No item above blocks the current release; all are tracked so they are not missed.
 

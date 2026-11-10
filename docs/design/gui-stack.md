@@ -31,8 +31,9 @@ to this native GUI (guide II.30.1, II.30.14).
 
 ## Shell shape — what the harness can and cannot drive
 
-- Entry point: `CadenceApp::new(&eframe::CreationContext)` with
-  `impl eframe::App for CadenceApp` (`fn update(&mut self, ctx, frame)`).
+- Entry point: `eframe::run_native` builds the app inside its creator closure
+  with `CadenceApp::new(project)` / `CadenceApp::with_path(project, path)`, and
+  `impl eframe::App for CadenceApp` provides `fn update(&mut self, ctx, frame)`.
 - This is the **first** row of the II.27.12 seam table: the shell renders through
   `eframe::App::update`, not into a plain `&mut Ui`, and neither
   `eframe::CreationContext` nor `eframe::Frame` can be fabricated.
@@ -50,19 +51,27 @@ to this native GUI (guide II.30.1, II.30.14).
   (`Ctrl+1`–`Ctrl+9`) → tool cluster.
 - Bottom: status bar (project dates, activity/critical counts, zoom, typed
   status message, `F1` shortcuts).
-- Left: activity inspector side panel.
+- Right: activity inspector side panel. Every inspector is a right panel
+  (`Panel::right`): `inspector` for the Table view, plus the Gantt, Resources,
+  Baselines and Calendars inspectors; there is no left panel.
 - Centre: the active view (Table, Gantt, Resources, Baselines, Calendars,
   Audit, Lookahead, Diary, Production).
-- Optional right panel: split Gantt beside the Table view.
+- Optional second right panel: split Gantt beside the Table view
+  (`Panel::right("workbench_gantt")`).
 - Fixed three-pane shell; no docking/tiling is a product goal, so `egui_dock`
   and `egui_tiles` are deliberately **not** adopted (guide II.30.4).
 
 ## Accessibility in place
 
 - AccessKit is enabled by `eframe`'s default features; interactive widgets carry
-  labels, and Gantt has a canvas summary. WCAG-AA contrast is asserted in unit
-  tests over the palette (light and dark). Limits that cannot be met in egui are
-  recorded in `ACCESSIBILITY.md` rather than glossed over.
+  labels, and Gantt has a canvas summary. The contrast asserted in unit tests is
+  specific, not palette-wide: the `variance_color` red/green pairs at the 4.5:1
+  body-text minimum, and the accent at the 3:1 non-text minimum with white on
+  the accent at 4.5:1 — each measured against synthetic worst-case backgrounds
+  (white, near-black) rather than the real palette surfaces. Broader
+  palette-surface contrast tests, a high-contrast theme, a 24 pt target-size
+  check and focus-ring assertions are tracked follow-ups. Limits that cannot be
+  met in egui are recorded in `ACCESSIBILITY.md` rather than glossed over.
 
 ## How this record is kept current
 

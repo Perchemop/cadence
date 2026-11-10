@@ -72,8 +72,27 @@ pub const fn palette(dark: bool) -> Palette {
     }
 }
 
-/// Bundle Inter (SIL OFL 1.1) and install the type scale: 11 px body, 13 px
-/// strong, 16 px headings.
+/// Colour a variance: delays and overspends in red, improvements in green.
+///
+/// Each theme gets its own pair so that both pass WCAG AA (4.5:1) against the
+/// panel background — verified by the crate's accessibility contrast tests.
+pub fn variance_color(value: Option<i64>, dark: bool) -> Color32 {
+    match (value, dark) {
+        (Some(value), true) if value > 0 => Color32::from_rgb(0xE7, 0x4C, 0x3C),
+        (Some(value), true) if value < 0 => Color32::from_rgb(0x2E, 0xCC, 0x71),
+        (Some(value), false) if value > 0 => Color32::from_rgb(0xC0, 0x39, 0x2B),
+        (Some(value), false) if value < 0 => Color32::from_rgb(0x1E, 0x84, 0x49),
+        _ => palette(dark).grid,
+    }
+}
+
+/// Translucent variant of a palette colour; the theme module owns construction (II.30.6).
+pub fn translucent(color: Color32, alpha: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
+}
+
+/// Bundle Inter (SIL OFL 1.1) and install the type scale: 11 px body, 9.5 px
+/// small, 16 px headings.
 pub fn install_fonts(ctx: &Context) {
     let mut fonts = FontDefinitions::default();
     let inter: [(&str, &[u8]); 4] = [

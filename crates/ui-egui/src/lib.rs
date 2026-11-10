@@ -47,7 +47,7 @@ pub mod design;
 pub mod update_check;
 
 /// Accent colour used for selection and highlights in both themes.
-pub const ACCENT: Color32 = Color32::from_rgb(0x2F, 0x6F, 0xED);
+pub use design::ACCENT;
 
 /// Design tokens shared by the light and dark themes.
 #[derive(Debug, Clone, Copy)]
@@ -4067,20 +4067,20 @@ impl eframe::App for CadenceApp {
                                                 ui.label(egui::RichText::new(date_text(row.current_start)).monospace());
                                                 ui.label(egui::RichText::new(date_text(row.baseline_start)).monospace());
                                                 ui.colored_label(
-                                                    variance_color(row.start_variance(), self.dark),
+                                                    design::variance_color(row.start_variance(), self.dark),
                                                     egui::RichText::new(variance_text(row.start_variance())).monospace(),
                                                 );
                                                 ui.label(egui::RichText::new(date_text(row.current_finish)).monospace());
                                                 ui.label(egui::RichText::new(date_text(row.baseline_finish)).monospace());
                                                 ui.colored_label(
-                                                    variance_color(row.finish_variance(), self.dark),
+                                                    design::variance_color(row.finish_variance(), self.dark),
                                                     egui::RichText::new(variance_text(row.finish_variance())).monospace(),
                                                 );
                                                 let duration_variance = row.duration_variance();
                                                 ui.label(egui::RichText::new(row.current_duration.to_string()).monospace());
                                                 ui.label(egui::RichText::new(row.baseline_duration.to_string()).monospace());
                                                 ui.colored_label(
-                                                    variance_color(
+                                                    design::variance_color(
                                                         Some(duration_variance),
                                                         self.dark,
                                                     ),
@@ -5450,7 +5450,7 @@ impl eframe::App for CadenceApp {
                             ui.add_space(8.0);
                             ui.label(
                                 "• Three-zone toolbar: a menu bar, a view-tab strip, and a tool \
-                                 cluster, with focus rings and a zoom readout in the status bar."
+                                 cluster, with a zoom readout in the status bar."
                             );
                             ui.add_space(8.0);
                             ui.label(
@@ -5617,20 +5617,6 @@ mod gantt_print_tests {
         pdf.image_page(2, 2, vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         let bytes = pdf.to_bytes();
         assert!(!bytes.is_empty());
-    }
-}
-
-/// Colour a variance: delays and overspends in red, improvements in green.
-///
-/// Each theme gets its own pair so that both pass WCAG AA (4.5:1) against the
-/// panel background — verified by the tests at the bottom of this file.
-fn variance_color(value: Option<i64>, dark: bool) -> Color32 {
-    match (value, dark) {
-        (Some(value), true) if value > 0 => Color32::from_rgb(0xE7, 0x4C, 0x3C),
-        (Some(value), true) if value < 0 => Color32::from_rgb(0x2E, 0xCC, 0x71),
-        (Some(value), false) if value > 0 => Color32::from_rgb(0xC0, 0x39, 0x2B),
-        (Some(value), false) if value < 0 => Color32::from_rgb(0x1E, 0x84, 0x49),
-        _ => design::palette(dark).grid,
     }
 }
 
@@ -6072,11 +6058,7 @@ fn render_gantt(
 
         // Weekly hairlines and the today line: structure in low-contrast
         // strokes, so colour stays reserved for meaning.
-        let grid_color = if dark {
-            Color32::from_rgb(0x2A, 0x2E, 0x36)
-        } else {
-            Color32::from_rgb(0xE5, 0xE7, 0xEB)
-        };
+        let grid_color = palette.grid;
         let mut week_origin = origin;
         while week_origin < finish {
             if week_origin > origin {
@@ -6090,10 +6072,12 @@ fn render_gantt(
                     );
                 }
             }
-            week_origin = project
-                .calendar
-                .add_working_days(week_origin, 5)
-                .unwrap_or(week_origin);
+            match project.calendar.add_working_days(week_origin, 5) {
+                Ok(next) if next.to_julian_day() > week_origin.to_julian_day() => {
+                    week_origin = next;
+                }
+                _ => break,
+            }
         }
         let now = today();
         if now >= origin && now <= finish {
@@ -6120,12 +6104,7 @@ fn render_gantt(
         // Non-working day shading: tint columns for weekends/holidays so the
         // working calendar reads off the canvas without extra chrome. Drawn
         // before bars and arrows so it stays in the background.
-        let non_working_fill = Color32::from_rgba_unmultiplied(
-            palette.non_working.r(),
-            palette.non_working.g(),
-            palette.non_working.b(),
-            30,
-        );
+        let non_working_fill = design::translucent(palette.non_working, 30);
         for day in 0..=(total_days as i32) {
             let date = Date::from_julian_day(origin.to_julian_day() + day).unwrap_or(origin);
             if project.calendar.is_working_day(date) {
@@ -6362,9 +6341,8 @@ fn render_gantt(
                             );
                             let variance_days =
                                 result.scheduled_finish.to_julian_day() - bf.to_julian_day();
-                            let tint = variance_color(Some(variance_days as i64), dark);
-                            let ghost_color =
-                                Color32::from_rgba_unmultiplied(tint.r(), tint.g(), tint.b(), 90);
+                            let tint = design::variance_color(Some(variance_days as i64), dark);
+                            let ghost_color = design::translucent(tint, 90);
                             painter.rect_filled(ghost, 2.0, ghost_color);
                         }
                     }
@@ -6596,12 +6574,7 @@ fn render_gantt(
                     Pos2::new(x0, y + 2.0),
                     Pos2::new(x0 + width, y + row_height - 2.0),
                 );
-                let fill = Color32::from_rgba_unmultiplied(
-                    palette.warn.r(),
-                    palette.warn.g(),
-                    palette.warn.b(),
-                    140,
-                );
+                let fill = design::translucent(palette.warn, 140);
                 painter.rect_filled(preview, 2.0, fill);
                 let edge = egui::Stroke::new(1.5, palette.warn);
                 for (a, b) in [
@@ -6836,7 +6809,7 @@ mod accessibility_tests {
     /// theme sits on white and its dark theme near black, so any pair that
     /// passes here passes with room to spare in the real themes.
     const LIGHT_TEXT_BACKGROUND: Color32 = Color32::WHITE;
-    const DARK_TEXT_BACKGROUND: Color32 = Color32::from_rgb(0x12, 0x12, 0x12);
+    const DARK_TEXT_BACKGROUND: Color32 = Color32::from_rgb(0x12, 0x12, 0x12); // allow-raw-color: synthetic WCAG worst-case background
 
     fn relative_luminance(color: Color32) -> f64 {
         fn channel(value: u8) -> f64 {
@@ -6862,10 +6835,10 @@ mod accessibility_tests {
 
     #[test]
     fn variance_text_meets_wcag_aa_on_both_themes() {
-        let light_red = variance_color(Some(1), false);
-        let light_green = variance_color(Some(-1), false);
-        let dark_red = variance_color(Some(1), true);
-        let dark_green = variance_color(Some(-1), true);
+        let light_red = design::variance_color(Some(1), false);
+        let light_green = design::variance_color(Some(-1), false);
+        let dark_red = design::variance_color(Some(1), true);
+        let dark_green = design::variance_color(Some(-1), true);
 
         for (color, name) in [
             (light_red, "light-theme red"),

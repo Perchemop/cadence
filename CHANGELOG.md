@@ -20,7 +20,9 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   **Exit**, and a **Recent files** list of the ten most recent projects.
 - Toolbar polish: focus rings on the tabs and Undo/Redo, an accent-tinted
   primary style for Undo/Redo, a zoom slider in the status bar, and a shared
-  8 px horizontal / 4 px vertical spacing grid.
+  8 px horizontal / 4 px vertical spacing grid. (Correction: the focus rings
+  were not shipped in 0.12.1 — they exist only on an unmerged branch and are
+  tracked for a future release.)
 - The activity inspector groups its fields under accent **section headers**
   (Basic info, Calendar, Field planning, Progress, Relationships).
 - The row context menu gains **Show in Gantt** and **Add to selection**.
@@ -71,6 +73,12 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 - Reconciled with `guide.md` 2026-11-09: adopted **II.30** (Rust GUI/UX — stack
   matching, tokens, a11y-as-code, evidence) in D28 and recorded the GUI stack in
   `docs/design/gui-stack.md`.
+- Token discipline (II.30.6): the remaining raw colour constructs outside the
+  theme module — the accent colour, the variance colours, the hairlines and
+  the alpha helper — are centralized into `crates/ui-egui/src/design.rs`, and
+  CI enforces the rule with a **Token discipline (raw colours)** grep gate on
+  the ubuntu Verify job (raw colour literals outside the theme module fail
+  the build).
 
 ### Fixed
 - Opening a project file no longer silently discards unsaved changes
@@ -115,6 +123,8 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   constraints are now property-tested — `MustStartOn`/`MustFinishOn` added
   to the constraint property strategy — with a weekend-bound regression
   test.
+- The Gantt week-grid loop breaks instead of spinning forever on a calendar
+  with zero working weekdays (S3-5).
 
 ## [0.12.0] — 2026-11-07
 
@@ -161,8 +171,14 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   Duplicate and Delete.
 - Date fields (S2-4): every `YYYY-MM-DD` entry in the GUI goes through one
   helper that validates inline, so parse errors appear next to the field.
+  (Correction, 2026-11-11 audit: partial — the helper covers 5 sites; the
+  inspector constraint date, actual start, actual finish and reschedule
+  status date fields are still raw text.)
 - Inspector completeness (S2-9): the activity inspector now carries the
   Location and WBS fields, which the model and commands already supported.
+  (Correction, 2026-11-11 audit: this did not ship — the
+  `SetActivityLocation`/`AssignActivityWbs` commands exist but have no UI
+  usage.)
 - Update awareness: the window title carries the app version, and the app
   checks for a newer release daily; the README explains the download-and-run
   install for people without Rust.
@@ -174,11 +190,15 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 - Destructive actions confirm consistently (S2-18): deleting an activity, a
   relationship, or applying levelled dates all use the same modal pattern.
 - Every label+field pair in the inspectors is linked for screen readers via
-  AccessKit `labelled_by` (S2-20).
+  AccessKit `labelled_by` (S2-20). (Correction, 2026-11-11 audit: partial —
+  13 fields are wired; ~15 visible-label sites plus all combo boxes are
+  still unlinked.)
 - The theme toggle lives in one place (S2-22): the toolbar keeps it, the status
   bar no longer duplicates it.
 - Saving a report opens a file dialog like printing one (S2-14), and
   Ctrl+wheel over the Gantt zooms without also scrolling the canvas (S2-16).
+  (Correction, 2026-11-11 audit: S2-16 is functionally open — the Ctrl+wheel
+  handler is dead code under egui 0.35 and the chart does not zoom.)
 
 ### Performance
 - Resource conflicts and the day-usage histogram are computed once per edit
@@ -186,7 +206,9 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   frame (S2-11).
 - The lookahead window is cached against the edit version and the chosen
   window, and the snapshot comparison is indexed by activity id, so it is
-  linear rather than O(n²) per frame (S2-12).
+  linear rather than O(n²) per frame (S2-12). (Correction, 2026-11-11 audit:
+  partial — the window cache stands, but the "new in window" comparison
+  loop is still O(n×m) per frame.)
 - The critical-activity count is computed in `recompute`, not per frame
   (S2-13).
 
