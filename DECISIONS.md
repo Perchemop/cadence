@@ -64,13 +64,14 @@ and relationship references are rejected before writing. Cached schedule
 fields are deliberately not persisted; the schedule is derived data and is
 recomputed on load.
 
-## D10 — Constraint semantics (2026-10-21)
+## D10 — Constraint semantics (2026-10-21; exact pins implemented 2026-11-09/10 — see D29)
 
 Activities support ASAP (default), ALAP, SNET, SNLT, FNET, and FNLT.
 Constraint dates are inclusive bounds interpreted on the activity's own
 calendar: lower bounds round forward to the next working day, upper bounds
 round backward to the previous working day. Exact "must start/finish on"
-constraints are deferred until the UI can resolve conflicts.
+constraints are deferred until the UI can resolve conflicts (implemented
+2026-11-09/10; see D29).
 
 A lower bound raises the forward-pass dates. An upper bound caps the
 backward-pass dates and tightens float. If the earliest feasible schedule
@@ -631,3 +632,33 @@ Deviations / consequences:
   built app reviewed hands-on and offscreen captures as CI artefacts, never
   committed and with no pixel baselines (II.30.8).
 - The §12.1 version-UI and token-ledger deviations from D27 are unchanged.
+
+## D29 — Mandatory-constraint rounding (2026-11-10)
+
+D10 deferred exact "must start/finish on" constraints until conflicts could
+be resolved; they are now implemented, and this entry records their
+semantics. `Constraint::MustStartOn(date)` is a **start-typed** pin: both the
+early and the late pass round the bound **forward** to the next working day.
+`Constraint::MustFinishOn(date)` is a **finish-typed** pin: both passes round
+the bound **backward** to the previous working day. A start bound follows the
+lower-bound direction and a finish bound the upper-bound direction — the same
+convention D10 set for the four bound kinds (SNET, SNLT, FNET, FNLT), which
+keep their recorded semantics unchanged.
+
+Because both passes apply the same rounding to the same bound, they pin the
+identical working day and the activity carries zero total float even when
+the mandatory date falls on a weekend or holiday. The date is mandatory; the
+day it lands on is the nearest working day on the activity's own calendar.
+Alternatives considered: rejecting a bound that falls on a non-working day
+(turns a data-entry nuisance into a scheduling error), and leaving the exact
+date unpinned while reporting the collision (D10 already refuses to silently
+emit negative float for an impossible hard constraint).
+
+Defect fixed with this entry: the first implementation rounded the
+`MustFinishOn` bound **forward** in the early pass only, while the late pass
+rounded it backward, so a weekend bound produced two different pin dates and
+phantom total float. The forward pass now rounds backward like the late
+pass. The deterministic regression test
+`mandatory_constraint_rounding_agrees_between_early_and_late_passes` pins
+the weekend case, and the constraint property test now generates and checks
+all eight kinds, including the two mandatory pins.

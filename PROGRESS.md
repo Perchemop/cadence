@@ -34,8 +34,13 @@ The P2-chrome / P3-interaction / P3-domain tranche of the elite-tool uplift plan
 - **Mandatory constraints (P3-domain).** `Constraint::MustStartOn` /
   `MustFinishOn` in the model and engine (they pin early *and* late dates, so
   total float is zero), MSPDI import/export codes 8/9, the undoable
-  `SetMandatoryConstraint` command with tests, property tests, and the
-  inspector's constraint combo extended to eight kinds.
+  `SetMandatoryConstraint` command with tests, and the inspector's
+  constraint combo extended to eight kinds. The constraint property test now
+  covers all eight kinds including the two mandatory pins, with the D10
+  rounding recorded in `DECISIONS.md` D29 and a weekend-bound regression
+  test; the previously inconsistent `MustFinishOn` forward rounding (the
+  early pass rounded forward while the late pass rounded backward) was
+  fixed.
 - **Merge reconciliation.** `main`'s P1 F22 confirm-deletes (#121) and this
   branch's P2 work both descended from `0443f4c`; the two conflicts
   (`crates/commands/src/lib.rs`, `crates/ui-egui/src/lib.rs`) were resolved to
@@ -1393,6 +1398,9 @@ was re-verified against the current tree and cross-referenced in
 - P1 feedback/shell: S2-1 menu bar + toolbar declutter, S2-4 date field helper, S2-13 cache critical count, S2-14 save-report dialog, S2-16 consume Ctrl+wheel scroll, S2-18 confirmation consistency, S2-20 AccessKit labelled_by, S2-22 duplicate theme toggle.
 - P2 Gantt as working chart: S2-6 bar selection + inspector, S2-7 non-FS drag-to-link, S2-21 apply zoom before draw.
 - P3 density/completeness: S2-5 table filter/multi-select, S2-8 relationship delete/retype, S2-9 Location/WBS inspector fields, S2-10 Diary picker + note edit, S2-11 per-frame resource cache, S2-12 per-frame lookahead cache, S2-15 atomic leveling undo, plus all S3 minors (S3-1 red non-token colours, S3-6 doc drift, S3-7 tab tooltips, S3-18 window min size, …).
+
+- Engine follow-up: `schedule_with_progress` (progress-driven mode) does not
+  yet honour mandatory constraints (MSO/MFO) — queued for a future slice.
 
 No item above blocks the current release; all are tracked so they are not missed.
 

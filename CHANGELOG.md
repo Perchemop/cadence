@@ -109,6 +109,12 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   Baselines, Calendars, Diary and Production views.
 - Status bar wraps instead of clipping (V2/F14): `horizontal_wrapped` layout
   with a zoom tooltip showing the Gantt percentage and Ctrl+wheel hint.
+- Mandatory-constraint rounding (D29): `MustFinishOn` on a non-working day
+  now rounds backward in both the early and the late pass (previously the
+  early pass rounded forward, which could leave phantom float); mandatory
+  constraints are now property-tested — `MustStartOn`/`MustFinishOn` added
+  to the constraint property strategy — with a weekend-bound regression
+  test.
 
 ## [0.12.0] — 2026-11-07
 

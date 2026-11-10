@@ -42,6 +42,12 @@
 //! dates. An upper bound that the earliest feasible schedule already misses is
 //! a [`SchedError::ConstraintViolated`], not negative float by stealth.
 //!
+//! `MustStartOn` is a start-typed pin and `MustFinishOn` a finish-typed pin, so
+//! they keep the same rounding in both passes — forward and backward
+//! respectively. Both passes therefore pin the identical working day and the
+//! activity carries zero total float, even when the constraint date falls on a
+//! non-working day. See `DECISIONS.md` D10 and D29.
+//!
 //! [`ActivitySchedule`] always exposes the CPM bounds (`early_*`, `late_*`)
 //! and additionally reports `scheduled_*`. ASAP activities report their early
 //! dates. ALAP activities report their late dates, pulled back only where a
@@ -872,13 +878,20 @@ pub fn schedule_with_minimum_starts(
         }
 
         // Mandatory constraints pin the activity to an exact date and override
-        // network logic and resource leveling.
+        // network logic and resource leveling. They keep the D10 rounding rule:
+        // a start-typed bound rounds forward to the next working day and a
+        // finish-typed bound rounds backward to the previous working day. The
+        // backward pass below applies the same rule, so both passes pin the
+        // very same working day and the activity carries zero total float even
+        // when the constraint date is a non-working day.
         match constraint {
+            // Start type: round forward.
             Constraint::MustStartOn(date) => {
                 start = calendar.next_working_day_on_or_after(date)?;
             }
+            // Finish type: round backward, exactly as the backward pass does.
             Constraint::MustFinishOn(date) => {
-                let mandated_finish = calendar.next_working_day_on_or_after(date)?;
+                let mandated_finish = calendar.prev_working_day_on_or_before(date)?;
                 start = start_from_finish(calendar, mandated_finish, duration)?;
             }
             _ => {}
@@ -985,8 +998,11 @@ pub fn schedule_with_minimum_starts(
             finish = finish.max(finish_from_start(calendar, earliest_start, duration)?);
         }
 
-        // Mandatory constraints pin the late dates to the same exact date so the
-        // activity carries zero total float.
+        // Mandatory constraints pin the late dates to the same exact date the
+        // forward pass pinned, so the activity carries zero total float. The
+        // D10 rounding is repeated here on purpose: a must-start-on is
+        // start-typed and rounds forward, a must-finish-on is finish-typed and
+        // rounds backward.
         match constraint {
             Constraint::MustStartOn(date) => {
                 let mandated = calendar.next_working_day_on_or_after(date)?;
@@ -2654,6 +2670,49 @@ mod tests {
         assert_eq!(a_result.late_finish, jan(7));
         assert_eq!(a_result.total_float, 2);
         assert_eq!(a_result.scheduled_start, jan(5));
+    }
+
+    #[test]
+    fn must_finish_on_a_weekend_rounds_back_in_both_passes() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 3);
+        // January 10 2026 is a Saturday. A must-finish-on is finish-typed, so
+        // it rounds backward to the previous working day in both passes:
+        // Friday January 9. A forward rounding here would leave phantom float.
+        constrain(&mut project, a, Constraint::MustFinishOn(jan(10)));
+
+        let schedule = schedule(&project).expect("schedule succeeds");
+        let a_result = result(&schedule, a);
+
+        assert_eq!(a_result.early_finish, jan(9));
+        assert_eq!(a_result.late_finish, jan(9));
+        assert_eq!(a_result.early_start, jan(7));
+        assert_eq!(a_result.late_start, jan(7));
+        assert_eq!(a_result.scheduled_start, jan(7));
+        assert_eq!(a_result.scheduled_finish, jan(9));
+        assert_eq!(a_result.total_float, 0);
+        assert_eq!(schedule.project_finish, jan(9));
+    }
+
+    #[test]
+    fn must_start_on_a_weekend_rounds_forward_in_both_passes() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 1);
+        // January 10 2026 is a Saturday. A must-start-on is start-typed, so it
+        // rounds forward to the next working day in both passes: Monday
+        // January 12.
+        constrain(&mut project, a, Constraint::MustStartOn(jan(10)));
+
+        let schedule = schedule(&project).expect("schedule succeeds");
+        let a_result = result(&schedule, a);
+
+        assert_eq!(a_result.early_start, jan(12));
+        assert_eq!(a_result.late_start, jan(12));
+        assert_eq!(a_result.early_finish, jan(12));
+        assert_eq!(a_result.late_finish, jan(12));
+        assert_eq!(a_result.scheduled_start, jan(12));
+        assert_eq!(a_result.scheduled_finish, jan(12));
+        assert_eq!(a_result.total_float, 0);
     }
 
     #[test]
