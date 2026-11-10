@@ -92,6 +92,13 @@ Text and structural colours are tested at WCAG AA thresholds on both themes:
 These tests live in the `accessibility_tests` module of
 `crates/ui-egui/src/lib.rs` and run in every CI verification job.
 
+## Reduced motion
+
+Cadence makes no custom animations or transitions: `animate*` is not used
+anywhere in `crates/ui-egui`, and windows appear without animation. The OS
+reduce-motion preference is therefore respected by not doing anything custom.
+The design intent is recorded in `docs/design/brand.md` (Motion).
+
 ## Known limitations
 
 Recorded honestly, including what is not done:

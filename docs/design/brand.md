@@ -35,22 +35,24 @@ restrained accent and semantic colours for schedule meaning:
 | `panel` | `#FFFFFF` | `#1D2026` | panels, grids, popups |
 | `text` | `#1F2933` | `#E3E7EB` | body text |
 | `text-muted` | `#5F6B7A` | `#9AA5B1` | secondary text, units |
-| `accent` | `#2F6FED` | `#2F6FED` | selection, links, focus (the `ACCENT` constant, AA-verified on both themes) |
+| `accent` | `#2F6FED` | `#2F6FED` | selection, links, focus (the `ACCENT` constant, contrast-tested on both themes) |
 | `critical` | `#B91C1C` | `#F87171` | critical bars, failures |
 | `normal` | `#1D4ED8` | `#93C5FD` | non-critical bars |
 | `ok` | `#15803D` | `#4ADE80` | passes, on-track |
 | `warn` | `#B45309` | `#FBBF24` | warnings |
 | `grid` | `#E5E7EB` | `#2A2E36` | hairlines, Gantt grid |
 
-The accent must keep WCAG AA (4.5:1) against panel backgrounds in both themes,
-enforced by the accessibility tests.
+The accent's contrast is enforced by the accessibility tests: white text on the
+accent must keep 4.5:1 (the WCAG AA body-text minimum), and the accent itself
+must keep the 3:1 non-text (UI-component) minimum against the light and dark
+backgrounds.
 
 ## Type
 
 - **UI face: Inter** (SIL OFL 1.1, bundled in `assets/fonts/`, recorded in
   `ATTRIBUTION.md`) — a neutral, dense, highly legible UI face designed for
-  screens. Sizes: 11 px body, 13 px strong, 16 px headings, 24 px window
-  title. Small caps are not used; hierarchy comes from size and weight.
+  screens. Sizes: 11 px body, 16 px headings, 9.5 px small text. Small caps
+  are not used; hierarchy comes from size and weight.
 - **Numeric face: monospace** for every date, float and count column, at body
   size, slightly dimmed so words lead the eye.
 
@@ -64,12 +66,14 @@ enforced by the accessibility tests.
 
 - Reduced to near zero. Windows appear without animation; the only
   transitions are egui's native ~100 ms hover fades. The OS reduce-motion
-  preference is respected by doing nothing custom.
+  preference is respected by doing nothing custom; this is also recorded in
+  `ACCESSIBILITY.md` (Reduced motion).
 
 ## Iconography
 
-- No icons in v1: text labels everywhere. An original SVG icon set is a later
-  slice and would live in `assets/icons/` with an ATTRIBUTION entry.
+- Icons: Phosphor (MIT), via the `egui-phosphor` glyph font installed with
+  Inter in `design::install_fonts`. Every icon sits beside its text label, so
+  meaning is never icon-only.
 
 ## Voice
 

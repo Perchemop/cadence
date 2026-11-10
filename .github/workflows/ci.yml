@@ -41,6 +41,17 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo fmt --check --all
 
+      - name: Token discipline (raw colours)
+        if: runner.os == 'Linux'
+        run: |
+          hits=$(git grep -n -E 'Color32::from_(rgb|rgba|gray|rgba_unmultiplied)' -- crates ':!crates/ui-egui/src/design.rs' | grep -v 'allow-raw-color' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::Raw colour literals must live in crates/ui-egui/src/design.rs (guide II.30.6). Use a design token instead."
+            echo "$hits"
+            exit 1
+          fi
+          echo "Token discipline OK: no raw colour literals outside crates/ui-egui/src/design.rs."
+
       - name: Clippy
         if: runner.os == 'Linux'
         run: cargo clippy --workspace --all-targets -- -D warnings

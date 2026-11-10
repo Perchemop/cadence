@@ -14,7 +14,7 @@ nothing here copies another product's layout, icons, strings or trade dress.
 
 ## Cross-check with PR #90 exhaustive audit (2026-11-03)
 
-PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 43 findings across S1 (blockers), S2 (major) and S3 (minor). Each was re-verified against the current tree.
+PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 43 findings across S1 (blockers), S2 (major) and S3 (minor). The source audit is no longer in the tree (recoverable at commit `a10b740`); the tables below capture the S-id → finding mapping. Latest re-verification: 2026-11-11, against `main` @ `1248382` plus the in-flight token slice.
 
 **S1 blockers — all closed in the current tree** (the audit was written against an older revision):
 - **S1-1 Create/delete activity:** `CreateActivity` wired via Ctrl+N and the **New activity** toolbar button (select + recompute + scroll-to-view); `DeleteActivity` wired in the inspector with a confirmation dialog (`confirm_delete_activity`). The empty state now names the action (S6).
@@ -26,23 +26,72 @@ PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 4
 - **S2-2 Toolbar Undo/Redo:** now call `recompute()` + `refresh_selection()`, carry shortcut tooltips, and are disabled when the command stack is empty (`can_undo()`/`can_redo()`). Fully closed.
 - **S2-3 Status feedback:** `StatusSeverity` (Info/Success/Warning/Error) colours messages by semantic token (`ok`/`warn`/`critical`/`text_muted`); info/success messages now auto-clear after five seconds (S2-3b). Errors and warnings persist.
 - **S2-17 Shortcuts dialog:** now lists Ctrl+S, Ctrl+O, Ctrl+N, Production (Ctrl+1..9) and all other bindings. Closed.
-- Still open: nothing from the S2 list below — every item is closed in the
-  current tree, including the table's filter, critical-only toggle and
-  shift/ctrl range multi-selection (S2-5). The only release-checklist item
-  that cannot be closed by code is the manual screen-reader verification
-  (NVDA/VoiceOver/Orca).
+- **S2-1 Toolbar/menu bar — partial:** the three-zone toolbar, tab tooltips,
+  the zoom readout and the status-bar-only message are all in the tree; **focus
+  rings are not** — they exist only on the unmerged branch
+  `opencode/focus-rings` (commit `50b9b2d`). Remaining work: revive/reimplement
+  the focus rings on `main`.
+- **S2-4 Date fields — partial:** the `date_field` helper is live at five sites
+  (Baselines, Audit, Lookahead, Diary, Production). The inspector's constraint
+  date, actual start, actual finish and reschedule status date are still raw
+  text fields whose parse errors land in the status bar.
+- **S2-9 Location/WBS inspector fields — still open:** neither inspector
+  exposes Location or WBS. The `SetActivityLocation`/`AssignActivityWbs`
+  commands have no UI usage, and the Lookahead clash panel tells users to
+  "Set a location in the inspector".
+- **S2-10 Diary — partial:** the date picker and note editing are done; the
+  diary activity is still a raw numeric field. Production view's ComboBox
+  picker is the intended pattern.
+- **S2-12 Lookahead cache — partial:** the window cache is in; the "new in
+  window" comparison is still O(n×m).
+- **S2-16 Ctrl+wheel zoom — still open, functionally:** the consume-handler
+  exists (`lib.rs:6252-6262`) but is dead under egui 0.35 — ctrl+wheel flows
+  into egui's zoom path, `smooth_scroll_delta` stays zero and the chart does
+  not zoom. Fix options: set `Options::zoom_modifier = Modifiers::NONE` so the
+  handler receives the wheel, or drive the chart from `input.zoom_delta()`;
+  note the keyboard zoom may then double-zoom the GUI.
+- **S2-20 AccessKit `labelled_by` — partial:** 13 fields are wired; ~15
+  visible-label field sites plus all combo boxes remain (F19 in
+  `docs/audit/2026-11-07-full-visual-functional-audit.md`).
+- Still open in S2: S2-9 and S2-16 (functionally), plus the remaining halves
+  of S2-1, S2-4, S2-10, S2-12 and S2-20 above; the table below carries each
+  row's status. The only release-checklist item that cannot be closed by code
+  is the manual screen-reader verification (NVDA/VoiceOver/Orca).
 
-**S3 minors — all open** (doc drift, red non-token colours, crash preview, grid loop, tab tooltips, progress hint, focus rings, window min size, etc.), catalogued in the future-slices table below.
+**S3 minors — mixed; re-verified 2026-11-11.** All 18 S3 findings with their
+verified status. This table captures the S-id → finding mapping (the source
+audit file is absent from the tree; see the note above):
+
+| ID | Finding | Status | Note |
+|----|---------|--------|------|
+| S3-1 | Non-token red error colours in Table/Resources/Baselines/Audit | Done (scope) | Routed through `StatusSeverity`/palette tokens; residual literals are being centralized in the current token slice. |
+| S3-2 | `status_message` never auto-clears | Done | 5 s TTL with tests (same work as S2-3b). |
+| S3-3 | Crash dialog cleared the log before the browser opened | Done | Order fixed: browser opens first, log cleared after the dialog closes. |
+| S3-4 | Crash preview clones the whole log every frame | Open | |
+| S3-5 | Gantt week-grid loop can spin forever on a zero-working-day calendar | Done (in flight) | Guard/break added in the current slice; verified in the working tree (`lib.rs:6076-6081`). |
+| S3-6 | Doc drift: `ACCESSIBILITY.md` still mentions Ctrl+1–5 | Partial | Fixed in `ACCESSIBILITY.md`; stale "Ctrl+1..5" remains in `docs/parity.md` and historical docs. |
+| S3-7 | No tooltips on the nine view tabs | Done | `on_hover_text` on each tab button. |
+| S3-8 | No tooltips on toolbar Undo/Redo | Done | |
+| S3-9 | Column chooser / split-Gantt always visible | Open | |
+| S3-10 | Progress range hint | Partial | |
+| S3-11 | Empty inspectors: nothing beyond a sentence | Open | |
+| S3-12 | Focus rings on dense tables | Partial | No table-specific focus treatment; overlaps the S2-1 focus-ring work. |
+| S3-13 | Diary note click-through | Open | |
+| S3-14 | Lookahead jump from diary | Open | |
+| S3-15 | Disabled Print Gantt control has no tooltip | Open | |
+| S3-16 | Explicit reduced-motion record | In progress | Being added to `ACCESSIBILITY.md` in the current docs refresh. |
+| S3-17 | Font symbol coverage for non-Latin imports | Unverified | |
+| S3-18 | No window minimum size; toolbar wraps on extreme narrow widths | Done | Minimum window size asserted. |
 
 ## Directive-by-directive findings
 
 | Directive | State | Notes |
 |---|---|---|
 | 1. Branding & chrome | Compliant | Plain window title, token palette, 4 px radii, 1 px hairlines; no proprietary assets. |
-| 2. Top-level navigation | Partial | View-tab strip and toolbar present; tab labels carry no shortcut hint (S3-7); toolbar is dense but functional (S2-1, future slice). |
-| 3. Buttons & hierarchy | Partial | Text buttons throughout; primary actions carry no accent weight (see below). Toolbar Undo/Redo are enabled when the stack is empty (S2-2b, future slice). |
+| 2. Top-level navigation | Partial | View-tab strip and toolbar present; tab tooltips added (S3-7, done); toolbar is dense but functional (S2-1 partial — focus rings remaining). |
+| 3. Buttons & hierarchy | Partial | Text buttons throughout; primary actions carry no accent weight (see below). Toolbar Undo/Redo are disabled when the stack is empty (S2-2b, done). |
 | 4. Menus & combos | Compliant | Column menu and combo boxes navigate by keyboard; hover text on the column menu. |
-| 5. Table & inspector | Partial | Virtualised rows, monospace numerics, sticky sortable header; active sort column was not visually distinguished. |
+| 5. Table & inspector | Partial | Virtualised rows, monospace numerics, sticky sortable header; the active sort column is now accent-coloured and its tooltip names the order; inspector Location/WBS fields still missing (S2-9). |
 | 6. Gantt | Compliant | Critical/normal bars, milestones, summary bars, baseline ghosts, arrows with signed lag-label badges, and a 2 px today line with a shape marker — all present. |
 | 7. Status bar | Partial → improved | Now shows the project range, activity count, critical count, earned-value metrics when a baseline exists, save state, and zoom. |
 | 8. Dialogs | Compliant | Shortcuts, updates and crash-report windows share one button order and modality. |
@@ -69,39 +118,38 @@ in every button's tooltip and in the F1 footer instead).
 
 ## Future slices (from PR #90 backlog)
 
-Findings verified still-open against the current tree, ranked by the audit's
-severity and the project's existing remediation pillars (P0 authoring, P1
-feedback/shell, P2 Gantt as working chart, P3 density/completeness). None of
-these block the current slices; they are queued so they are not missed.
+Findings from the PR #90 backlog, re-verified against the current tree on
+2026-11-11 (`main` @ `1248382` plus the in-flight token slice) and given a
+per-row status, ranked by the audit's severity and the project's existing
+remediation pillars (P0 authoring, P1 feedback/shell, P2 Gantt as working
+chart, P3 density/completeness). S3 minors are tracked in the S3 table above.
+Open and partial items are queued so they are not missed; none of them block
+the current slices.
 
-| ID | Finding | Severity | Fix hint | Pillar |
-|----|---------|----------|----------|--------|
-| S1-1c | Row context menu (New below / Delete / Duplicate / Link to selected) on table rows | S1 | Add a right-click context menu to table rows | P0 | Done
-| S2-1 | Overloaded toolbar; status message duplicated inside toolbar | S2 | `egui::menu::bar` (File/Edit/View/Help); compact tab strip; status only in bottom bar | P1 | Done
+| ID | Finding | Severity | Fix hint | Pillar | Status |
+|----|---------|----------|----------|--------|--------|
+| S1-1c | Row context menu (New below / Delete / Duplicate / Link to selected) on table rows | S1 | Add a right-click context menu to table rows | P0 | Done |
+| S2-1 | Overloaded toolbar; status message duplicated inside toolbar | S2 | `egui::menu::bar` (File/Edit/View/Help); compact tab strip; status only in bottom bar; remaining: focus rings (revive/reimplement — only on the unmerged branch `opencode/focus-rings`, 50b9b2d) | P1 | Partial |
 | S2-2b | Toolbar Undo/Redo disabled when stack is empty | S2 | `add_enabled(stack.can_undo())` / `can_redo()` | P1 | Done |
 | S2-3b | Success/info messages auto-clear after five seconds; errors and warnings persist | S2 | Timed auto-clear via `maybe_clear_status` using `Instant` + `STATUS_MESSAGE_TTL` | P1 | Done |
-| S2-4 | Raw `YYYY-MM-DD` text fields; parse errors far from the input | S2 | Reusable `date_field` helper with inline validation | P1 | Done
-| S2-5 | Table: no filter, find, group or multi-select | S2 | Filter field + critical-only toggle; shift/ctrl range selection | P3 | Done
-| S2-6 | Gantt: bars not hit-testable; inspector unreachable from chart | S2 | Hit-test bars on click; persistent inspector; two-way selection sync | P2 | Done
-| S2-7 | Drag-to-link always FS lag-0 regardless of modifier/type | S2 | Default FS; modifier or pop-up for SS/FF/SF + lag | P2 | Done
-| S2-8 | Relationships can be added but never removed or retyped in GUI | S2 | Delete button + confirm; type ComboBox issuing update command | P3 | Done
-| S2-9 | Inspector missing Location and WBS fields | S2 | Add fields (already first-class in model/commands) | P3 | Done
-| S2-10 | Diary: raw numeric Activity ID; notes not editable after creation | S2 | Activity picker; surface parse errors; wire UpdateDailyNote/Delete | P3 | Done
-| S2-11 | Resources: conflicts/histogram/sort recompute every frame | S2 | Cache against `edit_version` | P3 | Done
-| S2-12 | Lookahead: O(n²) snapshot comparison every frame | S2 | Cache comparison window, keyed by identity | P3 | Done
-| S2-13 | Status bar: critical-activity recount every frame | S2 | Compute once in `recompute()`, store the count | P1 | Done
-| S2-14 | Save report writes to CWD without a dialog | S2 | Use the save-file dialog pattern (like Print report) | P1 | Done
-| S2-15 | Leveling applies N separate undo entries (partial state on mid-batch failure) | S2 | Composite/transactional command for atomic undo | P3 | Done
-| S2-16 | Ctrl+wheel zooms and scrolls simultaneously | S2 | Consume the scroll event when zoom modifier is active | P1 | Done
-| S2-18 | Confirmation dialogs inconsistent across destructive actions | S2 | Uniform confirm pattern for delete activity / destructive leveling | P1 | Done
-| S2-20 | AccessKit: many label+field pairs not linked via `labelled_by` | S2 | Systematic `labelled_by` for every form field | P1 | Done
-| S2-21 | Gantt zoom applies one frame after button press | S2 | Apply `pixels_per_day` before drawing the canvas | P2 | Done
-| S2-22 | Theme toggle duplicated in toolbar and status bar | S2 | Differentiate or remove one | P1 | Done
-| S3-1 | Non-token red error colours in Table/Resources/Baselines/Audit | S3 | Route through `StatusSeverity`/palette tokens | P3 | Done
-| S3-6 | `ACCESSIBILITY.md` still mentions Ctrl+1–5 | S3 | Update to Ctrl+1..9 + Production + file shortcuts | P3 | Done
-| S3-7 | No tooltips on the nine view tabs | S3 | Add `on_hover_text` to each tab button | P3 | Done
-| S3-18 | No window minimum size; toolbar wraps on extreme narrow widths | S3 | Assert a minimum window size | P3 | Done
-| — | Accessibility: manual screen-reader verification (NVDA/VoiceOver/Orca) | release | Release-checklist item; cannot be fully automated | — |
+| S2-4 | Raw `YYYY-MM-DD` text fields; parse errors far from the input | S2 | Reusable `date_field` helper with inline validation; inspector dates (constraint, actual start/finish, reschedule status) still raw | P1 | Partial |
+| S2-5 | Table: no filter, find, group or multi-select | S2 | Filter field + critical-only toggle; shift/ctrl range selection | P3 | Done |
+| S2-6 | Gantt: bars not hit-testable; inspector unreachable from chart | S2 | Hit-test bars on click; persistent inspector; two-way selection sync | P2 | Done |
+| S2-7 | Drag-to-link always FS lag-0 regardless of modifier/type | S2 | Default FS; modifier or pop-up for SS/FF/SF + lag | P2 | Done |
+| S2-8 | Relationships can be added but never removed or retyped in GUI | S2 | Delete button + confirm; type ComboBox issuing update command | P3 | Done |
+| S2-9 | Inspector missing Location and WBS fields | S2 | Add fields (first-class in model/commands, but no UI usage today; the Lookahead clash panel points at the missing inspector fields) | P3 | Open |
+| S2-10 | Diary: raw numeric Activity ID; notes not editable after creation | S2 | Date picker + note editing done; activity picker remains (Production's ComboBox is the pattern) | P3 | Partial |
+| S2-11 | Resources: conflicts/histogram/sort recompute every frame | S2 | Cache against `edit_version` | P3 | Done |
+| S2-12 | Lookahead: O(n²) snapshot comparison every frame | S2 | Window cache in (keyed by identity); the "new in window" comparison is still O(n×m) | P3 | Partial |
+| S2-13 | Status bar: critical-activity recount every frame | S2 | Compute once in `recompute()`, store the count | P1 | Done |
+| S2-14 | Save report writes to CWD without a dialog | S2 | Use the save-file dialog pattern (like Print report) | P1 | Done |
+| S2-15 | Leveling applies N separate undo entries (partial state on mid-batch failure) | S2 | Composite/transactional command for atomic undo | P3 | Done |
+| S2-16 | Ctrl+wheel zooms and scrolls simultaneously | S2 | Handler exists but is dead under egui 0.35; set `Options::zoom_modifier = Modifiers::NONE` or drive the chart from `input.zoom_delta()` | P1 | Open (functionally) |
+| S2-18 | Confirmation dialogs inconsistent across destructive actions | S2 | Uniform confirm pattern for delete activity / destructive leveling (calendar delete is the exception: it deletes immediately — undoable, refused while in use) | P1 | Done |
+| S2-20 | AccessKit: many label+field pairs not linked via `labelled_by` | S2 | Systematic `labelled_by` for every form field (13 wired; ~15 visible-label field sites + all combos remain — F19 in `docs/audit/2026-11-07-full-visual-functional-audit.md`) | P1 | Partial |
+| S2-21 | Gantt zoom applies one frame after button press | S2 | Apply `pixels_per_day` before drawing the canvas | P2 | Done |
+| S2-22 | Theme toggle duplicated in toolbar and status bar | S2 | Differentiate or remove one | P1 | Done |
+| — | Accessibility: manual screen-reader verification (NVDA/VoiceOver/Orca) | release | Release-checklist item; cannot be fully automated | — | — |
 
 ## Slices in this change
 
