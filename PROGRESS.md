@@ -3,6 +3,36 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-12 — interaction & polish: ctrl+wheel zoom, diary picker, lookahead loop, confirm consistency
+
+Six verified findings from the design-audit backlog, all in
+`crates/ui-egui/src/lib.rs`:
+
+- **S2-16 Ctrl+wheel zoom.** egui's global zoom is disabled
+  (`Options.input_options.zoom_modifier = Modifiers::NONE`, `zoom_with_keyboard = false`),
+  so Ctrl+wheel over the Gantt reaches the existing consume-handler and zooms
+  the timeline — the handler was dead code under egui 0.35. Keyboard
+  `Ctrl`+`+`/`-`/`0` no longer double-zoom the whole GUI; Cadence's own Gantt
+  zoom handlers are the only zoom.
+- **S2-10 Diary activity picker.** The raw numeric "Activity id" field is
+  replaced by a ComboBox ("None" plus `id — name` entries), the Production
+  view's pattern; notes can still be written unlinked, and the now-unreachable
+  parse-error branch is removed.
+- **S2-12 Lookahead comparison.** The "new in window" check precomputes a
+  `BTreeSet` of snapshot activity ids, so membership is O(1) instead of an
+  O(n×m) scan per frame.
+- **S3-4 Crash preview.** The preview borrows the log (`as_str()`) instead of
+  cloning it every frame.
+- **S3-15 Disabled Print Gantt.** The disabled **Print Gantt…** button explains
+  itself on hover: "Switch to the Gantt view to print the Gantt chart."
+- **S2-18b Calendar delete confirmation.** Calendar deletion uses the standard
+  confirm dialog ("Delete calendar? This can be undone.", Delete/Cancel,
+  Escape cancels), matching the other destructive actions; the in-use refusal
+  still applies.
+
+Verification: CI run for this slice on `opencode/ci` (result recorded in
+`CHANGELOG.md` and the PR once green).
+
 ## 2026-11-11 — II.30.6 token hygiene + CI raw-colour gate; S3-5 hang fix; audit-status refresh
 
 - **Token hygiene (II.30.6).** The remaining raw colour constructs outside the
@@ -111,7 +141,7 @@ PR #121 merged — the visual uplift slice from the elite-tool uplift plan:
 Verification: CI green on PR #121 (all required checks).
 
 ## Next slices
-- **II.30.6 raw-colour grep gate — landing now** (the 2026-11-11 slice above).
+- **II.30.6 raw-colour grep gate — landed in the 2026-11-11 slice above.**
   The II.30.8 evidence path remains: the `egui_kittest` seam refactor (a
   `Host`-style shell so the UI renders into a plain `&mut Ui`), then rendered
   screenshots — the README images are currently broken placeholders.
@@ -1400,7 +1430,8 @@ backlog" list in the PR #90 cross-check):
   - Correction (2026-11-11 audit): that line over-claims. Verified done:
     S2-6, S2-7, S2-13, S2-14, S2-15, S2-21, S2-22, S1-1c, S3-7 and S3-18.
     S2-18 is done with one exception (Delete calendar still deletes
-    immediately, though undoable). S3-6 is done for `ACCESSIBILITY.md` only
+    immediately, though undoable; closed 2026-11-12). S3-6 is done for
+    `ACCESSIBILITY.md` only
     (stale "Ctrl+1..5" copies remain in `docs/parity.md` and historical
     docs); S3-1 is done for the original finding (residual literals are
     being centralized in the 2026-11-11 token-hygiene slice). Not done:
@@ -1443,29 +1474,20 @@ was re-verified against the current tree and cross-referenced in
 **Still open — verified backlog (2026-11-11 audit; the authoritative
 next-slices list):**
 
-- **P0 correctness/UX:** S2-16 consume Ctrl+wheel — functionally open (the
-  handler is dead code under egui 0.35: ctrl+wheel goes to egui's zoom path
-  and nothing consumes it, so the chart does not zoom; the keyboard
-  Ctrl+Plus/Minus/0 zoom may also double-zoom the whole GUI); S2-1 focus
-  rings — revive the unmerged `opencode/focus-rings` branch or reimplement.
+- **P0 correctness/UX:** S2-1 focus rings — revive the unmerged
+  `opencode/focus-rings` branch or reimplement.
 - **P1 feedback/shell:** S2-9 Location/WBS inspector fields (the
   `SetActivityLocation`/`AssignActivityWbs` commands exist but have no UI
   usage); S2-4 remaining raw date fields (the inspector constraint date,
   actual start, actual finish and the reschedule status date); S2-20
   AccessKit `labelled_by` sweep (13 fields wired; ~15 visible-label field
-  sites plus all combo boxes still unlinked); S2-18 exception — Delete
-  calendar still deletes immediately (undoable).
-- **P2 Gantt/density:** S2-12 lookahead comparison loop (still O(n×m) per
-  frame despite the window cache); S2-10 diary activity picker (still a raw
-  numeric text field — the Production view's ComboBox is the intended
-  pattern); S3-9 column chooser / split-Gantt gating; S3-11 empty inspectors
-  beyond a sentence; S3-13/S3-14 diary click-through/jump; S3-15 disabled
-  Print Gantt tooltip.
-- **S3 minors:** S3-4 crash preview clones the whole log every frame; S3-17
-  font symbol coverage for non-Latin imports (unverified/open); S3-10
-  progress range hint (partial); stale "Ctrl+1..5" copies in
-  `docs/parity.md` and historical docs (S3-6 residual); Gantt and Production
-  empty states.
+  sites plus all combo boxes still unlinked).
+- **P2 Gantt/density:** S3-9 column chooser / split-Gantt gating; S3-11 empty
+  inspectors beyond a sentence; S3-13/S3-14 diary click-through/jump.
+- **S3 minors:** S3-17 font symbol coverage for non-Latin imports
+  (unverified/open); S3-10 progress range hint (partial); stale "Ctrl+1..5"
+  copies in `docs/parity.md` and historical docs (S3-6 residual); Gantt and
+  Production empty states.
 - **II.30 items:** the evidence pipeline (egui_kittest seam refactor →
   rendered screenshots; the README images are currently broken) and the
   reduced-motion record in `ACCESSIBILITY.md` (being added in the current

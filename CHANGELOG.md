@@ -79,6 +79,19 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   CI enforces the rule with a **Token discipline (raw colours)** grep gate on
   the ubuntu Verify job (raw colour literals outside the theme module fail
   the build).
+- The Diary note form's activity field is a picker ("None" plus `id — name`
+  entries) instead of a raw numeric id, matching the Production view; notes can
+  still be written unlinked (S2-10).
+- The lookahead "new in window" comparison precomputes a set of snapshot
+  activity ids, so the per-frame check is O(1) instead of an O(n×m) scan
+  (S2-12).
+- Deleting a calendar asks for confirmation ("Delete calendar? This can be
+  undone.", Delete/Cancel, Escape cancels) like every other destructive
+  action; a calendar that is still in use is refused as before (S2-18).
+- The crash-report preview borrows the log instead of cloning it every frame
+  (S3-4).
+- The disabled **Print Gantt…** button explains why on hover: switch to the
+  Gantt view to print the chart (S3-15).
 
 ### Fixed
 - Opening a project file no longer silently discards unsaved changes
@@ -125,6 +138,11 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   test.
 - The Gantt week-grid loop breaks instead of spinning forever on a calendar
   with zero working weekdays (S3-5).
+- Ctrl+wheel over the Gantt zooms the timeline instead of doing nothing
+  (S2-16): egui's global zoom modifier is disabled (`zoom_modifier = NONE`),
+  so the chart's own handler receives the wheel. `Ctrl`+`+`/`-`/`0` no longer
+  double-apply the GUI zoom as well, because Cadence's Gantt zoom handlers are
+  the only zoom.
 
 ## [0.12.0] — 2026-11-07
 
@@ -198,7 +216,8 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 - Saving a report opens a file dialog like printing one (S2-14), and
   Ctrl+wheel over the Gantt zooms without also scrolling the canvas (S2-16).
   (Correction, 2026-11-11 audit: S2-16 is functionally open — the Ctrl+wheel
-  handler is dead code under egui 0.35 and the chart does not zoom.)
+  handler is dead code under egui 0.35 and the chart does not zoom. Fixed in
+  Unreleased.)
 
 ### Performance
 - Resource conflicts and the day-usage histogram are computed once per edit
@@ -208,7 +227,7 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   window, and the snapshot comparison is indexed by activity id, so it is
   linear rather than O(n²) per frame (S2-12). (Correction, 2026-11-11 audit:
   partial — the window cache stands, but the "new in window" comparison
-  loop is still O(n×m) per frame.)
+  loop is still O(n×m) per frame. Fixed in Unreleased.)
 - The critical-activity count is computed in `recompute`, not per frame
   (S2-13).
 
