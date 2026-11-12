@@ -104,6 +104,24 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   reschedule status date) switched over (S2-4).
 - All remaining visible-label fields and every dropdown carry AccessKit
   `labelled_by` labels; `date_field` labels its own field (S2-20).
+- The **Columns** chooser and the Window-menu split-Gantt toggle are disabled
+  outside the Table view and explain why on hover — both only affect the
+  table (S3-9).
+- The Table and Gantt inspectors' empty states use the app's standard dimmed
+  empty-state style with actionable copy (S3-11).
+- Diary notes linked to an activity render a click-through link that selects
+  the activity, switches to the Table view and scrolls to it, mirroring the
+  Lookahead clash panel's jump (S3-13/S3-14).
+- The Gantt shows an empty state naming how to add the first activity instead
+  of a blank canvas, and the Production view distinguishes "no activities
+  yet" from "nothing recorded yet".
+- The percent-complete field's hover text states its range: "Percent
+  complete, from 0 to 100." (S3-10).
+- The stale "Ctrl+1..5" shortcut copy in `docs/parity.md` is corrected to
+  `Ctrl+1`–`Ctrl+9`, matching `ACCESSIBILITY.md` (S3-6 residual; historical
+  docs keep their dated text as records).
+- README screenshot placeholders (broken `docs/assets/*.png` links) removed
+  pending the II.30.8 evidence pipeline.
 
 ### Fixed
 - Opening a project file no longer silently discards unsaved changes
@@ -155,6 +173,9 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   so the chart's own handler receives the wheel. `Ctrl`+`+`/`-`/`0` no longer
   double-apply the GUI zoom as well, because Cadence's Gantt zoom handlers are
   the only zoom.
+- The CodeQL workflow's init and analyze actions are bumped together to
+  v4.39.3: the split Dependabot bumps (#124/#125) each broke the action's
+  required pairing, so the pair is updated as one change.
 
 ## [0.12.0] — 2026-11-07
 
