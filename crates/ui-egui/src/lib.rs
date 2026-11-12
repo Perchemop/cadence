@@ -416,6 +416,7 @@ pub struct CadenceApp {
     confirm_delete_relationship: bool,
     confirm_delete_resource: bool,
     pending_delete_resource_id: Option<ResourceId>,
+    confirm_delete_calendar: bool,
     confirm_delete_baseline: bool,
     pending_delete_baseline_id: Option<BaselineId>,
     confirm_delete_note: bool,
@@ -607,6 +608,7 @@ impl CadenceApp {
             confirm_delete_relationship: false,
             confirm_delete_resource: false,
             pending_delete_resource_id: None,
+            confirm_delete_calendar: false,
             confirm_delete_baseline: false,
             pending_delete_baseline_id: None,
             confirm_delete_note: false,
@@ -1994,6 +1996,15 @@ impl eframe::App for CadenceApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
+        // Cadence owns zoom per view (Gantt pixels_per_day, Ctrl+wheel over the
+        // chart, Ctrl+Plus/Minus/0). Disable egui's global zoom so it does not
+        // double-apply on top of Cadence's own handlers, and so ctrl+wheel is
+        // routed to the chart instead of being consumed by the GUI zoom.
+        ctx.options_mut(|options| {
+            options.input_options.zoom_modifier = egui::Modifiers::NONE;
+            options.zoom_with_keyboard = false;
+        });
+
         // The table filter is edited into these locals and written back after
         // the table renders, so the widgets never borrow `self` at the same
         // time as the view closures do.
@@ -2031,6 +2042,7 @@ impl eframe::App for CadenceApp {
             || self.confirm_leveling
             || self.confirm_delete_relationship
             || self.confirm_delete_resource
+            || self.confirm_delete_calendar
             || self.confirm_delete_baseline
             || self.confirm_delete_note
             || self.confirm_delete_production
@@ -2054,6 +2066,8 @@ impl eframe::App for CadenceApp {
             } else if self.confirm_delete_resource {
                 self.confirm_delete_resource = false;
                 self.pending_delete_resource_id = None;
+            } else if self.confirm_delete_calendar {
+                self.confirm_delete_calendar = false;
             } else if self.confirm_delete_baseline {
                 self.confirm_delete_baseline = false;
                 self.pending_delete_baseline_id = None;
@@ -2381,6 +2395,9 @@ impl eframe::App for CadenceApp {
                             .add_enabled(
                                 self.view_mode == ViewMode::Gantt,
                                 egui::Button::new("Print Gantt…"),
+                            )
+                            .on_disabled_hover_text(
+                                "Switch to the Gantt view to print the Gantt chart.",
                             )
                             .clicked()
                         {
@@ -4121,7 +4138,7 @@ impl eframe::App for CadenceApp {
                                 self.apply_calendar_edits();
                             }
                             if ui.button("Delete calendar").clicked() {
-                                self.delete_selected_calendar();
+                                self.confirm_delete_calendar = true;
                             }
                         }
                         ui.label(
@@ -4518,10 +4535,12 @@ impl eframe::App for CadenceApp {
                                         }
                                     }
                                 }
+                                // Precompute the snapshot's activity ids once so the
+                                // "new in window" check is O(1) per entry (S2-12).
+                                let snapshot_ids: BTreeSet<ActivityId> =
+                                    snapshot_entries.iter().map(|s| s.activity_id).collect();
                                 for entry in entries.iter() {
-                                    let in_snapshot = snapshot_entries
-                                        .iter()
-                                        .any(|snapshot| snapshot.activity_id == entry.id);
+                                    let in_snapshot = snapshot_ids.contains(&entry.id);
                                     if !in_snapshot {
                                         ui.horizontal(|ui| {
                                             ui.label(format!(
@@ -4600,11 +4619,33 @@ impl eframe::App for CadenceApp {
                             "Date (YYYY-MM-DD)",
                             &mut self.diary_date_buffer,
                         );
-                        ui.label("Activity id (optional)");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.diary_activity_buffer)
-                                .desired_width(56.0),
-                        );
+                        ui.label("Activity (optional)");
+                        let selected_text = if self.diary_activity_buffer.is_empty() {
+                            "None".to_string()
+                        } else if let Ok(id) = self.diary_activity_buffer.parse::<u64>() {
+                            self.project
+                                .activity(ActivityId::new(id))
+                                .map(|a| format!("{} — {}", id, a.name))
+                                .unwrap_or_else(|| self.diary_activity_buffer.clone())
+                        } else {
+                            self.diary_activity_buffer.clone()
+                        };
+                        egui::ComboBox::from_id_salt("diary_activity")
+                            .selected_text(selected_text)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.diary_activity_buffer,
+                                    String::new(),
+                                    "None",
+                                );
+                                for activity in &self.project.activities {
+                                    ui.selectable_value(
+                                        &mut self.diary_activity_buffer,
+                                        activity.id.0.to_string(),
+                                        format!("{} — {}", activity.id.0, activity.name),
+                                    );
+                                }
+                            });
                         ui.label("Window start (optional)");
                         ui.add(
                             egui::TextEdit::singleline(&mut self.diary_window_buffer)
@@ -4618,13 +4659,23 @@ impl eframe::App for CadenceApp {
                     if ui.button("Add note").clicked() {
                         let date = diary_date;
                         let activity = if self.diary_activity_buffer.trim().is_empty() {
-                            Some(None)
+                            Ok(None)
                         } else {
-                            self.diary_activity_buffer
-                                .trim()
-                                .parse::<u64>()
-                                .ok()
-                                .map(|id| Some(ActivityId::new(id)))
+                            match self.diary_activity_buffer.trim().parse::<u64>() {
+                                Ok(id) => {
+                                    let id = ActivityId::new(id);
+                                    if self.project.activity(id).is_some() {
+                                        Ok(Some(id))
+                                    } else {
+                                        Err(format!(
+                                            "Activity {id} no longer exists; pick it again."
+                                        ))
+                                    }
+                                }
+                                Err(_) => {
+                                    Err("Activity id must be a number, or empty.".to_string())
+                                }
+                            }
                         };
                         let window = if self.diary_window_buffer.trim().is_empty() {
                             Some(None)
@@ -4632,13 +4683,8 @@ impl eframe::App for CadenceApp {
                             parse_date(self.diary_window_buffer.trim()).map(Some)
                         };
                         match (date, activity, window) {
-                            // Explicitly distinguish "left blank" from "typed
-                            // something that is not a number", so a typo does
-                            // not silently detach the note from its activity.
-                            (Some(_), None, _) => {
-                                self.set_status("Activity id must be a number, or empty.");
-                            }
-                            (Some(date), Some(activity), Some(lookahead_window_start)) => {
+                            (_, Err(message), _) => self.set_status(message),
+                            (Some(date), Ok(activity), Some(lookahead_window_start)) => {
                                 let command = cadence_commands::CreateDailyNote {
                                     date,
                                     content: self.diary_content_buffer.clone(),
@@ -5087,6 +5133,33 @@ impl eframe::App for CadenceApp {
             }
         }
 
+        if self.confirm_delete_calendar {
+            let mut open = true;
+            egui::Window::new("Delete calendar?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
+                    ui.label("Delete the selected calendar? This can be undone.");
+                    ui.horizontal(|ui| {
+                        let delete = ui.button("Delete").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || delete {
+                            self.delete_selected_calendar();
+                            self.confirm_delete_calendar = false;
+                        }
+                        if cancel {
+                            self.confirm_delete_calendar = false;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_delete_calendar = false;
+            }
+        }
+
         if self.confirm_delete_baseline {
             let mut open = true;
             let id = self.pending_delete_baseline_id;
@@ -5270,7 +5343,7 @@ impl eframe::App for CadenceApp {
                             if self.crash_log.is_empty() {
                                 ui.label("(empty)");
                             } else {
-                                ui.monospace(self.crash_log.clone());
+                                ui.monospace(self.crash_log.as_str());
                             }
                         });
                     ui.add_space(4.0);
