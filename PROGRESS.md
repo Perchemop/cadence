@@ -3,6 +3,35 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-12 — inspector completeness & form accessibility: Location/WBS fields, date-field completion, labelled_by sweep
+
+Three P1 items from the design-audit backlog, all in
+`crates/ui-egui/src/lib.rs`:
+
+- **S2-9 Location + WBS inspector fields** — the last open S2 feature item.
+  The Table activity inspector gains a Location text field (commits
+  `SetActivityLocation`; empty clears the location) and a WBS picker
+  (flattened tree, with a "None" entry to unassign; commits
+  `AssignActivityWbs`). Both commands existed but had no UI usage, and the
+  Lookahead clash panel had been telling users to "Set a location in the
+  inspector" with no field to do it — the location-clash flow is now usable
+  end-to-end.
+- **S2-4 date-field helper completed.** The last four raw date text inputs
+  (the inspector constraint date, actual start, actual finish and the
+  reschedule status date) now use the shared `date_field` helper — typeable
+  field, DatePickerButton and the inline invalid-date hint. Every editable
+  date field in the app shares it.
+- **S2-20 AccessKit `labelled_by` sweep completed.** Every remaining
+  visible-label field plus all combo boxes (constraint kind, activity
+  calendar, relationship select, link predecessor/successor/type, resource
+  kind, diary and production activity pickers, drag-link type and the new
+  WBS picker) are labelled; `date_field` wires its own label internally, and
+  the Calendar/Relationships section headings label their combos. Wired
+  sites rose from 13 to ~36.
+
+Verification: CI run for this slice on `opencode/ci` (result recorded in
+`CHANGELOG.md` and the PR once green).
+
 ## 2026-11-12 — interaction & polish: ctrl+wheel zoom, diary picker, lookahead loop, confirm consistency
 
 Six verified findings from the design-audit backlog, all in
@@ -48,7 +77,9 @@ Verification: CI run for this slice on `opencode/ci` (result recorded in
   the tree (main @ `1248382` plus this slice) found the records both
   over-claiming closures — S2-9 never shipped, S2-1's focus rings were not
   merged, S2-4/S2-12/S2-16/S2-20 are partial or open — and still listing
-  long-closed items as open. The affected entries below are annotated in
+  long-closed items as open. (All of those except S2-1's focus rings are
+  closed as of the 2026-11-12 slices above.) The affected entries below are
+  annotated in
   place; "Next slices" and the PR #90 cross-check's "Still open — verified
   backlog" list are the corrected, authoritative queue.
 
@@ -150,7 +181,7 @@ Verification: CI green on PR #121 (all required checks).
   releases + verify-then-install updater; shared `crates/update-check` submodule.
 - **P1 F17 terminology/label drift** (one term per concept, honest verbs).
 - The verified design-audit backlog — "Still open — verified backlog
-  (2026-11-11 audit)" in the PR #90 cross-check below — plus the engine
+  (refreshed 2026-11-12)" in the PR #90 cross-check below — plus the engine
   follow-up listed there.
 
 ## 2026-11-07 — Full GUI audit + P0 correctness slice
@@ -1398,7 +1429,9 @@ tree, verified slice by slice against `docs/design/ui-polish-audit.md`
 (correction, 2026-11-11 audit: this headline over-claims — S2-9 was never
 shipped, S2-1's focus rings were not merged, and S2-4, S2-12, S2-16 and S2-20
 are partial or open; see the annotations below and the "Still open — verified
-backlog" list in the PR #90 cross-check):
+backlog" list in the PR #90 cross-check. S2-12 and S2-16 closed in the
+2026-11-12 interaction slice; S2-9, S2-4 and S2-20 in the 2026-11-12
+inspector slice):
 
 - **S2-5 Table filter:** a filter field narrows rows by activity name
   (case-insensitive) and a **Critical only** toggle shows the critical path,
@@ -1443,7 +1476,9 @@ backlog" list in the PR #90 cross-check):
     code under egui 0.35 — the chart does not zoom, and the keyboard
     Ctrl+Plus/Minus/0 zoom may double-zoom the whole GUI); S2-20 is partial
     (13 fields wired; ~15 visible-label sites plus all combo boxes still
-    unlinked).
+    unlinked). (S2-16 closed in the 2026-11-12 interaction slice; S2-9,
+    S2-4 and S2-20 closed in the 2026-11-12 inspector slice at the top of
+    this file.)
 
 **Release 0.11.0** cuts all of the above: the version is bumped across the
 workspace, `CHANGELOG.md` turns the Unreleased section into the dated 0.11.0
@@ -1471,17 +1506,15 @@ was re-verified against the current tree and cross-referenced in
 - S2-3 Status messages coloured by `StatusSeverity` (Info/Success/Warning/Error → palette tokens); info/success messages auto-clear after five seconds (S2-3b), errors and warnings persist.
 - S2-17 F1 shortcuts dialog lists Ctrl+S/O/N, Production (Ctrl+1..9) and all bindings.
 
-**Still open — verified backlog (2026-11-11 audit; the authoritative
-next-slices list):**
+**Still open — verified backlog (refreshed 2026-11-12 after the inspector
+slice; the authoritative next-slices list):**
 
 - **P0 correctness/UX:** S2-1 focus rings — revive the unmerged
   `opencode/focus-rings` branch or reimplement.
-- **P1 feedback/shell:** S2-9 Location/WBS inspector fields (the
-  `SetActivityLocation`/`AssignActivityWbs` commands exist but have no UI
-  usage); S2-4 remaining raw date fields (the inspector constraint date,
-  actual start, actual finish and the reschedule status date); S2-20
-  AccessKit `labelled_by` sweep (13 fields wired; ~15 visible-label field
-  sites plus all combo boxes still unlinked).
+- **P1 feedback/shell:** none remaining — S2-9 (Location/WBS inspector
+  fields), S2-4 (the last raw date fields) and S2-20 (the AccessKit
+  `labelled_by` sweep) all closed in the 2026-11-12 inspector slice at the
+  top of this file.
 - **P2 Gantt/density:** S3-9 column chooser / split-Gantt gating; S3-11 empty
   inspectors beyond a sentence; S3-13/S3-14 diary click-through/jump.
 - **S3 minors:** S3-17 font symbol coverage for non-Latin imports
