@@ -11,13 +11,14 @@ use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use cadence_commands::{
-    AddResourceToActivity, CaptureBaseline, CommandStack, CreateCalendar, CreateRelationship,
-    CreateResource, DeleteCalendar, DeleteDailyNote, DeleteProduction, DeleteRelationship,
-    DeleteResource, RemoveBaseline, RemoveResourceFromActivity, RenameActivity, RenameCalendar,
-    RenameResource, SetActivityActualCost, SetActivityActualDates, SetActivityBudget,
-    SetActivityCalendar, SetActivityConstraint, SetActivityDuration, SetActivityOwner,
-    SetActivityProgress, SetActivityPromise, SetCalendarDefinition, SetRelationshipLag,
-    SetRelationshipType, SetResourceCapacity, SetResourceKind,
+    AddResourceToActivity, AssignActivityWbs, CaptureBaseline, CommandStack, CreateCalendar,
+    CreateRelationship, CreateResource, DeleteCalendar, DeleteDailyNote, DeleteProduction,
+    DeleteRelationship, DeleteResource, RemoveBaseline, RemoveResourceFromActivity, RenameActivity,
+    RenameCalendar, RenameResource, SetActivityActualCost, SetActivityActualDates,
+    SetActivityBudget, SetActivityCalendar, SetActivityConstraint, SetActivityDuration,
+    SetActivityLocation, SetActivityOwner, SetActivityProgress, SetActivityPromise,
+    SetCalendarDefinition, SetRelationshipLag, SetRelationshipType, SetResourceCapacity,
+    SetResourceKind,
 };
 use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
@@ -416,6 +417,7 @@ pub struct CadenceApp {
     confirm_delete_relationship: bool,
     confirm_delete_resource: bool,
     pending_delete_resource_id: Option<ResourceId>,
+    confirm_delete_calendar: bool,
     confirm_delete_baseline: bool,
     pending_delete_baseline_id: Option<BaselineId>,
     confirm_delete_note: bool,
@@ -502,6 +504,8 @@ pub struct CadenceApp {
     reschedule_date_buffer: String,
     reschedule_preview: Option<ReschedulePreview>,
     owner_buffer: String,
+    location_buffer: String,
+    wbs_buffer: Option<WbsId>,
     promised_buffer: bool,
     delay_reason_buffer: String,
     /// Resource conflicts against the current schedule, rebuilt in `recompute`
@@ -607,6 +611,7 @@ impl CadenceApp {
             confirm_delete_relationship: false,
             confirm_delete_resource: false,
             pending_delete_resource_id: None,
+            confirm_delete_calendar: false,
             confirm_delete_baseline: false,
             pending_delete_baseline_id: None,
             confirm_delete_note: false,
@@ -681,6 +686,8 @@ impl CadenceApp {
             reschedule_date_buffer: today().to_string(),
             reschedule_preview: None,
             owner_buffer: String::new(),
+            location_buffer: String::new(),
+            wbs_buffer: None,
             promised_buffer: false,
             delay_reason_buffer: String::new(),
             conflicts_cache: Arc::new(Vec::new()),
@@ -875,6 +882,8 @@ impl CadenceApp {
         }
         if let Some(activity) = self.project.activity(id) {
             self.owner_buffer = activity.owner.clone().unwrap_or_default();
+            self.location_buffer = activity.location.clone().unwrap_or_default();
+            self.wbs_buffer = activity.wbs;
             self.promised_buffer = activity.promised;
             self.delay_reason_buffer = activity.delay_reason.clone().unwrap_or_default();
         }
@@ -882,10 +891,10 @@ impl CadenceApp {
 
     /// Apply the field-planning buffers through the command layer.
     ///
-    /// The owner and the promise/delay-reason are two separate commands so
-    /// each undoes on its own; moving a promised activity later still asks
-    /// for the reason in the delay-reason field, which the promise command
-    /// records.
+    /// The owner, the location and the promise/delay-reason are separate
+    /// commands so each undoes on its own; moving a promised activity later
+    /// still asks for the reason in the delay-reason field, which the
+    /// promise command records.
     fn apply_field_planning(&mut self, id: ActivityId) {
         let Some(activity) = self.project.activity(id).cloned() else {
             return;
@@ -910,6 +919,20 @@ impl CadenceApp {
                 .stack
                 .execute(&mut self.project, Box::new(SetActivityOwner { id, owner }))
             {
+                self.set_status(error);
+                return;
+            }
+        }
+        let location = if self.location_buffer.trim().is_empty() {
+            None
+        } else {
+            Some(self.location_buffer.trim().to_string())
+        };
+        if location != activity.location {
+            if let Err(error) = self.stack.execute(
+                &mut self.project,
+                Box::new(SetActivityLocation { id, location }),
+            ) {
                 self.set_status(error);
                 return;
             }
@@ -1994,6 +2017,15 @@ impl eframe::App for CadenceApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
+        // Cadence owns zoom per view (Gantt pixels_per_day, Ctrl+wheel over the
+        // chart, Ctrl+Plus/Minus/0). Disable egui's global zoom so it does not
+        // double-apply on top of Cadence's own handlers, and so ctrl+wheel is
+        // routed to the chart instead of being consumed by the GUI zoom.
+        ctx.options_mut(|options| {
+            options.input_options.zoom_modifier = egui::Modifiers::NONE;
+            options.zoom_with_keyboard = false;
+        });
+
         // The table filter is edited into these locals and written back after
         // the table renders, so the widgets never borrow `self` at the same
         // time as the view closures do.
@@ -2031,6 +2063,7 @@ impl eframe::App for CadenceApp {
             || self.confirm_leveling
             || self.confirm_delete_relationship
             || self.confirm_delete_resource
+            || self.confirm_delete_calendar
             || self.confirm_delete_baseline
             || self.confirm_delete_note
             || self.confirm_delete_production
@@ -2054,6 +2087,8 @@ impl eframe::App for CadenceApp {
             } else if self.confirm_delete_resource {
                 self.confirm_delete_resource = false;
                 self.pending_delete_resource_id = None;
+            } else if self.confirm_delete_calendar {
+                self.confirm_delete_calendar = false;
             } else if self.confirm_delete_baseline {
                 self.confirm_delete_baseline = false;
                 self.pending_delete_baseline_id = None;
@@ -2381,6 +2416,9 @@ impl eframe::App for CadenceApp {
                             .add_enabled(
                                 self.view_mode == ViewMode::Gantt,
                                 egui::Button::new("Print Gantt…"),
+                            )
+                            .on_disabled_hover_text(
+                                "Switch to the Gantt view to print the Gantt chart.",
                             )
                             .clicked()
                         {
@@ -2790,7 +2828,7 @@ impl eframe::App for CadenceApp {
                                                 .strong()
                                                 .size(14.0)
                                                 .color(tokens.accent),
-                                        );
+                                        )
                                     };
                                     let icon_basic = egui_phosphor::regular::INFO;
                                     let icon_calendar = egui_phosphor::regular::CALENDAR;
@@ -2804,7 +2842,7 @@ impl eframe::App for CadenceApp {
                                     let duration_label = ui.label("Duration (working days)");
                                     ui.text_edit_singleline(&mut self.duration_buffer)
                                         .labelled_by(duration_label.id);
-                                    ui.label("Constraint");
+                                    let constraint_label = ui.label("Constraint");
                                     let labels = CONSTRAINT_LABELS;
                                     ComboBox::from_id_salt("constraint_kind")
                                         .selected_text(CONSTRAINT_LABELS[self.constraint_kind])
@@ -2816,15 +2854,19 @@ impl eframe::App for CadenceApp {
                                                     *label,
                                                 );
                                             }
-                                        });
+                                        })
+                                        .response
+                                        .labelled_by(constraint_label.id);
                                     if self.constraint_kind >= 2 {
-                                        let constraint_date_label =
-                                            ui.label("Constraint date (YYYY-MM-DD)");
-                                        ui.text_edit_singleline(&mut self.constraint_date_buffer)
-                                            .labelled_by(constraint_date_label.id);
+                                        date_field(
+                                            ui,
+                                            self.dark,
+                                            "Constraint date",
+                                            &mut self.constraint_date_buffer,
+                                        );
                                     }
 
-                                    section(ui, icon_calendar, "Calendar");
+                                    let calendar_section = section(ui, icon_calendar, "Calendar");
                                     let calendar_names =
                                         self.project.calendars.calendars().to_vec();
                                     let current = self
@@ -2876,12 +2918,77 @@ impl eframe::App for CadenceApp {
                                                     self.recompute();
                                                 }
                                             }
-                                        });
+                                        })
+                                        .response
+                                        .labelled_by(calendar_section.id);
 
                                     section(ui, icon_plan, "Field planning");
+                                    let wbs_label = ui.label("WBS");
+                                    let selected_text = self
+                                        .wbs_buffer
+                                        .and_then(|id| self.project.wbs.node(id))
+                                        .map(|node| node.name.clone())
+                                        .unwrap_or_else(|| "None".to_string());
+                                    let wbs_nodes: Vec<(WbsId, String)> = self
+                                        .project
+                                        .wbs
+                                        .nodes()
+                                        .iter()
+                                        .map(|node| {
+                                            let depth =
+                                                self.project.wbs.depth(node.id).unwrap_or(0);
+                                            let indent = "  ".repeat(depth);
+                                            (node.id, format!("{indent}{}", node.name))
+                                        })
+                                        .collect();
+                                    ComboBox::from_id_salt("activity_wbs")
+                                        .selected_text(selected_text)
+                                        .show_ui(ui, |ui| {
+                                            if ui
+                                                .selectable_label(self.wbs_buffer.is_none(), "None")
+                                                .clicked()
+                                                && self.wbs_buffer.is_some()
+                                            {
+                                                if let Some(id) = self.selected {
+                                                    let _ = self.stack.execute(
+                                                        &mut self.project,
+                                                        Box::new(AssignActivityWbs {
+                                                            activity: id,
+                                                            wbs: None,
+                                                        }),
+                                                    );
+                                                    self.wbs_buffer = None;
+                                                    self.recompute();
+                                                }
+                                            }
+                                            for (node_id, label_text) in &wbs_nodes {
+                                                let picked = self.wbs_buffer == Some(*node_id);
+                                                if ui.selectable_label(picked, label_text).clicked()
+                                                    && !picked
+                                                {
+                                                    if let Some(id) = self.selected {
+                                                        let _ = self.stack.execute(
+                                                            &mut self.project,
+                                                            Box::new(AssignActivityWbs {
+                                                                activity: id,
+                                                                wbs: Some(*node_id),
+                                                            }),
+                                                        );
+                                                        self.wbs_buffer = Some(*node_id);
+                                                        self.recompute();
+                                                    }
+                                                }
+                                            }
+                                        })
+                                        .response
+                                        .labelled_by(wbs_label.id);
+
                                     let owner_label = ui.label("Owner");
                                     ui.text_edit_singleline(&mut self.owner_buffer)
                                         .labelled_by(owner_label.id);
+                                    let location_label = ui.label("Location");
+                                    ui.text_edit_singleline(&mut self.location_buffer)
+                                        .labelled_by(location_label.id);
                                     ui.checkbox(
                                         &mut self.promised_buffer,
                                         "Promised in the lookahead",
@@ -2904,19 +3011,24 @@ impl eframe::App for CadenceApp {
                                     let actual_cost_label = ui.label("Actual cost");
                                     ui.text_edit_singleline(&mut self.actual_cost_buffer)
                                         .labelled_by(actual_cost_label.id);
-                                    let actual_start_label = ui.label("Actual start (YYYY-MM-DD)");
-                                    ui.text_edit_singleline(&mut self.actual_start_buffer)
-                                        .labelled_by(actual_start_label.id);
-                                    let actual_finish_label =
-                                        ui.label("Actual finish (YYYY-MM-DD)");
-                                    ui.text_edit_singleline(&mut self.actual_finish_buffer)
-                                        .labelled_by(actual_finish_label.id);
+                                    date_field(
+                                        ui,
+                                        self.dark,
+                                        "Actual start",
+                                        &mut self.actual_start_buffer,
+                                    );
+                                    date_field(
+                                        ui,
+                                        self.dark,
+                                        "Actual finish",
+                                        &mut self.actual_finish_buffer,
+                                    );
 
                                     if ui.button("Apply").clicked() {
                                         self.apply_edits();
                                     }
 
-                                    section(ui, icon_links, "Relationships");
+                                    let links_section = section(ui, icon_links, "Relationships");
                                     ComboBox::from_id_salt("relationship_select")
                                         .selected_text(
                                             self.selected_relationship
@@ -2937,7 +3049,9 @@ impl eframe::App for CadenceApp {
                                                     ),
                                                 );
                                             }
-                                        });
+                                        })
+                                        .response
+                                        .labelled_by(links_section.id);
 
                                     if self.last_rel != self.selected_relationship {
                                         self.last_rel = self.selected_relationship;
@@ -3012,7 +3126,7 @@ impl eframe::App for CadenceApp {
                                         .and_then(|id| self.project.activity(id))
                                         .map(|activity| activity.name.clone())
                                         .unwrap_or_else(|| "Select activity".to_string());
-                                    ui.label("Predecessor");
+                                    let predecessor_label = ui.label("Predecessor");
                                     ComboBox::from_id_salt("link_predecessor")
                                         .selected_text(predecessor_text)
                                         .show_ui(ui, |ui| {
@@ -3023,13 +3137,15 @@ impl eframe::App for CadenceApp {
                                                     &activity.name,
                                                 );
                                             }
-                                        });
+                                        })
+                                        .response
+                                        .labelled_by(predecessor_label.id);
                                     let successor_text = self
                                         .link_successor
                                         .and_then(|id| self.project.activity(id))
                                         .map(|activity| activity.name.clone())
                                         .unwrap_or_else(|| "Select activity".to_string());
-                                    ui.label("Successor");
+                                    let successor_label = ui.label("Successor");
                                     ComboBox::from_id_salt("link_successor")
                                         .selected_text(successor_text)
                                         .show_ui(ui, |ui| {
@@ -3040,8 +3156,10 @@ impl eframe::App for CadenceApp {
                                                     &activity.name,
                                                 );
                                             }
-                                        });
-                                    ui.label("Type");
+                                        })
+                                        .response
+                                        .labelled_by(successor_label.id);
+                                    let link_type_combo_label = ui.label("Type");
                                     let link_types = LINK_TYPE_LABELS;
                                     ComboBox::from_id_salt("link_type")
                                         .selected_text(link_type_label(self.link_type_index))
@@ -3053,9 +3171,12 @@ impl eframe::App for CadenceApp {
                                                     *label,
                                                 );
                                             }
-                                        });
-                                    ui.label("Lag (working days)");
-                                    ui.text_edit_singleline(&mut self.link_lag_buffer);
+                                        })
+                                        .response
+                                        .labelled_by(link_type_combo_label.id);
+                                    let link_lag_label = ui.label("Lag (working days)");
+                                    ui.text_edit_singleline(&mut self.link_lag_buffer)
+                                        .labelled_by(link_lag_label.id);
                                     if ui.button("Add link").clicked() {
                                         self.add_link_from_form();
                                     }
@@ -3116,8 +3237,10 @@ impl eframe::App for CadenceApp {
                 // widgets never borrow `self` inside the table's CentralPanel.
                 egui::Panel::top("table_filter").show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label("Filter:");
-                        let filter_response = ui.text_edit_singleline(&mut filter_text);
+                        let filter_label = ui.label("Filter:");
+                        let filter_response = ui
+                            .text_edit_singleline(&mut filter_text)
+                            .labelled_by(filter_label.id);
                         filter_response.on_hover_text("Show only activities matching this name");
                         let critical_response = ui.checkbox(&mut critical_only, "Critical only");
                         critical_response.on_hover_text("Show only critical-path activities");
@@ -3616,9 +3739,10 @@ impl eframe::App for CadenceApp {
                     .default_size(300.0)
                     .show(ui, |ui| {
                         ui.heading("Resource");
-                        ui.label("Name");
-                        ui.text_edit_singleline(&mut self.resource_name_buffer);
-                        ui.label("Kind");
+                        let resource_name_label = ui.label("Name");
+                        ui.text_edit_singleline(&mut self.resource_name_buffer)
+                            .labelled_by(resource_name_label.id);
+                        let resource_kind_label = ui.label("Kind");
                         ComboBox::from_id_salt("resource_kind")
                             .selected_text(RESOURCE_KIND_LABELS[self.resource_kind_index])
                             .show_ui(ui, |ui| {
@@ -3629,11 +3753,15 @@ impl eframe::App for CadenceApp {
                                         *label,
                                     );
                                 }
-                            });
-                        ui.label("Capacity (units per working day)");
-                        ui.text_edit_singleline(&mut self.resource_capacity_buffer);
-                        ui.label("Cost rate per unit (per working day)");
-                        ui.text_edit_singleline(&mut self.resource_cost_rate_buffer);
+                            })
+                            .response
+                            .labelled_by(resource_kind_label.id);
+                        let cap_label = ui.label("Capacity (units per working day)");
+                        ui.text_edit_singleline(&mut self.resource_capacity_buffer)
+                            .labelled_by(cap_label.id);
+                        let rate_label = ui.label("Cost rate per unit (per working day)");
+                        ui.text_edit_singleline(&mut self.resource_cost_rate_buffer)
+                            .labelled_by(rate_label.id);
 
                         if ui.button("Add resource").clicked() {
                             self.create_resource();
@@ -3926,8 +4054,9 @@ impl eframe::App for CadenceApp {
                     .default_size(300.0)
                     .show(ui, |ui| {
                         ui.heading("Baselines");
-                        ui.label("Name for the new baseline");
-                        ui.text_edit_singleline(&mut self.baseline_name_buffer);
+                        let baseline_label = ui.label("Name for the new baseline");
+                        ui.text_edit_singleline(&mut self.baseline_name_buffer)
+                            .labelled_by(baseline_label.id);
                         if ui.button("Capture baseline").clicked() {
                             self.capture_baseline_now();
                         }
@@ -4099,8 +4228,9 @@ impl eframe::App for CadenceApp {
                     .default_size(300.0)
                     .show(ui, |ui| {
                         ui.heading("Calendars");
-                        ui.label("Name");
-                        ui.text_edit_singleline(&mut self.calendar_name_buffer);
+                        let cal_name_label = ui.label("Name");
+                        ui.text_edit_singleline(&mut self.calendar_name_buffer)
+                            .labelled_by(cal_name_label.id);
                         ui.label("Working days");
                         ui.horizontal_wrapped(|ui| {
                             for (index, label) in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -4110,8 +4240,9 @@ impl eframe::App for CadenceApp {
                                 ui.checkbox(&mut self.calendar_weekdays[index], *label);
                             }
                         });
-                        ui.label("Holidays (comma-separated YYYY-MM-DD)");
-                        ui.text_edit_singleline(&mut self.calendar_holidays_buffer);
+                        let hol_label = ui.label("Holidays (comma-separated YYYY-MM-DD)");
+                        ui.text_edit_singleline(&mut self.calendar_holidays_buffer)
+                            .labelled_by(hol_label.id);
 
                         if ui.button("Add calendar").clicked() {
                             self.create_calendar();
@@ -4121,7 +4252,7 @@ impl eframe::App for CadenceApp {
                                 self.apply_calendar_edits();
                             }
                             if ui.button("Delete calendar").clicked() {
-                                self.delete_selected_calendar();
+                                self.confirm_delete_calendar = true;
                             }
                         }
                         ui.label(
@@ -4406,8 +4537,9 @@ impl eframe::App for CadenceApp {
                     // be compared against later windows.
                     ui.heading("Publish snapshot");
                     ui.horizontal_wrapped(|ui| {
-                        ui.label("Name");
-                        ui.text_edit_singleline(&mut self.lookahead_snapshot_name_buffer);
+                        let snap_label = ui.label("Name");
+                        ui.text_edit_singleline(&mut self.lookahead_snapshot_name_buffer)
+                            .labelled_by(snap_label.id);
                         if ui.button("Publish").clicked() {
                             let name = self.lookahead_snapshot_name_buffer.trim();
                             if name.is_empty() {
@@ -4518,10 +4650,12 @@ impl eframe::App for CadenceApp {
                                         }
                                     }
                                 }
+                                // Precompute the snapshot's activity ids once so the
+                                // "new in window" check is O(1) per entry (S2-12).
+                                let snapshot_ids: BTreeSet<ActivityId> =
+                                    snapshot_entries.iter().map(|s| s.activity_id).collect();
                                 for entry in entries.iter() {
-                                    let in_snapshot = snapshot_entries
-                                        .iter()
-                                        .any(|snapshot| snapshot.activity_id == entry.id);
+                                    let in_snapshot = snapshot_ids.contains(&entry.id);
                                     if !in_snapshot {
                                         ui.horizontal(|ui| {
                                             ui.label(format!(
@@ -4600,16 +4734,41 @@ impl eframe::App for CadenceApp {
                             "Date (YYYY-MM-DD)",
                             &mut self.diary_date_buffer,
                         );
-                        ui.label("Activity id (optional)");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.diary_activity_buffer)
-                                .desired_width(56.0),
-                        );
-                        ui.label("Window start (optional)");
+                        let diary_activity_label = ui.label("Activity (optional)");
+                        let selected_text = if self.diary_activity_buffer.is_empty() {
+                            "None".to_string()
+                        } else if let Ok(id) = self.diary_activity_buffer.parse::<u64>() {
+                            self.project
+                                .activity(ActivityId::new(id))
+                                .map(|a| format!("{} — {}", id, a.name))
+                                .unwrap_or_else(|| self.diary_activity_buffer.clone())
+                        } else {
+                            self.diary_activity_buffer.clone()
+                        };
+                        egui::ComboBox::from_id_salt("diary_activity")
+                            .selected_text(selected_text)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.diary_activity_buffer,
+                                    String::new(),
+                                    "None",
+                                );
+                                for activity in &self.project.activities {
+                                    ui.selectable_value(
+                                        &mut self.diary_activity_buffer,
+                                        activity.id.0.to_string(),
+                                        format!("{} — {}", activity.id.0, activity.name),
+                                    );
+                                }
+                            })
+                            .response
+                            .labelled_by(diary_activity_label.id);
+                        let diary_window_label = ui.label("Window start (optional)");
                         ui.add(
                             egui::TextEdit::singleline(&mut self.diary_window_buffer)
                                 .desired_width(96.0),
-                        );
+                        )
+                        .labelled_by(diary_window_label.id);
                     });
                     ui.label("Note");
                     ui.add(
@@ -4618,13 +4777,23 @@ impl eframe::App for CadenceApp {
                     if ui.button("Add note").clicked() {
                         let date = diary_date;
                         let activity = if self.diary_activity_buffer.trim().is_empty() {
-                            Some(None)
+                            Ok(None)
                         } else {
-                            self.diary_activity_buffer
-                                .trim()
-                                .parse::<u64>()
-                                .ok()
-                                .map(|id| Some(ActivityId::new(id)))
+                            match self.diary_activity_buffer.trim().parse::<u64>() {
+                                Ok(id) => {
+                                    let id = ActivityId::new(id);
+                                    if self.project.activity(id).is_some() {
+                                        Ok(Some(id))
+                                    } else {
+                                        Err(format!(
+                                            "Activity {id} no longer exists; pick it again."
+                                        ))
+                                    }
+                                }
+                                Err(_) => {
+                                    Err("Activity id must be a number, or empty.".to_string())
+                                }
+                            }
                         };
                         let window = if self.diary_window_buffer.trim().is_empty() {
                             Some(None)
@@ -4632,13 +4801,8 @@ impl eframe::App for CadenceApp {
                             parse_date(self.diary_window_buffer.trim()).map(Some)
                         };
                         match (date, activity, window) {
-                            // Explicitly distinguish "left blank" from "typed
-                            // something that is not a number", so a typo does
-                            // not silently detach the note from its activity.
-                            (Some(_), None, _) => {
-                                self.set_status("Activity id must be a number, or empty.");
-                            }
-                            (Some(date), Some(activity), Some(lookahead_window_start)) => {
+                            (_, Err(message), _) => self.set_status(message),
+                            (Some(date), Ok(activity), Some(lookahead_window_start)) => {
                                 let command = cadence_commands::CreateDailyNote {
                                     date,
                                     content: self.diary_content_buffer.clone(),
@@ -4754,7 +4918,7 @@ impl eframe::App for CadenceApp {
                     ui.label("Record daily actual progress against the schedule.");
                     ui.separator();
                     ui.horizontal(|ui| {
-                        ui.label("Activity");
+                        let production_activity_label = ui.label("Activity");
                         egui::ComboBox::from_id_salt("prod_activity")
                             .selected_text(if self.production_activity_buffer.is_empty() {
                                 "Select activity".to_string()
@@ -4769,15 +4933,18 @@ impl eframe::App for CadenceApp {
                                         &activity.name,
                                     );
                                 }
-                            });
+                            })
+                            .response
+                            .labelled_by(production_activity_label.id);
                         let production_date = date_field(
                             ui,
                             self.dark,
                             "Date (YYYY-MM-DD)",
                             &mut self.production_date_buffer,
                         );
-                        ui.label("Percent");
-                        ui.text_edit_singleline(&mut self.production_percent_buffer);
+                        let prod_percent_label = ui.label("Percent");
+                        ui.text_edit_singleline(&mut self.production_percent_buffer)
+                            .labelled_by(prod_percent_label.id);
                         if ui.button("Record").clicked() {
                             if let Ok(activity_id) = self.production_activity_buffer.parse::<u64>()
                             {
@@ -4836,8 +5003,12 @@ impl eframe::App for CadenceApp {
                              until you apply the result (a later slice).",
                         );
                         ui.horizontal(|ui| {
-                            ui.label("Status date");
-                            ui.text_edit_singleline(&mut self.reschedule_date_buffer);
+                            date_field(
+                                ui,
+                                self.dark,
+                                "Status date",
+                                &mut self.reschedule_date_buffer,
+                            );
                             if ui.button("Preview").clicked() {
                                 if let Some(date) = parse_date(self.reschedule_date_buffer.trim()) {
                                     match ReschedulePreview::build(
@@ -5087,6 +5258,33 @@ impl eframe::App for CadenceApp {
             }
         }
 
+        if self.confirm_delete_calendar {
+            let mut open = true;
+            egui::Window::new("Delete calendar?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
+                    ui.label("Delete the selected calendar? This can be undone.");
+                    ui.horizontal(|ui| {
+                        let delete = ui.button("Delete").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || delete {
+                            self.delete_selected_calendar();
+                            self.confirm_delete_calendar = false;
+                        }
+                        if cancel {
+                            self.confirm_delete_calendar = false;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_delete_calendar = false;
+            }
+        }
+
         if self.confirm_delete_baseline {
             let mut open = true;
             let id = self.pending_delete_baseline_id;
@@ -5270,12 +5468,13 @@ impl eframe::App for CadenceApp {
                             if self.crash_log.is_empty() {
                                 ui.label("(empty)");
                             } else {
-                                ui.monospace(self.crash_log.clone());
+                                ui.monospace(self.crash_log.as_str());
                             }
                         });
                     ui.add_space(4.0);
-                    ui.label("Optional notes (what were you doing?)");
-                    ui.text_edit_multiline(&mut self.crash_notes);
+                    let crash_label = ui.label("Optional notes (what were you doing?)");
+                    ui.text_edit_multiline(&mut self.crash_notes)
+                        .labelled_by(crash_label.id);
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         if ui.button("Open GitHub issue").clicked() {
@@ -5529,17 +5728,19 @@ fn from_jiff(date: jiff::civil::Date) -> Date {
 }
 
 fn date_field(ui: &mut Ui, dark: bool, label: &str, buffer: &mut String) -> Option<Date> {
-    ui.label(label);
+    let label_response = ui.label(label);
     // The value is editable both ways: type `YYYY-MM-DD` directly, or use the
     // calendar button, which writes the chosen day back into the same buffer.
     ui.horizontal(|ui| {
-        ui.text_edit_singleline(buffer);
+        ui.text_edit_singleline(buffer)
+            .labelled_by(label_response.id);
         if let Some(mut picked) = parse_date(buffer.trim())
             .and_then(to_jiff)
             .or_else(|| to_jiff(today()))
         {
             if ui
                 .add(DatePickerButton::new(&mut picked).id_salt(label))
+                .labelled_by(label_response.id)
                 .changed()
             {
                 *buffer = from_jiff(picked).to_string();
@@ -6027,14 +6228,16 @@ fn render_gantt(
                 .font(egui::FontId::monospace(11.0)),
         );
         ui.separator();
-        ui.label("Drag new link as:");
+        let drag_link_label = ui.label("Drag new link as:");
         ComboBox::from_id_salt("drag_link_type")
             .selected_text(link_type_label(*drag_link_type_index))
             .show_ui(ui, |ui| {
                 for (index, label) in LINK_TYPE_LABELS.iter().enumerate() {
                     ui.selectable_value(drag_link_type_index, index, *label);
                 }
-            });
+            })
+            .response
+            .labelled_by(drag_link_label.id);
     });
 
     // Apply the (possibly just-changed) zoom before drawing so a button press

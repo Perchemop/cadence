@@ -255,7 +255,7 @@ acceptance criteria drive implementation; it does not promise a release date.
       Research:
       [`docs/research/aphex-integration.md`](docs/research/aphex-integration.md).
 
-### Design audit backlog (PR #90, 2026-11-03 — re-verified 2026-11-11)
+### Design audit backlog (PR #90, 2026-11-03 — re-verified 2026-11-12)
 
 The exhaustive design/GUI audit (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`,
 43 findings) was re-verified against the current tree and cross-referenced in
@@ -264,32 +264,29 @@ closed (activity create/delete, Production view, dirty-state close guard).
 A 2026-11-11 audit re-verified the S2/S3 items against the tree (main @
 `1248382`): most are closed — S1-1c, S2-5, S2-6, S2-7, S2-8, S2-11, S2-13,
 S2-14, S2-15, S2-18, S2-21, S2-22, S3-2, S3-3, S3-7, S3-8 and S3-18, plus
-the original S3-1 and S3-6 findings. The remaining queue below is tracked in
-PROGRESS.md ("Still open — verified backlog") so it is not missed:
+the original S3-1 and S3-6 findings. The 2026-11-12 interaction slice closed
+S2-16, S2-10, S2-12, S3-4 and S3-15, and the S2-18 calendar-delete exception
+with them; the 2026-11-12 inspector slice closed S2-9, S2-4 and S2-20
+(Location/WBS inspector fields, the last raw date fields, and the AccessKit
+`labelled_by` sweep). The remaining queue below is tracked in PROGRESS.md
+("Still open — verified backlog") so it is not missed:
 
-- **P1 feedback & shell (partial/open):** S2-16 Ctrl+wheel consumption —
-  functionally open (the handler is dead code under egui 0.35; the chart does
-  not zoom, and the keyboard Ctrl+Plus/Minus/0 zoom may double-zoom the GUI);
-  S2-1 focus rings never merged (unmerged `opencode/focus-rings` branch —
-  revive or reimplement; the rest of the shell declutter shipped); S2-4 date
-  helper at 5 sites with raw fields remaining (inspector constraint date,
-  actual start, actual finish, reschedule status date); S2-20 AccessKit
-  `labelled_by` (13 fields wired; ~15 visible-label sites plus all combo
-  boxes unlinked).
-- **P3 density & completeness (open):** S2-9 Location/WBS inspector fields
-  (commands exist, no UI usage); S2-10 diary activity picker (still a raw
-  numeric field — the Production view's ComboBox is the pattern); S2-12
-  lookahead comparison loop (still O(n×m) per frame); S3-9 column chooser /
-  split-Gantt gating; S3-11 empty inspectors beyond a sentence; S3-13/S3-14
-  diary click-through/jump; S3-15 disabled Print Gantt tooltip.
-- **S3 polish:** S3-4 crash preview clones the whole log every frame; S3-10
-  progress range hint (partial); S3-17 font symbol coverage for non-Latin
-  imports (unverified); stale "Ctrl+1..5" copies in `docs/parity.md` and
-  historical docs; Gantt and Production empty states.
+- **P1 feedback & shell (partial):** S2-1 focus rings never merged
+  (unmerged `opencode/focus-rings` branch — revive or reimplement; the rest
+  of the shell declutter shipped). S2-4 (date-field helper, all editable
+  date fields) and S2-20 (AccessKit `labelled_by`, every field and combo
+  box) closed in the 2026-11-12 inspector slice.
+- **P3 density & completeness (open):** S3-9 column chooser / split-Gantt
+  gating; S3-11 empty inspectors beyond a sentence; S3-13/S3-14 diary
+  click-through/jump. S2-9 (Location/WBS inspector fields) closed in the
+  2026-11-12 inspector slice.
+- **S3 polish:** S3-10 progress range hint (partial); S3-17 font symbol
+  coverage for non-Latin imports (unverified); stale "Ctrl+1..5" copies in
+  `docs/parity.md` and historical docs; Gantt and Production empty states.
 - **II.30 items:** the evidence pipeline (egui_kittest seam refactor →
   rendered screenshots; the README images are currently broken) and the
   reduced-motion record in `ACCESSIBILITY.md` (current docs refresh); the
-  II.30.6 raw-colour gate is landing in the current slice.
+  II.30.6 raw-colour gate landed in the 2026-11-11 slice.
 - **Engine follow-up:** `schedule_with_progress` (progress-driven mode) does
   not honour mandatory constraints (MSO/MFO).
 

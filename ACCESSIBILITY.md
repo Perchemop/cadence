@@ -40,7 +40,10 @@ in `docs/usage.md`.
   `Ctrl+Minus` and `Ctrl+0` zoom in, out and reset without a pointer. The chart
   carries a text summary and legend. Horizontal and vertical panning of the
   canvas remains pointer/wheel-driven; the Table view presents the same
-  schedule data as a keyboard-navigable text table.
+  schedule data as a keyboard-navigable text table. Cadence intentionally turns
+  off egui's built-in whole-interface keyboard zoom, so these shortcuts zoom
+  only the timeline; window-level magnification remains available through the
+  operating system's display scaling.
 - **Resources** — the dictionary rows, capacity fields, assignment toggles,
   leveling preview/apply buttons and per-day usage table are all standard
   widgets. The leveling report is text.
