@@ -3,6 +3,45 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-12 — S3 polish: gating, empty states, diary click-through, hints; CodeQL pair bump
+
+The remaining S3 minors from the design-audit backlog (except S3-12, which
+overlaps the S2-1 focus-ring work, and S3-17), all in
+`crates/ui-egui/src/lib.rs` unless noted:
+
+- **S3-9 Contextual gating.** The **Columns** menu and the Window-menu
+  **Split Gantt** toggle are disabled outside the Table view and explain why
+  on hover ("Columns apply to the Table view." / "The split Gantt sits beside
+  the Table view."), matching the S3-15 Print Gantt pattern.
+- **S3-11 Empty inspectors.** The Table and Gantt inspectors' no-selection
+  states use the app's standard dimmed empty-state style with actionable copy
+  (Gantt: "Click a bar, or choose a row in the Table view.").
+- **S3-13 + S3-14 Diary click-through.** Diary notes linked to an activity
+  render a click-through link that selects the activity, switches to the
+  Table view and scrolls to it — the same jump the Lookahead clash panel
+  already provides.
+- **Gantt empty state.** The Gantt view shows "No activities yet. Use New
+  activity (Ctrl+N) to add the first one, or open the Table view to start
+  planning." instead of a blank canvas when there is nothing to draw.
+- **Production empty states.** The Production view distinguishes zero
+  activities ("add one in the Table view (Ctrl+N) before recording") from
+  zero recorded entries ("No production recorded yet. Pick an activity
+  above…").
+- **S3-10 Progress range hint.** The percent-complete field's hover text
+  states the range: "Percent complete, from 0 to 100."
+- **S3-6 residual: `docs/parity.md`.** The stale "Ctrl+1..5" shortcut copy in
+  the parity tracker is corrected to `Ctrl+1`–`Ctrl+9`, matching
+  `ACCESSIBILITY.md`; historical/dated docs keep their original text as
+  records.
+- **Tooling (`README.md`, `.github/workflows/security.yml`).** The README's
+  broken `docs/assets/*.png` screenshot links are removed pending the II.30.8
+  evidence pipeline, and CodeQL's init and analyze actions are bumped
+  together to v4.39.3 — Dependabot had raised the two bumps separately
+  (#124/#125), and either half alone breaks the action's pairing.
+
+Verification: CI run for this slice on `opencode/ci` (result recorded in
+`CHANGELOG.md` and the PR once green).
+
 ## 2026-11-12 — inspector completeness & form accessibility: Location/WBS fields, date-field completion, labelled_by sweep
 
 Three P1 items from the design-audit backlog, all in
@@ -1506,7 +1545,7 @@ was re-verified against the current tree and cross-referenced in
 - S2-3 Status messages coloured by `StatusSeverity` (Info/Success/Warning/Error → palette tokens); info/success messages auto-clear after five seconds (S2-3b), errors and warnings persist.
 - S2-17 F1 shortcuts dialog lists Ctrl+S/O/N, Production (Ctrl+1..9) and all bindings.
 
-**Still open — verified backlog (refreshed 2026-11-12 after the inspector
+**Still open — verified backlog (refreshed 2026-11-12 after the S3 polish
 slice; the authoritative next-slices list):**
 
 - **P0 correctness/UX:** S2-1 focus rings — revive the unmerged
@@ -1515,17 +1554,19 @@ slice; the authoritative next-slices list):**
   fields), S2-4 (the last raw date fields) and S2-20 (the AccessKit
   `labelled_by` sweep) all closed in the 2026-11-12 inspector slice at the
   top of this file.
-- **P2 Gantt/density:** S3-9 column chooser / split-Gantt gating; S3-11 empty
-  inspectors beyond a sentence; S3-13/S3-14 diary click-through/jump.
-- **S3 minors:** S3-17 font symbol coverage for non-Latin imports
-  (unverified/open); S3-10 progress range hint (partial); stale "Ctrl+1..5"
-  copies in `docs/parity.md` and historical docs (S3-6 residual); Gantt and
-  Production empty states.
+- **P2 Gantt/density:** none remaining — S3-9 (column chooser / split-Gantt
+  gating), S3-11 (empty inspectors) and S3-13/S3-14 (diary click-through)
+  closed in the 2026-11-12 S3 polish slice above.
+- **S3 minors:** S3-12 dense-table focus rings (overlaps the S2-1 work) and
+  S3-17 font symbol coverage for non-Latin imports (unverified/open). S3-10
+  (progress range hint), the Gantt and Production empty states, and the
+  stale "Ctrl+1..5" copy in `docs/parity.md` closed in the S3 polish slice;
+  historical/dated docs keep their original text as records.
 - **II.30 items:** the evidence pipeline (egui_kittest seam refactor →
-  rendered screenshots; the README images are currently broken) and the
-  reduced-motion record in `ACCESSIBILITY.md` (being added in the current
-  docs refresh); the II.30.6 raw-colour gate is landing in the 2026-11-11
-  slice above.
+  rendered screenshots; the README placeholder image links were removed in
+  the S3 polish slice, so real screenshots await this pipeline) and the
+  reduced-motion record in `ACCESSIBILITY.md` (added in the current docs
+  refresh); the II.30.6 raw-colour gate landed in the 2026-11-11 slice above.
 - **Engine follow-up:** `schedule_with_progress` (progress-driven mode) does
   not yet honour mandatory constraints (MSO/MFO) — queued for a future slice.
 

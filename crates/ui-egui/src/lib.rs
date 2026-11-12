@@ -2424,7 +2424,10 @@ impl eframe::App for CadenceApp {
                         {
                             if let Some(path) = rfd::FileDialog::new()
                                 .add_filter("PDF document", &["pdf"])
-                                .set_file_name(format!("{}-gantt.pdf", file_stem(&self.project.name)))
+                                .set_file_name(format!(
+                                    "{}-gantt.pdf",
+                                    file_stem(&self.project.name)
+                                ))
                                 .save_file()
                             {
                                 self.gantt_print_path = Some(path);
@@ -2495,12 +2498,15 @@ impl eframe::App for CadenceApp {
                             apply_theme(&ctx, self.dark);
                         }
                         if ui
-                            .button(if self.show_split_gantt {
-                                "Hide split Gantt"
-                            } else {
-                                "Show split Gantt"
-                            })
-                            .on_hover_text("Splits the Table view; drag the divider to resize")
+                            .add_enabled(
+                                self.view_mode == ViewMode::Table,
+                                egui::Button::new(if self.show_split_gantt {
+                                    "Hide split Gantt"
+                                } else {
+                                    "Show split Gantt"
+                                }),
+                            )
+                            .on_disabled_hover_text("The split Gantt sits beside the Table view.")
                             .clicked()
                         {
                             self.show_split_gantt = !self.show_split_gantt;
@@ -2534,7 +2540,11 @@ impl eframe::App for CadenceApp {
                     // ─── Zone 2: View Tab Strip ───
                     let first = &mut true;
                     for (mode, label, tooltip) in [
-                        (ViewMode::Table, "Table", "Activity table: list, sort, edit and link activities"),
+                        (
+                            ViewMode::Table,
+                            "Table",
+                            "Activity table: list, sort, edit and link activities",
+                        ),
                         (
                             ViewMode::Gantt,
                             "Gantt",
@@ -2609,8 +2619,8 @@ impl eframe::App for CadenceApp {
                                             self.design_tokens().accent
                                         } else {
                                             self.design_tokens().critical.linear_multiply(0.2)
-                                        }
-                                    ))
+                                        },
+                                    )),
                             )
                             .on_hover_text(tooltip)
                             .clicked()
@@ -2622,26 +2632,32 @@ impl eframe::App for CadenceApp {
                     ui.separator();
 
                     // ─── Zone 3: Tool Actions ───
-                    // Columns chooser (prominent position)
-                    let columns_menu = ui.menu_button(format!("{icon_columns} Columns"), |ui| {
-                        ui.set_min_width(180.0);
-                        ui.heading("Visible columns");
-                        for key in SortKey::ordered_columns() {
-                            let mut visible = self.visible_columns.contains(&key);
-                            if ui.checkbox(&mut visible, key.label()).changed() {
-                                if visible {
-                                    self.visible_columns.insert(key);
-                                } else {
-                                    self.visible_columns.remove(&key);
+                    // Columns chooser (prominent position), gated to the Table
+                    // view: the chooser only affects table columns.
+                    ui.add_enabled_ui(self.view_mode == ViewMode::Table, |ui| {
+                        let columns_menu =
+                            ui.menu_button(format!("{icon_columns} Columns"), |ui| {
+                                ui.set_min_width(180.0);
+                                ui.heading("Visible columns");
+                                for key in SortKey::ordered_columns() {
+                                    let mut visible = self.visible_columns.contains(&key);
+                                    if ui.checkbox(&mut visible, key.label()).changed() {
+                                        if visible {
+                                            self.visible_columns.insert(key);
+                                        } else {
+                                            self.visible_columns.remove(&key);
+                                        }
+                                    }
                                 }
-                            }
-                        }
-                        ui.separator();
-                        if ui.button("Reset to default").clicked() {
-                            self.visible_columns = SortKey::all_columns();
-                        }
+                                ui.separator();
+                                if ui.button("Reset to default").clicked() {
+                                    self.visible_columns = SortKey::all_columns();
+                                }
+                            });
+                        columns_menu
+                            .response
+                            .on_disabled_hover_text("Columns apply to the Table view.");
                     });
-                    columns_menu.response.on_hover_text("Choose which columns show in the activity table (MS Project / P6 column chooser)");
 
                     ui.separator();
 
@@ -2651,7 +2667,7 @@ impl eframe::App for CadenceApp {
                             self.stack.can_undo(),
                             egui::Button::new(format!("{icon_undo} Undo (Ctrl+Z)"))
                                 .fill(self.design_tokens().primary_bg)
-                                .stroke(egui::Stroke::new(1.0, self.design_tokens().accent))
+                                .stroke(egui::Stroke::new(1.0, self.design_tokens().accent)),
                         )
                         .on_hover_text("Undo the last edit (Ctrl+Z)")
                         .clicked()
@@ -2665,7 +2681,7 @@ impl eframe::App for CadenceApp {
                             self.stack.can_redo(),
                             egui::Button::new(format!("{icon_redo} Redo (Ctrl+Y)"))
                                 .fill(self.design_tokens().primary_bg)
-                                .stroke(egui::Stroke::new(1.0, self.design_tokens().accent))
+                                .stroke(egui::Stroke::new(1.0, self.design_tokens().accent)),
                         )
                         .on_hover_text("Redo the last undone edit (Ctrl+Y)")
                         .clicked()
@@ -3004,7 +3020,8 @@ impl eframe::App for CadenceApp {
                                     section(ui, icon_progress, "Progress");
                                     let progress_label = ui.label("Percent complete");
                                     ui.text_edit_singleline(&mut self.progress_buffer)
-                                        .labelled_by(progress_label.id);
+                                        .labelled_by(progress_label.id)
+                                        .on_hover_text("Percent complete, from 0 to 100.");
                                     let budget_label = ui.label("Budget at completion");
                                     ui.text_edit_singleline(&mut self.budget_buffer)
                                         .labelled_by(budget_label.id);
@@ -3181,7 +3198,14 @@ impl eframe::App for CadenceApp {
                                         self.add_link_from_form();
                                     }
                                 } else {
-                                    ui.label("Select an activity in the table.");
+                                    ui.label(
+                                        egui::RichText::new(
+                                            "No activity selected. Choose a row in the table, \
+                                             or press Up/Down to move the selection.",
+                                        )
+                                        .weak()
+                                        .small(),
+                                    );
                                 }
                             });
                     });
@@ -3693,7 +3717,14 @@ impl eframe::App for CadenceApp {
                                         }
                                     }
                                 } else {
-                                    ui.label("Select an activity in the Gantt or Table view.");
+                                    ui.label(
+                                        egui::RichText::new(
+                                            "No activity selected. Click a bar, or choose a \
+                                             row in the Table view.",
+                                        )
+                                        .weak()
+                                        .small(),
+                                    );
                                 }
                             });
                     });
@@ -3706,24 +3737,36 @@ impl eframe::App for CadenceApp {
                 let gantt_status_date =
                     parse_optional_date(self.status_date_buffer.trim()).flatten();
                 egui::CentralPanel::default().show(ui, |ui| {
-                    let px = self.pixels_per_day;
-                    gantt_changed = render_gantt(
-                        ui,
-                        &mut self.project,
-                        &mut self.schedule,
-                        &mut self.stack,
-                        &mut self.drag_start,
-                        &mut self.status_message,
-                        &gantt_activities,
-                        px,
-                        &mut self.pixels_per_day,
-                        &mut self.drag_link_type_index,
-                        &mut self.gantt_drag,
-                        gantt_status_date,
-                        self.dark,
-                        selected_id,
-                        &mut selected_id,
-                    );
+                    if gantt_activities.is_empty() {
+                        ui.add_space(8.0);
+                        ui.label(
+                            egui::RichText::new(
+                                "No activities yet. Use New activity (Ctrl+N) to add the first \
+                                 one, or open the Table view to start planning.",
+                            )
+                            .weak()
+                            .small(),
+                        );
+                    } else {
+                        let px = self.pixels_per_day;
+                        gantt_changed = render_gantt(
+                            ui,
+                            &mut self.project,
+                            &mut self.schedule,
+                            &mut self.stack,
+                            &mut self.drag_start,
+                            &mut self.status_message,
+                            &gantt_activities,
+                            px,
+                            &mut self.pixels_per_day,
+                            &mut self.drag_link_type_index,
+                            &mut self.gantt_drag,
+                            gantt_status_date,
+                            self.dark,
+                            selected_id,
+                            &mut selected_id,
+                        );
+                    }
                 });
                 if selected_id != self.selected {
                     if let Some(id) = selected_id {
@@ -4855,15 +4898,20 @@ impl eframe::App for CadenceApp {
                             .small(),
                         );
                     }
+                    let mut jump_to_activity: Option<ActivityId> = None;
                     for (id, date, content, activity_id, window) in &notes {
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new(date.to_string()).monospace());
                             ui.label(content);
                             if let Some(activity_id) = activity_id {
-                                ui.label(
-                                    egui::RichText::new(format!("→ activity {activity_id}"))
-                                        .monospace(),
-                                );
+                                let name = self
+                                    .project
+                                    .activity(*activity_id)
+                                    .map(|activity| activity.name.clone())
+                                    .unwrap_or_else(|| activity_id.to_string());
+                                if ui.link(format!("→ {name}")).clicked() {
+                                    jump_to_activity = Some(*activity_id);
+                                }
                             }
                             if let Some(window) = window {
                                 ui.label(
@@ -4909,6 +4957,11 @@ impl eframe::App for CadenceApp {
                                 }
                             });
                         }
+                    }
+                    if let Some(id) = jump_to_activity {
+                        self.select(id);
+                        self.view_mode = ViewMode::Table;
+                        self.scroll_to_selection = true;
                     }
                 });
             }
@@ -4979,7 +5032,28 @@ impl eframe::App for CadenceApp {
                         }
                     });
                     ui.separator();
+                    if self.project.activities.is_empty() {
+                        ui.label(
+                            egui::RichText::new(
+                                "No activities yet — add one in the Table view (Ctrl+N) before \
+                                 recording production.",
+                            )
+                            .weak()
+                            .small(),
+                        );
+                    }
+                    ui.separator();
                     ui.heading("Entries");
+                    if self.project.production_entries.is_empty() {
+                        ui.label(
+                            egui::RichText::new(
+                                "No production recorded yet. Pick an activity above and add the \
+                                 first entry.",
+                            )
+                            .weak()
+                            .small(),
+                        );
+                    }
                     for entry in &self.project.production_entries {
                         ui.horizontal(|ui| {
                             ui.label(
