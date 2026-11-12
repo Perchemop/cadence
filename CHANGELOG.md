@@ -64,6 +64,12 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   and engine (pinning early and late dates, so total float is zero), MSPDI
   import/export codes 8/9, the undoable `SetMandatoryConstraint` command with
   tests, and an eight-kind constraint combo in the inspector.
+- Activity inspector **Location** and **WBS** fields (S2-9): a Location text
+  field (committing `SetActivityLocation`, empty clears it) and a WBS picker
+  (flattened tree, "None" to unassign, committing `AssignActivityWbs`) — the
+  commands existed but were previously unreachable from the UI, and the
+  Lookahead clash panel's "Set a location in the inspector" advice now has a
+  field to point at.
 
 ### Changed
 - Two-tier Gantt timescale (V6): the header is drawn from the shared
@@ -92,6 +98,12 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   (S3-4).
 - The disabled **Print Gantt…** button explains why on hover: switch to the
   Gantt view to print the chart (S3-15).
+- Every editable date field now shares the `date_field` helper — typeable
+  field, DatePickerButton and the inline invalid-date hint; the last four
+  raw inputs (inspector constraint date, actual start, actual finish,
+  reschedule status date) switched over (S2-4).
+- All remaining visible-label fields and every dropdown carry AccessKit
+  `labelled_by` labels; `date_field` labels its own field (S2-20).
 
 ### Fixed
 - Opening a project file no longer silently discards unsaved changes
@@ -191,12 +203,12 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   helper that validates inline, so parse errors appear next to the field.
   (Correction, 2026-11-11 audit: partial — the helper covers 5 sites; the
   inspector constraint date, actual start, actual finish and reschedule
-  status date fields are still raw text.)
+  status date fields are still raw text. Fixed in Unreleased.)
 - Inspector completeness (S2-9): the activity inspector now carries the
   Location and WBS fields, which the model and commands already supported.
   (Correction, 2026-11-11 audit: this did not ship — the
   `SetActivityLocation`/`AssignActivityWbs` commands exist but have no UI
-  usage.)
+  usage. Fixed in Unreleased.)
 - Update awareness: the window title carries the app version, and the app
   checks for a newer release daily; the README explains the download-and-run
   install for people without Rust.
@@ -210,7 +222,7 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 - Every label+field pair in the inspectors is linked for screen readers via
   AccessKit `labelled_by` (S2-20). (Correction, 2026-11-11 audit: partial —
   13 fields are wired; ~15 visible-label sites plus all combo boxes are
-  still unlinked.)
+  still unlinked. Fixed in Unreleased.)
 - The theme toggle lives in one place (S2-22): the toolbar keeps it, the status
   bar no longer duplicates it.
 - Saving a report opens a file dialog like printing one (S2-14), and

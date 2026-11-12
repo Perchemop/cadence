@@ -14,7 +14,7 @@ nothing here copies another product's layout, icons, strings or trade dress.
 
 ## Cross-check with PR #90 exhaustive audit (2026-11-03)
 
-PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 43 findings across S1 (blockers), S2 (major) and S3 (minor). The source audit is no longer in the tree (recoverable at commit `a10b740`); the tables below capture the S-id → finding mapping. Latest re-verification: 2026-11-12, against `main` @ `1248382` plus the 2026-11-11 token slice and the 2026-11-12 interaction slice.
+PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 43 findings across S1 (blockers), S2 (major) and S3 (minor). The source audit is no longer in the tree (recoverable at commit `a10b740`); the tables below capture the S-id → finding mapping. Latest re-verification: 2026-11-12, against `main` @ `1248382` plus the 2026-11-11 token slice and the 2026-11-12 interaction and inspector slices.
 
 **S1 blockers — all closed in the current tree** (the audit was written against an older revision):
 - **S1-1 Create/delete activity:** `CreateActivity` wired via Ctrl+N and the **New activity** toolbar button (select + recompute + scroll-to-view); `DeleteActivity` wired in the inspector with a confirmation dialog (`confirm_delete_activity`). The empty state now names the action (S6).
@@ -31,14 +31,17 @@ PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 4
   rings are not** — they exist only on the unmerged branch
   `opencode/focus-rings` (commit `50b9b2d`). Remaining work: revive/reimplement
   the focus rings on `main`.
-- **S2-4 Date fields — partial:** the `date_field` helper is live at five sites
-  (Baselines, Audit, Lookahead, Diary, Production). The inspector's constraint
-  date, actual start, actual finish and reschedule status date are still raw
-  text fields whose parse errors land in the status bar.
-- **S2-9 Location/WBS inspector fields — still open:** neither inspector
-  exposes Location or WBS. The `SetActivityLocation`/`AssignActivityWbs`
-  commands have no UI usage, and the Lookahead clash panel tells users to
-  "Set a location in the inspector".
+- **S2-4 Date fields — done:** the shared `date_field` helper (typeable
+  field, DatePickerButton, inline invalid-date hint) covers every editable
+  date field; the last four raw inputs — the inspector constraint date,
+  actual start, actual finish and the reschedule status date — switched over
+  in the 2026-11-12 inspector slice.
+- **S2-9 Location/WBS inspector fields — done:** the inspector gained a
+  Location text field (committing `SetActivityLocation`, empty clears it) and
+  a WBS picker (flattened tree, "None" to unassign; committing
+  `AssignActivityWbs`), so the Lookahead clash panel's "Set a location in the
+  inspector" flow is usable end-to-end. Closed in the 2026-11-12 inspector
+  slice — the last open S2 feature item.
 - **S2-10 Diary — done:** the date picker, note editing and the activity
   picker all ship; the diary activity is a ComboBox ("None" plus `id — name`
   entries), the Production view's pattern, so notes can stay unlinked.
@@ -51,13 +54,14 @@ PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 4
   Modifiers::NONE`, `zoom_with_keyboard = false`), so the handler receives the
   wheel and zooms the chart; keyboard `Ctrl`+`+`/`-`/`0` no longer double-zoom
   the GUI.
-- **S2-20 AccessKit `labelled_by` — partial:** 13 fields are wired; ~15
-  visible-label field sites plus all combo boxes remain (F19 in
+- **S2-20 AccessKit `labelled_by` — done:** every visible-label field plus
+  all combo boxes are labelled, and `date_field` wires its own label
+  internally; wired sites rose from 13 to ~36 (F19 in
   `docs/audit/2026-11-07-full-visual-functional-audit.md`).
-- Still open in S2: S2-9, plus the remaining halves of S2-1, S2-4 and S2-20
-  above; the table below carries each row's status. The only
-  release-checklist item that cannot be closed by code is the manual
-  screen-reader verification (NVDA/VoiceOver/Orca).
+- Still open in S2: only S2-1's focus-ring half (S2-4 and S2-20 closed with
+  S2-9 in the 2026-11-12 inspector slice); the table below carries each
+  row's status. The only release-checklist item that cannot be closed by
+  code is the manual screen-reader verification (NVDA/VoiceOver/Orca).
 
 **S3 minors — mixed; re-verified 2026-11-12.** All 18 S3 findings with their
 verified status. This table captures the S-id → finding mapping (the source
@@ -92,7 +96,7 @@ audit file is absent from the tree; see the note above):
 | 2. Top-level navigation | Partial | View-tab strip and toolbar present; tab tooltips added (S3-7, done); toolbar is dense but functional (S2-1 partial — focus rings remaining). |
 | 3. Buttons & hierarchy | Partial | Text buttons throughout; primary actions carry no accent weight (see below). Toolbar Undo/Redo are disabled when the stack is empty (S2-2b, done). |
 | 4. Menus & combos | Compliant | Column menu and combo boxes navigate by keyboard; hover text on the column menu. |
-| 5. Table & inspector | Partial | Virtualised rows, monospace numerics, sticky sortable header; the active sort column is now accent-coloured and its tooltip names the order; inspector Location/WBS fields still missing (S2-9). |
+| 5. Table & inspector | Partial | Virtualised rows, monospace numerics, sticky sortable header; the active sort column is now accent-coloured and its tooltip names the order; inspector Location/WBS fields shipped (S2-9, done 2026-11-12). |
 | 6. Gantt | Compliant | Critical/normal bars, milestones, summary bars, baseline ghosts, arrows with signed lag-label badges, and a 2 px today line with a shape marker — all present. |
 | 7. Status bar | Partial → improved | Now shows the project range, activity count, critical count, earned-value metrics when a baseline exists, save state, and zoom. |
 | 8. Dialogs | Compliant | Shortcuts, updates and crash-report windows share one button order and modality. |
@@ -121,7 +125,7 @@ in every button's tooltip and in the F1 footer instead).
 
 Findings from the PR #90 backlog, re-verified against the current tree on
 2026-11-12 (`main` @ `1248382` plus the 2026-11-11 token slice and the
-2026-11-12 interaction slice) and given a
+2026-11-12 interaction and inspector slices) and given a
 per-row status, ranked by the audit's severity and the project's existing
 remediation pillars (P0 authoring, P1 feedback/shell, P2 Gantt as working
 chart, P3 density/completeness). S3 minors are tracked in the S3 table above.
@@ -134,12 +138,12 @@ the current slices.
 | S2-1 | Overloaded toolbar; status message duplicated inside toolbar | S2 | `egui::menu::bar` (File/Edit/View/Help); compact tab strip; status only in bottom bar; remaining: focus rings (revive/reimplement — only on the unmerged branch `opencode/focus-rings`, 50b9b2d) | P1 | Partial |
 | S2-2b | Toolbar Undo/Redo disabled when stack is empty | S2 | `add_enabled(stack.can_undo())` / `can_redo()` | P1 | Done |
 | S2-3b | Success/info messages auto-clear after five seconds; errors and warnings persist | S2 | Timed auto-clear via `maybe_clear_status` using `Instant` + `STATUS_MESSAGE_TTL` | P1 | Done |
-| S2-4 | Raw `YYYY-MM-DD` text fields; parse errors far from the input | S2 | Reusable `date_field` helper with inline validation; inspector dates (constraint, actual start/finish, reschedule status) still raw | P1 | Partial |
+| S2-4 | Raw `YYYY-MM-DD` text fields; parse errors far from the input | S2 | Shared `date_field` helper with inline validation; every editable date field covered, incl. the inspector constraint/actual/status dates | P1 | Done |
 | S2-5 | Table: no filter, find, group or multi-select | S2 | Filter field + critical-only toggle; shift/ctrl range selection | P3 | Done |
 | S2-6 | Gantt: bars not hit-testable; inspector unreachable from chart | S2 | Hit-test bars on click; persistent inspector; two-way selection sync | P2 | Done |
 | S2-7 | Drag-to-link always FS lag-0 regardless of modifier/type | S2 | Default FS; modifier or pop-up for SS/FF/SF + lag | P2 | Done |
 | S2-8 | Relationships can be added but never removed or retyped in GUI | S2 | Delete button + confirm; type ComboBox issuing update command | P3 | Done |
-| S2-9 | Inspector missing Location and WBS fields | S2 | Add fields (first-class in model/commands, but no UI usage today; the Lookahead clash panel points at the missing inspector fields) | P3 | Open |
+| S2-9 | Inspector missing Location and WBS fields | S2 | Location text field (`SetActivityLocation`) and a flattened-tree WBS picker (`AssignActivityWbs`) added; the Lookahead clash flow is usable end-to-end | P3 | Done |
 | S2-10 | Diary: raw numeric Activity ID; notes not editable after creation | S2 | Date picker + note editing + activity picker (Production's ComboBox pattern); notes can stay unlinked | P3 | Done |
 | S2-11 | Resources: conflicts/histogram/sort recompute every frame | S2 | Cache against `edit_version` | P3 | Done |
 | S2-12 | Lookahead: O(n²) snapshot comparison every frame | S2 | Window cache plus a `BTreeSet` of snapshot activity ids — O(1) membership per frame | P3 | Done |
@@ -148,7 +152,7 @@ the current slices.
 | S2-15 | Leveling applies N separate undo entries (partial state on mid-batch failure) | S2 | Composite/transactional command for atomic undo | P3 | Done |
 | S2-16 | Ctrl+wheel zooms and scrolls simultaneously | S2 | `Options.input_options.zoom_modifier = Modifiers::NONE` + `zoom_with_keyboard = false`, so the existing Ctrl+wheel handler zooms the chart and keyboard zoom does not double-apply | P1 | Done |
 | S2-18 | Confirmation dialogs inconsistent across destructive actions | S2 | Uniform confirm pattern for delete activity / destructive leveling / calendar delete (undoable; refused while in use) | P1 | Done |
-| S2-20 | AccessKit: many label+field pairs not linked via `labelled_by` | S2 | Systematic `labelled_by` for every form field (13 wired; ~15 visible-label field sites + all combos remain — F19 in `docs/audit/2026-11-07-full-visual-functional-audit.md`) | P1 | Partial |
+| S2-20 | AccessKit: many label+field pairs not linked via `labelled_by` | S2 | Systematic `labelled_by` for every form field and combo box (~36 wired; `date_field` self-labels — F19 in `docs/audit/2026-11-07-full-visual-functional-audit.md`) | P1 | Done |
 | S2-21 | Gantt zoom applies one frame after button press | S2 | Apply `pixels_per_day` before drawing the canvas | P2 | Done |
 | S2-22 | Theme toggle duplicated in toolbar and status bar | S2 | Differentiate or remove one | P1 | Done |
 | — | Accessibility: manual screen-reader verification (NVDA/VoiceOver/Orca) | release | Release-checklist item; cannot be fully automated | — | — |
