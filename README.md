@@ -66,20 +66,12 @@ without Cadence installed:
 
 ### Screenshots
 
-*Main window with Gantt chart and activity table:*
+The desktop app's main window combines a Gantt chart (with critical path
+highlighting) and the activity table; a separate resource view shows daily
+resource usage as a histogram.
 
-![Main window](docs/assets/main-window.png)
-
-*Resource view with daily usage histogram:*
-
-![Resource view](docs/assets/resource-view.png)
-
-*Gantt chart with critical path highlighting:*
-
-![Gantt chart](docs/assets/gantt-chart.png)
-
-> **Note:** Screenshots are placeholders. Actual screenshots will be added when the
-> GUI reaches visual stability.
+> **Note:** Screenshots will be added when the GUI reaches visual stability
+> (tracked in the project's evidence-pipeline backlog).
 
 Prebuilt binaries for Linux (x86_64 and ARM64), Windows and macOS are attached
 to each [release](https://github.com/Perchemop/cadence/releases), with SHA-256

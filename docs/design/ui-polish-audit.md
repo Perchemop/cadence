@@ -14,7 +14,7 @@ nothing here copies another product's layout, icons, strings or trade dress.
 
 ## Cross-check with PR #90 exhaustive audit (2026-11-03)
 
-PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 43 findings across S1 (blockers), S2 (major) and S3 (minor). The source audit is no longer in the tree (recoverable at commit `a10b740`); the tables below capture the S-id → finding mapping. Latest re-verification: 2026-11-12, against `main` @ `1248382` plus the 2026-11-11 token slice and the 2026-11-12 interaction and inspector slices.
+PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 43 findings across S1 (blockers), S2 (major) and S3 (minor). The source audit is no longer in the tree (recoverable at commit `a10b740`); the tables below capture the S-id → finding mapping. Latest re-verification: 2026-11-12 (S3 polish slice), against `main` @ `1248382` plus the 2026-11-11 token slice and the 2026-11-12 interaction, inspector and S3 polish slices.
 
 **S1 blockers — all closed in the current tree** (the audit was written against an older revision):
 - **S1-1 Create/delete activity:** `CreateActivity` wired via Ctrl+N and the **New activity** toolbar button (select + recompute + scroll-to-view); `DeleteActivity` wired in the inspector with a confirmation dialog (`confirm_delete_activity`). The empty state now names the action (S6).
@@ -63,9 +63,11 @@ PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 4
   row's status. The only release-checklist item that cannot be closed by
   code is the manual screen-reader verification (NVDA/VoiceOver/Orca).
 
-**S3 minors — mixed; re-verified 2026-11-12.** All 18 S3 findings with their
-verified status. This table captures the S-id → finding mapping (the source
-audit file is absent from the tree; see the note above):
+**S3 minors — re-verified 2026-11-12 (S3 polish slice).** All 18 S3 findings
+with their verified status. After the S3 polish slice the open S3 items are
+S3-12 (overlaps the S2-1 focus-ring work) and S3-17 (unverified) only. This
+table captures the S-id → finding mapping (the source audit file is absent
+from the tree; see the note above):
 
 | ID | Finding | Status | Note |
 |----|---------|--------|------|
@@ -74,17 +76,17 @@ audit file is absent from the tree; see the note above):
 | S3-3 | Crash dialog cleared the log before the browser opened | Done | Order fixed: browser opens first, log cleared after the dialog closes. |
 | S3-4 | Crash preview clones the whole log every frame | Done | Preview borrows the log via `as_str()`; no per-frame clone. |
 | S3-5 | Gantt week-grid loop can spin forever on a zero-working-day calendar | Done (in flight) | Guard/break added in the current slice; verified in the working tree (`lib.rs:6076-6081`). |
-| S3-6 | Doc drift: `ACCESSIBILITY.md` still mentions Ctrl+1–5 | Partial | Fixed in `ACCESSIBILITY.md`; stale "Ctrl+1..5" remains in `docs/parity.md` and historical docs. |
+| S3-6 | Doc drift: `ACCESSIBILITY.md` still mentions Ctrl+1–5 | Done | Fixed in `ACCESSIBILITY.md`; `docs/parity.md` corrected to `Ctrl+1`–`Ctrl+9` in the 2026-11-12 S3 polish slice; historical/dated docs keep their original text as records. |
 | S3-7 | No tooltips on the nine view tabs | Done | `on_hover_text` on each tab button. |
 | S3-8 | No tooltips on toolbar Undo/Redo | Done | |
-| S3-9 | Column chooser / split-Gantt always visible | Open | |
-| S3-10 | Progress range hint | Partial | |
-| S3-11 | Empty inspectors: nothing beyond a sentence | Open | |
+| S3-9 | Column chooser / split-Gantt always visible | Done | Both are disabled outside the Table view and explain why on hover (`on_disabled_hover_text`). |
+| S3-10 | Progress range hint | Done | Hover hint states the range: "Percent complete, from 0 to 100." |
+| S3-11 | Empty inspectors: nothing beyond a sentence | Done | Table and Gantt inspector empty states use the standard dimmed empty-state style with actionable copy. |
 | S3-12 | Focus rings on dense tables | Partial | No table-specific focus treatment; overlaps the S2-1 focus-ring work. |
-| S3-13 | Diary note click-through | Open | |
-| S3-14 | Lookahead jump from diary | Open | |
+| S3-13 | Diary note click-through | Done | Linked notes render a click-through link: selects the activity, switches to the Table view, scrolls to it. |
+| S3-14 | Lookahead jump from diary | Done | The diary link reuses the Lookahead clash panel's jump (S3-13). |
 | S3-15 | Disabled Print Gantt control has no tooltip | Done | `on_disabled_hover_text`: "Switch to the Gantt view to print the Gantt chart." |
-| S3-16 | Explicit reduced-motion record | In progress | Being added to `ACCESSIBILITY.md` in the current docs refresh. |
+| S3-16 | Explicit reduced-motion record | Done | The `ACCESSIBILITY.md` "Reduced motion" section records the no-custom-animations position. |
 | S3-17 | Font symbol coverage for non-Latin imports | Unverified | |
 | S3-18 | No window minimum size; toolbar wraps on extreme narrow widths | Done | Minimum window size asserted. |
 
@@ -113,7 +115,7 @@ audit file is absent from the tree; see the note above):
 | S3 | Table: accent-colour the active sort column and label its order | Medium | Low | Done |
 | S4 | Gantt: thicker today line with a shape marker; signed, badged lag labels | Medium | Medium | Done |
 | S5 | Split view: a drag-to-resize hint on the split toggle | Medium | Low | Done |
-| S6 | Empty states: a plain sentence and a shortcut per view | Medium | Low | Done |
+| S6 | Empty states: a plain sentence and a shortcut per view (the Gantt and Production surfaces added in the 2026-11-12 S3 polish slice) | Medium | Low | Done |
 | S7 | Discoverability: an F1 shortcuts footer in the status bar | Medium | Low | Done |
 
 Deferred, with reason: original icon set (S9 in the directives; text-only per
@@ -124,11 +126,12 @@ in every button's tooltip and in the F1 footer instead).
 ## Future slices (from PR #90 backlog)
 
 Findings from the PR #90 backlog, re-verified against the current tree on
-2026-11-12 (`main` @ `1248382` plus the 2026-11-11 token slice and the
-2026-11-12 interaction and inspector slices) and given a
-per-row status, ranked by the audit's severity and the project's existing
-remediation pillars (P0 authoring, P1 feedback/shell, P2 Gantt as working
-chart, P3 density/completeness). S3 minors are tracked in the S3 table above.
+2026-11-12 (S3 polish slice; `main` @ `1248382` plus the 2026-11-11 token
+slice and the 2026-11-12 interaction, inspector and S3 polish slices) and
+given a per-row status, ranked by the audit's severity and the project's
+existing remediation pillars (P0 authoring, P1 feedback/shell, P2 Gantt as
+working chart, P3 density/completeness). S3 minors are tracked in the S3
+table above.
 Open and partial items are queued so they are not missed; none of them block
 the current slices.
 
