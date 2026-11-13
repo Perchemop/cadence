@@ -476,6 +476,9 @@ pub struct CadenceApp {
     show_update_dialog: bool,
     /// When we last checked for updates (to avoid excessive API calls).
     last_update_check: Option<Instant>,
+    /// Whether the periodic auto-update check may run. Only the headless
+    /// render tests turn it off: `cargo test` must not touch the network.
+    update_checks_enabled: bool,
     link_predecessor: Option<ActivityId>,
     link_successor: Option<ActivityId>,
     link_type_index: usize,
@@ -665,6 +668,7 @@ impl CadenceApp {
             show_shortcuts_dialog: false,
             show_release_notes: false,
             last_update_check: None,
+            update_checks_enabled: true,
             scroll_to_selection: false,
             audit_report: None,
             audit_status_applied: None,
@@ -2013,8 +2017,12 @@ impl CadenceApp {
     }
 }
 
-impl eframe::App for CadenceApp {
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+impl CadenceApp {
+    /// Render one frame of the application shell into `ui`.
+    ///
+    /// This is the entire UI entry point and is deliberately independent of
+    /// eframe, so headless tests can drive it with a bare `egui::Context`.
+    pub fn render(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
 
         // Cadence owns zoom per view (Gantt pixels_per_day, Ctrl+wheel over the
@@ -2134,7 +2142,7 @@ impl eframe::App for CadenceApp {
             Some(last) => now.duration_since(last) >= Duration::from_secs(24 * 60 * 60),
             None => true, // first run, check immediately
         };
-        if should_check {
+        if self.update_checks_enabled && should_check {
             self.last_update_check = Some(now);
             let (sender, receiver) = mpsc::channel();
             self.update_receiver = Some(receiver);
@@ -5776,6 +5784,12 @@ impl eframe::App for CadenceApp {
     }
 }
 
+impl eframe::App for CadenceApp {
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        self.render(ui);
+    }
+}
+
 fn parse_date(value: &str) -> Option<Date> {
     let mut parts = value.split('-');
     let year = parts.next()?.parse::<i32>().ok()?;
@@ -7298,5 +7312,82 @@ mod status_message_tests {
         let (shown, much_later) = shown_plus(Duration::from_secs(3600));
         let severity = StatusSeverity::Warning;
         assert!(!should_auto_clear_status(severity, shown, much_later));
+    }
+}
+
+#[cfg(test)]
+mod headless_render_tests {
+    use super::*;
+    use egui::{Pos2, Rect, Vec2};
+
+    fn build_project() -> Project {
+        let mut project = Project::new(
+            "Headless smoke",
+            Date::from_calendar_date(2026, Month::January, 5).expect("date"),
+        );
+        let a = ActivityId::new(1);
+        let b = ActivityId::new(2);
+        let c = ActivityId::new(3);
+        project.activities.push(Activity::new(a, "Survey", 2));
+        project.activities.push(Activity::new(b, "Build", 3));
+        project.activities.push(Activity::new(c, "Finish", 1));
+        let rel_id = project.next_relationship_id();
+        project
+            .relationships
+            .push(cadence_core::model::Relationship::new(
+                rel_id,
+                a,
+                b,
+                cadence_core::model::LinkType::Fs,
+                0,
+            ));
+        let resource_id = project.next_resource_id();
+        project
+            .resources
+            .push(cadence_core::model::Resource::new(resource_id, "Crew"));
+        if let Some(activity) = project.activity_mut(a) {
+            activity.resources.push(resource_id);
+        }
+        project
+    }
+
+    fn render_pass(ctx: &egui::Context, app: &mut CadenceApp, size: Vec2) {
+        let input = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+            ..Default::default()
+        };
+        let output = ctx.run_ui(input, |ui| app.render(ui));
+        assert!(!output.shapes.is_empty(), "the shell painted nothing");
+    }
+
+    #[test]
+    fn the_shell_renders_headless_in_every_view() {
+        let all_views = [
+            ViewMode::Table,
+            ViewMode::Gantt,
+            ViewMode::Resources,
+            ViewMode::Baselines,
+            ViewMode::Calendars,
+            ViewMode::Audit,
+            ViewMode::Lookahead,
+            ViewMode::Diary,
+            ViewMode::Production,
+        ];
+        for dark in [true, false] {
+            let ctx = egui::Context::default();
+            design::install_fonts(&ctx);
+            design::apply(&ctx, dark);
+            let mut app = CadenceApp::with_path(build_project(), None);
+            // `cargo test` must not touch the network: the auto-update check
+            // stays off for headless fixture apps.
+            app.update_checks_enabled = false;
+            app.dark = dark;
+            for view in all_views {
+                app.view_mode = view;
+                // Two passes: egui often needs a second frame for layout.
+                render_pass(&ctx, &mut app, Vec2::new(1024.0, 768.0));
+                render_pass(&ctx, &mut app, Vec2::new(1024.0, 768.0));
+            }
+        }
     }
 }

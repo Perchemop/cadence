@@ -3,6 +3,36 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-13 — evidence pipeline phase 1: headless shell seam + smoke test
+
+Phase 1 of the guide II.30 evidence pipeline (V15) — headless seam and smoke
+test, no GPU, no new dependency, runs in the normal `cargo test --workspace`
+on all four CI platforms:
+
+- **Seam.** The whole UI body moved out of the `eframe::App::ui(&mut self, ui, _frame)`
+  trait impl (which had an unused `eframe::Frame`) into a public inherent
+  method `CadenceApp::render(&mut self, ui: &mut Ui)`; the eframe impl now
+  delegates (`self.render(ui)`). This removes the recorded blocker that headless
+  rendering needed a fabricable `eframe::Frame`.
+- **Smoke test.** The new `headless_render_tests` module drives the shell with a
+  bare `egui::Context` (`Context::run_ui`) across
+  every view mode (Table, Gantt, Resources, Baselines, Calendars, Audit,
+  Lookahead, Diary, Production), both themes, and two passes each, asserting the
+  shell paints (`!output.shapes.is_empty()`). No GPU, no new dependency, and the
+  auto-update check is disabled in the fixture so `cargo test` never touches the
+  network.
+- **Phase 2 (next).** Add `egui_kittest = "0.35.0"` as a **dev-dependency**
+  for AccessKit-tree assertions (no GPU needed — low risk).
+- **Phase 3 (after).** Rendered-artefact phase using the `wgpu` + `snapshot`
+  features to produce PNGs (light/dark/empty/error/dialog/narrow) uploaded as
+  CI artefacts (never committed; no pixel baselines, per II.30.8). Needs
+  software Vulkan on the hosted runner (lavapipe: `mesa-vulkan-drivers` /
+  `libvulkan1`); documented fallback is AccessKit assertions + the headless
+  smoke test if no adapter is available.
+
+Verification: CI run for this slice on `opencode/ci` (result recorded in
+`CHANGELOG.md` and the PR once green).
+
 ## 2026-11-13 — hardening + S3-17 verification + icon fix
 
 Hardening, font-coverage verification, and a Phosphor/Inter icon-shadowing fix
@@ -291,9 +321,12 @@ Verification: CI green on PR #121 (all required checks).
 
 ## Next slices
 - **II.30.6 raw-colour grep gate — landed in the 2026-11-11 slice above.**
-  The II.30.8 evidence path remains: the `egui_kittest` seam refactor (a
-  `Host`-style shell so the UI renders into a plain `&mut Ui`), then rendered
-  screenshots — the README images are currently broken placeholders.
+  The II.30.8 evidence path is now **in progress — phase 1 done**: the
+  headless seam (`CadenceApp::render`) and the `headless_render_tests` smoke
+  test landed in the 2026-11-13 slice above; phase 2 (kittest AccessKit
+  assertions, `egui_kittest = "0.35.0"` dev-dep) and phase 3 (rendered PNG
+  artefacts via `wgpu` + `snapshot`, needing software Vulkan in CI) remain.
+  The README images are still broken placeholders until phase 3.
 - **§12.1 suite-standard deviations (D27):** token-ledger CI update; version UI as
   a bottom-right control opening the ledger-driven Release Notes popup; signed
   releases + verify-then-install updater; shared `crates/update-check` submodule.
@@ -1645,15 +1678,21 @@ S3-17 verification + icon fix slice; the authoritative next-slices list):**
   "Ctrl+1..5" copy in `docs/parity.md` closed in the S3 polish slice;
   historical/dated docs keep their original text as records. New tracked
   finding: **S3-20 Inter Bold-first face ordering** (deferred — needs the
-  evidence pipeline to evaluate the visual-weight question safely).
+  evidence pipeline to evaluate the visual-weight question safely; phase 1
+  seam is in, phase 3 pixels will provide the evaluation path).
 - **Icon defect:** S3-19 Phosphor/Inter icon shadowing — **Done** in the
   2026-11-13 slice above (six icons previously rendered letterform glyphs;
   Phosphor face now precedes the text faces).
-- **II.30 items:** the evidence pipeline (egui_kittest seam refactor →
-  rendered screenshots; the README placeholder image links were removed in
-  the S3 polish slice, so real screenshots await this pipeline); the
-  reduced-motion record in `ACCESSIBILITY.md` and the II.30.6 raw-colour
-  gate landed in the earlier slices. (Needed to evaluate S3-20 safely.)
+- **II.30 items:** the evidence pipeline is **in progress — phase 1 done**
+  (headless seam `CadenceApp::render` + `headless_render_tests` smoke test
+  across every view × both themes × two passes). Phase 2 (kittest AccessKit
+  assertions via a dev-dependency, `egui_kittest = "0.35.0"`) is next;
+  phase 3 (rendered PNG artefacts via `wgpu` + `snapshot`, needing software
+  Vulkan/lavapipe in CI, fallback to AccessKit + smoke test) after that.
+  The README placeholder image links were removed in the S3 polish slice, so
+  real screenshots await phases 2/3. The reduced-motion record in
+  `ACCESSIBILITY.md` and the II.30.6 raw-colour gate landed in the earlier
+  slices. (Phase 3 pixels are needed to evaluate S3-20 safely.)
 - **Engine follow-up:** closed in the 2026-11-13 slice above —
   `schedule_with_progress` now honours `MustStartOn`/`MustFinishOn` for
   not-started work (D10 rounding, zero float, actuals untouched).

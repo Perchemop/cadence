@@ -33,17 +33,27 @@ to this native GUI (guide II.30.1, II.30.14).
 
 - Entry point: `eframe::run_native` builds the app inside its creator closure
   with `CadenceApp::new(project)` / `CadenceApp::with_path(project, path)`, and
-  `impl eframe::App for CadenceApp` provides `fn update(&mut self, ctx, frame)`.
-- This is the **first** row of the II.27.12 seam table: the shell renders through
-  `eframe::App::update`, not into a plain `&mut Ui`, and neither
-  `eframe::CreationContext` nor `eframe::Frame` can be fabricated.
-- Consequence: `egui_kittest` snapshot/AccessKit assertions are **not** available
-  until a seam refactor extracts the shell from the frame (a `Host`-style trait so
-  the UI renders into a plain `&mut Ui`). That refactor is its own slice; a fake
-  harness that renders nothing is worse than none (guide II.27.12).
-- Until then, visual evidence is: the built app reviewed hands-on and, where a
-  slice needs a picture, an offscreen capture from the running app as a CI
-  artefact (never committed, no pixel baselines).
+  `impl eframe::App for CadenceApp` provides `fn ui(&mut self, ui, _frame)`,
+  which delegates to the public inherent method
+  `CadenceApp::render(&mut self, ui: &mut Ui)`.
+- The shell now renders into a plain `&mut Ui`: the whole UI body lives in
+  `CadenceApp::render`, so it is **headless-drivable**. Phase 1 of the II.30
+  evidence pipeline is in place — the `headless_render_tests` module drives it
+  with a bare `egui::Context` (`begin_pass` / `CentralPanel::show` /
+  `end_pass`) across every view mode, both themes, and two passes, asserting the
+  shell paints. No GPU, no new dependency; runs in the normal `cargo test`
+  suite on all four CI platforms.
+- `eframe::CreationContext` and `eframe::Frame` still cannot be fabricated, so
+  the windowed path still builds the app inside `eframe::run_native`; only the
+  rendering body is shared.
+- Next steps: phase 2 adds `egui_kittest = "0.35.0"` as a **dev-dependency**
+  for AccessKit-tree assertions (no GPU needed — low risk); phase 3 uses the
+  `wgpu` + `snapshot` features to produce rendered PNG artefacts
+  (light/dark/empty/error/dialog/narrow) uploaded as CI artefacts (never
+  committed, no pixel baselines, per II.30.8), which needs software Vulkan
+  (lavapipe: `mesa-vulkan-drivers` / `libvulkan1`) on the hosted runner, with a
+  documented fallback of AccessKit assertions + the headless smoke test if no
+  adapter is available.
 
 ## Window / shell layout model
 
