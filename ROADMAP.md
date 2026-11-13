@@ -275,11 +275,11 @@ the Gantt and Production empty states and the stale `docs/parity.md`
 shortcut copy. The remaining queue below is tracked in PROGRESS.md
 ("Still open — verified backlog") so it is not missed:
 
-- **P1 feedback & shell (partial):** S2-1 focus rings never merged
-  (unmerged `opencode/focus-rings` branch — revive or reimplement; the rest
-  of the shell declutter shipped). S2-4 (date-field helper, all editable
-  date fields) and S2-20 (AccessKit `labelled_by`, every field and combo
-  box) closed in the 2026-11-12 inspector slice.
+- **P1 feedback & shell (done):** S2-1 focus rings shipped in the
+  2026-11-13 slice (a contrast-tested `focus_ring` palette token applied to
+  the focused-widget stroke). S2-4 (date-field helper, all editable date
+  fields) and S2-20 (AccessKit `labelled_by`, every field and combo box)
+  closed in the 2026-11-12 inspector slice.
 - **P3 density & completeness:** none remaining — S3-9 (column chooser /
   split-Gantt gating), S3-11 (empty inspectors) and S3-13/S3-14 (diary
   click-through) closed in the 2026-11-12 S3 polish slice; S2-9

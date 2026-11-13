@@ -12,6 +12,12 @@ use egui::{Color32, Context, FontDefinitions, FontFamily, Margin, Visuals};
 /// WCAG-AA verified against both themes by `accessibility_tests`.
 pub const ACCENT: Color32 = Color32::from_rgb(0x2F, 0x6F, 0xED);
 
+/// The visible keyboard-focus ring colour. egui maps keyboard focus onto the
+/// `active` widget state, so this stroke becomes the focus ring everywhere.
+/// Verified at ≥ 3:1 against each theme's panel background by
+/// `focus_ring_meets_nontext_contrast_on_both_themes`.
+pub const FOCUS_RING: Color32 = ACCENT;
+
 /// Semantic and structural colours for one theme.
 #[derive(Debug, Clone, Copy)]
 pub struct Palette {
@@ -37,6 +43,8 @@ pub struct Palette {
     pub deep: Color32,
     /// Non-working day background tint (weekends/holidays on Gantt canvas).
     pub non_working: Color32,
+    /// Visible keyboard-focus ring stroke colour.
+    pub focus_ring: Color32,
 }
 
 /// The palette for the requested theme.
@@ -54,6 +62,7 @@ pub const fn palette(dark: bool) -> Palette {
             warn: Color32::from_rgb(0xFB, 0xBF, 0x24),
             deep: Color32::from_rgb(0x11, 0x13, 0x18),
             non_working: Color32::from_rgb(0x1A, 0x1E, 0x27),
+            focus_ring: FOCUS_RING,
         }
     } else {
         Palette {
@@ -68,6 +77,7 @@ pub const fn palette(dark: bool) -> Palette {
             warn: Color32::from_rgb(0xB4, 0x53, 0x09),
             deep: Color32::from_rgb(0xEC, 0xEE, 0xF1),
             non_working: Color32::from_rgb(0xEA, 0xEC, 0xEF),
+            focus_ring: FOCUS_RING,
         }
     }
 }
@@ -196,6 +206,10 @@ pub fn apply(ctx: &Context, dark: bool) {
         widget.bg_stroke.width = 1.0;
         widget.expansion = 0.0;
     }
+    // egui maps keyboard focus onto the `active` widget state, so a coloured
+    // stroke here becomes the visible focus ring for every focused widget.
+    v.widgets.active.bg_stroke.color = p.focus_ring;
+
     v.widgets.noninteractive.bg_fill = p.panel;
     v.widgets.noninteractive.fg_stroke.color = p.text;
     v.widgets.inactive.fg_stroke.color = p.text;

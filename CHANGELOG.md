@@ -22,7 +22,7 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   primary style for Undo/Redo, a zoom slider in the status bar, and a shared
   8 px horizontal / 4 px vertical spacing grid. (Correction: the focus rings
   were not shipped in 0.12.1 — they exist only on an unmerged branch and are
-  tracked for a future release.)
+  tracked for a future release; shipped in the 0.13.0 release.)
 - The activity inspector groups its fields under accent **section headers**
   (Basic info, Calendar, Field planning, Progress, Relationships).
 - The row context menu gains **Show in Gantt** and **Add to selection**.
@@ -44,6 +44,10 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 ## [Unreleased]
 
 ### Added
+- Keyboard focus indication (S2-1/S3-12): every keyboard-focused widget shows
+  a visible ring — a contrast-tested `focus_ring` palette token applied to
+  egui's focused/active widget stroke, asserted at ≥ 3:1 against both themes'
+  panel backgrounds by the accessibility tests.
 - Iconography (V1/V16): Phosphor Icons (MIT, via `egui-phosphor`) on the menu
   bar, view tabs, tool cluster and inspector section headers, each beside its
   text label so meaning is never icon-only. Font and licence in

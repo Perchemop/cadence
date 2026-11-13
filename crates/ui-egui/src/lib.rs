@@ -5723,7 +5723,7 @@ impl eframe::App for CadenceApp {
                             ui.add_space(8.0);
                             ui.label(
                                 "• Three-zone toolbar: a menu bar, a view-tab strip, and a tool \
-                                 cluster, with a zoom readout in the status bar."
+                                 cluster, with focus rings and a zoom readout in the status bar."
                             );
                             ui.add_space(8.0);
                             ui.label(
@@ -7155,6 +7155,22 @@ mod accessibility_tests {
         // so WCAG 1.4.11's 3:1 non-text minimum applies.
         assert!(contrast_ratio(ACCENT, LIGHT_TEXT_BACKGROUND) >= 3.0);
         assert!(contrast_ratio(ACCENT, DARK_TEXT_BACKGROUND) >= 3.0);
+    }
+
+    #[test]
+    fn focus_ring_meets_nontext_contrast_on_both_themes() {
+        // Keyboard focus is shown with a visible ring whose colour must stay
+        // distinguishable (≥ 3:1) from each theme's panel background.
+        let light_panel = design::palette(false).panel;
+        let dark_panel = design::palette(true).panel;
+        assert!(
+            contrast_ratio(design::FOCUS_RING, light_panel) >= 3.0,
+            "light-theme focus ring contrast ratio on panel is below 3.0"
+        );
+        assert!(
+            contrast_ratio(design::FOCUS_RING, dark_panel) >= 3.0,
+            "dark-theme focus ring contrast ratio on panel is below 3.0"
+        );
     }
 
     #[test]

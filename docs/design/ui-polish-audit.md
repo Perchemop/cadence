@@ -26,11 +26,12 @@ PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 4
 - **S2-2 Toolbar Undo/Redo:** now call `recompute()` + `refresh_selection()`, carry shortcut tooltips, and are disabled when the command stack is empty (`can_undo()`/`can_redo()`). Fully closed.
 - **S2-3 Status feedback:** `StatusSeverity` (Info/Success/Warning/Error) colours messages by semantic token (`ok`/`warn`/`critical`/`text_muted`); info/success messages now auto-clear after five seconds (S2-3b). Errors and warnings persist.
 - **S2-17 Shortcuts dialog:** now lists Ctrl+S, Ctrl+O, Ctrl+N, Production (Ctrl+1..9) and all other bindings. Closed.
-- **S2-1 Toolbar/menu bar — partial:** the three-zone toolbar, tab tooltips,
-  the zoom readout and the status-bar-only message are all in the tree; **focus
-  rings are not** — they exist only on the unmerged branch
-  `opencode/focus-rings` (commit `50b9b2d`). Remaining work: revive/reimplement
-  the focus rings on `main`.
+- **S2-1 Toolbar/menu bar — done:** the three-zone toolbar, tab tooltips,
+  the zoom readout and the status-bar-only message are all in the tree, and
+  the focus rings landed in the 2026-11-13 slice — a `focus_ring` palette
+  token applied to the `active` widget stroke (egui maps keyboard focus onto
+  that state), contrast-tested ≥ 3:1 on both themes
+  (`focus_ring_meets_nontext_contrast_on_both_themes`).
 - **S2-4 Date fields — done:** the shared `date_field` helper (typeable
   field, DatePickerButton, inline invalid-date hint) covers every editable
   date field; the last four raw inputs — the inspector constraint date,
@@ -58,14 +59,14 @@ PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 4
   all combo boxes are labelled, and `date_field` wires its own label
   internally; wired sites rose from 13 to ~36 (F19 in
   `docs/audit/2026-11-07-full-visual-functional-audit.md`).
-- Still open in S2: only S2-1's focus-ring half (S2-4 and S2-20 closed with
-  S2-9 in the 2026-11-12 inspector slice); the table below carries each
-  row's status. The only release-checklist item that cannot be closed by
-  code is the manual screen-reader verification (NVDA/VoiceOver/Orca).
+- Still open in S2: none — S2-1's focus-ring half closed with S2-4/S2-9/S2-20
+  (focus rings landed in the 2026-11-13 slice, below); the table below
+  carries each row's status. The only release-checklist item that cannot be
+  closed by code is the manual screen-reader verification (NVDA/VoiceOver/Orca).
 
-**S3 minors — re-verified 2026-11-12 (S3 polish slice).** All 18 S3 findings
-with their verified status. After the S3 polish slice the open S3 items are
-S3-12 (overlaps the S2-1 focus-ring work) and S3-17 (unverified) only. This
+**S3 minors — re-verified 2026-11-13 (focus-ring slice).** All 18 S3 findings
+with their verified status. After the focus-ring slice the open S3 items are
+S3-17 (unverified) only. This
 table captures the S-id → finding mapping (the source audit file is absent
 from the tree; see the note above):
 
@@ -82,7 +83,7 @@ from the tree; see the note above):
 | S3-9 | Column chooser / split-Gantt always visible | Done | Both are disabled outside the Table view and explain why on hover (`on_disabled_hover_text`). |
 | S3-10 | Progress range hint | Done | Hover hint states the range: "Percent complete, from 0 to 100." |
 | S3-11 | Empty inspectors: nothing beyond a sentence | Done | Table and Gantt inspector empty states use the standard dimmed empty-state style with actionable copy. |
-| S3-12 | Focus rings on dense tables | Partial | No table-specific focus treatment; overlaps the S2-1 focus-ring work. |
+| S3-12 | Focus rings on dense tables | Done | The `focus_ring` token applies to every focused widget (global `active`-state stroke, 2026-11-13 slice); no table-specific treatment needed — the ring reads on dense rows too. |
 | S3-13 | Diary note click-through | Done | Linked notes render a click-through link: selects the activity, switches to the Table view, scrolls to it. |
 | S3-14 | Lookahead jump from diary | Done | The diary link reuses the Lookahead clash panel's jump (S3-13). |
 | S3-15 | Disabled Print Gantt control has no tooltip | Done | `on_disabled_hover_text`: "Switch to the Gantt view to print the Gantt chart." |
