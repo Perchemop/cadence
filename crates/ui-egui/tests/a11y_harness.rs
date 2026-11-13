@@ -80,7 +80,6 @@ const INPUT_ROLES: &[Role] = &[
     Role::SpinButton,
     Role::Tab,
     Role::TextInput,
-    Role::ToggleButton,
 ];
 
 /// The fixture project from the in-crate headless render tests: three
@@ -153,7 +152,7 @@ fn labels_containing(
         .get_all_by_label_contains(needle)
         .map(|node| {
             let accesskit = node.accesskit_node();
-            (accesskit.role(), accesskit.label().map(str::to_string))
+            (accesskit.role(), accesskit.label())
         })
         .collect()
 }
@@ -175,7 +174,7 @@ fn button_labels_containing(
 fn role_labels(harness: &egui_kittest::Harness<'_>, role: Role) -> Vec<Option<String>> {
     harness
         .get_all_by_role(role)
-        .map(|node| node.accesskit_node().label().map(str::to_string))
+        .map(|node| node.accesskit_node().label())
         .collect()
 }
 
