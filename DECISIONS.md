@@ -662,3 +662,9 @@ pass. The deterministic regression test
 `mandatory_constraint_rounding_agrees_between_early_and_late_passes` pins
 the weekend case, and the constraint property test now generates and checks
 all eight kinds, including the two mandatory pins.
+
+**Extension (2026-11-13):** the progress-driven mode
+(`schedule_with_progress`) now applies the same pins to **not-started**
+activities — the same D10 rounding in both passes, zero total float, and an
+explicit pin overriding both network logic and the data-date floor. Recorded
+actual dates are never moved by a pin: a pin cannot turn a fact into a plan.

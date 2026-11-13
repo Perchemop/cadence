@@ -46,7 +46,9 @@
 //! they keep the same rounding in both passes — forward and backward
 //! respectively. Both passes therefore pin the identical working day and the
 //! activity carries zero total float, even when the constraint date falls on a
-//! non-working day. See `DECISIONS.md` D10 and D29.
+//! non-working day. See `DECISIONS.md` D10 and D29. The progress-driven mode
+//! ([`schedule_with_progress`]) applies the same pins to work that has not
+//! started; recorded actual dates are never moved by a constraint.
 //!
 //! [`ActivitySchedule`] always exposes the CPM bounds (`early_*`, `late_*`)
 //! and additionally reports `scheduled_*`. ASAP activities report their early
@@ -1233,6 +1235,14 @@ pub fn activity_progress(activity: &Activity) -> ActivityProgress {
 ///   from the later of the actual start and the data date.
 /// - A **not-started** activity is scheduled by logic, never before the data
 ///   date.
+/// - A **mandatory** pin (`MustStartOn` / `MustFinishOn`) on a not-started
+///   activity is honoured exactly as the plain [`schedule`] honours it: both
+///   passes apply the D10 rounding (a start-typed pin rounds forward to the
+///   next working day, a finish-typed pin rounds backward to the previous
+///   working day), so the activity is pinned to the same working day in both
+///   passes and carries zero total float. An explicit pin overrides network
+///   logic and the data-date floor. Work that has already started or finished
+///   keeps its recorded dates — a pin cannot move a fact.
 ///
 /// Relationships use the predecessor's *resolved* dates, so a successor of a
 /// complete activity is driven from the actual finish — the retained-logic
@@ -1431,6 +1441,30 @@ pub fn schedule_with_progress(project: &Project, data_date: Date) -> Result<Sche
                     _ => {}
                 }
 
+                // Mandatory constraints pin not-started work to an exact date
+                // and override both network logic and the data-date floor, as
+                // they override network logic in the plain schedule. The D10
+                // rounding rule is the same one the plain schedule uses: a
+                // start-typed bound rounds forward to the next working day and
+                // a finish-typed bound rounds backward to the previous working
+                // day. The backward pass below repeats that rule, so both
+                // passes pin the identical working day and the activity
+                // carries zero total float even when the constraint date is a
+                // non-working day. Work that has already started or finished
+                // never reaches this arm: a pin cannot move a recorded fact.
+                match constraint {
+                    // Start type: round forward.
+                    Constraint::MustStartOn(date) => {
+                        start = calendar.next_working_day_on_or_after(date)?;
+                    }
+                    // Finish type: round backward, exactly as the backward pass does.
+                    Constraint::MustFinishOn(date) => {
+                        let mandated_finish = calendar.prev_working_day_on_or_before(date)?;
+                        start = start_from_finish(calendar, mandated_finish, duration)?;
+                    }
+                    _ => {}
+                }
+
                 let start = calendar.next_working_day_on_or_after(start)?;
                 let finish = finish_from_start(calendar, start, duration)?;
 
@@ -1533,6 +1567,27 @@ pub fn schedule_with_progress(project: &Project, data_date: Date) -> Result<Sche
                 finish = finish.max(calendar.next_working_day_on_or_after(date)?);
             }
             _ => {}
+        }
+
+        // Mandatory constraints pin not-started work to the same exact date the
+        // forward pass pinned, so it carries zero total float. The D10 rounding
+        // is repeated here on purpose: a must-start-on is start-typed and
+        // rounds forward, a must-finish-on is finish-typed and rounds backward.
+        // In-progress work is excluded: its outstanding dates are anchored by
+        // the recorded actual start and the data date, and a pin cannot move a
+        // fact. Complete work has already been pinned to its actual dates
+        // above.
+        if progress[activity_index].state == ProgressState::NotStarted {
+            match constraint {
+                Constraint::MustStartOn(date) => {
+                    let mandated = calendar.next_working_day_on_or_after(date)?;
+                    finish = finish_from_start(calendar, mandated, duration)?;
+                }
+                Constraint::MustFinishOn(date) => {
+                    finish = calendar.prev_working_day_on_or_before(date)?;
+                }
+                _ => {}
+            }
         }
 
         late_finish[activity_index] = finish;
@@ -3579,5 +3634,108 @@ mod tests {
         let first = schedule_with_progress(&project, jan(14)).expect("first");
         let second = schedule_with_progress(&project, jan(14)).expect("second");
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn must_finish_on_a_weekend_rounds_back_in_progress_mode() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 3);
+        // January 10 2026 is a Saturday. A must-finish-on is finish-typed, so
+        // progress mode must round it backward in both passes exactly as the
+        // plan-only schedule does: Friday January 9. A forward rounding here
+        // would leave phantom float.
+        constrain(&mut project, a, Constraint::MustFinishOn(jan(10)));
+
+        let schedule = schedule_with_progress(&project, jan(5)).expect("schedule");
+        let a_result = result(&schedule, a);
+
+        assert_eq!(a_result.early_start, jan(7));
+        assert_eq!(a_result.early_finish, jan(9));
+        assert_eq!(a_result.late_start, jan(7));
+        assert_eq!(a_result.late_finish, jan(9));
+        assert_eq!(a_result.scheduled_start, jan(7));
+        assert_eq!(a_result.scheduled_finish, jan(9));
+        assert_eq!(a_result.total_float, 0);
+        assert!(a_result.critical);
+        assert_eq!(schedule.project_finish, jan(9));
+    }
+
+    #[test]
+    fn must_start_on_a_weekend_rounds_forward_in_progress_mode() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 1);
+        // January 10 2026 is a Saturday. A must-start-on is start-typed, so
+        // progress mode must round it forward in both passes exactly as the
+        // plan-only schedule does: Monday January 12.
+        constrain(&mut project, a, Constraint::MustStartOn(jan(10)));
+
+        let schedule = schedule_with_progress(&project, jan(5)).expect("schedule");
+        let a_result = result(&schedule, a);
+
+        assert_eq!(a_result.early_start, jan(12));
+        assert_eq!(a_result.early_finish, jan(12));
+        assert_eq!(a_result.late_start, jan(12));
+        assert_eq!(a_result.late_finish, jan(12));
+        assert_eq!(a_result.scheduled_start, jan(12));
+        assert_eq!(a_result.scheduled_finish, jan(12));
+        assert_eq!(a_result.total_float, 0);
+        assert!(a_result.critical);
+        assert_eq!(schedule.project_finish, jan(12));
+    }
+
+    #[test]
+    fn a_mandatory_pin_overrides_network_logic_in_progress_mode() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 3);
+        let b = add_activity(&mut project, 2, "B", 2);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+        // Logic alone would start B on Thursday the 8th; the pin wins, exactly
+        // as it does in the plan-only schedule.
+        constrain(&mut project, b, Constraint::MustStartOn(jan(19)));
+
+        let schedule = schedule_with_progress(&project, jan(5)).expect("schedule");
+
+        assert_eq!(result(&schedule, a).early_finish, jan(7));
+        let b_result = result(&schedule, b);
+        assert_eq!(b_result.early_start, jan(19));
+        assert_eq!(b_result.early_finish, jan(20));
+        assert_eq!(b_result.late_start, jan(19));
+        assert_eq!(b_result.late_finish, jan(20));
+        assert_eq!(b_result.total_float, 0);
+        assert!(b_result.critical);
+        assert_eq!(schedule.project_finish, jan(20));
+    }
+
+    #[test]
+    fn a_mandatory_pin_never_moves_recorded_actuals() {
+        let mut project = project();
+        // Complete work: the recorded dates are the schedule, whatever the pin
+        // says.
+        let done = add_activity(&mut project, 1, "Done", 3);
+        constrain(&mut project, done, Constraint::MustFinishOn(jan(10)));
+        set_progress(&mut project, done, Some(10_000), Some(jan(5)), Some(jan(7)));
+
+        // In-progress work: the pin must neither pull the actual start nor
+        // anchor the outstanding work away from the data date. A wrongly
+        // applied backward pin would give this activity five days of float.
+        let running = add_activity(&mut project, 2, "Running", 10);
+        constrain(&mut project, running, Constraint::MustStartOn(jan(19)));
+        set_progress(&mut project, running, Some(5_000), Some(jan(5)), None);
+
+        let schedule = schedule_with_progress(&project, jan(12)).expect("schedule");
+
+        let done_result = result(&schedule, done);
+        assert_eq!(done_result.early_start, jan(5));
+        assert_eq!(done_result.early_finish, jan(7));
+        assert_eq!(done_result.total_float, 0);
+
+        let running_result = result(&schedule, running);
+        assert_eq!(running_result.early_start, jan(5));
+        // Five of the ten days remain: they resume at the data date (Monday)
+        // and finish on Friday.
+        assert_eq!(running_result.early_finish, jan(16));
+        assert_eq!(running_result.late_finish, jan(16));
+        assert_eq!(running_result.total_float, 0);
+        assert_eq!(schedule.project_finish, jan(16));
     }
 }

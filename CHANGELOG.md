@@ -170,6 +170,12 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   constraints are now property-tested — `MustStartOn`/`MustFinishOn` added
   to the constraint property strategy — with a weekend-bound regression
   test.
+- Progress-driven scheduling now honours `MustStartOn`/`MustFinishOn` for
+  not-started activities too, with the same D10 rounding and zero float as
+  the plain schedule; recorded actual dates are never moved by a pin
+  (complete work keeps its actuals, in-progress work resumes from the data
+  date). Adds four engine unit tests, a `progress_mode_honours_mandatory_constraints`
+  property test and a deterministic weekend regression in `properties.rs`.
 - The Gantt week-grid loop breaks instead of spinning forever on a calendar
   with zero working weekdays (S3-5).
 - Ctrl+wheel over the Gantt zooms the timeline instead of doing nothing
