@@ -195,6 +195,8 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   so the chart's own handler receives the wheel. `Ctrl`+`+`/`-`/`0` no longer
   double-apply the GUI zoom as well, because Cadence's Gantt zoom handlers are
   the only zoom.
+- The window title is only re-sent to the OS when it changes (previously the
+  title command was sent every frame, requesting a repaint each time).
 - The CodeQL workflow's init and analyze actions are bumped together to
   v4.39.3: the split Dependabot bumps (#124/#125) each broke the action's
   required pairing, so the pair is updated as one change.

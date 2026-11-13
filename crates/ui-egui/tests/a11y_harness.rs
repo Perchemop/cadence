@@ -38,10 +38,11 @@
 //!   space, text), so queries use `get_all_by_label_contains` and filter by
 //!   `Role::Button` instead of exact-match `get_by_label`. The one exact
 //!   query in this file ("Shortcuts (F1)") has a unique, icon-free label.
-//! - `Harness::run` loops while the UI demands *immediate* repaints and
-//!   panics past `max_steps`. The fixture shell only requests *delayed*
-//!   repaints (the update poller's 250 ms tick), which terminates the loop;
-//!   `with_max_steps(8)` is belt-and-braces against a surprise animation.
+//! - The tests drive the shell with deterministic `Harness::step` frames
+//!   rather than `Harness::run`: the shell requests delayed repaints (the
+//!   update poller's 250 ms tick while a check runs), and `run` keeps
+//!   stepping while any repaint is pending. Fixed steps keep the assertions
+//!   reproducible.
 //!
 //! The fixture turns the periodic auto-update check off through the public
 //! [`CadenceApp::set_update_checks_enabled`] seam: `cargo test` never touches
@@ -136,7 +137,12 @@ fn build_harness(app: &mut CadenceApp, dark: bool) -> egui_kittest::Harness<'_> 
     // has already used for its bootstrap frame; the `run` below re-lays out.
     design::install_fonts(&harness.ctx);
     design::apply(&harness.ctx, dark);
-    harness.run();
+    // One deterministic step (not `run`): the shell sends its window-title
+    // command on change only, but `run`'s repaint-driven loop has no reason
+    // to settle a shell that still requests delayed repaints (the update
+    // poller's 250 ms tick, the status-message TTL). A fixed step keeps the
+    // tests reproducible.
+    harness.step();
     harness
 }
 
@@ -294,7 +300,7 @@ fn every_input_widget_has_an_accessible_name() {
         let mut harness = build_harness(&mut app, dark);
 
         for frame in 1..=2 {
-            harness.run();
+            harness.step();
             let unnamed = unnamed_inputs(&harness);
             assert!(
                 unnamed.is_empty(),
