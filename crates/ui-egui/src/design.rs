@@ -150,6 +150,17 @@ pub fn install_fonts(ctx: &Context) {
     // and inspector use; registered once here beside Inter so the icon face is
     // deterministic at startup.
     egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+    // The Phosphor face must precede the text faces: Inter maps a handful
+    // of private-use codepoints (E036, E038, E150, E220, E2CE, E24A) to
+    // letterform glyphs, and as the first face it would shadow six of the
+    // app's icons. Phosphor carries no Latin/Greek/Cyrillic, so text is
+    // unaffected by putting it first.
+    if let Some(faces) = fonts.families.get_mut(&FontFamily::Proportional) {
+        if let Some(position) = faces.iter().position(|name| name == "phosphor") {
+            let font = faces.remove(position);
+            faces.insert(0, font);
+        }
+    }
     ctx.set_fonts(fonts);
 }
 

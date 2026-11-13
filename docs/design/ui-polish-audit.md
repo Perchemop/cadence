@@ -64,9 +64,12 @@ PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 4
   carries each row's status. The only release-checklist item that cannot be
   closed by code is the manual screen-reader verification (NVDA/VoiceOver/Orca).
 
-**S3 minors — re-verified 2026-11-13 (focus-ring slice).** All 18 S3 findings
-with their verified status. After the focus-ring slice the open S3 items are
-S3-17 (unverified) only. This
+**S3 minors — re-verified 2026-11-13 (hardening + S3-17 verification + icon
+fix slice).** All 18 S3 findings with their verified status. S3-17 is now
+verified/documented (cmap-parsed coverage; limitation in `ACCESSIBILITY.md`
+"Text and character coverage"); the only remaining open items are the II.30
+evidence pipeline and the deferred S3-20 (Inter Bold-first face ordering).
+This
 table captures the S-id → finding mapping (the source audit file is absent
 from the tree; see the note above):
 
@@ -88,8 +91,10 @@ from the tree; see the note above):
 | S3-14 | Lookahead jump from diary | Done | The diary link reuses the Lookahead clash panel's jump (S3-13). |
 | S3-15 | Disabled Print Gantt control has no tooltip | Done | `on_disabled_hover_text`: "Switch to the Gantt view to print the Gantt chart." |
 | S3-16 | Explicit reduced-motion record | Done | The `ACCESSIBILITY.md` "Reduced motion" section records the no-custom-animations position. |
-| S3-17 | Font symbol coverage for non-Latin imports | Unverified | |
+| S3-17 | Font symbol coverage for non-Latin imports | Verified (documented) | cmap-parsed 2026-11-13; limitation in `ACCESSIBILITY.md` "Text and character coverage"; icon-shadowing found during verification and fixed (S3-19); Bold-first ordering deferred (S3-20). |
 | S3-18 | No window minimum size; toolbar wraps on extreme narrow widths | Done | Minimum window size asserted. |
+| S3-19 | Phosphor/Inter icon shadowing (six icons rendered as letterform glyphs) | Done | Phosphor face now precedes the text faces in `design::install_fonts`. |
+| S3-20 | Inter Bold-first face ordering (all proportional Latin text renders bold) | Open (deferred) | Deferred pending the II.30 evidence pipeline (visual-weight question). |
 
 ## Directive-by-directive findings
 
@@ -160,6 +165,8 @@ the current slices.
 | S2-21 | Gantt zoom applies one frame after button press | S2 | Apply `pixels_per_day` before drawing the canvas | P2 | Done |
 | S2-22 | Theme toggle duplicated in toolbar and status bar | S2 | Differentiate or remove one | P1 | Done |
 | — | Accessibility: manual screen-reader verification (NVDA/VoiceOver/Orca) | release | Release-checklist item; cannot be fully automated | — | — |
+| S3-19 | Phosphor/Inter icon shadowing (six icons rendered as letterform glyphs) | S3 | Phosphor face now precedes the text faces in `design::install_fonts` | P0 | Done |
+| S3-20 | Inter Bold-first face ordering (all proportional Latin text renders bold) | S3 | Deferred pending the II.30 evidence pipeline; visual-weight question | P3 | Open |
 
 ## Slices in this change
 

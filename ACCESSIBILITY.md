@@ -142,6 +142,26 @@ Recorded honestly, including what is not done:
   property. Support is limited to what AccessKit and the platform adapter
   provide; this is why manual screen-reader passes remain a release check.
 
+### Text and character coverage
+
+The interface draws text only from bundled fonts; egui never loads system
+fonts, so a character missing from every bundled font is drawn as a
+replacement box (◻) rather than substituted from the OS. Verified 2026-11-13
+by parsing the cmap tables of the bundled font files: Inter 4.1 (all four
+weights) covers Latin, Greek and Cyrillic plus common punctuation and
+symbols (→, —, ·, ✓, Δ, √, …, °); Hack (the monospace face) covers Latin,
+Greek, Cyrillic and the same symbols; egui's bundled fallbacks (Ubuntu Light,
+Noto Emoji, emoji-icon-font) add emoji and a few symbols but no additional
+scripts. Consequence: user-authored text (project/activity/resource/WBS/
+calendar/baseline names, diary notes, file paths) renders correctly in
+Latin, Greek and Cyrillic; text in other scripts (e.g. Japanese, Arabic,
+Hebrew) renders replacement boxes. Every label the application itself draws
+is English and covered; the fixed non-ASCII characters the UI uses (→, —, ·,
+✓, …, Δ) are all present in the bundled faces. Full support for other scripts
+would require bundling additional font files (e.g. Noto Sans per script, or a
+pan-Unicode face); that is a queued enhancement, not a defect in the current
+scope.
+
 ## Supported environments
 
 - Linux, Windows and macOS desktop builds published from releases.
