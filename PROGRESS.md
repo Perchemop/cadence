@@ -3,6 +3,26 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-13 — S2-1/S3-12 focus rings: contrast-tested keyboard-focus indication
+
+The last P0 design-audit item (S2-1's focus-ring remainder, closing S3-12
+with it), in `crates/ui-egui/src/design.rs`:
+
+- **Keyboard-focus indication.** egui 0.35 maps keyboard focus onto the
+  widget `active` visual state, so the theme module sets
+  `widgets.active.bg_stroke` from a new `focus_ring` palette token
+  (`FOCUS_RING = ACCENT`): every keyboard-focused widget shows a visible
+  ring on both themes, asserted ≥ 3:1 (non-text contrast) against each
+  theme's panel background by the new accessibility test
+  `focus_ring_meets_nontext_contrast_on_both_themes` (≈4.55:1 light,
+  ≈3.59:1 dark).
+- **Recorded limitation** (already in `ACCESSIBILITY.md`): the ring also
+  flashes during a pointer press/drag, because egui conflates keyboard focus
+  with the pressed/active state.
+
+Verification: CI run for this slice on `opencode/ci` (result recorded in
+`CHANGELOG.md` and the PR once green).
+
 ## 2026-11-12 — S3 polish: gating, empty states, diary click-through, hints; CodeQL pair bump
 
 The remaining S3 minors from the design-audit backlog (except S3-12, which
@@ -116,8 +136,9 @@ Verification: CI run for this slice on `opencode/ci` (result recorded in
   the tree (main @ `1248382` plus this slice) found the records both
   over-claiming closures — S2-9 never shipped, S2-1's focus rings were not
   merged, S2-4/S2-12/S2-16/S2-20 are partial or open — and still listing
-  long-closed items as open. (All of those except S2-1's focus rings are
-  closed as of the 2026-11-12 slices above.) The affected entries below are
+  long-closed items as open. (All of those are now closed: the S2-9 and
+  S2-4/S2-12/S2-16/S2-20 items in the 2026-11-12 slices above, and S2-1's
+  focus rings in the 2026-11-13 slice at the top of this file.) The affected entries below are
   annotated in
   place; "Next slices" and the PR #90 cross-check's "Still open — verified
   backlog" list are the corrected, authoritative queue.
@@ -220,7 +241,7 @@ Verification: CI green on PR #121 (all required checks).
   releases + verify-then-install updater; shared `crates/update-check` submodule.
 - **P1 F17 terminology/label drift** (one term per concept, honest verbs).
 - The verified design-audit backlog — "Still open — verified backlog
-  (refreshed 2026-11-12)" in the PR #90 cross-check below — plus the engine
+  (refreshed 2026-11-13)" in the PR #90 cross-check below — plus the engine
   follow-up listed there.
 
 ## 2026-11-07 — Full GUI audit + P0 correctness slice
@@ -1442,7 +1463,8 @@ directives, then the fixes, all verified slice by slice:
   cluster; a zoom slider in the status bar; and one shared 8 px / 4 px spacing
   grid (the off-grid 6 px menu margin fixed). (Correction, 2026-11-11 audit:
   the focus rings were not merged — they exist only on the unmerged
-  `opencode/focus-rings` branch and are tracked for a future release.)
+  `opencode/focus-rings` branch and are tracked for a future release;
+  shipped in the 2026-11-13 focus-ring slice at the top of this file.)
 - **Inspector hierarchy.** The activity inspector groups its fields under
   accent section headers (Basic info, Calendar, Field planning, Progress,
   Relationships).
@@ -1470,7 +1492,7 @@ shipped, S2-1's focus rings were not merged, and S2-4, S2-12, S2-16 and S2-20
 are partial or open; see the annotations below and the "Still open — verified
 backlog" list in the PR #90 cross-check. S2-12 and S2-16 closed in the
 2026-11-12 interaction slice; S2-9, S2-4 and S2-20 in the 2026-11-12
-inspector slice):
+inspector slice; S2-1 (with S3-12) in the 2026-11-13 focus-ring slice):
 
 - **S2-5 Table filter:** a filter field narrows rows by activity name
   (case-insensitive) and a **Critical only** toggle shows the critical path,
@@ -1516,8 +1538,9 @@ inspector slice):
     Ctrl+Plus/Minus/0 zoom may double-zoom the whole GUI); S2-20 is partial
     (13 fields wired; ~15 visible-label sites plus all combo boxes still
     unlinked). (S2-16 closed in the 2026-11-12 interaction slice; S2-9,
-    S2-4 and S2-20 closed in the 2026-11-12 inspector slice at the top of
-    this file.)
+    S2-4 and S2-20 closed in the 2026-11-12 inspector slice; S2-1 — with
+    S3-12 — closed in the 2026-11-13 focus-ring slice at the top of this
+    file.)
 
 **Release 0.11.0** cuts all of the above: the version is bumped across the
 workspace, `CHANGELOG.md` turns the Unreleased section into the dated 0.11.0
@@ -1545,28 +1568,27 @@ was re-verified against the current tree and cross-referenced in
 - S2-3 Status messages coloured by `StatusSeverity` (Info/Success/Warning/Error → palette tokens); info/success messages auto-clear after five seconds (S2-3b), errors and warnings persist.
 - S2-17 F1 shortcuts dialog lists Ctrl+S/O/N, Production (Ctrl+1..9) and all bindings.
 
-**Still open — verified backlog (refreshed 2026-11-12 after the S3 polish
+**Still open — verified backlog (refreshed 2026-11-13 after the focus-ring
 slice; the authoritative next-slices list):**
 
-- **P0 correctness/UX:** S2-1 focus rings — revive the unmerged
-  `opencode/focus-rings` branch or reimplement.
-- **P1 feedback/shell:** none remaining — S2-9 (Location/WBS inspector
-  fields), S2-4 (the last raw date fields) and S2-20 (the AccessKit
-  `labelled_by` sweep) all closed in the 2026-11-12 inspector slice at the
-  top of this file.
-- **P2 Gantt/density:** none remaining — S3-9 (column chooser / split-Gantt
-  gating), S3-11 (empty inspectors) and S3-13/S3-14 (diary click-through)
-  closed in the 2026-11-12 S3 polish slice above.
-- **S3 minors:** S3-12 dense-table focus rings (overlaps the S2-1 work) and
-  S3-17 font symbol coverage for non-Latin imports (unverified/open). S3-10
-  (progress range hint), the Gantt and Production empty states, and the
-  stale "Ctrl+1..5" copy in `docs/parity.md` closed in the S3 polish slice;
-  historical/dated docs keep their original text as records.
+- **P0/P1/P2 design-audit items:** none remaining — the last P0 item (S2-1's
+  focus-ring remainder, closing S3-12 with it) closed in the 2026-11-13
+  slice at the top of this file; S2-9 (Location/WBS inspector fields),
+  S2-4 (the last raw date fields) and S2-20 (the AccessKit `labelled_by`
+  sweep) closed in the 2026-11-12 inspector slice; S3-9 (column chooser /
+  split-Gantt gating), S3-11 (empty inspectors) and S3-13/S3-14 (diary
+  click-through) closed in the 2026-11-12 S3 polish slice.
+- **S3 minors:** S3-17 font symbol coverage for non-Latin imports
+  (unverified/open). S3-12 (dense-table focus rings) closed with S2-1 in the
+  2026-11-13 slice above; S3-10 (progress range hint), the Gantt and
+  Production empty states, and the stale "Ctrl+1..5" copy in `docs/parity.md`
+  closed in the S3 polish slice; historical/dated docs keep their original
+  text as records.
 - **II.30 items:** the evidence pipeline (egui_kittest seam refactor →
   rendered screenshots; the README placeholder image links were removed in
-  the S3 polish slice, so real screenshots await this pipeline) and the
-  reduced-motion record in `ACCESSIBILITY.md` (added in the current docs
-  refresh); the II.30.6 raw-colour gate landed in the 2026-11-11 slice above.
+  the S3 polish slice, so real screenshots await this pipeline); the
+  reduced-motion record in `ACCESSIBILITY.md` and the II.30.6 raw-colour
+  gate landed in the earlier slices.
 - **Engine follow-up:** `schedule_with_progress` (progress-driven mode) does
   not yet honour mandatory constraints (MSO/MFO) — queued for a future slice.
 

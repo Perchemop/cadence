@@ -90,7 +90,11 @@ Text and structural colours are tested at WCAG AA thresholds on both themes:
 - white text on the selection accent meets 4.5:1
   (`white_text_on_the_selection_accent_is_readable`);
 - the accent meets the 3:1 non-text minimum against both backgrounds
-  (`the_accent_is_distinguishable_on_both_themes`).
+  (`the_accent_is_distinguishable_on_both_themes`);
+- keyboard focus is indicated by a visible ring whose colour is asserted at
+  ≥ 3:1 against each theme's panel background
+  (`focus_ring_meets_nontext_contrast_on_both_themes`), for both light and
+  dark themes.
 
 These tests live in the `accessibility_tests` module of
 `crates/ui-egui/src/lib.rs` and run in every CI verification job.
@@ -124,6 +128,10 @@ Recorded honestly, including what is not done:
   area so it does not clip permanently, and focus follows construction order.
   On very short windows a focused control below the fold may need the panel
   scrolled into view; the control itself remains reachable with `Tab`.
+- **Focus ring vs. pointer press.** egui 0.35 maps keyboard focus onto the
+  widget's `active` visual state, so the focus ring also appears briefly while
+  a widget is being pressed or dragged under the pointer. The ring still
+  indicates keyboard focus, but it is not distinct from a pointer press.
 - **Colour-only signals.** Critical Gantt bars are marked with a leading `!`
   and explained in the chart legend, so the meaning is not carried by colour
   alone. The progress fill is visual; the exact percentage is in the
