@@ -68,7 +68,8 @@ PR #90 (`docs/audit/2026-11-03-exhaustive-design-and-gui-audit.md`) catalogued 4
 fix slice).** All 18 S3 findings with their verified status. S3-17 is now
 verified/documented (cmap-parsed coverage; limitation in `ACCESSIBILITY.md`
 "Text and character coverage"); the only remaining open items are the II.30
-evidence pipeline and the deferred S3-20 (Inter Bold-first face ordering).
+evidence pipeline (in progress — phase 1 done, phases 2/3 queued) and the
+deferred S3-20 (Inter Bold-first face ordering).
 This
 table captures the S-id → finding mapping (the source audit file is absent
 from the tree; see the note above):
@@ -94,7 +95,8 @@ from the tree; see the note above):
 | S3-17 | Font symbol coverage for non-Latin imports | Verified (documented) | cmap-parsed 2026-11-13; limitation in `ACCESSIBILITY.md` "Text and character coverage"; icon-shadowing found during verification and fixed (S3-19); Bold-first ordering deferred (S3-20). |
 | S3-18 | No window minimum size; toolbar wraps on extreme narrow widths | Done | Minimum window size asserted. |
 | S3-19 | Phosphor/Inter icon shadowing (six icons rendered as letterform glyphs) | Done | Phosphor face now precedes the text faces in `design::install_fonts`. |
-| S3-20 | Inter Bold-first face ordering (all proportional Latin text renders bold) | Open (deferred) | Deferred pending the II.30 evidence pipeline (visual-weight question). |
+| S3-20 | Inter Bold-first face ordering (all proportional Latin text renders bold) | Open (deferred) | Deferred pending the II.30 evidence pipeline (visual-weight question); phase 3 rendered pixels are its evaluation path. |
+| V15 | No visual-evidence pipeline (headless render golden tests / screenshots) | In progress — phase 1 (headless seam + smoke test) done; phase 2 kittest AccessKit next; phase 3 rendered PNG artefacts (needs software Vulkan in CI) | Phase 1 seam `CadenceApp::render` + `headless_render_tests` landed 2026-11-13; phases 2/3 queued. |
 
 ## Directive-by-directive findings
 
@@ -166,7 +168,8 @@ the current slices.
 | S2-22 | Theme toggle duplicated in toolbar and status bar | S2 | Differentiate or remove one | P1 | Done |
 | — | Accessibility: manual screen-reader verification (NVDA/VoiceOver/Orca) | release | Release-checklist item; cannot be fully automated | — | — |
 | S3-19 | Phosphor/Inter icon shadowing (six icons rendered as letterform glyphs) | S3 | Phosphor face now precedes the text faces in `design::install_fonts` | P0 | Done |
-| S3-20 | Inter Bold-first face ordering (all proportional Latin text renders bold) | S3 | Deferred pending the II.30 evidence pipeline; visual-weight question | P3 | Open |
+| S3-20 | Inter Bold-first face ordering (all proportional Latin text renders bold) | S3 | Deferred pending the II.30 evidence pipeline; visual-weight question; phase 3 pixels are the evaluation path | P3 | Open |
+| V15 | No visual-evidence pipeline (headless render golden tests / screenshots) | P4-infra | In progress — phase 1 (headless seam + smoke test) done; phase 2 kittest AccessKit next; phase 3 rendered PNG artefacts (needs software Vulkan in CI) | P4 | In progress |
 
 ## Slices in this change
 

@@ -129,6 +129,15 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 - Character coverage documented: bundled fonts cover Latin/Greek/Cyrillic;
   other scripts render replacement boxes (see `ACCESSIBILITY.md`, "Text and
   character coverage").
+- The UI shell is now headless-renderable: the whole UI body moved from the
+  `eframe::App::ui` trait impl into a public inherent method
+  `CadenceApp::render(&mut self, ui: &mut Ui)` (the eframe impl delegates),
+  removing the blocker that headless rendering needed a fabricable
+  `eframe::Frame`. A smoke test (`headless_render_tests`) drives the shell with
+  a bare `egui::Context` across every view mode, both themes and two passes,
+  asserting it paints — no GPU, no new dependency, runs in the normal test
+  suite on all four platforms. Groundwork for the guide II.30 rendered-evidence
+  pipeline (kittest AccessKit assertions next, then rendered PNG artefacts).
 
 ### Fixed
 - Opening a project file no longer silently discards unsaved changes
