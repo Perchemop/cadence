@@ -194,7 +194,7 @@ fn unnamed_inputs(harness: &egui_kittest::Harness<'_>) -> Vec<String> {
         .map(|node| node.accesskit_node())
         .filter(|node| INPUT_ROLES.contains(&node.role()))
         .filter(|node| !node.is_hidden())
-        .filter(|node| node.label().is_none_or(|label| label.trim().is_empty()))
+        .filter(|node| node.label().map_or(true, |label| label.trim().is_empty()))
         .map(|node| format!("{:?} without an accessible name", node.role()))
         .collect()
 }
