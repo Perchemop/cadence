@@ -5,7 +5,10 @@
 //! landing on the activity's own working calendar and every relationship
 //! remaining satisfied after the forward and ALAP passes.
 
-use cadence_core::engine::{level_resources, resource_conflicts, schedule, SchedError};
+use cadence_core::engine::{
+    activity_progress, level_resources, resource_conflicts, schedule, schedule_with_progress,
+    ProgressState, SchedError,
+};
 use cadence_core::model::{
     Activity, ActivityId, Calendar, Constraint, LinkType, Project, Relationship, RelationshipId,
     Resource, ResourceId,
@@ -102,6 +105,23 @@ fn actual_distance(
         LinkType::Ss => calendar.working_days_between(predecessor.0, successor.0),
         LinkType::Ff => calendar.working_days_between(predecessor.1, successor.1),
         LinkType::Sf => calendar.working_days_between(predecessor.0, successor.1),
+    }
+}
+
+/// The constraint described by a `kind`/`day` strategy row: kinds 0..8 cover
+/// every `Constraint` variant, with the dated variants pinned to a day in
+/// January 2026 (the strategies generate `day in 5..23`, always a valid date).
+fn constraint_from_raw(kind: u8, day: u8) -> Constraint {
+    let date = Date::from_calendar_date(2026, Month::January, day).expect("valid date");
+    match kind {
+        0 => Constraint::AsSoonAsPossible,
+        1 => Constraint::AsLateAsPossible,
+        2 => Constraint::StartNoEarlierThan(date),
+        3 => Constraint::StartNoLaterThan(date),
+        4 => Constraint::FinishNoEarlierThan(date),
+        5 => Constraint::FinishNoLaterThan(date),
+        6 => Constraint::MustStartOn(date),
+        _ => Constraint::MustFinishOn(date),
     }
 }
 
@@ -271,28 +291,7 @@ proptest! {
         kind in 0u8..8,
         day in 5u8..23,
     ) {
-        let constraint = match kind {
-            0 => Constraint::AsSoonAsPossible,
-            1 => Constraint::AsLateAsPossible,
-            2 => Constraint::StartNoEarlierThan(
-                Date::from_calendar_date(2026, Month::January, day).expect("date"),
-            ),
-            3 => Constraint::StartNoLaterThan(
-                Date::from_calendar_date(2026, Month::January, day).expect("date"),
-            ),
-            4 => Constraint::FinishNoEarlierThan(
-                Date::from_calendar_date(2026, Month::January, day).expect("date"),
-            ),
-            5 => Constraint::FinishNoLaterThan(
-                Date::from_calendar_date(2026, Month::January, day).expect("date"),
-            ),
-            6 => Constraint::MustStartOn(
-                Date::from_calendar_date(2026, Month::January, day).expect("date"),
-            ),
-            _ => Constraint::MustFinishOn(
-                Date::from_calendar_date(2026, Month::January, day).expect("date"),
-            ),
-        };
+        let constraint = constraint_from_raw(kind, day);
 
         let mut project = base_project();
         let a = ActivityId(1);
@@ -381,6 +380,67 @@ proptest! {
                 prop_assert!(false, "unexpected scheduling error: {other:?}");
             }
         }
+    }
+
+    #[test]
+    fn progress_mode_honours_mandatory_constraints(
+        duration in 0u32..8,
+        kind in 6u8..8,
+        day in 5u8..23,
+    ) {
+        let constraint = constraint_from_raw(kind, day);
+
+        let mut project = base_project();
+        let a = ActivityId(1);
+        let mut pinned = Activity::new(a, "Pinned", duration);
+        pinned.constraint = constraint;
+        project.activities.push(pinned);
+        project
+            .activities
+            .push(Activity::new(ActivityId(2), "Independent", 8));
+
+        // No actuals and no percent complete: `activity_progress` reads the
+        // fixture as not started, which is the state the mandatory pin arm
+        // of `schedule_with_progress` applies to.
+        let state = activity_progress(&project.activities[0]).state;
+        prop_assert_eq!(state, ProgressState::NotStarted);
+
+        // A status date ahead of every January window the strategy can pin
+        // (the earliest MFO window opens on 26 December 2025 for duration 7),
+        // so no pinned date falls before the data date.
+        let data_date = Date::from_calendar_date(2025, Month::December, 1).expect("valid date");
+        let calendar = project.calendar.clone();
+        let result = schedule_with_progress(&project, data_date).expect("progress schedule");
+
+        let item = result.activity(a).expect("scheduled activity");
+        match constraint {
+            Constraint::MustStartOn(bound) => {
+                let expected = calendar
+                    .next_working_day_on_or_after(bound)
+                    .expect("working-day bound");
+                prop_assert_eq!(item.scheduled_start, expected);
+                prop_assert_eq!(item.early_start, item.scheduled_start);
+                prop_assert_eq!(item.late_start, item.scheduled_start);
+                prop_assert_eq!(item.total_float, 0);
+            }
+            Constraint::MustFinishOn(bound) => {
+                let expected = calendar
+                    .prev_working_day_on_or_before(bound)
+                    .expect("working-day bound");
+                prop_assert_eq!(item.scheduled_finish, expected);
+                prop_assert_eq!(item.early_finish, item.scheduled_finish);
+                prop_assert_eq!(item.late_finish, item.scheduled_finish);
+                prop_assert_eq!(item.total_float, 0);
+            }
+            _ => {
+                prop_assert!(false, "unexpected constraint: {constraint:?}");
+            }
+        }
+
+        // The independent, unstarted activity is untouched by the pin and
+        // schedules by network logic: ASAP work reports its early dates.
+        let independent = result.activity(ActivityId(2)).expect("independent activity");
+        prop_assert_eq!(independent.scheduled_start, independent.early_start);
     }
 
     #[test]
@@ -529,6 +589,65 @@ fn mandatory_constraint_rounding_agrees_between_early_and_late_passes() {
         .next_working_day_on_or_after(bound)
         .expect("working-day bound");
     let result = schedule(&project).expect("must-start-on schedules");
+    let item = result.activity(a).expect("scheduled activity");
+    assert_eq!(item.scheduled_start, expected_start);
+    assert_eq!(item.early_start, item.scheduled_start);
+    assert_eq!(item.late_start, item.scheduled_start);
+    assert_eq!(item.total_float, 0);
+}
+
+/// Progress-mode counterpart of the regression above: the D10 rounding must
+/// agree between the forward and backward passes of `schedule_with_progress`
+/// too, so a mandatory bound on a non-working day pins one working day in
+/// both passes and the not-started activity carries zero total float instead
+/// of phantom float.
+///
+/// 10 January 2026 is a Saturday and the activity has no recorded facts, so
+/// `activity_progress` reads it as not started and the pin applies.
+#[test]
+fn progress_mode_mandatory_constraint_rounding_agrees_between_passes() {
+    fn build_with(constraint: Constraint) -> (Project, ActivityId) {
+        let mut project = base_project();
+        let a = ActivityId(1);
+        let mut activity = Activity::new(a, "Constrained", 2);
+        activity.constraint = constraint;
+        project.activities.push(activity);
+        project
+            .activities
+            .push(Activity::new(ActivityId(2), "Independent", 8));
+        (project, a)
+    }
+
+    // The status date is the project origin: both pinned windows (8..9 and
+    // 12..13 January) lie ahead of it, and with no recorded facts the
+    // constrained activity is not started, so the pin applies.
+    let data_date = origin();
+    let bound = Date::from_calendar_date(2026, Month::January, 10).expect("valid date");
+
+    // MustFinishOn: a finish-typed pin rounds backward (D10) in progress mode.
+    let (project, a) = build_with(Constraint::MustFinishOn(bound));
+    assert!(
+        !project.calendar.is_working_day(bound),
+        "the bound must be a non-working day for this regression"
+    );
+    let expected_finish = project
+        .calendar
+        .prev_working_day_on_or_before(bound)
+        .expect("working-day bound");
+    let result = schedule_with_progress(&project, data_date).expect("must-finish-on schedules");
+    let item = result.activity(a).expect("scheduled activity");
+    assert_eq!(item.scheduled_finish, expected_finish);
+    assert_eq!(item.early_finish, item.scheduled_finish);
+    assert_eq!(item.late_finish, item.scheduled_finish);
+    assert_eq!(item.total_float, 0);
+
+    // MustStartOn: a start-typed pin rounds forward (D10) in progress mode.
+    let (project, a) = build_with(Constraint::MustStartOn(bound));
+    let expected_start = project
+        .calendar
+        .next_working_day_on_or_after(bound)
+        .expect("working-day bound");
+    let result = schedule_with_progress(&project, data_date).expect("must-start-on schedules");
     let item = result.activity(a).expect("scheduled activity");
     assert_eq!(item.scheduled_start, expected_start);
     assert_eq!(item.early_start, item.scheduled_start);

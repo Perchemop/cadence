@@ -3,6 +3,34 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-13 — engine: progress mode honours mandatory constraints
+
+The engine follow-up closes: `schedule_with_progress` (progress-driven mode) now
+honours `MustStartOn`/`MustFinishOn` for not-started activities with the same
+D10 rounding and zero-float pinning as the plain CPM path.
+
+- **Behaviour.** A mandatory pin on a not-started activity pins its early and
+  late dates to the rounded working day, so total float is zero and the activity
+  is critical, exactly as in plan-only scheduling. `MustFinishOn` rounds
+  backward to the previous working day, `MustStartOn` rounds forward to the next.
+- **Actuals untouched.** Complete activities keep their recorded actual start/
+  finish and in-progress activities keep their recorded actual start and resume
+  outstanding work from the data date; a pin never moves a recorded fact (a
+  pin applied to such work is ignored for dating purposes). A pin also
+  overrides network logic for not-started work, as in the CPM path.
+- **Coverage.** Four new in-module engine tests
+  (`must_finish_on_a_weekend_rounds_back_in_progress_mode`,
+  `must_start_on_a_weekend_rounds_forward_in_progress_mode`,
+  `a_mandatory_pin_overrides_network_logic_in_progress_mode`,
+  `a_mandatory_pin_never_moves_recorded_actuals`), the new property test
+  `progress_mode_honours_mandatory_constraints` and the deterministic weekend
+  regression `progress_mode_mandatory_constraint_rounding_agrees_between_passes`
+  in `crates/core/tests/properties.rs`; the existing CPM property test was
+  refactored onto a shared `constraint_from_raw` helper (behaviour-identical).
+
+Verification: CI run for this slice on `opencode/ci` (result recorded in
+`CHANGELOG.md` and the PR once green).
+
 ## 2026-11-13 — S2-1/S3-12 focus rings: contrast-tested keyboard-focus indication
 
 The last P0 design-audit item (S2-1's focus-ring remainder, closing S3-12
@@ -1589,8 +1617,9 @@ slice; the authoritative next-slices list):**
   the S3 polish slice, so real screenshots await this pipeline); the
   reduced-motion record in `ACCESSIBILITY.md` and the II.30.6 raw-colour
   gate landed in the earlier slices.
-- **Engine follow-up:** `schedule_with_progress` (progress-driven mode) does
-  not yet honour mandatory constraints (MSO/MFO) — queued for a future slice.
+- **Engine follow-up:** closed in the 2026-11-13 slice above —
+  `schedule_with_progress` now honours `MustStartOn`/`MustFinishOn` for
+  not-started work (D10 rounding, zero float, actuals untouched).
 
 No item above blocks the current release; all are tracked so they are not missed.
 

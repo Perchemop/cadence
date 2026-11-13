@@ -294,8 +294,9 @@ shortcut copy. The remaining queue below is tracked in PROGRESS.md
   the S3 polish slice, so real screenshots await this pipeline) and the
   reduced-motion record in `ACCESSIBILITY.md` (added in the current docs
   refresh); the II.30.6 raw-colour gate landed in the 2026-11-11 slice.
-- **Engine follow-up:** `schedule_with_progress` (progress-driven mode) does
-  not honour mandatory constraints (MSO/MFO).
+- **Engine follow-up:** closed in the 2026-11-13 slice —
+  `schedule_with_progress` now honours `MustStartOn`/`MustFinishOn` for
+  not-started work (D10 rounding, zero float, actuals untouched).
 
 ### Suite standards (guide §12.1, audited 2026-11-04 — queued)
 
