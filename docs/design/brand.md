@@ -55,6 +55,9 @@ backgrounds.
   are not used; hierarchy comes from size and weight.
 - **Numeric face: monospace** for every date, float and count column, at body
   size, slightly dimmed so words lead the eye.
+- Inter's bundled weights cover Latin, Greek and Cyrillic (see
+  `ACCESSIBILITY.md`, Text and character coverage); other scripts fall back to
+  egui's replacement box.
 
 ## Spacing and rhythm
 

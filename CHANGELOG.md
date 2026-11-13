@@ -126,6 +126,9 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   docs keep their dated text as records).
 - README screenshot placeholders (broken `docs/assets/*.png` links) removed
   pending the II.30.8 evidence pipeline.
+- Character coverage documented: bundled fonts cover Latin/Greek/Cyrillic;
+  other scripts render replacement boxes (see `ACCESSIBILITY.md`, "Text and
+  character coverage").
 
 ### Fixed
 - Opening a project file no longer silently discards unsaved changes
@@ -186,6 +189,14 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 - The CodeQL workflow's init and analyze actions are bumped together to
   v4.39.3: the split Dependabot bumps (#124/#125) each broke the action's
   required pairing, so the pair is updated as one change.
+- Six toolbar/tab/inspector icons (folder, eye, info, undo, redo, chart-bar)
+  previously rendered as wrong letterform glyphs because the text face shadowed
+  the icon font; the Phosphor face now precedes Inter in the font chain
+  (S3-19).
+- The production percent field reports out-of-range values ("Percent out of
+  range.") instead of risking an overflow panic.
+- The WBS picker reports rejected assignments instead of silently desyncing its
+  buffer.
 
 ## [0.12.0] — 2026-11-07
 

@@ -284,16 +284,23 @@ shortcut copy. The remaining queue below is tracked in PROGRESS.md
   split-Gantt gating), S3-11 (empty inspectors) and S3-13/S3-14 (diary
   click-through) closed in the 2026-11-12 S3 polish slice; S2-9
   (Location/WBS inspector fields) closed in the inspector slice.
-- **S3 polish:** S3-17 font symbol coverage for non-Latin imports
-  (unverified). S3-10 (progress range hint), the Gantt and Production empty
-  states, and the stale "Ctrl+1..5" copy in `docs/parity.md` closed in the
-  S3 polish slice; historical/dated docs keep their original text as
-  records.
+- **S3 polish:** S3-17 font symbol coverage for non-Latin imports — **closed
+  (verified/documented)** in the 2026-11-13 slice (cmap-parsed coverage;
+  limitation in `ACCESSIBILITY.md` "Text and character coverage"; full
+  non-Latin support queued as an enhancement). S3-10 (progress range hint),
+  the Gantt and Production empty states, and the stale "Ctrl+1..5" copy in
+  `docs/parity.md` closed in the S3 polish slice; historical/dated docs keep
+  their original text as records. New tracked finding: **S3-20 Inter
+  Bold-first face ordering** (deferred — needs the evidence pipeline).
+- **Icon defect:** S3-19 Phosphor/Inter icon shadowing — **Done** in the
+  2026-11-13 slice (six icons previously rendered letterform glyphs;
+  Phosphor face now precedes the text faces).
 - **II.30 items:** the evidence pipeline (egui_kittest seam refactor →
   rendered screenshots; the README placeholder image links were removed in
   the S3 polish slice, so real screenshots await this pipeline) and the
   reduced-motion record in `ACCESSIBILITY.md` (added in the current docs
   refresh); the II.30.6 raw-colour gate landed in the 2026-11-11 slice.
+  (Needed to evaluate S3-20 safely.)
 - **Engine follow-up:** closed in the 2026-11-13 slice —
   `schedule_with_progress` now honours `MustStartOn`/`MustFinishOn` for
   not-started work (D10 rounding, zero float, actuals untouched).

@@ -3,6 +3,36 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-13 — hardening + S3-17 verification + icon fix
+
+Hardening, font-coverage verification, and a Phosphor/Inter icon-shadowing fix
+in `crates/ui-egui/src/lib.rs` and `crates/ui-egui/src/design.rs`:
+
+- **Hardening.** The production percent field now uses `checked_mul` with a
+  "Percent out of range." status message instead of risking a debug panic; the
+  inspector WBS picker reports rejected commands via `set_status` and no longer
+  desyncs its buffer on failure; the Gantt drag start-row index is explicitly
+  bounds-guarded.
+- **S3-17 verified and documented.** Font coverage was cmap-parsed from the
+  bundled TTFs: Inter 4.1 covers Latin/Greek/Cyrillic plus the app's fixed
+  symbols; no bundled font covers Hebrew/Arabic/Devanagari/Thai/kana/CJK/
+  Hangul; egui never loads system fonts, so such characters render the
+  replacement box ◻. The limitation is documented in `ACCESSIBILITY.md`
+  ("Text and character coverage"); full non-Latin support is queued as an
+  enhancement.
+- **Icon-shadowing defect found during verification and fixed.** Six Phosphor
+  icons (FOLDER, EYE, INFO, ARROW_CLOCKWISE/Redo, ARROW_COUNTER_CLOCKWISE/
+  Undo, CHART_BAR) were shadowed by Inter's private-use mappings; the Phosphor
+  face now precedes the text faces so icons render correctly. All 21 icons
+  verified unaffected-or-fixed.
+- **Bold-first Inter ordering finding recorded as deferred.** All proportional
+  Latin text renders in Inter-Bold; Regular/Medium/SemiBold are unreachable.
+  This is a visual-weight question that needs the evidence pipeline to evaluate
+  safely, so it is tracked as open rather than fixed now.
+
+Verification: CI run for this slice on `opencode/ci` (result recorded in
+`CHANGELOG.md` and the PR once green).
+
 ## 2026-11-13 — engine: progress mode honours mandatory constraints
 
 The engine follow-up closes: `schedule_with_progress` (progress-driven mode) now
@@ -1596,27 +1626,34 @@ was re-verified against the current tree and cross-referenced in
 - S2-3 Status messages coloured by `StatusSeverity` (Info/Success/Warning/Error → palette tokens); info/success messages auto-clear after five seconds (S2-3b), errors and warnings persist.
 - S2-17 F1 shortcuts dialog lists Ctrl+S/O/N, Production (Ctrl+1..9) and all bindings.
 
-**Still open — verified backlog (refreshed 2026-11-13 after the focus-ring
-slice; the authoritative next-slices list):**
+**Still open — verified backlog (refreshed 2026-11-13 after the hardening +
+S3-17 verification + icon fix slice; the authoritative next-slices list):**
 
 - **P0/P1/P2 design-audit items:** none remaining — the last P0 item (S2-1's
   focus-ring remainder, closing S3-12 with it) closed in the 2026-11-13
-  slice at the top of this file; S2-9 (Location/WBS inspector fields),
-  S2-4 (the last raw date fields) and S2-20 (the AccessKit `labelled_by`
-  sweep) closed in the 2026-11-12 inspector slice; S3-9 (column chooser /
-  split-Gantt gating), S3-11 (empty inspectors) and S3-13/S3-14 (diary
-  click-through) closed in the 2026-11-12 S3 polish slice.
-- **S3 minors:** S3-17 font symbol coverage for non-Latin imports
-  (unverified/open). S3-12 (dense-table focus rings) closed with S2-1 in the
-  2026-11-13 slice above; S3-10 (progress range hint), the Gantt and
-  Production empty states, and the stale "Ctrl+1..5" copy in `docs/parity.md`
-  closed in the S3 polish slice; historical/dated docs keep their original
-  text as records.
+  focus-ring slice; S2-9 (Location/WBS inspector fields), S2-4 (the last raw
+  date fields) and S2-20 (the AccessKit `labelled_by` sweep) closed in the
+  2026-11-12 inspector slice; S3-9 (column chooser / split-Gantt gating),
+  S3-11 (empty inspectors) and S3-13/S3-14 (diary click-through) closed in
+  the 2026-11-12 S3 polish slice.
+- **S3 minors:** S3-17 font symbol coverage for non-Latin imports — **closed
+  (verified/documented) in the 2026-11-13 slice above** (cmap-parsed
+  coverage; limitation in `ACCESSIBILITY.md` "Text and character coverage";
+  full non-Latin support queued as an enhancement). S3-12 (dense-table focus
+  rings) closed with S2-1 in the 2026-11-13 focus-ring slice; S3-10
+  (progress range hint), the Gantt and Production empty states, and the stale
+  "Ctrl+1..5" copy in `docs/parity.md` closed in the S3 polish slice;
+  historical/dated docs keep their original text as records. New tracked
+  finding: **S3-20 Inter Bold-first face ordering** (deferred — needs the
+  evidence pipeline to evaluate the visual-weight question safely).
+- **Icon defect:** S3-19 Phosphor/Inter icon shadowing — **Done** in the
+  2026-11-13 slice above (six icons previously rendered letterform glyphs;
+  Phosphor face now precedes the text faces).
 - **II.30 items:** the evidence pipeline (egui_kittest seam refactor →
   rendered screenshots; the README placeholder image links were removed in
   the S3 polish slice, so real screenshots await this pipeline); the
   reduced-motion record in `ACCESSIBILITY.md` and the II.30.6 raw-colour
-  gate landed in the earlier slices.
+  gate landed in the earlier slices. (Needed to evaluate S3-20 safely.)
 - **Engine follow-up:** closed in the 2026-11-13 slice above —
   `schedule_with_progress` now honours `MustStartOn`/`MustFinishOn` for
   not-started work (D10 rounding, zero float, actuals untouched).

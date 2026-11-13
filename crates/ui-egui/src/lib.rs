@@ -2966,15 +2966,19 @@ impl eframe::App for CadenceApp {
                                                 && self.wbs_buffer.is_some()
                                             {
                                                 if let Some(id) = self.selected {
-                                                    let _ = self.stack.execute(
+                                                    match self.stack.execute(
                                                         &mut self.project,
                                                         Box::new(AssignActivityWbs {
                                                             activity: id,
                                                             wbs: None,
                                                         }),
-                                                    );
-                                                    self.wbs_buffer = None;
-                                                    self.recompute();
+                                                    ) {
+                                                        Ok(()) => {
+                                                            self.wbs_buffer = None;
+                                                            self.recompute();
+                                                        }
+                                                        Err(error) => self.set_status(error),
+                                                    }
                                                 }
                                             }
                                             for (node_id, label_text) in &wbs_nodes {
@@ -2983,15 +2987,19 @@ impl eframe::App for CadenceApp {
                                                     && !picked
                                                 {
                                                     if let Some(id) = self.selected {
-                                                        let _ = self.stack.execute(
+                                                        match self.stack.execute(
                                                             &mut self.project,
                                                             Box::new(AssignActivityWbs {
                                                                 activity: id,
                                                                 wbs: Some(*node_id),
                                                             }),
-                                                        );
-                                                        self.wbs_buffer = Some(*node_id);
-                                                        self.recompute();
+                                                        ) {
+                                                            Ok(()) => {
+                                                                self.wbs_buffer = Some(*node_id);
+                                                                self.recompute();
+                                                            }
+                                                            Err(error) => self.set_status(error),
+                                                        }
                                                     }
                                                 }
                                             }
@@ -5005,20 +5013,25 @@ impl eframe::App for CadenceApp {
                                     if let Ok(percent) =
                                         self.production_percent_buffer.parse::<i64>()
                                     {
-                                        let command = cadence_commands::RecordProduction {
-                                            activity_id: ActivityId(activity_id),
-                                            date,
-                                            percent_complete: percent * 100,
-                                        };
-                                        match self
-                                            .stack
-                                            .execute(&mut self.project, Box::new(command))
-                                        {
-                                            Ok(()) => {
-                                                self.recompute();
-                                                self.set_status("Production recorded.");
+                                        match percent.checked_mul(100) {
+                                            Some(percent_complete) => {
+                                                let command = cadence_commands::RecordProduction {
+                                                    activity_id: ActivityId(activity_id),
+                                                    date,
+                                                    percent_complete,
+                                                };
+                                                match self
+                                                    .stack
+                                                    .execute(&mut self.project, Box::new(command))
+                                                {
+                                                    Ok(()) => {
+                                                        self.recompute();
+                                                        self.set_status("Production recorded.");
+                                                    }
+                                                    Err(error) => self.set_status(error),
+                                                }
                                             }
-                                            Err(error) => self.set_status(error),
+                                            None => self.set_status("Percent out of range."),
                                         }
                                     } else {
                                         self.set_status("Percent must be a number.");
@@ -6428,18 +6441,23 @@ fn render_gantt(
         }
 
         if let Some(start_row) = *drag_start {
-            if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
-                let start_y =
-                    rect.min.y + header_height + start_row as f32 * row_height + row_height / 2.0;
-                let start_activity = &activities[start_row];
-                if let Some(result) = current_schedule.activity(start_activity.id) {
-                    let start_days =
-                        (result.scheduled_finish.to_julian_day() - origin.to_julian_day()) as f32;
-                    let start_x = rect.min.x + (start_days + 1.0) * pixels_per_day;
-                    painter.line_segment(
-                        [Pos2::new(start_x, start_y), pos],
-                        egui::Stroke::new(1.5, palette.warn),
-                    );
+            if start_row < activities.len() {
+                if let Some(pos) = ui.ctx().input(|i| i.pointer.interact_pos()) {
+                    let start_y = rect.min.y
+                        + header_height
+                        + start_row as f32 * row_height
+                        + row_height / 2.0;
+                    let start_activity = &activities[start_row];
+                    if let Some(result) = current_schedule.activity(start_activity.id) {
+                        let start_days = (result.scheduled_finish.to_julian_day()
+                            - origin.to_julian_day())
+                            as f32;
+                        let start_x = rect.min.x + (start_days + 1.0) * pixels_per_day;
+                        painter.line_segment(
+                            [Pos2::new(start_x, start_y), pos],
+                            egui::Stroke::new(1.5, palette.warn),
+                        );
+                    }
                 }
             }
         }
