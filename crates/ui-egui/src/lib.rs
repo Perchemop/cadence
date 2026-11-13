@@ -476,6 +476,10 @@ pub struct CadenceApp {
     show_update_dialog: bool,
     /// When we last checked for updates (to avoid excessive API calls).
     last_update_check: Option<Instant>,
+    /// The last window title sent to the OS, so the title command is only
+    /// sent when the title actually changes (each command requests a
+    /// repaint, and the title only changes when the dirty flag does).
+    last_window_title: Option<String>,
     /// Whether the periodic auto-update check may run. Only the headless
     /// render tests turn it off: `cargo test` must not touch the network.
     update_checks_enabled: bool,
@@ -605,6 +609,7 @@ impl CadenceApp {
             gantt_drag: None,
             status_message: None,
             status_shown_at: None,
+            last_window_title: None,
             dirty: false,
             pending_file_action: None,
             baseline_active: false,
@@ -724,6 +729,14 @@ impl CadenceApp {
     }
 
     /// Start a background update check unless one is already running.
+    /// Enable or disable the periodic auto-update check.
+    ///
+    /// The headless test harnesses turn it off: `cargo test` must never touch
+    /// the network.
+    pub fn set_update_checks_enabled(&mut self, enabled: bool) {
+        self.update_checks_enabled = enabled;
+    }
+
     fn start_update_check(&mut self) {
         if self.update_receiver.is_some() {
             return;
@@ -2040,14 +2053,20 @@ impl CadenceApp {
         let mut filter_text = self.table_filter_buffer.clone();
         let mut critical_only = self.table_critical_only;
 
-        // Reflect unsaved state and version in the window title each frame.
+        // Reflect unsaved state and version in the window title — but only
+        // send the command when the title changes: every ViewportCommand
+        // requests a repaint, and re-sending an unchanged title would keep
+        // the app repainting (and a headless harness stepping) forever.
         let title = format!(
             "{}{} — Cadence {}",
             self.project.name,
             if self.dirty { " •" } else { "" },
             update_check::current_version()
         );
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
+        if self.last_window_title.as_deref() != Some(title.as_str()) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.last_window_title = Some(title);
+        }
 
         // Guard against closing with unsaved changes. While the project is
         // dirty every close request is cancelled; the modal (or an already
