@@ -24,3 +24,9 @@ egui-phosphor = "0.13.0"
 # The egui_extras date picker works on jiff calendar dates; Cadence keeps the
 # `time` crate for scheduling, so the two are converted at the field boundary.
 jiff = { version = "0.2", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+# Headless AccessKit assertions for the evidence pipeline (guide II.30):
+# drives `CadenceApp::render` against a bare egui Context; the `wgpu`/`snapshot`
+# features (rendered PNGs) are deliberately NOT enabled yet.
+egui_kittest = "0.35.0"

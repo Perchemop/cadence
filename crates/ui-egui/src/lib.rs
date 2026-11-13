@@ -724,6 +724,14 @@ impl CadenceApp {
     }
 
     /// Start a background update check unless one is already running.
+    /// Enable or disable the periodic auto-update check.
+    ///
+    /// The headless test harnesses turn it off: `cargo test` must never touch
+    /// the network.
+    pub fn set_update_checks_enabled(&mut self, enabled: bool) {
+        self.update_checks_enabled = enabled;
+    }
+
     fn start_update_check(&mut self) {
         if self.update_receiver.is_some() {
             return;
