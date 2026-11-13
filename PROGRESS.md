@@ -3,6 +3,43 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-14 — evidence pipeline phase 2a: kittest AccessKit assertions over the shell
+
+Phase 2a of the guide II.30 evidence pipeline (V15): AccessKit-tree
+assertions over the real shell, no GPU, no rendered pixels yet:
+
+- **Dev-dependency.** `egui_kittest = "0.35.0"` added to `crates/ui-egui`
+  as a dev-dependency, with the `wgpu` and `snapshot` features **off** —
+  AccessKit assertions only, no software Vulkan needed.
+- **Harness.** New integration test
+  `crates/ui-egui/tests/a11y_harness.rs` drives the real shell
+  (`CadenceApp::render`) through a kittest harness and asserts the AccessKit
+  tree: all nine view tabs reachable by name; Undo/Redo present, labelled and
+  exposed as `Disabled` while the stack is empty; the menu bar
+  (File/Edit/View/Window/Help); the Shortcuts (`F1`) button; the version
+  button; the Filter text input reachable via its visible label; and the
+  "Critical only" checkbox labelled. A hand-rolled named-input check (every
+  visible input widget in the tree must carry a non-empty accessible name —
+  kittest 0.35.0 predates the built-in check) runs across two frames and both
+  themes, and is now the **S2-20 regression gate**.
+- **Offline seam.** The fixture turns the auto-update check off via the new
+  public seam `CadenceApp::set_update_checks_enabled(false)`, so the tests are
+  strictly offline.
+- **Bug found and fixed en route.** The shell re-sent the window-title
+  `ViewportCommand` every frame (each command requests a repaint); the title
+  is now sent only when it changes, ending a continuous repaint.
+- **Determinism.** Tests use `Harness::step` frames rather than `run`,
+  because the shell requests delayed repaints (the update poller's 250 ms
+  tick) that would keep stepping.
+- **Verification.** All 17 CI checks green on all four platforms (the
+  harness needs no GPU).
+
+- **Phase 2b (next).** Rendered PNG artefacts via the `wgpu` + `snapshot`
+  features — needs software Vulkan (lavapipe: `mesa-vulkan-drivers` /
+  `libvulkan1`) on the hosted runner, medium/high risk with a documented
+  fallback (stay at phase 2a's AccessKit evidence). S3-20 (Inter Bold-first
+  ordering) is evaluated once phase 2b pixels exist.
+
 ## 2026-11-13 — evidence pipeline phase 1: headless shell seam + smoke test
 
 Phase 1 of the guide II.30 evidence pipeline (V15) — headless seam and smoke
@@ -321,12 +358,14 @@ Verification: CI green on PR #121 (all required checks).
 
 ## Next slices
 - **II.30.6 raw-colour grep gate — landed in the 2026-11-11 slice above.**
-  The II.30.8 evidence path is now **in progress — phase 1 done**: the
+  The II.30.8 evidence path is now **in progress — phase 2a done**: the
   headless seam (`CadenceApp::render`) and the `headless_render_tests` smoke
-  test landed in the 2026-11-13 slice above; phase 2 (kittest AccessKit
-  assertions, `egui_kittest = "0.35.0"` dev-dep) and phase 3 (rendered PNG
-  artefacts via `wgpu` + `snapshot`, needing software Vulkan in CI) remain.
-  The README images are still broken placeholders until phase 3.
+  test landed in the 2026-11-13 slice, and phase 2a (kittest AccessKit
+  assertions in `crates/ui-egui/tests/a11y_harness.rs`,
+  `egui_kittest = "0.35.0"` dev-dep, no GPU) landed in the 2026-11-14
+  slice above; phase 2b (rendered PNG artefacts via `wgpu` + `snapshot`,
+  needing software Vulkan in CI) remains. The README images are still broken
+  placeholders until phase 2b.
 - **§12.1 suite-standard deviations (D27):** token-ledger CI update; version UI as
   a bottom-right control opening the ledger-driven Release Notes popup; signed
   releases + verify-then-install updater; shared `crates/update-check` submodule.
@@ -1678,21 +1717,24 @@ S3-17 verification + icon fix slice; the authoritative next-slices list):**
   "Ctrl+1..5" copy in `docs/parity.md` closed in the S3 polish slice;
   historical/dated docs keep their original text as records. New tracked
   finding: **S3-20 Inter Bold-first face ordering** (deferred — needs the
-  evidence pipeline to evaluate the visual-weight question safely; phase 1
-  seam is in, phase 3 pixels will provide the evaluation path).
+  evidence pipeline to evaluate the visual-weight question safely; phase 2a
+  is in, phase 2b pixels will provide the evaluation path).
 - **Icon defect:** S3-19 Phosphor/Inter icon shadowing — **Done** in the
   2026-11-13 slice above (six icons previously rendered letterform glyphs;
   Phosphor face now precedes the text faces).
-- **II.30 items:** the evidence pipeline is **in progress — phase 1 done**
-  (headless seam `CadenceApp::render` + `headless_render_tests` smoke test
-  across every view × both themes × two passes). Phase 2 (kittest AccessKit
-  assertions via a dev-dependency, `egui_kittest = "0.35.0"`) is next;
-  phase 3 (rendered PNG artefacts via `wgpu` + `snapshot`, needing software
-  Vulkan/lavapipe in CI, fallback to AccessKit + smoke test) after that.
-  The README placeholder image links were removed in the S3 polish slice, so
-  real screenshots await phases 2/3. The reduced-motion record in
+- **II.30 items:** the evidence pipeline is **in progress — phase 2a done**
+  (AccessKit-tree assertions over the shell in
+  `crates/ui-egui/tests/a11y_harness.rs`, kittest 0.35.0 dev-dep, no GPU,
+  all 17 checks green on all four platforms), on top of the phase 1 headless
+  seam (`CadenceApp::render` + `headless_render_tests` smoke test) and the
+  title-command repaint fix. Phase 2b (rendered PNG artefacts via `wgpu` +
+  `snapshot`, needing software Vulkan/lavapipe in CI, with a documented
+  fallback to phase 2a's AccessKit evidence) is next; S3-20 (Inter
+  Bold-first ordering) is evaluated once phase 2b pixels exist. The README
+  placeholder image links were removed in the S3 polish slice, so real
+  screenshots await phase 2b. The reduced-motion record in
   `ACCESSIBILITY.md` and the II.30.6 raw-colour gate landed in the earlier
-  slices. (Phase 3 pixels are needed to evaluate S3-20 safely.)
+  slices. (Phase 2b pixels are needed to evaluate S3-20 safely.)
 - **Engine follow-up:** closed in the 2026-11-13 slice above —
   `schedule_with_progress` now honours `MustStartOn`/`MustFinishOn` for
   not-started work (D10 rounding, zero float, actuals untouched).

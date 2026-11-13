@@ -46,14 +46,22 @@ to this native GUI (guide II.30.1, II.30.14).
 - `eframe::CreationContext` and `eframe::Frame` still cannot be fabricated, so
   the windowed path still builds the app inside `eframe::run_native`; only the
   rendering body is shared.
-- Next steps: phase 2 adds `egui_kittest = "0.35.0"` as a **dev-dependency**
-  for AccessKit-tree assertions (no GPU needed — low risk); phase 3 uses the
-  `wgpu` + `snapshot` features to produce rendered PNG artefacts
-  (light/dark/empty/error/dialog/narrow) uploaded as CI artefacts (never
-  committed, no pixel baselines, per II.30.8), which needs software Vulkan
-  (lavapipe: `mesa-vulkan-drivers` / `libvulkan1`) on the hosted runner, with a
-  documented fallback of AccessKit assertions + the headless smoke test if no
-  adapter is available.
+- Evidence pipeline status: **phase 2a done** — `egui_kittest = "0.35.0"`
+  is now a dev-dependency of `crates/ui-egui` (the `wgpu` and `snapshot`
+  features stay **off**), and `crates/ui-egui/tests/a11y_harness.rs` drives
+  the real shell (`CadenceApp::render`) through a kittest harness and
+  asserts the AccessKit tree: all nine view tabs reachable by name; Undo/Redo
+  present, labelled and exposed as `Disabled` while the stack is empty; the
+  menu bar (File/Edit/View/Window/Help); the Shortcuts (`F1`) button; the
+  version button; the Filter text input reachable via its visible label; the
+  "Critical only" checkbox labelled; plus a hand-rolled named-input check
+  (every visible input widget must carry a non-empty accessible name) across
+  two frames and both themes. No GPU, no new runtime dependency; runs in the
+  normal `cargo test` suite on all four CI platforms. The fixture turns the
+  auto-update check off via `CadenceApp::set_update_checks_enabled(false)`
+  so the tests are strictly offline. Phase 2b (rendered PNG artefacts via
+  `wgpu` + `snapshot`, needing software Vulkan/lavapipe in CI, with a
+  documented fallback to phase 2a's AccessKit evidence) remains queued.
 
 ## Window / shell layout model
 
@@ -82,6 +90,11 @@ to this native GUI (guide II.30.1, II.30.14).
   palette-surface contrast tests, a high-contrast theme, a 24 pt target-size
   check and focus-ring assertions are tracked follow-ups. Limits that cannot be
   met in egui are recorded in `ACCESSIBILITY.md` rather than glossed over.
+- **Evidence (II.30.8).** Phase 2a ships AccessKit-tree assertions over the
+  shell in `crates/ui-egui/tests/a11y_harness.rs` (kittest 0.35.0
+  dev-dependency, no GPU, all four CI platforms); phase 2b rendered PNG
+  artefacts (`wgpu` + `snapshot`, needing lavapipe) remain queued with a
+  documented fallback to phase 2a's AccessKit evidence.
 
 ## How this record is kept current
 

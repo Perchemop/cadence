@@ -296,17 +296,22 @@ shortcut copy. The remaining queue below is tracked in PROGRESS.md
 - **Icon defect:** S3-19 Phosphor/Inter icon shadowing — **Done** in the
   2026-11-13 slice (six icons previously rendered letterform glyphs;
   Phosphor face now precedes the text faces).
-- **II.30 items:** the evidence pipeline is **in progress — phase 1 done**:
+- **II.30 items:** the evidence pipeline is **in progress — phase 2a done**:
   the headless seam (`CadenceApp::render`) and the `headless_render_tests`
-  smoke test landed in the 2026-11-13 slice; phase 2 (kittest AccessKit
-  assertions via a dev-dependency, `egui_kittest = "0.35.0"`) is next and
-  phase 3 (rendered PNG artefacts via `wgpu` + `snapshot`, needing software
-  Vulkan/lavapipe in CI, with an AccessKit + smoke-test fallback) follows.
-  The README placeholder image links were removed in the S3 polish slice, so
-  real screenshots await phases 2/3. The reduced-motion record in
+  smoke test landed in the 2026-11-13 slice, and phase 2a (kittest
+  AccessKit assertions over the shell in
+  `crates/ui-egui/tests/a11y_harness.rs`, `egui_kittest = "0.35.0"`
+  dev-dependency, no GPU, all 17 checks green on all four platforms) landed
+  in the 2026-11-14 slice, along with the window-title repaint fix. Phase 2b
+  (rendered PNG artefacts via `wgpu` + `snapshot`, needing software
+  Vulkan/lavapipe — `mesa-vulkan-drivers` / `libvulkan1` — in CI, with a
+  documented fallback to phase 2a's AccessKit evidence) follows; S3-20 (Inter
+  Bold-first ordering) is evaluated once phase 2b pixels exist. The README
+  placeholder image links were removed in the S3 polish slice, so real
+  screenshots await phase 2b. The reduced-motion record in
   `ACCESSIBILITY.md` (added in the current docs refresh) and the II.30.6
-  raw-colour gate (2026-11-11 slice) are in place. (Phase 3 pixels are needed
-  to evaluate S3-20 safely.)
+  raw-colour gate (2026-11-11 slice) are in place. (Phase 2b pixels are
+  needed to evaluate S3-20 safely.)
 - **Engine follow-up:** closed in the 2026-11-13 slice —
   `schedule_with_progress` now honours `MustStartOn`/`MustFinishOn` for
   not-started work (D10 rounding, zero float, actuals untouched).
