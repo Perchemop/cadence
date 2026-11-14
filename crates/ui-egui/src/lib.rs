@@ -5790,6 +5790,28 @@ impl CadenceApp {
                             }
                             ui.add_space(16.0);
                             ui.separator();
+                            ui.heading("Update");
+                            ui.add_space(8.0);
+                            if ui.button("Check for update").clicked() {
+                                self.update_status = update_check::check_for_update();
+                            }
+                            match &self.update_status {
+                                update_check::UpdateStatus::NotChecked => {
+                                    ui.label("Click \"Check for update\" to see if a new version is available.");
+                                }
+                                update_check::UpdateStatus::UpToDate => {
+                                    ui.label("You are running the latest version.");
+                                }
+                                update_check::UpdateStatus::UpdateAvailable { version, url } => {
+                                    ui.label(format!("Update available: {version}"));
+                                    ui.hyperlink(url.to_string());
+                                }
+                                update_check::UpdateStatus::Unavailable(msg) => {
+                                    ui.label(format!("Update check failed: {msg}"));
+                                }
+                            }
+                            ui.add_space(16.0);
+                            ui.separator();
                             ui.label(
                                 "Full release history: CHANGELOG.md in the repository.\n\
                                  All releases: https://github.com/Perchemop/cadence/releases"
