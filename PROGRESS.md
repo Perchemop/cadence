@@ -3,13 +3,21 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
-## 2026-11-14 — fix: duplicate `[[package]]` header in Cargo.lock (egui_kittest)
+## 2026-11-15 — fix: regenerate Cargo.lock from CI (malformed + stale)
 
-The `egui_kittest` dev-dependency added in the 2026-11-14 phase-2a slice left a
-duplicate empty `[[package]]` block immediately before `name = "egui_kittest"` in
-`Cargo.lock`. `cargo metadata --locked` (the lockfile freshness check) rejected
-the malformed lockfile, failing CI. Removed the stray empty `[[package]]` block so
-the lockfile parses and the `--locked` check passes.
+The `egui_kittest` dev-dependency added in the 2026-11-14 phase-2a slice left two
+problems in `Cargo.lock`: (1) a stray empty `[[package]]` block immediately before
+`name = "egui_kittest"` that made the file fail to parse, and (2) a resolution
+that was missing ~49 packages relative to the manifests, so `cargo metadata
+--locked` (the lockfile freshness gate) also failed on drift.
+
+Both are fixed by taking the lockfile the `Lockfile` workflow's **Regenerate
+Cargo.lock** job produces on the pull request (its designed path — cargo is never
+run on the maintainer machine) and committing it as-is: 540 resolved packages,
+valid TOML, re-resolved off yanked pins. `Lockfile freshness`, the platform
+`Verify` jobs, `Package (Linux)` and `Dependency licences and advisories` all
+failed only because the committed lockfile was unparseable/stale; the regenerated
+file addresses all of them.
 
 ## 2026-11-14 — evidence pipeline phase 2a: kittest AccessKit assertions over the shell
 
