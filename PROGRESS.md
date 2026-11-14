@@ -3,6 +3,14 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-14 — fix: duplicate `[[package]]` header in Cargo.lock (egui_kittest)
+
+The `egui_kittest` dev-dependency added in the 2026-11-14 phase-2a slice left a
+duplicate empty `[[package]]` block immediately before `name = "egui_kittest"` in
+`Cargo.lock`. `cargo metadata --locked` (the lockfile freshness check) rejected
+the malformed lockfile, failing CI. Removed the stray empty `[[package]]` block so
+the lockfile parses and the `--locked` check passes.
+
 ## 2026-11-14 — evidence pipeline phase 2a: kittest AccessKit assertions over the shell
 
 Phase 2a of the guide II.30 evidence pipeline (V15): AccessKit-tree
