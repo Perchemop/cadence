@@ -7410,3 +7410,162 @@ mod headless_render_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod evidence_render_tests {
+    use super::*;
+    use egui_kittest::Harness;
+    use time::{Date, Month};
+
+    fn fixture_project() -> Project {
+        let mut project = Project::new(
+            "Evidence fixture",
+            Date::from_calendar_date(2026, Month::January, 5).expect("date"),
+        );
+        let a = ActivityId::new(1);
+        let b = ActivityId::new(2);
+        let c = ActivityId::new(3);
+        project.activities.push(Activity::new(a, "Survey", 2));
+        project.activities.push(Activity::new(b, "Build", 3));
+        project.activities.push(Activity::new(c, "Finish", 1));
+        let rel_id = project.next_relationship_id();
+        project
+            .relationships
+            .push(cadence_core::model::Relationship::new(
+                rel_id,
+                a,
+                b,
+                cadence_core::model::LinkType::Fs,
+                0,
+            ));
+        let resource_id = project.next_resource_id();
+        project
+            .resources
+            .push(cadence_core::model::Resource::new(resource_id, "Crew"));
+        if let Some(activity) = project.activity_mut(a) {
+            activity.resources.push(resource_id);
+        }
+        project
+    }
+
+    fn empty_project() -> Project {
+        Project::new(
+            "Empty project",
+            Date::from_calendar_date(2026, Month::January, 5).expect("date"),
+        )
+    }
+
+    fn error_project() -> Project {
+        let mut project = Project::new(
+            "Engine test",
+            Date::from_calendar_date(2026, Month::January, 5).expect("date"),
+        );
+        let a = ActivityId::new(1);
+        project.activities.push(Activity::new(a, "A", 5));
+        if let Some(activity) = project.activity_mut(a) {
+            activity.constraint = Constraint::FinishNoLaterThan(
+                Date::from_calendar_date(2026, Month::January, 7).expect("date"),
+            );
+        }
+        project
+    }
+
+    fn save_render(harness: &mut Harness, file_name: &str) {
+        harness.remove_cursor();
+        let image = harness.render().expect("wgpu render");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/evidence");
+        std::fs::create_dir_all(&dir).expect("evidence dir");
+        image.save(dir.join(file_name)).expect("save png");
+    }
+
+    fn harness_for(app: &mut CadenceApp, dark: bool, width: f32, height: f32) -> Harness<'_> {
+        let mut harness = Harness::builder()
+            .with_size(egui::Vec2::new(width, height))
+            .build_ui(|ui| app.render(ui));
+        design::install_fonts(&harness.ctx);
+        design::apply(&harness.ctx, dark);
+        harness.step();
+        harness
+    }
+
+    #[test]
+    #[ignore = "rendered evidence; run by the Evidence CI job (needs software Vulkan)"]
+    fn evidence_normal_table() {
+        for dark in [true, false] {
+            let theme = if dark { "dark" } else { "light" };
+            let mut app = CadenceApp::with_path(fixture_project(), None);
+            app.set_update_checks_enabled(false);
+            app.dark = dark;
+            let mut harness = harness_for(&mut app, dark, 1024.0, 768.0);
+            save_render(&mut harness, &format!("{theme}-table.png"));
+        }
+    }
+
+    #[test]
+    #[ignore = "rendered evidence; run by the Evidence CI job (needs software Vulkan)"]
+    fn evidence_gantt_view() {
+        for dark in [true, false] {
+            let theme = if dark { "dark" } else { "light" };
+            let mut app = CadenceApp::with_path(fixture_project(), None);
+            app.set_update_checks_enabled(false);
+            app.dark = dark;
+            app.view_mode = ViewMode::Gantt;
+            let mut harness = harness_for(&mut app, dark, 1024.0, 768.0);
+            save_render(&mut harness, &format!("{theme}-gantt.png"));
+        }
+    }
+
+    #[test]
+    #[ignore = "rendered evidence; run by the Evidence CI job (needs software Vulkan)"]
+    fn evidence_empty_project() {
+        for dark in [true, false] {
+            let theme = if dark { "dark" } else { "light" };
+            let mut app = CadenceApp::with_path(empty_project(), None);
+            app.set_update_checks_enabled(false);
+            app.dark = dark;
+            let mut harness = harness_for(&mut app, dark, 1024.0, 768.0);
+            save_render(&mut harness, &format!("{theme}-empty.png"));
+        }
+    }
+
+    #[test]
+    #[ignore = "rendered evidence; run by the Evidence CI job (needs software Vulkan)"]
+    fn evidence_schedule_error() {
+        for dark in [true, false] {
+            let theme = if dark { "dark" } else { "light" };
+            let mut app = CadenceApp::with_path(error_project(), None);
+            app.set_update_checks_enabled(false);
+            app.dark = dark;
+            assert!(app.schedule.is_err());
+            let mut harness = harness_for(&mut app, dark, 1024.0, 768.0);
+            save_render(&mut harness, &format!("{theme}-error.png"));
+        }
+    }
+
+    #[test]
+    #[ignore = "rendered evidence; run by the Evidence CI job (needs software Vulkan)"]
+    fn evidence_dialog() {
+        for dark in [true, false] {
+            let theme = if dark { "dark" } else { "light" };
+            let mut app = CadenceApp::with_path(fixture_project(), None);
+            app.set_update_checks_enabled(false);
+            app.dark = dark;
+            app.show_release_notes = true;
+            let mut harness = harness_for(&mut app, dark, 1024.0, 768.0);
+            save_render(&mut harness, &format!("{theme}-dialog.png"));
+        }
+    }
+
+    #[test]
+    #[ignore = "rendered evidence; run by the Evidence CI job (needs software Vulkan)"]
+    fn evidence_narrow_window() {
+        for dark in [true, false] {
+            let theme = if dark { "dark" } else { "light" };
+            let mut app = CadenceApp::with_path(fixture_project(), None);
+            app.set_update_checks_enabled(false);
+            app.dark = dark;
+            let mut harness = harness_for(&mut app, dark, 480.0, 800.0);
+            save_render(&mut harness, &format!("{theme}-narrow.png"));
+        }
+    }
+}

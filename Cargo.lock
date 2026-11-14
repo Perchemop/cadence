@@ -625,6 +625,7 @@ dependencies = [
  "egui-phosphor",
  "egui_extras",
  "egui_kittest",
+ "image",
  "jiff",
  "rfd",
  "serde",

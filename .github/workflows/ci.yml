@@ -72,6 +72,40 @@ jobs:
             echo "- tests: \`cargo test --workspace\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Evidence pipeline (guide II.30.8): render the ignored screenshot tests
+  # with software Vulkan (lavapipe) and upload the PNGs as a build artefact.
+  # The artefact is never committed. This job is provisional and is therefore
+  # deliberately absent from .ci-required.txt; it is self-contained, so a
+  # failure here cannot affect the verify or security jobs.
+  evidence:
+    name: Evidence (rendered)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+
+      - name: Install software Vulkan (lavapipe)
+        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1 libgl1-mesa-dri libegl1
+
+      - name: Render evidence screenshots
+        env:
+          WGPU_BACKEND: vulkan
+        run: cargo test -p cadence-ui-egui --lib -- --ignored evidence_
+
+      - name: Upload rendered evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cadence-ui-evidence
+          path: target/evidence/**/*.png
+          if-no-files-found: error
+          retention-days: 30
+
   package:
     name: Package (Linux)
     runs-on: ubuntu-latest
