@@ -10,16 +10,30 @@ the repo and never committed). Read the repository's own records first:
 - **Heavy work runs in GitHub Actions only.** Never run a build, test, lint or
   any `cargo` command on this machine — not even `cargo fmt`. Verify with
   `~/.config/opencode/scripts/ci.sh run "<description>"`.
-- **Git actions are authored as** `"<App Name> Dev" <dev@example.com>`.
+- **Git actions are authored as** `Cadence Dev <dev@example.com>`. Every path to
+  `main` — a direct push where allowed, a pull-request merge commit, or a tag —
+  carries that identity. Never commit, tag or merge under a personal name or
+  address, and never override the identity to make a push go through.
 - **Every change lands on `main`, as `Cadence Dev`.** All work must end up on the
-  default branch, authored and merged as `Cadence Dev <dev@example.com>`; never
-  leave finished work stranded on a feature or `opencode/*` branch. Because
-  `main` is branch-protected — the authoritative CI checks in `.ci-required.txt`
-  are required and **direct pushes are disabled** (`guide.md` II.25) — "landing
-  on main" means **merging the green pull request**, not a raw
+  default branch; never leave finished work stranded on a feature or
+  `opencode/*` branch. **Every push and every merge to `main` is performed as the
+  `Cadence Dev` identity — including the merge commit itself.** That covers the
+  branch commits, the `ci.sh` push, the pull-request actions and the merge.
+  Before any push or merge, verify the *repository-local* identity
+  (`git config --local user.name` must be `Cadence Dev`, `git config --local
+  user.email` must be `dev@example.com`); if either is missing or wrong, set it
+  in the working repository — `git config --local user.name "Cadence Dev"` and
+  `git config --local user.email "dev@example.com"` — never globally, then push
+  or merge. `ci.sh` asserts the identity on every action and refuses a mismatch.
+  Because `main` is branch-protected — the authoritative CI checks in
+  `.ci-required.txt` are required and **direct pushes are disabled** (`guide.md`
+  II.25) — "landing on main" means **merging the green pull request**, not a raw
   `git push origin main`, which GitHub rejects. Do not bypass, disable or weaken
   the branch protection to force a push. Flow: branch → `ci.sh run` → CI green →
-  merge the PR → confirm `main`'s checks are green.
+  merge the PR → confirm `main`'s checks are green. GitHub still visually
+  attributes the push/merge event to the pushing account (`guide.md` II.26.7);
+  that is a recorded platform limit, not a reason to skip the identity or to use
+  the personal account in commit metadata.
 - **Suite standards (guide §12.1, audited 2026-11-04).** This app tracks token metrics
   in `docs/tokens.json`, references the ledger in release notes, verifies signatures
   + `SHA256SUMS.txt` before auto-update, shows version subtly in the bottom-right
