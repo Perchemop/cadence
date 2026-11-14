@@ -61,9 +61,12 @@ jobs:
           case "${{ runner.os }}" in
             Linux)
               # Debian package (.deb) — installable with dpkg/apt
+              # Strip the leading 'v' from the tag (Debian versions must start
+              # with a digit).
+              VERSION="${{ github.ref_name }}"; VERSION="${VERSION#v}"
               mkdir -p deb-pkg/DEBIAN deb-pkg/usr/local/bin
               cp "target/release/${{ matrix.binary }}" deb-pkg/usr/local/bin/cadence
-              printf 'Package: cadence\nVersion: ${{ github.ref_name }}\nArchitecture: ${{ matrix.target_arch }}\nMaintainer: Cadence Dev <dev@example.com>\nDescription: Cadence scheduling application\n' > deb-pkg/DEBIAN/control
+              printf "Package: cadence\nVersion: ${VERSION}\nArchitecture: ${{ matrix.target_arch }}\nMaintainer: Cadence Dev <dev@example.com>\nDescription: Cadence scheduling application\n" > deb-pkg/DEBIAN/control
               dpkg-deb --build deb-pkg "${{ matrix.installer }}"
               ;;
             macOS)
