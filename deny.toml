@@ -38,6 +38,12 @@ ignore = [
     "RUSTSEC-2026-0370",
     "RUSTSEC-2026-0371",
     "RUSTSEC-2026-0372",
+
+    # paste (RUSTSEC-2024-0436), via rav1e -> ravif -> image -> arboard ->
+    # egui-winit -> eframe. The crate is archived by its author and no safe
+    # upgrade exists until the egui/eframe stack drops it. Accepted 2026-11-15;
+    # re-check on the next egui/winit major bump.
+    "RUSTSEC-2024-0436",
 ]
 
 [licenses]

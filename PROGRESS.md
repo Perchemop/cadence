@@ -19,6 +19,15 @@ valid TOML, re-resolved off yanked pins. `Lockfile freshness`, the platform
 failed only because the committed lockfile was unparseable/stale; the regenerated
 file addresses all of them.
 
+## 2026-11-15 — fix: accept unmaintained `paste` advisory (RUSTSEC-2024-0436)
+
+The regenerated lockfile surfaced `paste 1.0.15` flagged as unmaintained
+(RUSTSEC-2024-0436), pulled in transitively via `rav1e → ravif → image →
+arboard → egui-winit → eframe → cadence-ui-egui`. The crate is archived by its
+author and no safe upgrade exists until the egui/eframe stack drops it, so it is
+added to the `deny.toml` advisories ignore list alongside the existing
+`ttf-parser` and `zvariant`/`zbus` entries, with reason and acceptance date.
+
 ## 2026-11-14 — evidence pipeline phase 2a: kittest AccessKit assertions over the shell
 
 Phase 2a of the guide II.30 evidence pipeline (V15): AccessKit-tree
