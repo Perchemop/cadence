@@ -63,13 +63,7 @@ jobs:
               # Debian package (.deb) — installable with dpkg/apt
               mkdir -p deb-pkg/DEBIAN deb-pkg/usr/local/bin
               cp "target/release/${{ matrix.binary }}" deb-pkg/usr/local/bin/cadence
-              cat > deb-pkg/DEBIAN/control <<EOF
-Package: cadence
-Version: ${{ github.ref_name }}
-Architecture: ${{ matrix.target_arch }}
-Maintainer: Cadence Dev <dev@example.com>
-Description: Cadence scheduling application
-EOF
+              printf 'Package: cadence\nVersion: ${{ github.ref_name }}\nArchitecture: ${{ matrix.target_arch }}\nMaintainer: Cadence Dev <dev@example.com>\nDescription: Cadence scheduling application\n' > deb-pkg/DEBIAN/control
               dpkg-deb --build deb-pkg "${{ matrix.installer }}"
               ;;
             macOS)
