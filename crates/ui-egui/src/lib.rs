@@ -3331,10 +3331,6 @@ impl CadenceApp {
                 let mut clicked_activity = None;
                 let mut context_menu_activity = None;
                 let mut header_clicked = None;
-                // WBS collapse toggles are collected here and applied after the
-                // panel closure, because the closure already holds an
-                // immutable borrow of `self.schedule`.
-                let mut toggle_wbs: Option<WbsId> = None;
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
                         ui.colored_label(
@@ -3611,6 +3607,7 @@ impl CadenceApp {
                         }
                     }
                 });
+                let mut toggle_wbs: Option<WbsId> = None;
                 if let Some(node) = toggle_wbs {
                     self.toggle_wbs_collapse(node);
                 }
