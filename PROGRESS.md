@@ -3,6 +3,25 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-15 — fix: wire CI token-ledger automation in release.yml
+
+The `docs/tokens.json` CI-managed ledger (guide.md §12.1) was seeded with
+`total_tokens_since_start`, `release_tokens`, `release_version` but the CI step
+that updates it on each semver tag was not wired. Added a **token-ledger** job
+to `.github/workflows/release.yml` that runs after `release` on every semver tag
+push:
+
+- Reads current `docs/tokens.json` values
+- Computes `total_tokens_since_start` = previous total + release tokens
+- Sets `release_version` to the new tag (stripping `v` prefix)
+- Writes updated `docs/tokens.json`
+- Commits and pushes to a `update-tokens-<tag>` branch
+- Opens a PR against `main` via `gh pr create`
+
+CI is green on all four platforms. PR is ready for merge; once merged, the
+lockfile-ledger loop is closed: every semver tag updates and commits
+`docs/tokens.json` automatically.
+
 ## 2026-11-15 — fix: regenerate Cargo.lock from CI (malformed + stale)
 
 The `egui_kittest` dev-dependency added in the 2026-11-14 phase-2a slice left two

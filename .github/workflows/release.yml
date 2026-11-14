@@ -148,3 +148,50 @@ jobs:
           artifact-name: cadence-sbom-cyclonedx
           upload-artifact: true
           upload-release-assets: true
+
+  token-ledger:
+    name: Update token ledger
+    runs-on: ubuntu-latest
+    needs: release
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+      - name: Update docs/tokens.json
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          TOKENS_FILE="docs/tokens.json"
+
+          # Read current values
+          CURRENT_VERSION=$(grep '"release_version"' "$TOKENS_FILE" | sed 's/.*"release_version": *"\([^"]*\)".*/\1/')
+          CURRENT_TOTAL=$(grep '"total_tokens_since_start"' "$TOKENS_FILE" | sed 's/.*"total_tokens_since_start": *\([0-9]*\).*/\1/')
+          CURRENT_RELEASE=$(grep '"release_tokens"' "$TOKENS_FILE" | sed 's/.*"release_tokens": *\([0-9]*\).*/\1/')
+
+          # Compute new total: previous total + release tokens from this cycle
+          NEW_TOTAL=$((CURRENT_TOTAL + CURRENT_RELEASE))
+
+          # Write updated tokens.json
+          cat > "$TOKENS_FILE" << EOF
+          {
+            "_comment": "CI-managed token ledger (guide.md 12.1). The release job updates and commits this on each semver tag; release notes must reference these values rather than free-text estimates.",
+            "total_tokens_since_start": $NEW_TOTAL,
+            "release_tokens": $CURRENT_RELEASE,
+            "release_version": "$VERSION"
+          }
+          EOF
+
+          # Commit and push back to main via PR
+          git config user.name "Cadence Dev"
+          git config user.email "dev@example.com"
+          git checkout -b update-tokens-${TAG}
+          git add docs/tokens.json
+          git commit -m "chore(release): update token ledger for ${TAG}"
+          git push origin update-tokens-${TAG}
+          gh pr create --title "chore(release): update token ledger for ${TAG}" --body "Update docs/tokens.json for release ${TAG}" --base main --head update-tokens-${TAG}
+        env:
+          GH_TOKEN: ${{ github.token }}
