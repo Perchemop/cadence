@@ -3,6 +3,31 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-15 — fix: regenerate Cargo.lock from CI (malformed + stale)
+
+The `egui_kittest` dev-dependency added in the 2026-11-14 phase-2a slice left two
+problems in `Cargo.lock`: (1) a stray empty `[[package]]` block immediately before
+`name = "egui_kittest"` that made the file fail to parse, and (2) a resolution
+that was missing ~49 packages relative to the manifests, so `cargo metadata
+--locked` (the lockfile freshness gate) also failed on drift.
+
+Both are fixed by taking the lockfile the `Lockfile` workflow's **Regenerate
+Cargo.lock** job produces on the pull request (its designed path — cargo is never
+run on the maintainer machine) and committing it as-is: 540 resolved packages,
+valid TOML, re-resolved off yanked pins. `Lockfile freshness`, the platform
+`Verify` jobs, `Package (Linux)` and `Dependency licences and advisories` all
+failed only because the committed lockfile was unparseable/stale; the regenerated
+file addresses all of them.
+
+## 2026-11-15 — fix: accept unmaintained `paste` advisory (RUSTSEC-2024-0436)
+
+The regenerated lockfile surfaced `paste 1.0.15` flagged as unmaintained
+(RUSTSEC-2024-0436), pulled in transitively via `rav1e → ravif → image →
+arboard → egui-winit → eframe → cadence-ui-egui`. The crate is archived by its
+author and no safe upgrade exists until the egui/eframe stack drops it, so it is
+added to the `deny.toml` advisories ignore list alongside the existing
+`ttf-parser` and `zvariant`/`zbus` entries, with reason and acceptance date.
+
 ## 2026-11-14 — evidence pipeline phase 2a: kittest AccessKit assertions over the shell
 
 Phase 2a of the guide II.30 evidence pipeline (V15): AccessKit-tree
