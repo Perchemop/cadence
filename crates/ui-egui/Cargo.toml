@@ -26,7 +26,11 @@ egui-phosphor = "0.13.0"
 jiff = { version = "0.2", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-# Headless AccessKit assertions for the evidence pipeline (guide II.30):
-# drives `CadenceApp::render` against a bare egui Context; the `wgpu`/`snapshot`
-# features (rendered PNGs) are deliberately NOT enabled yet.
-egui_kittest = "0.35.0"
+# Headless AccessKit assertions (tests/a11y_harness.rs) and the rendered
+# evidence tests (lib.rs `evidence_render_tests`): kittest's `wgpu` feature
+# rasterises frames on the CPU via egui-wgpu. `snapshot` is deliberately NOT
+# enabled (no committed pixel baselines — guide II.30.8); PNGs are saved with
+# `image` directly. Both crates are already in the dependency graph, so this
+# adds no new resolutions.
+egui_kittest = { version = "0.35.0", features = ["wgpu"] }
+image = { version = "0.25", features = ["png"] }

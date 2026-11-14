@@ -625,6 +625,7 @@ dependencies = [
  "egui-phosphor",
  "egui_extras",
  "egui_kittest",
+ "image",
  "jiff",
  "rfd",
  "serde",
@@ -1042,6 +1043,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "derivative"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b"
+dependencies = [
+    "proc-macro2",
+    "quote",
+    "syn",
+]
+
+[[package]]
 name = "egui_extras"
 version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1078,13 +1090,71 @@ version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "002c31e1f41461ce206333ffbd2e07563b79e87eb71c27e026151d12ee7b78e0"
 dependencies = [
- "egui",
- "kittest",
- "log",
- "serde",
- "toml",
+    "egui",
+    "egui_wgpu",
+    "kittest",
+    "log",
+    "serde",
+    "toml",
 ]
 
+[[package]]
+name = "ecolour"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be394e4b09ec901f5e8d0b658e8d3c8a7f2c9d3e4f5a6b7c8d9e0f1a2b3c4d5e6"
+dependencies = [
+    "smallvec",
+]
+
+[[package]]
+name = "egui_wgpu"
+version = "0.35.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2e6cfac0725563555fa4f91e9f799b9d7c6c5dd831fca6abc8234afc64b7a34"
+dependencies = [
+    "ahash",
+    "bytemuck",
+    "document-features",
+    "epaint",
+    "log",
+    "profiling",
+    "thiserror",
+    "type-map",
+    "web-time",
+    "wgpu",
+    "egui",
+    "winit",
+]
+
+[[package]]
+name = "egui_winit"
+version = "0.35.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ea6bf3608db949588b95b8b341ee358d0c3f95cf4dc3f53d8d76717edee87db"
+dependencies = [
+    "accesskit_winit",
+    "arboard",
+    "bytemuck",
+    "egui",
+    "log",
+    "objc2 0.6.5",
+    "objc2-foundation 0.3.2",
+    "objc2-ui-kit 0.3.2",
+    "profiling",
+    "raw-window-handle",
+    "smithay-clipboard",
+    "web-time",
+    "webbrowser",
+    "winit",
+]
+
+[[package]]
+name = "jiff-tzdb"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf2cec2f5d266af45a071ece48b1fb89f3b00b2421ac3a5fe10285a6caaa60d3"
+dependencies = []
 [[package]]
 name = "either"
 version = "1.19.0"
