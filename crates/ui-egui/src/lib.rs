@@ -3331,6 +3331,10 @@ impl CadenceApp {
                 let mut clicked_activity = None;
                 let mut context_menu_activity = None;
                 let mut header_clicked = None;
+                // WBS collapse toggles are collected inside the table-rendering
+                // closure below and applied once it returns, so the closure can
+                // borrow `toggle_wbs` mutably while the read here happens after.
+                let mut toggle_wbs: Option<WbsId> = None;
                 egui::CentralPanel::default().show(ui, |ui| match schedule {
                     Err(error) => {
                         ui.colored_label(
@@ -3433,11 +3437,6 @@ impl CadenceApp {
                                     area = area.vertical_scroll_offset(offset);
                                 }
                             }
-                            // WBS collapse toggles are collected here and applied
-                            // after `show_rows` returns, so the closure can borrow
-                            // `toggle_wbs` mutably without holding it across the
-                            // read below.
-                            let mut toggle_wbs: Option<WbsId> = None;
                             area.show_rows(ui, row_height, sorted.len(), |ui, range| {
                                 ui.spacing_mut().item_spacing.y = 0.0;
                                 for index in range {
