@@ -60,8 +60,9 @@ cargo run -p cadence-app -- path/to/project.sqlite   # open a project
 The CLI commands, the file formats and the keyboard map are documented in
 [`docs/usage.md`](docs/usage.md). The architecture is in
 [`docs/architecture.md`](docs/architecture.md), and the development conventions
-(commit identity, module layout, documentation rules) are in
-[`docs/development.md`](docs/development.md).
+(module layout, documentation rules) are in
+[`docs/development.md`](docs/development.md). The project's commit identity is
+in the rules below.
 
 ## Running the tests
 
@@ -138,6 +139,17 @@ explicitly consent to; see the README privacy note.
 - **Heavy builds stay in CI.** The maintainer works on a constrained machine;
   please let GitHub Actions do full builds and packaging. This does *not*
   restrict you: run whatever you need locally.
+- **The project identity is `Cadence Dev`.** Changes made by the maintainer's AI
+  build agents are authored and merged as `Cadence Dev <dev@example.com>` — the
+  branch commits, the `ci.sh` push, the pull-request actions and the merge
+  commit itself. Before any push or merge the *repository-local* identity is
+  verified and, if wrong, set in that checkout only
+  (`git config --local user.name "Cadence Dev"`,
+  `git config --local user.email "dev@example.com"`); `ci.sh` refuses a
+  mismatch. `main` is protected, so a change lands by merging the green pull
+  request, never by a direct push or by weakening the protection. Outside
+  contributors keep their own identity — this rule governs the automation, not
+  you.
 
 ## Licence and contributor terms
 

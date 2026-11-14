@@ -26,7 +26,9 @@ process. The agents are credited as tooling rather than as people: they act on
 the maintainer's behalf, with no independent standing in the governance model
 (see [`GOVERNANCE.md`](GOVERNANCE.md)), under the account identity
 `Cadence Dev <dev@example.com>`. Every agent change arrives as a pull request
-with CI evidence, reviewed like any other change.
+with CI evidence, reviewed like any other change, and is authored and merged
+under that identity — the merge commit included; the repository-local
+`git config --local` identity is verified before every push or merge.
 
 ## How to be added
 
