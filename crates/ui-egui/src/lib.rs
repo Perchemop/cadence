@@ -3433,6 +3433,11 @@ impl CadenceApp {
                                     area = area.vertical_scroll_offset(offset);
                                 }
                             }
+                            // WBS collapse toggles are collected here and applied
+                            // after `show_rows` returns, so the closure can borrow
+                            // `toggle_wbs` mutably without holding it across the
+                            // read below.
+                            let mut toggle_wbs: Option<WbsId> = None;
                             area.show_rows(ui, row_height, sorted.len(), |ui, range| {
                                 ui.spacing_mut().item_spacing.y = 0.0;
                                 for index in range {
@@ -3607,7 +3612,6 @@ impl CadenceApp {
                         }
                     }
                 });
-                let mut toggle_wbs: Option<WbsId> = None;
                 if let Some(node) = toggle_wbs {
                     self.toggle_wbs_collapse(node);
                 }
