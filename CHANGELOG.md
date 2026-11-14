@@ -43,6 +43,8 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-11-15
+
 ### Added
 - Keyboard focus indication (S2-1/S3-12): every keyboard-focused widget shows
   a visible ring — a contrast-tested `focus_ring` palette token applied to

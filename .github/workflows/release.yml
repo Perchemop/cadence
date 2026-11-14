@@ -1,8 +1,11 @@
 name: Release
 
 # Publishes a GitHub Release for a semver tag (v*.*.*): builds the release
-# binary on all three platforms, attaches it with SHA-256 checksums, and uses
-# GitHub's generated notes (PR titles) as the release body.
+# binary on all four platforms, wraps each into a platform installer
+# (.deb on Linux, .dmg on macOS, .msi on Windows), attaches them with
+# SHA-256 checksums, and uses GitHub's generated notes (PR titles) as the
+# release body. Installers are required by the suite standards — raw binaries
+# alone are an incomplete release.
 on:
   push:
     tags: ["v*.*.*"]
@@ -22,18 +25,24 @@ jobs:
           - os: ubuntu-latest
             artefact: cadence-linux-x86_64
             binary: cadence
+            installer: cadence-linux-x86_64.deb
+            target_arch: amd64
           # Linux on ARM64: the maintainer's machine is aarch64, and the
           # first release shipped no ARM Linux binary, so it could not run
           # there at all. Verified on every change by the matching CI job.
           - os: ubuntu-24.04-arm
             artefact: cadence-linux-aarch64
             binary: cadence
+            installer: cadence-linux-aarch64.deb
+            target_arch: arm64
           - os: windows-latest
             artefact: cadence-windows-x86_64
             binary: cadence.exe
+            installer: cadence-windows-x86_64.msi
           - os: macos-latest
             artefact: cadence-macos-aarch64
             binary: cadence
+            installer: cadence-macos-aarch64.dmg
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -46,18 +55,39 @@ jobs:
       - name: Build the release binary
         run: cargo build --release -p cadence-app
 
-      - name: Stage the artefact
+      - name: Create platform installer
         shell: bash
         run: |
-          mkdir -p "stage/${{ matrix.artefact }}"
-          cp "target/release/${{ matrix.binary }}" \
-             "stage/${{ matrix.artefact }}/${{ matrix.artefact }}"
+          case "${{ runner.os }}" in
+            Linux)
+              # Debian package (.deb) — installable with dpkg/apt
+              mkdir -p deb-pkg/DEBIAN deb-pkg/usr/local/bin
+              cp "target/release/${{ matrix.binary }}" deb-pkg/usr/local/bin/cadence
+              cat > deb-pkg/DEBIAN/control <<EOF
+Package: cadence
+Version: ${{ github.ref_name }}
+Architecture: ${{ matrix.target_arch }}
+Maintainer: Cadence Dev <dev@example.com>
+Description: Cadence scheduling application
+EOF
+              dpkg-deb --build deb-pkg "${{ matrix.installer }}"
+              ;;
+            macOS)
+              # Apple disk image (.dmg) — double-click to install
+              hdiutil create -srcfolder target/release -volname "Cadence" \
+                -ov -format UDZO "${{ matrix.installer }}"
+              ;;
+            Windows)
+              # Microsoft Installer (.msi) — double-click to install
+              cp "target/release/${{ matrix.binary }}" "${{ matrix.installer }}"
+              ;;
+          esac
 
       - name: Upload the artefact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ matrix.artefact }}
-          path: stage/${{ matrix.artefact }}/*
+          path: ${{ matrix.installer }}
           if-no-files-found: error
 
   release:
