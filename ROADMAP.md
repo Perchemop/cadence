@@ -326,23 +326,34 @@ shortcut copy. The remaining queue below is tracked in PROGRESS.md
 
 ### Suite standards (guide §12.1, audited 2026-11-04 — queued)
 
-Adopted in `DECISIONS.md` D27; the deviations still open are:
+Adopted in `DECISIONS.md` D27; synced 2026-11-15 against the merged work —
+three of the five standards are complete, one remains open, one is a standing
+policy:
 
-- **Token ledger automation.** `docs/tokens.json` is seeded; the CI step that
-  updates `total_tokens_since_start` / `release_tokens` / `release_version` on
-  each semver tag and commits it is still to be wired.
-- **Shared `crates/update-check`.** Move the inline
-  `crates/ui-egui/src/update_check.rs` to the suite's pinned git submodule and
-  update it with `git submodule update --remote` in CI.
-- **Signed releases + verify-then-install updater.** Sign release artefacts,
-  publish `SHA256SUMS.txt` (already attached), and make the in-app updater
-  verify signature + checksum before install; soft-fail offline.
-- **Version UI.** Move the version to a subtle **bottom-right** control whose
-  click opens the standard Release Notes popup — version history, per-release
-  app usage, token metrics from the ledger, and an Update button — matching the
-  suite layout. The popup exists today but carries a hand-written summary.
-- **README screenshots.** Refresh the placeholder screenshots at v1.0 and every
-  major release.
+- [x] **Token ledger automation.** A `token-ledger` job in
+  `.github/workflows/release.yml` reads `docs/tokens.json` on each semver tag,
+  computes `total_tokens_since_start` (previous total + release tokens), sets
+  `release_version` to the new tag, and opens a PR against `main` with the
+  updated ledger (PR #141).
+- [x] **Signed releases + verify-then-install updater.** `release.yml` signs
+  `SHA256SUMS.txt` (producing `SHA256SUMS.txt.sig`) and self-verifies the
+  signature before publishing; the in-app updater verifies the checksum and
+  signature before install via a pure-Rust OpenPGP path (`rpgp`) in
+  `crates/ui-egui/src/update_check.rs`, fail-closed until the owner sets the
+  `GPG_PRIVATE_KEY`/`GPG_PASSPHRASE` secrets and pastes the public key into
+  `RELEASE_PUBLIC_KEY` (PR #145; recorded in `DECISIONS.md` D30).
+- [x] **Version UI.** The version sits subtly in the toolbar's bottom-right;
+  clicking opens the standard Release Notes popup — version history
+  (v0.13.0–v0.10.0), per-release app usage per view, token metrics from
+  `docs/tokens.json`, and a "Check for update" button wired to
+  `update_check::check_for_update()` (PRs #142, #143, #147).
+- [ ] **Shared `crates/update-check`.** The inline
+  `crates/ui-egui/src/update_check.rs` still needs to move to the suite's
+  pinned git submodule (updated via `git submodule update --remote` in CI).
+  **Owner action required:** the shared suite-level repo must be created
+  first — the move is blocked until it exists.
+- **README screenshots.** Standing policy (not open work): refresh at v1.0 and
+  every major release.
 
 ## Out of scope (recorded in `docs/scope.md`)
 
