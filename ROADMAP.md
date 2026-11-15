@@ -123,7 +123,10 @@ touches the scheduling engine. See D18 for the decisions and
       that jump to the activity, status date + re-run) and the critical-path
       checks (CPT nudge test and the length index against the baseline
       deadline) and the forensic comparison (`cadence audit-compare`,
-      baseline comparison, `kind: "comparison"` JSON). Acceptance criteria in
+      baseline comparison, `kind: "comparison"` JSON), and the
+      schedule-quality extensions (unnecessary hard constraints, long lags,
+      redundant logic, out-of-sequence progress) — 18 checks in total.
+      Acceptance criteria in
       [`docs/research/schedule-audit.md`](docs/research/schedule-audit.md).
 
 Progress-driven rescheduling remains queued in v0.3.x below.
@@ -231,11 +234,14 @@ audit tool first (now the next slice), then the Aphex-inspired lookahead /
 field-planning work, then the optional AI integration. Approval lets the
 acceptance criteria drive implementation; it does not promise a release date.
 
-- [ ] **Programme audit tool** — an in-app tool that audits a construction
-      programme for health and quality (open ends, leads/lags, hard
-      constraints, high/negative float, invalid dates, missing resources,
-      missed tasks, critical-path test, CPLI/BEI, forensic comparison), with a
-      GUI Audit view and `cadence audit [--json]`. Inspired by public
+- [x] **Programme audit tool** — an in-app tool that audits a construction
+      programme for health and quality, with a GUI Audit view and
+      `cadence audit [--json]`. **Implemented (18 checks):** open ends, leads,
+      lags, relationship types, hard constraints, high/negative float, high
+      duration, invalid dates, missing resources, missed tasks, BEI, the
+      critical-path test and CPLI, unnecessary hard constraints, long lags,
+      redundant logic, out-of-sequence progress — plus the forensic
+      comparison (`cadence audit-compare`). Inspired by public
       DCMA 14-point / GAO ten-practices behaviour and the commercial audit
       tools; research: [`docs/research/schedule-audit.md`](docs/research/schedule-audit.md).
 - [ ] **Optional AI integration** — off-by-default assistant that reads
