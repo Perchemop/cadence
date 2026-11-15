@@ -64,14 +64,19 @@ without Cadence installed:
 | ID | Activity | Days | Start | Finish | Float | Critical | Resources |
 ```
 
-### Screenshots
+### Screenshots and rendered evidence
 
-The desktop app's main window combines a Gantt chart (with critical path
+The desktop app's main window combines a Gantt chart (with critical-path
 highlighting) and the activity table; a separate resource view shows daily
 resource usage as a histogram.
 
-> **Note:** Screenshots will be added when the GUI reaches visual stability
-> (tracked in the project's evidence-pipeline backlog).
+Screenshots are not bundled in this repository. You can find screenshots and
+rendered evidence of the app on the [GitHub Releases page](https://github.com/Perchemop/cadence/releases).
+Look in each release's **Assets** section for screenshot files.
+
+Rendered evidence — accessibility trees captured from the running GUI and GUI
+snapshot renders — is produced by the project's evidence pipeline and published
+to releases as it becomes available.
 
 Prebuilt binaries for Linux (x86_64 and ARM64), Windows and macOS are attached
 to each [release](https://github.com/Perchemop/cadence/releases), with SHA-256
