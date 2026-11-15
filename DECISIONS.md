@@ -668,3 +668,43 @@ all eight kinds, including the two mandatory pins.
 activities — the same D10 rounding in both passes, zero total float, and an
 explicit pin overriding both network logic and the data-date floor. Recorded
 actual dates are never moved by a pin: a pin cannot turn a fact into a plan.
+
+## D30 — Signed releases: GPG-signed checksums and in-app verification (2026-11-15)
+
+D27 recorded "releases are not yet signed" as an open §12.1 deviation; this
+slice closes the signing half of it. The release workflow signs
+`SHA256SUMS.txt` with a dedicated release key before anything is published,
+and the in-app updater can verify an installer end to end before the operating
+system ever sees it.
+
+- **What is signed.** `SHA256SUMS.txt` only, with a detached armoured
+  signature (`SHA256SUMS.txt.sig`) attached to the release. The signature
+  covers the checksum listing, the listing covers every installer, and the
+  chain is verified in that order: signature first, then the installer's
+  SHA-256 against the signed entry. The workflow self-verifies the signature
+  (`gpg --verify`) before publishing and fails the job when the
+  `GPG_PRIVATE_KEY`/`GPG_PASSPHRASE` secrets are missing rather than shipping
+  an unsigned release.
+- **What verifies.** `cadence-ui-egui::update_check` gains
+  `verify_update_installer(url)`: it fetches the checksum file and its
+  signature from the same release as the installer, checks the signature
+  against `RELEASE_PUBLIC_KEY` — the armoured release public key embedded in
+  the binary as the trust root — downloads the installer bounded at 256 MiB,
+  and compares its SHA-256 with the signed listing. Every step fails closed
+  with a plain `Err(String)`; nothing is written or executed there, so wiring
+  the actual install remains the follow-up slice (TODO in the Updates dialog).
+- **The verification library.** `pgp` 0.21 (rpgp) — the maintained pure-Rust
+  OpenPGP implementation — with `default-features = false` (bzip2 support is
+  never used by detached-signature verification). Alternatives considered:
+  shelling out to a `gpg` binary (absent from stock macOS and Windows, so the
+  app could not verify out of the box) and Sequoia (pulls C dependencies by
+  default, a cross-platform build risk). `sha2` 0.10 hashes the installer.
+  Both crates are MIT OR Apache-2.0 and recorded in `ATTRIBUTION.md`.
+- **MSRV consequence.** rpgp 0.21 declares MSRV 1.88, so the workspace
+  `rust-version` moves 1.81 → 1.88 rather than promising a toolchain the
+  dependency graph cannot build on. CI already runs stable.
+- **Trust-root hygiene.** The private half of the release key lives only in
+  the two repository secrets and is never committed; the public half is
+  compiled in. Verification is inert (fails closed) until the owner pastes
+  the armoured public key into `RELEASE_PUBLIC_KEY` — the same owner action
+  as creating the secrets, recorded in `PROGRESS.md`.

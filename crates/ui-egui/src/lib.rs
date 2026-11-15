@@ -5635,6 +5635,19 @@ impl CadenceApp {
                             ui.label("You are running the latest release.");
                         }
                         update_check::UpdateStatus::UpdateAvailable { version, url } => {
+                            // TODO(update-install, D30): this is where the
+                            // verify-then-install flow belongs. When the user
+                            // chooses "Update & Restart" here, call
+                            // `update_check::verify_update_installer(url)` —
+                            // it fetches the signed SHA256SUMS.txt from the
+                            // same release, verifies that signature against
+                            // the embedded release key, downloads the
+                            // installer and checks its SHA-256 against the
+                            // signed listing — and only stage and run the
+                            // installer after `Ok(())`. Blocked on owner
+                            // actions: the GPG_PRIVATE_KEY/GPG_PASSPHRASE
+                            // repository secrets and the RELEASE_PUBLIC_KEY
+                            // constant in update_check.rs.
                             ui.label(format!("Update available: {version}"));
                             ui.horizontal(|ui| {
                                 if ui.button("Open release page").clicked() {

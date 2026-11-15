@@ -3,6 +3,46 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-15 — signed releases: GPG-signed checksums + in-app verification (D30)
+
+Closes the D27 §12.1 deviation "releases are not yet signed" (the signing and
+verification half; the verify-then-install wiring stays queued):
+
+- **Release workflow** (`.github/workflows/release.yml`): a new "Sign the
+  checksums" step imports the release key from the `GPG_PRIVATE_KEY`
+  repository secret, signs `SHA256SUMS.txt` with `gpg --armor --detach-sig`
+  (passphrase via `GPG_PASSPHRASE`, pinentry loopback), self-verifies the
+  signature with `gpg --verify`, and attaches `SHA256SUMS.txt.sig` as a
+  release asset. A missing secret fails the job with a plain-language error —
+  an unsigned release is never published.
+- **In-app verification** (`crates/ui-egui/src/update_check.rs`):
+  `verify_update_installer(url)` fetches `SHA256SUMS.txt` and its signature
+  from the same release as the installer, verifies the signature against the
+  embedded `RELEASE_PUBLIC_KEY` trust root (fail-closed; empty until the owner
+  fills it), downloads the installer (≤ 256 MiB cap), and enforces its SHA-256
+  against the signed listing. Supporting API: `verify_signature`,
+  `verify_checksum_and_signature`. Nothing is written or executed there —
+  wiring the call into the Updates dialog's "Update & Restart" flow is the
+  follow-up slice (TODO comment added at the call site).
+- **Dependencies**: `pgp` 0.21 (rpgp, pure-Rust OpenPGP,
+  `default-features = false`) and `sha2` 0.10; dev-only `rand` 0.8 for test
+  key generation. All MIT OR Apache-2.0 and recorded in `ATTRIBUTION.md`; D30
+  records why rpgp beat shelling out to `gpg` and Sequoia.
+- **MSRV**: workspace `rust-version` moves 1.81 → 1.88, the floor rpgp 0.21
+  declares. CI already runs stable, so no check changes.
+- **Tests** (all headless, no network in the default suite): signature
+  round-trip, tamper rejection, foreign-key rejection, unparseable-signature
+  fail-closed, known-vector SHA-256, checksum-listing parsing (text and
+  binary mode), checksum enforcement, URL base/name derivation, and the
+  signature-before-download ordering.
+
+**Owner actions pending** (they block the first signed release, not this
+code): (1) create the release key pair and add `GPG_PRIVATE_KEY` +
+`GPG_PASSPHRASE` under Settings ▸ Secrets and variables ▸ Actions; (2) paste
+the armoured public key into `RELEASE_PUBLIC_KEY`
+(`crates/ui-egui/src/update_check.rs`). Until both are done the release
+workflow refuses to publish and in-app verification fails closed by design.
+
 ## 2026-11-15 — fix: regenerate Cargo.lock from CI (malformed + stale)
 
 The `egui_kittest` dev-dependency added in the 2026-11-14 phase-2a slice left two

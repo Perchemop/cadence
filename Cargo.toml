@@ -12,7 +12,10 @@ members = [
 [workspace.package]
 version = "0.13.0"
 edition = "2021"
-rust-version = "1.81"
+# rpgp (`pgp` 0.21, the OpenPGP verifier for signed releases, D30) declares
+# MSRV 1.88; the workspace floor moves with its highest requirement rather
+# than promising a toolchain the dependency graph cannot build on.
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 authors = ["Cadence contributors"]
 repository = "https://github.com/Perchemop/cadence"

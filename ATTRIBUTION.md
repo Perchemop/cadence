@@ -69,12 +69,15 @@ Direct dependencies of the workspace crates:
 | `jiff` | Unlicense OR MIT | ui-egui | Calendar dates for the `egui_extras` date picker (II.30; converted to `time` at the field boundary) |
 | `rfd` | MIT | app, ui-egui | Native save dialog for the PDF report (D16) |
 | `ureq` | MIT OR Apache-2.0 | ui-egui | Opt-in GitHub Releases update check (D22) |
+| `pgp` (rpgp) | MIT OR Apache-2.0 | ui-egui | Pure-Rust OpenPGP: verifies the release GPG signature of `SHA256SUMS.txt` before an update is trusted (D30) |
+| `sha2` | MIT OR Apache-2.0 | ui-egui | SHA-256 of a downloaded installer, compared against the signed checksum listing (D30) |
 
 Development-only dependencies (tests, property tests):
 
 | Crate | License | Used by | Purpose |
 |-------|---------|---------|---------|
 | `proptest` | MIT OR Apache-2.0 | core, interchange | Property-based tests |
+| `rand` | MIT OR Apache-2.0 | ui-egui (tests) | Key generation for the signature-verification tests |
 
 Transitive dependencies are recorded in `Cargo.lock`; `cargo tree` lists them
 for any crate. None of them are required at runtime beyond the GUI stack

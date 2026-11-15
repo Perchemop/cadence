@@ -3,9 +3,23 @@ name: Release
 # Publishes a GitHub Release for a semver tag (v*.*.*): builds the release
 # binary on all four platforms, wraps each into a platform installer
 # (.deb on Linux, .dmg on macOS, .msi on Windows), attaches them with
-# SHA-256 checksums, and uses GitHub's generated notes (PR titles) as the
+# SHA-256 checksums, signs the checksum file with the release GPG key
+# (SHA256SUMS.txt.sig), and uses GitHub's generated notes (PR titles) as the
 # release body. Installers are required by the suite standards — raw binaries
-# alone are an incomplete release.
+# alone are an incomplete release — and the in-app updater refuses an
+# installer whose checksum file does not verify against the signature
+# (guide §12.1, D27/D30).
+#
+# OWNER SETUP (one-time, repository settings): generate a dedicated release
+# key pair and add two repository secrets under
+# Settings ▸ Secrets and variables ▸ Actions ▸ Repository secrets:
+#   GPG_PRIVATE_KEY — the armoured secret key
+#                     (gpg --armor --export-secret-keys <fingerprint>)
+#   GPG_PASSPHRASE  — that key's passphrase
+# The matching armoured public key belongs in
+# crates/ui-egui/src/update_check.rs (RELEASE_PUBLIC_KEY); until it is pasted
+# there, the in-app verifier fails closed and every release is still signed
+# here. Without the secrets this job fails before anything is published.
 on:
   push:
     tags: ["v*.*.*"]
@@ -116,6 +130,32 @@ jobs:
             sha256sum -- * > ../SHA256SUMS.txt
             cp ../SHA256SUMS.txt .
           )
+
+      - name: Sign the checksums
+        # The trust chain the in-app updater walks: the signature covers
+        # SHA256SUMS.txt, and SHA256SUMS.txt covers every installer. The
+        # signature is armoured (the update_check verifier expects that form)
+        # and self-verified here, so a wrong passphrase or a broken key fails
+        # the job before anything is published.
+        shell: bash
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          cd artefacts/upload
+          if [ -z "${GPG_PRIVATE_KEY}" ]; then
+            echo "::error::GPG_PRIVATE_KEY is not set. Releases are signed (suite standard, guide §12.1 / D30). Add the armoured release signing key and its passphrase as the repository secrets GPG_PRIVATE_KEY and GPG_PASSPHRASE (Settings ▸ Secrets and variables ▸ Actions), then re-run the release."
+            exit 1
+          fi
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          # Sign with the primary key; the fingerprint is read from the
+          # imported key rather than assumed, so the step stays correct if
+          # the key is ever rotated.
+          KEY_ID=$(gpg --batch --list-secret-keys --with-colons | awk -F: '/^fpr/ { print $10; exit }')
+          echo "$GPG_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-fd 0 --local-user "$KEY_ID" --armor \
+            --output SHA256SUMS.txt.sig --detach-sig SHA256SUMS.txt
+          gpg --verify SHA256SUMS.txt.sig SHA256SUMS.txt
 
       - name: Publish the GitHub Release
         shell: bash
