@@ -8,6 +8,22 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 ~45K in the 0.12.0 cycle. The ledger's CI update on each tag is queued
 (`ROADMAP.md`).
 
+## [Unreleased]
+
+### Added
+- Programme audit: four new schedule-quality checks — `AUDIT-UNNECESSARY`
+  (hard date constraint on a non-critical activity), `AUDIT-LONGLAG`
+  (relationship lag above the configurable threshold, default 5 working
+  days), `AUDIT-REDUNDANT` (a successor reachable by more than one path from
+  one predecessor) and `AUDIT-OOS` (progress recorded while a
+  finish-to-start predecessor is unfinished). The audit tool now runs 18
+  checks.
+
+### Changed
+- Workspace version 0.13.0 → 0.14.0: the new check ids and the
+  `AuditConfig.long_lag_days` field are public-API additions that break
+  exhaustive construction (semver check).
+
 ## [0.12.1] — 2026-11-07
 
 ### Changed

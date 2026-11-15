@@ -3,6 +3,57 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-15 — programme audit: four new schedule-quality checks (18 total)
+
+Four additions to `crates/core/src/audit.rs`, taking the audit tool from 14
+checks to 18 — the 12 core checks plus AUDIT-CPT and AUDIT-CPLI (landed
+2026-10-28, PR #45); a "12 → 16" reading of the count misses those two:
+
+- **`AUDIT-UNNECESSARY` (UnnecessaryConstraints).** A hard date constraint —
+  the DCMA hard set: no-later-than and must-on starts and finishes; a
+  no-earlier-than bound is soft and does not count — on an open activity that
+  is not on the critical path. The constraint is not needed to protect the
+  finish and only stops the schedule from moving. Not-applicable when no open
+  activity carries a hard constraint.
+- **`AUDIT-LONGLAG` (LongLags).** A positive relationship lag longer than the
+  new `AuditConfig::long_lag_days` threshold (default 5 working days, one
+  working week; a config document without the field receives the default via
+  serde). Long lags delay the successor without representing real work and
+  hide the true driver of the dates.
+- **`AUDIT-REDUNDANT` (RedundantLogic).** The same successor reached by more
+  than one path from one predecessor — a duplicated relationship, or the
+  predecessor already reaching another predecessor of that successor.
+  Redundant links distort float and the critical path. The reachability walk
+  is iterative and bounded by a visited set, so long programmes and cyclic
+  networks cannot overflow the stack.
+- **`AUDIT-OOS` (OutOfSequenceProgress).** An open activity with recorded
+  progress (an actual start, or percent complete above zero) while a
+  finish-to-start predecessor is still unfinished. The report cites the
+  activity and never rewrites recorded progress; overlapping SS/FF/SF links
+  are ignored, and the check is not-applicable without recorded progress.
+
+Eighteen new unit tests (39 in total in the module) cover each check's fail,
+pass and not-applicable paths, the serde round trips for the report, the
+config and the new check ids, the stable codes and names, the legacy-config
+default, and determinism. The GUI Audit view, the `cadence audit` CLI and the
+`kind: "audit"` JSON document pick the new checks up from the central runner.
+
+**Process note.** The first verification PR for this work (#149) merged
+empty: its head branch (`opencode/ci`) carried only the CI verification
+commit while the code sat unmerged on `fix/audit-more-checks` — the CI
+branch and the work branch diverged. The checks land on `main` via PR #150.
+The first CI round on the real code failed `cargo fmt --check` (a required
+check; four spots, fixed) and was flagged by the semver check
+(`constructible_struct_adds_field` for `AuditConfig.long_lag_days`,
+`enum_variant_added` for the four `CheckId` variants) — answered per the
+recorded precedent (`e4150bc`): the workspace version moved 0.13.0 → 0.14.0
+and `Cargo.lock` was regenerated from the Lockfile workflow's artefact
+(540 packages), after which the semver check passes.
+
+Verification: CI green on PR #150 — all 13 required checks per
+`.ci-required.txt`, the semver check and Evidence (rendered) included — and
+merged to `main` (`831d13e`).
+
 ## 2026-11-15 — fix: regenerate Cargo.lock from CI (malformed + stale)
 
 The `egui_kittest` dev-dependency added in the 2026-11-14 phase-2a slice left two
