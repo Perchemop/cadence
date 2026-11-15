@@ -5790,10 +5790,31 @@ impl CadenceApp {
                             }
                             ui.add_space(16.0);
                             ui.separator();
+                            ui.heading("Per-release app usage");
+                            ui.add_space(8.0);
+                            ui.label("• v0.13.0: Gantt chart 12/15 features, Table view 8/8, Resources 6/8");
+                            ui.add_space(4.0);
+                            ui.label("• v0.12.1: Table view 8/8, Shell 10/10, Diary 4/4");
+                            ui.add_space(4.0);
+                            ui.label("• v0.12.0: Table view 6/8, Diary 2/4");
+                            ui.add_space(4.0);
+                            ui.label("• v0.11.0: Table view 4/8, Gantt chart 3/15");
+                            ui.add_space(4.0);
+                            ui.label("• v0.10.0: Table view 2/8");
+                            ui.add_space(8.0);
+                            ui.separator();
+                            ui.heading("Full release history");
+                            ui.add_space(8.0);
                             ui.label(
-                                "Full release history: CHANGELOG.md in the repository.\n\
+                                "CHANGELOG.md in the repository.\n\
                                  All releases: https://github.com/Perchemop/cadence/releases"
                             );
+                            ui.add_space(16.0);
+                            // TODO: wire this button to call update_check::check_for_update()
+                            // when clicked, then trigger the app restart flow.
+                            // if ui.button("Update & Restart").clicked() {
+                            //     update_check::check_for_update();
+                            // }
                         });
                 });
             if !open {
