@@ -13,12 +13,12 @@ use std::time::{Duration, Instant};
 use cadence_commands::{
     AddResourceToActivity, AssignActivityWbs, CaptureBaseline, CommandStack, CreateCalendar,
     CreateRelationship, CreateResource, DeleteCalendar, DeleteDailyNote, DeleteProduction,
-    DeleteRelationship, DeleteResource, RemoveBaseline, RemoveResourceFromActivity, RenameActivity,
-    RenameCalendar, RenameResource, SetActivityActualCost, SetActivityActualDates,
-    SetActivityBudget, SetActivityCalendar, SetActivityConstraint, SetActivityDuration,
-    SetActivityLocation, SetActivityOwner, SetActivityProgress, SetActivityPromise,
-    SetCalendarDefinition, SetRelationshipLag, SetRelationshipType, SetResourceCapacity,
-    SetResourceKind,
+    DeleteRelationship, DeleteResource, RemoveBaseline, RemoveLookaheadSnapshot,
+    RemoveResourceFromActivity, RenameActivity, RenameCalendar, RenameResource,
+    SetActivityActualCost, SetActivityActualDates, SetActivityBudget, SetActivityCalendar,
+    SetActivityConstraint, SetActivityDuration, SetActivityLocation, SetActivityOwner,
+    SetActivityProgress, SetActivityPromise, SetCalendarDefinition, SetRelationshipLag,
+    SetRelationshipType, SetResourceCapacity, SetResourceKind,
 };
 use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
@@ -422,6 +422,8 @@ pub struct CadenceApp {
     pending_delete_baseline_id: Option<BaselineId>,
     confirm_delete_note: bool,
     pending_delete_note_id: Option<DailyNoteId>,
+    confirm_delete_snapshot: bool,
+    pending_delete_snapshot_id: Option<LookaheadSnapshotId>,
     confirm_delete_production: bool,
     pending_delete_production_id: Option<ProductionEntryId>,
     /// Extra selected rows beyond the primary selection (S2-5): ctrl-click
@@ -624,6 +626,8 @@ impl CadenceApp {
             pending_delete_baseline_id: None,
             confirm_delete_note: false,
             pending_delete_note_id: None,
+            confirm_delete_snapshot: false,
+            pending_delete_snapshot_id: None,
             confirm_delete_production: false,
             pending_delete_production_id: None,
             multi_selected: BTreeSet::new(),
@@ -2093,6 +2097,7 @@ impl CadenceApp {
             || self.confirm_delete_calendar
             || self.confirm_delete_baseline
             || self.confirm_delete_note
+            || self.confirm_delete_snapshot
             || self.confirm_delete_production
             || self.pending_file_action.is_some();
 
@@ -2122,6 +2127,9 @@ impl CadenceApp {
             } else if self.confirm_delete_note {
                 self.confirm_delete_note = false;
                 self.pending_delete_note_id = None;
+            } else if self.confirm_delete_snapshot {
+                self.confirm_delete_snapshot = false;
+                self.pending_delete_snapshot_id = None;
             } else if self.confirm_delete_production {
                 self.confirm_delete_production = false;
                 self.pending_delete_production_id = None;
@@ -4673,6 +4681,17 @@ impl CadenceApp {
                                 ui.label(format!("captured {}", snapshot.created_at));
                             });
                         }
+                        let has_snapshot_selection = self.selected_lookahead_snapshot.is_some();
+                        if ui
+                            .add_enabled(
+                                has_snapshot_selection,
+                                egui::Button::new("Delete snapshot"),
+                            )
+                            .clicked()
+                        {
+                            self.pending_delete_snapshot_id = self.selected_lookahead_snapshot;
+                            self.confirm_delete_snapshot = true;
+                        }
                         if let Some(snapshot_id) = self.selected_lookahead_snapshot {
                             if let Some(snapshot) = self
                                 .project
@@ -4701,20 +4720,44 @@ impl CadenceApp {
                                     let current = current_by_id.get(&entry.activity_id);
                                     match current {
                                         Some(current) => {
-                                            let start_variance =
-                                                current.scheduled_start - entry.scheduled_start;
-                                            let finish_variance =
-                                                current.scheduled_finish - entry.scheduled_finish;
+                                            let start_days = (current.scheduled_start
+                                                - entry.scheduled_start)
+                                                .whole_days();
+                                            let finish_days = (current.scheduled_finish
+                                                - entry.scheduled_finish)
+                                                .whole_days();
                                             ui.horizontal(|ui| {
                                                 ui.label(format!(
                                                     "{} ({})",
                                                     entry.name, entry.activity_id
                                                 ));
-                                                ui.label(format!(
-                                                    "start {:+}d / finish {:+}d",
-                                                    start_variance.whole_days(),
-                                                    finish_variance.whole_days()
-                                                ));
+                                                // Each variance carries the shared
+                                                // variance colour (delays red,
+                                                // recovery green); the signed text
+                                                // stays so colour is never the only
+                                                // signal.
+                                                ui.label(
+                                                    egui::RichText::new(format!(
+                                                        "start {}d",
+                                                        variance_text(Some(start_days))
+                                                    ))
+                                                    .monospace()
+                                                    .color(design::variance_color(
+                                                        Some(start_days),
+                                                        self.dark,
+                                                    )),
+                                                );
+                                                ui.label(
+                                                    egui::RichText::new(format!(
+                                                        "finish {}d",
+                                                        variance_text(Some(finish_days))
+                                                    ))
+                                                    .monospace()
+                                                    .color(design::variance_color(
+                                                        Some(finish_days),
+                                                        self.dark,
+                                                    )),
+                                                );
                                             });
                                         }
                                         None => {
@@ -4723,7 +4766,10 @@ impl CadenceApp {
                                                     "{} ({}) — no longer in window",
                                                     entry.name, entry.activity_id
                                                 ));
-                                                ui.label("removed");
+                                                ui.label(
+                                                    egui::RichText::new("removed")
+                                                        .color(design::palette(self.dark).warn),
+                                                );
                                             });
                                         }
                                     }
@@ -4740,7 +4786,10 @@ impl CadenceApp {
                                                 "{} ({}) — new in window",
                                                 entry.name, entry.id
                                             ));
-                                            ui.label("added");
+                                            ui.label(
+                                                egui::RichText::new("added")
+                                                    .color(design::palette(self.dark).ok),
+                                            );
                                         });
                                     }
                                 }
@@ -5437,6 +5486,52 @@ impl CadenceApp {
             if !open {
                 self.confirm_delete_baseline = false;
                 self.pending_delete_baseline_id = None;
+            }
+        }
+
+        if self.confirm_delete_snapshot {
+            let mut open = true;
+            let id = self.pending_delete_snapshot_id;
+            egui::Window::new("Delete snapshot?")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    let enter_confirms = !ctx.text_edit_focused()
+                        && ctx.input(|input| input.key_pressed(egui::Key::Enter));
+                    ui.label("Delete the selected lookahead snapshot? This can be undone.");
+                    ui.horizontal(|ui| {
+                        let delete = ui.button("Delete").clicked();
+                        let cancel = ui.button("Cancel").clicked();
+                        if enter_confirms || delete {
+                            if let Some(id) = id {
+                                if self
+                                    .stack
+                                    .execute(
+                                        &mut self.project,
+                                        Box::new(RemoveLookaheadSnapshot { id }),
+                                    )
+                                    .is_ok()
+                                {
+                                    if self.selected_lookahead_snapshot == Some(id) {
+                                        self.selected_lookahead_snapshot = None;
+                                    }
+                                    self.recompute();
+                                    self.set_status("Snapshot deleted.");
+                                }
+                            }
+                            self.confirm_delete_snapshot = false;
+                            self.pending_delete_snapshot_id = None;
+                        }
+                        if cancel {
+                            self.confirm_delete_snapshot = false;
+                            self.pending_delete_snapshot_id = None;
+                        }
+                    });
+                });
+            if !open {
+                self.confirm_delete_snapshot = false;
+                self.pending_delete_snapshot_id = None;
             }
         }
 

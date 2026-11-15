@@ -250,14 +250,16 @@ acceptance criteria drive implementation; it does not promise a release date.
       reviewable, undoable command proposals; bring-your-own provider, no
       network without consent. Research:
       [`docs/research/ai-integration.md`](docs/research/ai-integration.md).
-- [ ] **Lookahead / field planning (Aphex-inspired)** — rolling short-interval
+- [x] **Lookahead / field planning (Aphex-inspired)** — rolling short-interval
       windows derived from the master schedule, weekly work plans with
       owner/promise tracking, a daily diary and huddle briefing, production
       tracking, light location clash detection and published-snapshot
-      comparison. **Done so far:** the window extraction
-      (`cadence-core::lookahead`), the GUI **Lookahead** view (`Ctrl+7`) and
-      owner/promise/delay-reason tracking (schema v5). **Remaining:**
-      published snapshots, the diary, production tracking, clash detection.
+      comparison. All stages are done: the window extraction
+      (`cadence-core::lookahead`), the GUI **Lookahead** view (`Ctrl+7`) with
+      owner/promise/delay-reason tracking (schema v5), published snapshots
+      (schema v6) with comparison, variance highlighting and delete, the
+      **Diary** view (`Ctrl+8`, schema v7), location clash detection (schema
+      v8) and production tracking (the **Production** view, `Ctrl+9`).
       Research:
       [`docs/research/aphex-integration.md`](docs/research/aphex-integration.md).
 

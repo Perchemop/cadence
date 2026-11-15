@@ -3,6 +3,36 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-15 — lookahead published snapshots: delete, variance highlighting, test coverage, records reconciliation
+
+Audit of the published-snapshots stage against `ROADMAP.md` and
+`docs/research/aphex-integration.md`: the core, command and persistence layers
+were already complete (schema v6, undoable capture/remove/restore); the gaps
+were GUI reachability, variance readability and tests:
+
+- **Snapshot deletion in the GUI.** `RemoveLookaheadSnapshot` existed but had
+  no UI entry point, so a published snapshot could never be deleted. The
+  Lookahead view now has a **Delete snapshot** button (enabled when a snapshot
+  is selected) behind the same confirm-dialog pattern as baselines — Enter
+  confirms, Escape cancels, undo restores the snapshot to its original
+  position.
+- **Variance highlighting.** The snapshot comparison showed start/finish
+  variance as plain text. Each variance now carries the shared
+  `design::variance_color` token (delay red, recovery green, unchanged muted),
+  and removed/added states are tinted warn/ok; the signed text stays so colour
+  is never the only signal.
+- **Test coverage.** New command tests: capture records the window (names,
+  dates, window fields), capture/remove are reversible and removal keeps list
+  position, unknown ids are rejected. New engine test: a captured snapshot is
+  read-only — later edits and reschedules never rewrite it. The persistence
+  round-trip test now includes a snapshot entry with all fields populated
+  (the entries table was previously only exercised empty).
+- **Records reconciliation.** `ROADMAP.md` still listed "published snapshots,
+  the diary, production tracking, clash detection" as remaining although all
+  four were marked done earlier in the same file; the lookahead bullet and
+  `docs/parity.md` now read done, and the stage is traced as R30 in
+  `REQUIREMENTS_TRACEABILITY.md`.
+
 ## 2026-11-15 — programme audit: four new schedule-quality checks (18 total)
 
 Four additions to `crates/core/src/audit.rs`, taking the audit tool from 14
@@ -53,6 +83,7 @@ and `Cargo.lock` was regenerated from the Lockfile workflow's artefact
 Verification: CI green on PR #150 — all 13 required checks per
 `.ci-required.txt`, the semver check and Evidence (rendered) included — and
 merged to `main` (`831d13e`).
+
 
 ## 2026-11-15 — fix: regenerate Cargo.lock from CI (malformed + stale)
 

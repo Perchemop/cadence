@@ -2301,6 +2301,63 @@ mod tests {
     }
 
     #[test]
+    fn a_captured_lookahead_snapshot_is_read_only() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 3);
+        let b = add_activity(&mut project, 2, "B", 3);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+        let scheduled = schedule(&project).expect("schedule succeeds");
+
+        let snapshot = capture_lookahead_snapshot(
+            &project,
+            &scheduled,
+            LookaheadSnapshotId::new(1),
+            "Week 1-2",
+            jan(5),
+            jan(5),
+            2,
+        );
+
+        assert_eq!(snapshot.id, LookaheadSnapshotId::new(1));
+        assert_eq!(snapshot.name, "Week 1-2");
+        assert_eq!(snapshot.created_at, jan(5));
+        assert_eq!(snapshot.window_start, jan(5));
+        assert_eq!(snapshot.window_weeks, 2);
+        // Entries are stored in ascending activity order and copy the
+        // scheduled plan.
+        let ids: Vec<ActivityId> = snapshot.entries.iter().map(|e| e.activity_id).collect();
+        assert_eq!(ids, vec![a, b]);
+        assert_eq!(snapshot.entries[0].scheduled_start, jan(5));
+        assert_eq!(snapshot.entries[0].scheduled_finish, jan(7));
+        assert_eq!(snapshot.entries[1].scheduled_start, jan(8));
+        assert_eq!(snapshot.entries[1].scheduled_finish, jan(12));
+
+        // Editing the project afterwards never rewrites the published
+        // snapshot: re-extracting the window yields the new plan while the
+        // snapshot keeps the values it was published with.
+        project.activities[0].name = "Renamed".to_string();
+        project.activities[0].original_duration = 10;
+        let rescheduled = schedule(&project).expect("reschedule succeeds");
+        // Three weeks: the longer A pushes B's start to jan 19, which is the
+        // exclusive end of the original two-week window, so the widened
+        // window keeps both activities inside for the comparison.
+        let later = capture_lookahead_snapshot(
+            &project,
+            &rescheduled,
+            LookaheadSnapshotId::new(2),
+            "Later",
+            jan(6),
+            jan(5),
+            3,
+        );
+        assert_eq!(later.entries[0].name, "Renamed");
+        assert_eq!(later.entries[1].scheduled_start, jan(19));
+        assert_eq!(snapshot.entries[0].name, "A");
+        assert_eq!(snapshot.entries[0].scheduled_finish, jan(7));
+        assert_eq!(snapshot.entries[1].scheduled_start, jan(8));
+    }
+
+    #[test]
     fn project_start_on_weekend_moves_to_next_working_day() {
         let mut project = Project::new("Weekend start", jan(10)); // Saturday
         let a = add_activity(&mut project, 1, "A", 2);
