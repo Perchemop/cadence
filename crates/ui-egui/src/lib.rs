@@ -14,12 +14,11 @@ use cadence_commands::{
     AddResourceToActivity, AssignActivityWbs, CaptureBaseline, CommandStack, CreateCalendar,
     CreateRelationship, CreateResource, DeleteCalendar, DeleteDailyNote, DeleteProduction,
     DeleteRelationship, DeleteResource, RemoveBaseline, RemoveLookaheadSnapshot,
-    RemoveResourceFromActivity, RenameActivity,
-    RenameCalendar, RenameResource, SetActivityActualCost, SetActivityActualDates,
-    SetActivityBudget, SetActivityCalendar, SetActivityConstraint, SetActivityDuration,
-    SetActivityLocation, SetActivityOwner, SetActivityProgress, SetActivityPromise,
-    SetCalendarDefinition, SetRelationshipLag, SetRelationshipType, SetResourceCapacity,
-    SetResourceKind,
+    RemoveResourceFromActivity, RenameActivity, RenameCalendar, RenameResource,
+    SetActivityActualCost, SetActivityActualDates, SetActivityBudget, SetActivityCalendar,
+    SetActivityConstraint, SetActivityDuration, SetActivityLocation, SetActivityOwner,
+    SetActivityProgress, SetActivityPromise, SetCalendarDefinition, SetRelationshipLag,
+    SetRelationshipType, SetResourceCapacity, SetResourceKind,
 };
 use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
