@@ -816,10 +816,14 @@ fn check_redundant_logic(project: &Project) -> CheckResult {
         .iter()
         .filter(|relationship| redundant.contains(&relationship.id))
         .map(|relationship| {
-            let predecessor = activity(project, relationship.predecessor)
-                .map_or_else(|| relationship.predecessor.to_string(), |item| item.name.clone());
-            let successor = activity(project, relationship.successor)
-                .map_or_else(|| relationship.successor.to_string(), |item| item.name.clone());
+            let predecessor = activity(project, relationship.predecessor).map_or_else(
+                || relationship.predecessor.to_string(),
+                |item| item.name.clone(),
+            );
+            let successor = activity(project, relationship.successor).map_or_else(
+                || relationship.successor.to_string(),
+                |item| item.name.clone(),
+            );
             Finding::Relationship {
                 id: relationship.id,
                 detail: format!("second path from {predecessor} into {successor}"),
@@ -865,9 +869,7 @@ fn check_out_of_sequence_progress(project: &Project) -> CheckResult {
             .filter(|relationship| {
                 relationship.successor == successor.id && relationship.link_type == LinkType::Fs
             })
-            .filter(|relationship| {
-                activity(project, relationship.predecessor).is_some_and(is_open)
-            })
+            .filter(|relationship| activity(project, relationship.predecessor).is_some_and(is_open))
             .map(|relationship| relationship.predecessor)
             .collect();
         if unfinished.is_empty() {
@@ -1510,7 +1512,10 @@ mod tests {
             CheckOutcome::Pass
         );
         assert_eq!(outcome(&report, CheckId::LongLags), CheckOutcome::Pass);
-        assert_eq!(outcome(&report, CheckId::RedundantLogic), CheckOutcome::Pass);
+        assert_eq!(
+            outcome(&report, CheckId::RedundantLogic),
+            CheckOutcome::Pass
+        );
         assert_eq!(
             outcome(&report, CheckId::OutOfSequenceProgress),
             CheckOutcome::NotApplicable
@@ -1990,7 +1995,9 @@ mod tests {
             outcome(&report, CheckId::RedundantLogic),
             CheckOutcome::Fail
         );
-        let check = report.check(CheckId::RedundantLogic).expect("check present");
+        let check = report
+            .check(CheckId::RedundantLogic)
+            .expect("check present");
         assert_eq!(check.findings.len(), 1);
         assert!(check.findings.iter().any(|finding| matches!(
             finding,
