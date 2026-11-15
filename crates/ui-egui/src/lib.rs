@@ -5788,6 +5788,15 @@ impl CadenceApp {
                                      (ledger unavailable)"
                                 );
                             }
+                            ui.add_space(8.0);
+                            ui.separator();
+                            ui.heading("Release history");
+                            ui.add_space(8.0);
+                            ui.label("• v0.13.0 — 2026-11-15: Platform installers (.deb, .dmg, .msi), WBS collapse, Gantt drag, two-tier timescale");
+                            ui.label("• v0.12.1 — 2026-11-07: Shell overhaul, menu taxonomy, toolbar polish");
+                            ui.label("• v0.12.0 — 2026-11-07: Table multi-selection, table filter, relationship type editing");
+                            ui.label("• v0.11.0 — 2026-11-06: Menu bar, Gantt legibility, empty states");
+                            ui.label("• v0.10.0 — 2026-11-06: Active record queries, Turbo Streams");
                             ui.add_space(16.0);
                             ui.separator();
                             ui.label(
