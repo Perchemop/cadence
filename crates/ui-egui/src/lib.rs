@@ -495,6 +495,9 @@ pub struct CadenceApp {
     audit_status_applied: Option<Date>,
     audit_status_buffer: String,
     audit_version: u64,
+    /// Whether the Audit view lists only the checks that fail, so the list
+    /// contains just the work to do. The scorecard always shows every check.
+    audit_failed_only: bool,
     edit_version: u64,
     lookahead_start_buffer: String,
     lookahead_weeks: usize,
@@ -573,6 +576,27 @@ fn activity_matches_filter(
                 .and_then(|s| s.activity(activity.id))
                 .map(|r| r.critical)
                 .unwrap_or(false))
+}
+
+/// Short label for an audit check outcome, used by the scorecard and the
+/// findings headers so the state reads the same everywhere in the view.
+fn outcome_label(outcome: CheckOutcome) -> &'static str {
+    match outcome {
+        CheckOutcome::Pass => "pass",
+        CheckOutcome::Fail => "fail",
+        CheckOutcome::NotApplicable => "n/a",
+    }
+}
+
+/// Colour for an audit check outcome, drawn from the semantic palette so both
+/// themes keep their WCAG-AA contrast instead of hard-coding a hue here.
+fn outcome_color(outcome: CheckOutcome, dark: bool) -> Color32 {
+    let palette = design::palette(dark);
+    match outcome {
+        CheckOutcome::Pass => palette.ok,
+        CheckOutcome::Fail => palette.critical,
+        CheckOutcome::NotApplicable => palette.text_muted,
+    }
 }
 
 impl CadenceApp {
@@ -679,6 +703,7 @@ impl CadenceApp {
             audit_status_applied: None,
             audit_status_buffer: String::new(),
             audit_version: 0,
+            audit_failed_only: false,
             edit_version: 0,
             lookahead_start_buffer: today().to_string(),
             lookahead_weeks: 2,
@@ -4443,7 +4468,14 @@ impl CadenceApp {
                                 }
                             }
                         }
+                        ui.separator();
+                        ui.checkbox(&mut self.audit_failed_only, "Failed checks only")
+                            .on_hover_text(
+                                "List only the checks that fail, so the findings below are \
+                                 just the work to do. The scorecard still shows every check.",
+                            );
                     });
+                    let palette = design::palette(self.dark);
                     let Some(report) = self.audit_report.clone() else {
                         ui.label(
                             "The programme cannot be scheduled, so there is nothing \
@@ -4451,9 +4483,12 @@ impl CadenceApp {
                         );
                         return;
                     };
-                    let mut pass = 0;
-                    let mut fail = 0;
-                    let mut not_applicable = 0;
+                    // ─── Summary dashboard ───
+                    // Count the checks by outcome first, so the shape of the
+                    // programme is readable before any individual finding.
+                    let mut pass = 0usize;
+                    let mut fail = 0usize;
+                    let mut not_applicable = 0usize;
                     for check in &report.checks {
                         match check.outcome {
                             CheckOutcome::Pass => pass += 1,
@@ -4461,49 +4496,170 @@ impl CadenceApp {
                             CheckOutcome::NotApplicable => not_applicable += 1,
                         }
                     }
-                    ui.label(format!(
-                        "{pass} pass, {fail} fail, {not_applicable} not applicable"
-                    ));
+                    let applicable = pass + fail;
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            egui::RichText::new(format!("{pass} pass"))
+                                .strong()
+                                .color(palette.ok),
+                        );
+                        ui.separator();
+                        ui.label(
+                            egui::RichText::new(format!("{fail} fail"))
+                                .strong()
+                                .color(palette.critical),
+                        );
+                        ui.separator();
+                        ui.label(
+                            egui::RichText::new(format!("{not_applicable} not applicable"))
+                                .color(palette.text_muted),
+                        );
+                        ui.separator();
+                        if applicable == 0 {
+                            ui.label(
+                                egui::RichText::new("No check could run on this programme.")
+                                    .weak(),
+                            );
+                        } else {
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "{pass} of {applicable} applicable checks pass"
+                                ))
+                                .weak(),
+                            );
+                        }
+                    });
                     ui.separator();
                     egui::ScrollArea::vertical()
+                        .id_salt("audit_body")
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
-                            for check in &report.checks {
-                                let word = match check.outcome {
-                                    CheckOutcome::Pass => "pass",
-                                    CheckOutcome::Fail => "FAIL",
-                                    CheckOutcome::NotApplicable => "not applicable",
-                                };
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.monospace(check.id.code());
-                                    ui.label(format!("[{word}]"));
-                                    if let Some(measured) = &check.measured {
-                                        ui.label(measured);
+                            // Per-check score: the measured value against the
+                            // threshold is the evidence behind each badge.
+                            egui::Grid::new("audit_scorecard")
+                                .num_columns(4)
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    ui.label(egui::RichText::new("Check").strong());
+                                    ui.label(egui::RichText::new("Title").strong());
+                                    ui.label(egui::RichText::new("Score").strong());
+                                    ui.label(egui::RichText::new("Measured").strong());
+                                    ui.end_row();
+                                    for check in &report.checks {
+                                        ui.label(egui::RichText::new(check.id.code()).monospace());
+                                        ui.label(&check.title);
+                                        ui.label(
+                                            egui::RichText::new(outcome_label(check.outcome))
+                                                .strong()
+                                                .color(outcome_color(check.outcome, self.dark)),
+                                        );
+                                        ui.label(check.measured.as_deref().unwrap_or("—"));
+                                        ui.end_row();
                                     }
                                 });
-                                ui.label(&check.summary);
-                                if let Some(threshold) = &check.threshold {
-                                    ui.label(format!("Threshold: {threshold}"));
+                            ui.separator();
+
+                            // ─── Findings, grouped by check ───
+                            // A failing check opens by default so the work is
+                            // visible without a click; a passing one stays
+                            // collapsed and expands only on request.
+                            let mut shown = 0usize;
+                            for check in &report.checks {
+                                if self.audit_failed_only && check.outcome != CheckOutcome::Fail {
+                                    continue;
                                 }
-                                for finding in &check.findings {
-                                    match finding {
-                                        Finding::Activity { id, name, detail } => {
-                                            ui.horizontal_wrapped(|ui| {
-                                                let label = format!("{name} ({id})");
-                                                if ui.selectable_label(false, &label).clicked() {
-                                                    self.select(*id);
-                                                    self.scroll_to_selection = true;
-                                                    self.view_mode = ViewMode::Table;
+                                shown += 1;
+                                let header = format!(
+                                    "{code}  [{outcome}]  {title}",
+                                    code = check.id.code(),
+                                    outcome = outcome_label(check.outcome),
+                                    title = check.title
+                                );
+                                egui::CollapsingHeader::new(
+                                    egui::RichText::new(header)
+                                        .strong()
+                                        .color(outcome_color(check.outcome, self.dark)),
+                                )
+                                .id_salt(check.id.code())
+                                .default_open(check.outcome == CheckOutcome::Fail)
+                                .show(ui, |ui| {
+                                    ui.label(&check.summary);
+                                    if let Some(measured) = &check.measured {
+                                        ui.label(
+                                            egui::RichText::new(format!("Measured: {measured}"))
+                                                .weak(),
+                                        );
+                                    }
+                                    if let Some(threshold) = &check.threshold {
+                                        ui.label(
+                                            egui::RichText::new(format!("Threshold: {threshold}"))
+                                                .weak(),
+                                        );
+                                    }
+                                    if check.findings.is_empty() {
+                                        ui.label(
+                                            egui::RichText::new(
+                                                "No individual activities or relationships were \
+                                                 flagged by this check.",
+                                            )
+                                            .weak()
+                                            .small(),
+                                        );
+                                    } else {
+                                        ui.add_space(2.0);
+                                        for finding in &check.findings {
+                                            match finding {
+                                                Finding::Activity { id, name, detail } => {
+                                                    ui.horizontal_wrapped(|ui| {
+                                                        let label = format!("{name} ({id})");
+                                                        if ui
+                                                            .selectable_label(false, &label)
+                                                            .on_hover_text(
+                                                                "Select this activity and show it \
+                                                                 in the table",
+                                                            )
+                                                            .clicked()
+                                                        {
+                                                            self.select(*id);
+                                                            self.scroll_to_selection = true;
+                                                            self.view_mode = ViewMode::Table;
+                                                        }
+                                                        ui.label(
+                                                            egui::RichText::new(detail).weak(),
+                                                        );
+                                                    });
                                                 }
-                                                ui.label(detail);
-                                            });
-                                        }
-                                        Finding::Relationship { id, detail } => {
-                                            ui.label(format!("Relationship {id}: {detail}"));
+                                                Finding::Relationship { id, detail } => {
+                                                    ui.horizontal_wrapped(|ui| {
+                                                        let label =
+                                                            format!("Relationship {id}");
+                                                        if ui
+                                                            .selectable_label(false, &label)
+                                                            .on_hover_text(
+                                                                "Select this relationship and show \
+                                                                 its link editor in the table view",
+                                                            )
+                                                            .clicked()
+                                                        {
+                                                            self.selected_relationship = Some(*id);
+                                                            self.last_rel = None;
+                                                            self.view_mode = ViewMode::Table;
+                                                        }
+                                                        ui.label(
+                                                            egui::RichText::new(detail).weak(),
+                                                        );
+                                                    });
+                                                }
+                                            }
                                         }
                                     }
-                                }
-                                ui.separator();
+                                });
+                            }
+                            if shown == 0 {
+                                ui.label(
+                                    egui::RichText::new("No failed checks — nothing to fix here.")
+                                        .color(palette.ok),
+                                );
                             }
                         });
                 });
@@ -7407,6 +7563,55 @@ mod headless_render_tests {
                 render_pass(&ctx, &mut app, Vec2::new(1024.0, 768.0));
                 render_pass(&ctx, &mut app, Vec2::new(1024.0, 768.0));
             }
+        }
+    }
+
+    #[test]
+    fn the_audit_view_scores_each_check_and_lists_the_findings() {
+        let ctx = egui::Context::default();
+        design::install_fonts(&ctx);
+        design::apply(&ctx, true);
+        // One open-ended activity fails the logic check, so the view has a
+        // failing check with an activity finding to render.
+        let mut project = Project::new(
+            "Audit fixture",
+            Date::from_calendar_date(2026, Month::January, 5).expect("date"),
+        );
+        let open_end = ActivityId::new(1);
+        project
+            .activities
+            .push(Activity::new(open_end, "Open end", 2));
+        let mut app = CadenceApp::with_path(project, None);
+        app.update_checks_enabled = false;
+        app.view_mode = ViewMode::Audit;
+        render_pass(&ctx, &mut app, Vec2::new(1024.0, 768.0));
+        render_pass(&ctx, &mut app, Vec2::new(1024.0, 768.0));
+
+        let report = app.audit_report.as_ref().expect("the view runs the audit");
+        let logic = report
+            .check(cadence_core::audit::CheckId::LogicOpenEnds)
+            .expect("logic check present");
+        assert_eq!(logic.outcome, CheckOutcome::Fail);
+        assert!(logic
+            .findings
+            .iter()
+            .any(|finding| matches!(finding, Finding::Activity { id, .. } if *id == open_end)));
+    }
+
+    #[test]
+    fn audit_outcome_labels_and_colours_follow_the_palette() {
+        assert_eq!(outcome_label(CheckOutcome::Pass), "pass");
+        assert_eq!(outcome_label(CheckOutcome::Fail), "fail");
+        assert_eq!(outcome_label(CheckOutcome::NotApplicable), "n/a");
+
+        for dark in [true, false] {
+            let palette = design::palette(dark);
+            assert_eq!(outcome_color(CheckOutcome::Pass, dark), palette.ok);
+            assert_eq!(outcome_color(CheckOutcome::Fail, dark), palette.critical);
+            assert_eq!(
+                outcome_color(CheckOutcome::NotApplicable, dark),
+                palette.text_muted
+            );
         }
     }
 }
