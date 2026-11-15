@@ -2293,7 +2293,17 @@ mod tests {
                 date(5),
                 date(5),
                 2,
-                Vec::new(),
+                // One populated entry, so the entries table (not just the
+                // snapshot row) is exercised by the round trip.
+                vec![LookaheadSnapshotEntry::new(
+                    ActivityId(1),
+                    "Excavate".to_string(),
+                    date(5),
+                    date(7),
+                    Some("Crew 3".to_string()),
+                    true,
+                    2_500,
+                )],
             ));
 
         let dir = TempDir::new();

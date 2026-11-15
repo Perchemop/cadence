@@ -3863,6 +3863,143 @@ mod tests {
         assert!(error.contains("does not exist"), "{error}");
     }
 
+    /// A -> B, two three-day activities, so a window from the project start
+    /// contains both with concrete scheduled dates to assert against.
+    fn lookahead_chain(stack: &mut CommandStack, project: &mut Project) {
+        let a = add_activity(stack, project, 1, "A", 3);
+        let b = add_activity(stack, project, 2, "B", 3);
+        add_relationship(stack, project, 1, a, b, LinkType::Fs, 0);
+    }
+
+    #[test]
+    fn capturing_a_lookahead_snapshot_records_the_window() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        lookahead_chain(&mut stack, &mut project);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CaptureLookaheadSnapshot {
+                name: "Week 1-2".to_string(),
+                created_at: jan(5),
+                window_start: jan(5),
+                window_weeks: 2,
+            }),
+        );
+
+        assert_eq!(project.lookahead_snapshots.len(), 1);
+        let snapshot = &project.lookahead_snapshots[0];
+        assert_eq!(snapshot.id, LookaheadSnapshotId(1));
+        assert_eq!(snapshot.name, "Week 1-2");
+        assert_eq!(snapshot.created_at, jan(5));
+        assert_eq!(snapshot.window_start, jan(5));
+        assert_eq!(snapshot.window_weeks, 2);
+        // Both activities sit inside the two-week window with their scheduled
+        // dates and names copied.
+        let names: Vec<&str> = snapshot.entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["A", "B"]);
+        assert_eq!(snapshot.entries[0].scheduled_start, jan(5));
+        assert_eq!(snapshot.entries[0].scheduled_finish, jan(7));
+        assert_eq!(snapshot.entries[1].scheduled_start, jan(8));
+        assert_eq!(snapshot.entries[1].scheduled_finish, jan(12));
+    }
+
+    #[test]
+    fn capturing_a_lookahead_snapshot_is_reversible() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        lookahead_chain(&mut stack, &mut project);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CaptureLookaheadSnapshot {
+                name: "Week 1-2".to_string(),
+                created_at: jan(5),
+                window_start: jan(5),
+                window_weeks: 2,
+            }),
+        );
+        let captured = project.lookahead_snapshots[0].clone();
+
+        stack.undo(&mut project).expect("undo capture");
+        assert!(project.lookahead_snapshots.is_empty());
+
+        stack.redo(&mut project).expect("redo capture");
+        assert_eq!(project.lookahead_snapshots, vec![captured.clone()]);
+
+        stack.undo(&mut project).expect("undo capture again");
+        assert!(project.lookahead_snapshots.is_empty());
+
+        stack.redo(&mut project).expect("redo capture again");
+        assert_eq!(project.lookahead_snapshots, vec![captured]);
+    }
+
+    #[test]
+    fn removing_a_lookahead_snapshot_is_reversible_and_keeps_its_position() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+        lookahead_chain(&mut stack, &mut project);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CaptureLookaheadSnapshot {
+                name: "First".to_string(),
+                created_at: jan(5),
+                window_start: jan(5),
+                window_weeks: 2,
+            }),
+        );
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(CaptureLookaheadSnapshot {
+                name: "Second".to_string(),
+                created_at: jan(12),
+                window_start: jan(12),
+                window_weeks: 2,
+            }),
+        );
+        assert_eq!(project.lookahead_snapshots.len(), 2);
+
+        execute(
+            &mut stack,
+            &mut project,
+            Box::new(RemoveLookaheadSnapshot {
+                id: LookaheadSnapshotId(1),
+            }),
+        );
+        assert_eq!(project.lookahead_snapshots.len(), 1);
+        assert_eq!(project.lookahead_snapshots[0].name, "Second");
+
+        stack.undo(&mut project).expect("undo remove");
+        assert_eq!(project.lookahead_snapshots.len(), 2);
+        assert_eq!(project.lookahead_snapshots[0].name, "First");
+        assert_eq!(project.lookahead_snapshots[1].name, "Second");
+
+        stack.redo(&mut project).expect("redo remove");
+        assert_eq!(project.lookahead_snapshots.len(), 1);
+        assert_eq!(project.lookahead_snapshots[0].name, "Second");
+    }
+
+    #[test]
+    fn removing_an_unknown_lookahead_snapshot_is_rejected() {
+        let mut stack = CommandStack::new();
+        let mut project = project();
+
+        let error = stack
+            .execute(
+                &mut project,
+                Box::new(RemoveLookaheadSnapshot {
+                    id: LookaheadSnapshotId(9),
+                }),
+            )
+            .expect_err("missing snapshot must be rejected");
+        assert!(error.contains("does not exist"), "{error}");
+    }
+
     #[test]
     fn creating_a_resource_is_reversible() {
         let mut stack = CommandStack::new();
