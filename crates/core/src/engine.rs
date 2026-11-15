@@ -2338,6 +2338,9 @@ mod tests {
         project.activities[0].name = "Renamed".to_string();
         project.activities[0].original_duration = 10;
         let rescheduled = schedule(&project).expect("reschedule succeeds");
+        // Three weeks: the longer A pushes B's start to jan 19, which is the
+        // exclusive end of the original two-week window, so the widened
+        // window keeps both activities inside for the comparison.
         let later = capture_lookahead_snapshot(
             &project,
             &rescheduled,
@@ -2345,7 +2348,7 @@ mod tests {
             "Later",
             jan(6),
             jan(5),
-            2,
+            3,
         );
         assert_eq!(later.entries[0].name, "Renamed");
         assert_eq!(later.entries[1].scheduled_start, jan(19));
