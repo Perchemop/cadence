@@ -13,7 +13,7 @@
 //! the public sources and the full design. Everything is offline and
 //! deterministic: no I/O, no clock, no randomness.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use time::Date;
@@ -32,12 +32,17 @@ pub struct AuditConfig {
     /// the checks that need it, which then report [`CheckOutcome::NotApplicable`].
     pub status_date: Option<Date>,
     /// Percentage limit for percentage checks (logic, lags, hard constraints,
-    /// high float, high duration, missed tasks). Default 500 (5%).
+    /// unnecessary constraints, high float, high duration, missed tasks).
+    /// Default 500 (5%).
     pub percentage_limit_bp: u32,
     /// Total float above this many working days counts as high. Default 44.
     pub high_float_days: i64,
     /// Duration above this many working days counts as high. Default 44.
     pub high_duration_days: u32,
+    /// A positive lag above this many working days counts as a long lag.
+    /// Default 5, one working week.
+    #[serde(default = "default_long_lag_days")]
+    pub long_lag_days: i64,
     /// Minimum share of finish-to-start relationships. Default 9000 (90%).
     pub min_finish_to_start_bp: u32,
     /// Minimum baseline execution index. Default 9500 (95%).
@@ -49,6 +54,11 @@ pub struct AuditConfig {
     pub critical_path_nudge_days: u32,
 }
 
+/// Default long-lag threshold: one working week.
+const fn default_long_lag_days() -> i64 {
+    5
+}
+
 impl Default for AuditConfig {
     fn default() -> Self {
         Self {
@@ -56,6 +66,7 @@ impl Default for AuditConfig {
             percentage_limit_bp: 500,
             high_float_days: 44,
             high_duration_days: 44,
+            long_lag_days: default_long_lag_days(),
             min_finish_to_start_bp: 9000,
             bei_min_bp: 9500,
             cpli_min_bp: 9500,
@@ -96,6 +107,15 @@ pub enum CheckId {
     CriticalPathTest,
     /// Critical path length index against the baseline deadline.
     CriticalPathLengthIndex,
+    /// Progress posted on an activity whose finish-to-start predecessor is not
+    /// finished.
+    OutOfSequenceProgress,
+    /// A successor reached by more than one path through the logic.
+    RedundantLogic,
+    /// A hard date constraint on an activity that is not on the critical path.
+    UnnecessaryConstraints,
+    /// A relationship with a lag longer than the long-lag threshold.
+    LongLags,
 }
 
 impl CheckId {
@@ -116,6 +136,10 @@ impl CheckId {
             Self::BaselineExecutionIndex => "AUDIT-BEI",
             Self::CriticalPathTest => "AUDIT-CPT",
             Self::CriticalPathLengthIndex => "AUDIT-CPLI",
+            Self::OutOfSequenceProgress => "AUDIT-OOS",
+            Self::RedundantLogic => "AUDIT-REDUNDANT",
+            Self::UnnecessaryConstraints => "AUDIT-UNNECESSARY",
+            Self::LongLags => "AUDIT-LONGLAG",
         }
     }
 
@@ -136,6 +160,10 @@ impl CheckId {
             Self::BaselineExecutionIndex => "Baseline — execution index",
             Self::CriticalPathTest => "Critical path — critical path test",
             Self::CriticalPathLengthIndex => "Critical path — length index",
+            Self::OutOfSequenceProgress => "Logic — out-of-sequence progress",
+            Self::RedundantLogic => "Logic — redundant logic",
+            Self::UnnecessaryConstraints => "Constraints — unnecessary constraints",
+            Self::LongLags => "Logic — long lags",
         }
     }
 }
@@ -247,8 +275,12 @@ pub fn audit(
         check_logic_open_ends(project, config),
         check_leads(project),
         check_lags(project, config),
+        check_long_lags(project, config),
         check_relationship_types(project, config),
+        check_redundant_logic(project),
+        check_out_of_sequence_progress(project),
         check_hard_constraints(project, config),
+        check_unnecessary_constraints(project, schedule, config),
         check_high_float(project, schedule, config),
         check_negative_float(project, schedule),
         check_high_duration(project, config),
@@ -541,15 +573,27 @@ fn check_relationship_types(project: &Project, config: &AuditConfig) -> CheckRes
     )
 }
 
+/// True when the constraint forces a date the schedule cannot move past: the
+/// DCMA hard-constraint set — no-later-than and must-on starts and finishes.
+/// A no-earlier-than bound is soft and does not count.
+fn is_hard_constraint(constraint: Constraint) -> bool {
+    match constraint {
+        Constraint::StartNoLaterThan(_)
+        | Constraint::FinishNoLaterThan(_)
+        | Constraint::MustStartOn(_)
+        | Constraint::MustFinishOn(_) => true,
+        Constraint::AsSoonAsPossible
+        | Constraint::AsLateAsPossible
+        | Constraint::StartNoEarlierThan(_)
+        | Constraint::FinishNoEarlierThan(_) => false,
+    }
+}
+
 fn check_hard_constraints(project: &Project, config: &AuditConfig) -> CheckResult {
     let open = open_activities(project);
     let mut findings = Vec::new();
     for activity in &open {
-        let hard = matches!(
-            activity.constraint,
-            Constraint::StartNoLaterThan(_) | Constraint::FinishNoLaterThan(_)
-        );
-        if hard {
+        if is_hard_constraint(activity.constraint) {
             findings.push(Finding::Activity {
                 id: activity.id,
                 name: activity.name.clone(),
@@ -573,6 +617,300 @@ fn check_hard_constraints(project: &Project, config: &AuditConfig) -> CheckResul
             "{} of {total} open activities carry a hard date constraint ({}); hard constraints stop the schedule from moving.",
             findings.len(),
             percent(bp)
+        ),
+        findings,
+    )
+}
+
+/// Unnecessary constraints: a hard date constraint on an open activity that is
+/// not on the critical path, so the constraint is not needed to protect the
+/// finish and only stops the schedule from moving.
+///
+/// The population is the open activities that carry a hard constraint, so a
+/// programme with none reports [`CheckOutcome::NotApplicable`].
+fn check_unnecessary_constraints(
+    project: &Project,
+    schedule: &Schedule,
+    config: &AuditConfig,
+) -> CheckResult {
+    let mut constrained = 0usize;
+    let mut findings = Vec::new();
+    for activity in &project.activities {
+        if !is_open(activity) || !is_hard_constraint(activity.constraint) {
+            continue;
+        }
+        constrained += 1;
+        let Some(result) = schedule.activity(activity.id) else {
+            continue;
+        };
+        if result.total_float > 0 {
+            findings.push(Finding::Activity {
+                id: activity.id,
+                name: activity.name.clone(),
+                detail: format!(
+                    "constraint {} with {} working days of float",
+                    activity.constraint, result.total_float
+                ),
+            });
+        }
+    }
+    let bp = ratio_bp(findings.len(), constrained);
+    let outcome = percentage_outcome(bp, constrained, config.percentage_limit_bp);
+    make(
+        CheckId::UnnecessaryConstraints,
+        CheckCategory::Constraints,
+        outcome,
+        Some(format!(
+            "{} of {} hard-constrained activities",
+            findings.len(),
+            constrained
+        )),
+        Some(format!(
+            "no more than {} on non-critical activities",
+            percent(config.percentage_limit_bp)
+        )),
+        format!(
+            "{} of {constrained} hard-constrained open activities are not critical ({}); the constraint is not needed to protect the finish.",
+            findings.len(),
+            percent(bp)
+        ),
+        findings,
+    )
+}
+
+/// Long lags: a positive lag longer than the configured threshold. Long lags
+/// delay the successor without representing real work and hide the true driver
+/// of the dates.
+fn check_long_lags(project: &Project, config: &AuditConfig) -> CheckResult {
+    let mut findings = Vec::new();
+    for relationship in &project.relationships {
+        if relationship.lag <= config.long_lag_days {
+            continue;
+        }
+        let detail = match activity(project, relationship.successor) {
+            Some(successor) => format!(
+                "lag of {} working days into {}",
+                relationship.lag, successor.name
+            ),
+            None => format!("lag of {} working days", relationship.lag),
+        };
+        findings.push(Finding::Relationship {
+            id: relationship.id,
+            detail,
+        });
+    }
+    let outcome = if findings.is_empty() {
+        CheckOutcome::Pass
+    } else {
+        CheckOutcome::Fail
+    };
+    make(
+        CheckId::LongLags,
+        CheckCategory::Logic,
+        outcome,
+        Some(format!("{} long lag relationships", findings.len())),
+        Some(format!(
+            "no lag above {} working days",
+            config.long_lag_days
+        )),
+        format!(
+            "{} relationships carry a lag longer than {} working days; a long lag delays the successor without representing work.",
+            findings.len(),
+            config.long_lag_days
+        ),
+        findings,
+    )
+}
+
+/// Whether `start` reaches `target` through the logic, ignoring the single
+/// relationship `skip`.
+///
+/// The walk is iterative, so a long programme cannot overflow the stack, and
+/// the visited set bounds it to one visit per activity even when the network
+/// contains a cycle.
+fn reaches(
+    adjacency: &HashMap<ActivityId, Vec<(RelationshipId, ActivityId)>>,
+    start: ActivityId,
+    target: ActivityId,
+    skip: RelationshipId,
+) -> bool {
+    let mut visited: HashSet<ActivityId> = HashSet::new();
+    let mut stack = vec![start];
+    visited.insert(start);
+    while let Some(node) = stack.pop() {
+        let Some(edges) = adjacency.get(&node) else {
+            continue;
+        };
+        for (id, next) in edges {
+            if *id == skip {
+                continue;
+            }
+            if *next == target {
+                return true;
+            }
+            if visited.insert(*next) {
+                stack.push(*next);
+            }
+        }
+    }
+    false
+}
+
+/// Redundant logic: the same successor is reached by more than one path, either
+/// because the same predecessor is linked to it twice or because the
+/// predecessor already reaches another predecessor of that successor. Redundant
+/// links distort float and the critical path.
+fn check_redundant_logic(project: &Project) -> CheckResult {
+    // Outgoing edges for the reachability walk, and the incoming edges per
+    // successor so the expensive walk runs only at merge points.
+    let mut adjacency: HashMap<ActivityId, Vec<(RelationshipId, ActivityId)>> = HashMap::new();
+    let mut incoming: HashMap<ActivityId, Vec<(RelationshipId, ActivityId)>> = HashMap::new();
+    let mut pairs: HashMap<(ActivityId, ActivityId), Vec<RelationshipId>> = HashMap::new();
+    for relationship in &project.relationships {
+        adjacency
+            .entry(relationship.predecessor)
+            .or_default()
+            .push((relationship.id, relationship.successor));
+        incoming
+            .entry(relationship.successor)
+            .or_default()
+            .push((relationship.id, relationship.predecessor));
+        pairs
+            .entry((relationship.predecessor, relationship.successor))
+            .or_default()
+            .push(relationship.id);
+    }
+    let mut redundant: BTreeSet<RelationshipId> = BTreeSet::new();
+    // The same predecessor linked to the same successor more than once: every
+    // link after the lowest id is a duplicate path.
+    for ids in pairs.values() {
+        let Some(&lowest) = ids.iter().min() else {
+            continue;
+        };
+        for id in ids {
+            if *id != lowest {
+                redundant.insert(*id);
+            }
+        }
+    }
+    // Transitive redundancy: the predecessor already reaches another
+    // predecessor of the same successor, so the direct link is a second path.
+    for predecessors in incoming.values() {
+        if predecessors.len() < 2 {
+            continue;
+        }
+        for (id, predecessor) in predecessors {
+            for (_, other) in predecessors {
+                if *predecessor == *other {
+                    continue;
+                }
+                if reaches(&adjacency, *predecessor, *other, *id) {
+                    redundant.insert(*id);
+                    break;
+                }
+            }
+        }
+    }
+    let mut findings: Vec<Finding> = project
+        .relationships
+        .iter()
+        .filter(|relationship| redundant.contains(&relationship.id))
+        .map(|relationship| {
+            let predecessor = activity(project, relationship.predecessor).map_or_else(
+                || relationship.predecessor.to_string(),
+                |item| item.name.clone(),
+            );
+            let successor = activity(project, relationship.successor).map_or_else(
+                || relationship.successor.to_string(),
+                |item| item.name.clone(),
+            );
+            Finding::Relationship {
+                id: relationship.id,
+                detail: format!("second path from {predecessor} into {successor}"),
+            }
+        })
+        .collect();
+    sort_findings(&mut findings);
+    let outcome = if findings.is_empty() {
+        CheckOutcome::Pass
+    } else {
+        CheckOutcome::Fail
+    };
+    make(
+        CheckId::RedundantLogic,
+        CheckCategory::Logic,
+        outcome,
+        Some(format!("{} redundant relationships", findings.len())),
+        Some("every relationship is the only path into its successor".to_string()),
+        format!(
+            "{} relationships are redundant: the same successor is reached by more than one path, which distorts float.",
+            findings.len()
+        ),
+        findings,
+    )
+}
+
+/// Out-of-sequence progress: an open activity that has recorded progress while
+/// a finish-to-start predecessor is still unfinished. The report cites the
+/// activity, never rewriting the recorded progress.
+fn check_out_of_sequence_progress(project: &Project) -> CheckResult {
+    let mut started = 0usize;
+    let mut findings = Vec::new();
+    for successor in &project.activities {
+        let has_progress =
+            successor.actual_start.is_some() || successor.percent_complete.unwrap_or(0) > 0;
+        if !has_progress || !is_open(successor) {
+            continue;
+        }
+        started += 1;
+        let mut unfinished: Vec<ActivityId> = project
+            .relationships
+            .iter()
+            .filter(|relationship| {
+                relationship.successor == successor.id && relationship.link_type == LinkType::Fs
+            })
+            .filter(|relationship| activity(project, relationship.predecessor).is_some_and(is_open))
+            .map(|relationship| relationship.predecessor)
+            .collect();
+        if unfinished.is_empty() {
+            continue;
+        }
+        unfinished.sort_unstable();
+        unfinished.dedup();
+        let names = unfinished
+            .iter()
+            .map(|id| {
+                activity(project, *id).map_or_else(|| id.to_string(), |item| item.name.clone())
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        findings.push(Finding::Activity {
+            id: successor.id,
+            name: successor.name.clone(),
+            detail: format!("started while {names} is not finished"),
+        });
+    }
+    if started == 0 {
+        return not_applicable(
+            CheckId::OutOfSequenceProgress,
+            CheckCategory::Logic,
+            "No progress has been recorded, so out-of-sequence progress cannot be checked.",
+        );
+    }
+    let outcome = if findings.is_empty() {
+        CheckOutcome::Pass
+    } else {
+        CheckOutcome::Fail
+    };
+    make(
+        CheckId::OutOfSequenceProgress,
+        CheckCategory::Logic,
+        outcome,
+        Some(format!("{} of {started} started activities", findings.len())),
+        Some("progress only after the predecessor finishes".to_string()),
+        format!(
+            "{} of {started} activities with progress have an unfinished finish-to-start predecessor; the update was posted out of sequence.",
+            findings.len()
         ),
         findings,
     )
@@ -1173,6 +1511,19 @@ mod tests {
             outcome(&report, CheckId::HardConstraints),
             CheckOutcome::Pass
         );
+        assert_eq!(outcome(&report, CheckId::LongLags), CheckOutcome::Pass);
+        assert_eq!(
+            outcome(&report, CheckId::RedundantLogic),
+            CheckOutcome::Pass
+        );
+        assert_eq!(
+            outcome(&report, CheckId::OutOfSequenceProgress),
+            CheckOutcome::NotApplicable
+        );
+        assert_eq!(
+            outcome(&report, CheckId::UnnecessaryConstraints),
+            CheckOutcome::NotApplicable
+        );
         assert_eq!(outcome(&report, CheckId::HighFloat), CheckOutcome::Pass);
         assert_eq!(outcome(&report, CheckId::NegativeFloat), CheckOutcome::Pass);
         assert_eq!(outcome(&report, CheckId::HighDuration), CheckOutcome::Pass);
@@ -1582,6 +1933,302 @@ mod tests {
             })
             .collect();
         Baseline::from_snapshots(BaselineId::new(1), "Baseline", jan(5), snapshots)
+    }
+
+    #[test]
+    fn a_must_start_on_constraint_fails_the_hard_constraints_check() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A", 2);
+        project.activities[0].constraint = Constraint::MustStartOn(jan(6));
+
+        let report = run(&project);
+
+        assert_eq!(
+            outcome(&report, CheckId::HardConstraints),
+            CheckOutcome::Fail
+        );
+    }
+
+    #[test]
+    fn a_long_lag_fails_the_long_lag_check() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 3);
+        let b = add_activity(&mut project, 2, "B", 3);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 10);
+
+        let report = run(&project);
+
+        assert_eq!(outcome(&report, CheckId::LongLags), CheckOutcome::Fail);
+        let check = report.check(CheckId::LongLags).expect("check present");
+        assert!(check.findings.iter().any(|finding| matches!(
+            finding,
+            Finding::Relationship { id, .. } if *id == RelationshipId::new(1)
+        )));
+    }
+
+    #[test]
+    fn a_short_lag_passes_the_long_lag_check() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 3);
+        let b = add_activity(&mut project, 2, "B", 3);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 2);
+
+        let report = run(&project);
+
+        assert_eq!(outcome(&report, CheckId::LongLags), CheckOutcome::Pass);
+    }
+
+    #[test]
+    fn redundant_logic_fails_when_a_successor_has_two_paths() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 2);
+        let b = add_activity(&mut project, 2, "B", 2);
+        let c = add_activity(&mut project, 3, "C", 2);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+        add_relationship(&mut project, 2, b, c, LinkType::Fs, 0);
+        // A already reaches C through B, so this direct link is a second path.
+        add_relationship(&mut project, 3, a, c, LinkType::Fs, 0);
+
+        let report = run(&project);
+
+        assert_eq!(
+            outcome(&report, CheckId::RedundantLogic),
+            CheckOutcome::Fail
+        );
+        let check = report
+            .check(CheckId::RedundantLogic)
+            .expect("check present");
+        assert_eq!(check.findings.len(), 1);
+        assert!(check.findings.iter().any(|finding| matches!(
+            finding,
+            Finding::Relationship { id, .. } if *id == RelationshipId::new(3)
+        )));
+    }
+
+    #[test]
+    fn duplicate_relationships_fail_the_redundant_logic_check() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 2);
+        let b = add_activity(&mut project, 2, "B", 2);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+        add_relationship(&mut project, 2, a, b, LinkType::Fs, 0);
+
+        let check = check_redundant_logic(&project);
+
+        assert_eq!(check.outcome, CheckOutcome::Fail);
+        assert_eq!(check.findings.len(), 1);
+        assert!(check.findings.iter().any(|finding| matches!(
+            finding,
+            Finding::Relationship { id, .. } if *id == RelationshipId::new(2)
+        )));
+    }
+
+    #[test]
+    fn a_clean_chain_has_no_redundant_logic() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 2);
+        let b = add_activity(&mut project, 2, "B", 2);
+        let c = add_activity(&mut project, 3, "C", 2);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+        add_relationship(&mut project, 2, b, c, LinkType::Fs, 0);
+
+        let check = check_redundant_logic(&project);
+
+        assert_eq!(check.outcome, CheckOutcome::Pass);
+        assert!(check.findings.is_empty());
+    }
+
+    #[test]
+    fn out_of_sequence_progress_fails_when_a_successor_starts_first() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 5);
+        let b = add_activity(&mut project, 2, "B", 3);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+        // B has progress while its finish-to-start predecessor A is unfinished.
+        project.activities[1].actual_start = Some(jan(6));
+        project.activities[1].percent_complete = Some(5_000);
+
+        let report = run(&project);
+
+        assert_eq!(
+            outcome(&report, CheckId::OutOfSequenceProgress),
+            CheckOutcome::Fail
+        );
+        let check = report
+            .check(CheckId::OutOfSequenceProgress)
+            .expect("check present");
+        assert!(check.findings.iter().any(|finding| matches!(
+            finding,
+            Finding::Activity { id, .. } if *id == b
+        )));
+    }
+
+    #[test]
+    fn out_of_sequence_progress_passes_when_the_predecessor_is_finished() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 5);
+        let b = add_activity(&mut project, 2, "B", 3);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+        project.activities[0].percent_complete = Some(10_000);
+        project.activities[0].actual_finish = Some(jan(9));
+        project.activities[1].actual_start = Some(jan(12));
+        project.activities[1].percent_complete = Some(5_000);
+
+        let report = run(&project);
+
+        assert_eq!(
+            outcome(&report, CheckId::OutOfSequenceProgress),
+            CheckOutcome::Pass
+        );
+    }
+
+    #[test]
+    fn out_of_sequence_progress_is_not_applicable_without_progress() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 2);
+        let b = add_activity(&mut project, 2, "B", 2);
+        add_relationship(&mut project, 1, a, b, LinkType::Fs, 0);
+
+        let report = run(&project);
+
+        assert_eq!(
+            outcome(&report, CheckId::OutOfSequenceProgress),
+            CheckOutcome::NotApplicable
+        );
+    }
+
+    #[test]
+    fn out_of_sequence_progress_ignores_overlapping_links() {
+        let mut project = project();
+        let a = add_activity(&mut project, 1, "A", 5);
+        let b = add_activity(&mut project, 2, "B", 5);
+        add_relationship(&mut project, 1, a, b, LinkType::Ss, 0);
+        // A start-to-start link is meant to overlap, so B starting while A runs
+        // is normal, not out of sequence.
+        project.activities[1].actual_start = Some(jan(6));
+        project.activities[1].percent_complete = Some(5_000);
+
+        let report = run(&project);
+
+        assert_eq!(
+            outcome(&report, CheckId::OutOfSequenceProgress),
+            CheckOutcome::Pass
+        );
+    }
+
+    #[test]
+    fn a_hard_constraint_on_a_non_critical_activity_is_unnecessary() {
+        let mut project = project();
+        let start = add_activity(&mut project, 1, "Start", 0);
+        let a = add_activity(&mut project, 2, "A", 3);
+        let b = add_activity(&mut project, 3, "B", 1);
+        let finish = add_activity(&mut project, 4, "Finish", 0);
+        add_relationship(&mut project, 1, start, a, LinkType::Fs, 0);
+        add_relationship(&mut project, 2, a, finish, LinkType::Fs, 0);
+        add_relationship(&mut project, 3, start, b, LinkType::Fs, 0);
+        add_relationship(&mut project, 4, b, finish, LinkType::Fs, 0);
+        // B has float (the A branch is longer), so a finish-no-later-than on it
+        // is not needed to protect the finish.
+        project.activities[2].constraint = Constraint::FinishNoLaterThan(jan(30));
+
+        let report = run(&project);
+
+        assert_eq!(
+            outcome(&report, CheckId::UnnecessaryConstraints),
+            CheckOutcome::Fail
+        );
+        let check = report
+            .check(CheckId::UnnecessaryConstraints)
+            .expect("check present");
+        assert!(check.findings.iter().any(|finding| matches!(
+            finding,
+            Finding::Activity { id, .. } if *id == b
+        )));
+    }
+
+    #[test]
+    fn the_unnecessary_constraint_check_is_not_applicable_without_hard_constraints() {
+        let mut project = project();
+        add_activity(&mut project, 1, "A", 2);
+
+        let report = run(&project);
+
+        assert_eq!(
+            outcome(&report, CheckId::UnnecessaryConstraints),
+            CheckOutcome::NotApplicable
+        );
+    }
+
+    #[test]
+    fn the_report_survives_a_serde_roundtrip() {
+        let mut project = project();
+        let start = add_activity(&mut project, 1, "Start", 0);
+        let a = add_activity(&mut project, 2, "A", 3);
+        let b = add_activity(&mut project, 3, "B", 3);
+        let finish = add_activity(&mut project, 4, "Finish", 0);
+        add_relationship(&mut project, 1, start, a, LinkType::Fs, 0);
+        add_relationship(&mut project, 2, a, b, LinkType::Fs, 0);
+        add_relationship(&mut project, 3, b, finish, LinkType::Fs, 0);
+        let report = run(&project);
+
+        let json = serde_json::to_string(&report).expect("serialise report");
+        let decoded: AuditReport = serde_json::from_str(&json).expect("deserialise report");
+
+        assert_eq!(decoded, report);
+    }
+
+    #[test]
+    fn the_new_check_ids_round_trip_through_serde() {
+        for id in [
+            CheckId::OutOfSequenceProgress,
+            CheckId::RedundantLogic,
+            CheckId::UnnecessaryConstraints,
+            CheckId::LongLags,
+        ] {
+            let json = serde_json::to_string(&id).expect("serialise check id");
+            let decoded: CheckId = serde_json::from_str(&json).expect("deserialise check id");
+            assert_eq!(decoded, id);
+        }
+    }
+
+    #[test]
+    fn the_new_check_ids_have_stable_codes_and_names() {
+        assert_eq!(CheckId::OutOfSequenceProgress.code(), "AUDIT-OOS");
+        assert_eq!(CheckId::RedundantLogic.code(), "AUDIT-REDUNDANT");
+        assert_eq!(CheckId::UnnecessaryConstraints.code(), "AUDIT-UNNECESSARY");
+        assert_eq!(CheckId::LongLags.code(), "AUDIT-LONGLAG");
+        assert_eq!(
+            serde_json::to_string(&CheckId::LongLags).expect("serialise"),
+            "\"long-lags\""
+        );
+        assert!(CheckId::OutOfSequenceProgress
+            .default_title()
+            .contains("out-of-sequence"));
+    }
+
+    #[test]
+    fn the_config_round_trips_through_serde() {
+        let config = AuditConfig {
+            status_date: Some(jan(8)),
+            long_lag_days: 7,
+            ..AuditConfig::default()
+        };
+
+        let json = serde_json::to_string(&config).expect("serialise config");
+        let decoded: AuditConfig = serde_json::from_str(&json).expect("deserialise config");
+
+        assert_eq!(decoded, config);
+    }
+
+    #[test]
+    fn the_long_lag_default_applies_to_a_config_without_the_field() {
+        let json = r#"{"status_date":null,"percentage_limit_bp":500,"high_float_days":44,
+            "high_duration_days":44,"min_finish_to_start_bp":9000,"bei_min_bp":9500,
+            "cpli_min_bp":9500,"critical_path_nudge_days":600}"#;
+
+        let config: AuditConfig = serde_json::from_str(json).expect("deserialise legacy config");
+
+        assert_eq!(config.long_lag_days, default_long_lag_days());
     }
 
     #[test]
