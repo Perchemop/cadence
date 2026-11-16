@@ -219,7 +219,9 @@ mod tests {
             rationale: "Synthetic.".to_owned(),
         };
         let proposal = proposal_with(vec![change]);
-        assert!(proposal.validate(&project).contains(&ProposalError::EmptyName));
+        assert!(proposal
+            .validate(&project)
+            .contains(&ProposalError::EmptyName));
     }
 
     #[test]
@@ -231,7 +233,9 @@ mod tests {
             rationale: "Synthetic.".to_owned(),
         };
         let proposal = proposal_with(vec![change]);
-        assert!(proposal.validate(&project).contains(&ProposalError::ZeroDuration));
+        assert!(proposal
+            .validate(&project)
+            .contains(&ProposalError::ZeroDuration));
     }
 
     #[test]

@@ -119,7 +119,11 @@ impl ProposedChange {
     pub fn validate_against_project(&self, project: &Project) -> Vec<ProposalError> {
         let mut errors = Vec::new();
         match self {
-            Self::CreateActivity { name, duration_days, .. } => {
+            Self::CreateActivity {
+                name,
+                duration_days,
+                ..
+            } => {
                 if name.trim().is_empty() {
                     errors.push(ProposalError::EmptyName);
                 }
@@ -127,7 +131,11 @@ impl ProposedChange {
                     errors.push(ProposalError::ZeroDuration);
                 }
             }
-            Self::CreateRelationship { predecessor, successor, .. } => {
+            Self::CreateRelationship {
+                predecessor,
+                successor,
+                ..
+            } => {
                 let predecessor = *predecessor;
                 let successor = *successor;
                 if !activity_exists(project, predecessor) {
@@ -146,7 +154,11 @@ impl ProposedChange {
                     });
                 }
             }
-            Self::SetActivityDuration { activity, duration_days, .. } => {
+            Self::SetActivityDuration {
+                activity,
+                duration_days,
+                ..
+            } => {
                 if !activity_exists(project, *activity) {
                     errors.push(ProposalError::UnknownActivity { id: *activity });
                 }
@@ -154,7 +166,9 @@ impl ProposedChange {
                     errors.push(ProposalError::ZeroDuration);
                 }
             }
-            Self::SetActivityProgress { activity, percent, .. } => {
+            Self::SetActivityProgress {
+                activity, percent, ..
+            } => {
                 if !activity_exists(project, *activity) {
                     errors.push(ProposalError::UnknownActivity { id: *activity });
                 }
