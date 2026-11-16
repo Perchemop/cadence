@@ -8,7 +8,7 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 ~45K in the 0.12.0 cycle. The ledger's CI update on each tag is queued
 (`ROADMAP.md`).
 
-## [Unreleased]
+## [0.14.0] — 2026-11-16
 
 ### Added
 - Optional AI assistant, foundation slice: a new `cadence-assistant` crate
@@ -34,6 +34,8 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 - Workspace version 0.13.0 → 0.14.0: the new check ids and the
   `AuditConfig.long_lag_days` field are public-API additions that break
   exhaustive construction (semver check).
+- Dependency: `rfd` 0.17.2 → 0.18.0 (file-dialog backend; all 18 required
+  checks green, evidence re-rendered).
 
 ## [0.12.1] — 2026-11-07
 
