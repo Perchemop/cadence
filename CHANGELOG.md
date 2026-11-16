@@ -11,6 +11,17 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 ## [Unreleased]
 
 ### Added
+- Optional AI assistant, foundation slice: a new `cadence-assistant` crate
+  (off by default, bring-your-own-key). It defines the provider seam
+  (`AssistantProvider` with a deterministic mock for tests and a fail-closed
+  no-op), typed `ProposedChange` suggestions each carrying a rationale, and
+  `Proposal::validate`, which checks every proposal against the live project
+  — unknown activities, progress above 100, self- and duplicate
+  relationships, blank names, and zero durations (reserved for milestones,
+  which the assistant must not create). The API key is wrapped in a
+  `SecretKey` that never appears in `Debug` or serialised output. No network
+  code ships in this slice; provider backends, command-stack wiring and the
+  review panel are the next slices.
 - Programme audit: four new schedule-quality checks — `AUDIT-UNNECESSARY`
   (hard date constraint on a non-critical activity), `AUDIT-LONGLAG`
   (relationship lag above the configurable threshold, default 5 working
