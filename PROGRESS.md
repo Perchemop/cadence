@@ -36,9 +36,12 @@ so every behaviour stays testable headlessly (K.13):
   merged as bee1fef.
 - **Dependency triage.** Dependabot PRs reviewed: #161 (rfd 0.18) merged;
   #156 (install-action) awaiting rebase; #157/#159/#160 (egui 0.37 family)
-  and #158 (rusqlite 0.42 — the rendered-evidence job SIGSEGVs, a real
-  persistence-layer regression risk) closed with reasons; each needs its own
-  slice per guide II.30.3.
+  closed with reasons — a toolkit bump is its own slice per guide II.30.3.
+  #158 (rusqlite 0.42) was closed blaming the rendered-evidence SIGSEGV, then
+  **re-opened after the evidence job crashed identically on a docs-only
+  merge commit and passed on re-run with no code change** — the crash is the
+  flaky software-Vulkan evidence job, not the bump; see issue #163 (quarantine
+  record per the guide's flaky-test policy M.5).
 
 ## 2026-11-15 — lookahead published snapshots: delete, variance highlighting, test coverage, records reconciliation
 
