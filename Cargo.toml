@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/core",
+    "crates/assistant",
     "crates/commands",
     "crates/persistence",
     "crates/interchange",
@@ -24,6 +25,7 @@ repository = "https://github.com/Perchemop/cadence"
 # (D20 in DECISIONS.md). The explicit version also keeps the crates
 # publishable as-is.
 cadence-core = { path = "crates/core", version = "0.14.0" }
+cadence-assistant = { path = "crates/assistant", version = "0.14.0" }
 cadence-commands = { path = "crates/commands", version = "0.14.0" }
 cadence-persistence = { path = "crates/persistence", version = "0.14.0" }
 cadence-interchange = { path = "crates/interchange", version = "0.14.0" }
