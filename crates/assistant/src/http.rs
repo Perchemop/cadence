@@ -456,10 +456,10 @@ mod tests {
     #[test]
     fn gemini_request_puts_model_in_url_and_key_in_header() {
         let request = request_for(Wire::Gemini, None, Some(key()));
-        let url = concat!(
+        assert_eq!(
+            request.url,
             "https://generativelanguage.googleapis.com/v1beta/models/test-model:generateContent"
         );
-        assert_eq!(request.url, url);
         assert!(carries(&request, "x-goog-api-key", KEY));
         assert!(request.body.contains(PROMPT));
         assert!(!request.body.contains(KEY));
