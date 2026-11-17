@@ -96,6 +96,9 @@ this repository. Recorded here so the story is auditable:
 | Rust toolchain, `cargo`, `clippy`, `rustfmt` | MIT OR Apache-2.0 | Compiling, linting and formatting |
 | GitHub Actions and its published actions | Vendor terms (see each action) | Building, testing and releasing; actions are pinned to commit SHAs |
 | AI coding models used by the maintainer's build process | Vendor/model terms, free tiers | Writing code and documentation from the maintainer's direction |
+| caveman skill pack (agent style skills) | Apache-2.0 | Maintainer-side agent tooling (guide §19); never shipped in the binary (D31) |
+| pstack skill pack | MIT (© Lauren Tan) | Maintainer-side agent tooling (guide §22); never shipped in the binary (D31) |
+| rtk 1.2.0 (command-output proxy) | Apache-2.0 | Maintainer-side agent tooling (guide §19); prebuilt aarch64-musl binary, never shipped in the app (D31) |
 
 Provenance rules followed: original code, public specifications and standards
 (CPM, MSPDI, MPX, SQLite file format, WCAG), and capability-level inspiration

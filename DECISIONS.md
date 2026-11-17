@@ -708,3 +708,39 @@ two fields — `constructible_struct_adds_field`), and `Cargo.lock` is
 regenerated from the Lockfile workflow's artefact (D26 path), because the
 crate now consumes `serde_json` and `ureq` at runtime.
 
+## D31 — Development-time agent tooling adopted: caveman, pstack, rtk (2026-11-18)
+
+Owner-directed adoption of the guide §19 token-efficiency skills, the §22
+pstack rigour pack, and the rtk output proxy (guide §19 table). All three are
+**maintainer-machine tooling only** — nothing here ships in the Cadence
+binary or the release assets.
+
+- **caveman skill pack** — `JuliusBrussee/caveman`, licence **Apache-2.0**
+  (verified from the repository's LICENSE file; the §19 table's "MIT" is
+  superseded by the source). 22 skills installed with
+  `npx skills add JuliusBrussee/caveman -a opencode` into
+  `~/.config/opencode/.agents/skills/`. Every skill in the pack sets
+  `disable-model-invocation: true`, so the terse style applies only when
+  explicitly invoked — installing changes nothing by itself.
+- **pstack skill pack** — `cursor/plugins/pstack`, licence **MIT**
+  (© Lauren Tan, verified from `pstack/LICENSE`). 58 skills including the
+  `poteto-mode` entry point, installed the same way; equally
+  invocation-gated.
+- **rtk 1.2.0** — `rtk-ai/rtk`, licence **Apache-2.0**. No brew on this
+  machine and `cargo install` is banned, so the **prebuilt static musl
+  binary** was taken from the project's GitHub releases. The x86_64 build
+  does not run here — the machine is **aarch64** — and the
+  `aarch64-unknown-linux-musl` build was installed to `~/.local/bin/rtk`
+  instead (`rtk --version` verified).
+- **Measured-only rule (§19 rule 3):** no vendor token-savings figure is
+  recorded anywhere in this repository. Any claim about these tools' token
+  effects must come from this project's own measured runs and live only in
+  `docs/tokens.md`.
+- **Clean-room unchanged (§19 rule 5):** these are style, rigour and
+  efficiency aids; everything they help produce stays subject to the same
+  clean-room test, CI gates and review as any other change.
+- **One context tool at a time (§19 rule 6):** rtk wraps command *output*;
+  no indexing or compression layer is installed alongside it. If that
+  changes, record the reason here first.
+
+
