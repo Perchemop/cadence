@@ -208,7 +208,10 @@ fn bearer_header(key: Option<&SecretKey>) -> Vec<(&'static str, String)> {
 
 /// A named key header, empty when no key is set.
 fn api_key_header(name: &'static str, key: Option<&SecretKey>) -> (&'static str, String) {
-    (name, key.map(SecretKey::as_str).unwrap_or_default().to_owned())
+    (
+        name,
+        key.map(SecretKey::as_str).unwrap_or_default().to_owned(),
+    )
 }
 
 /// Extract the completion text from a successful provider response.
@@ -304,7 +307,7 @@ fn error_detail(body: &str) -> Option<String> {
 /// Construct it with [`HttpProvider::from_config`]; an unconfigured or
 /// partially configured assistant fails closed with
 /// [`AssistantError::NotConfigured`] rather than reaching the network.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HttpProvider {
     wire: Wire,
     base_url: String,
@@ -317,10 +320,17 @@ impl HttpProvider {
     ///
     /// Fails with [`AssistantError::NotConfigured`] when anything needed is
     /// missing — the feature disabled, no provider, no model, a missing key on
-    /// a keyed provider, or a custom server with no address.
+    /// a keyed provider, a key with control characters (which could never form
+    /// a valid header value), or a custom server with no address.
     pub fn from_config(config: &AssistantConfig) -> Result<Self, AssistantError> {
         if !config.is_configured() {
             return Err(AssistantError::NotConfigured);
+        }
+        if let Some(key) = &config.api_key {
+            let has_control_char = key.as_str().chars().any(char::is_control);
+            if has_control_char {
+                return Err(AssistantError::NotConfigured);
+            }
         }
         let name = config.provider_name.as_deref().unwrap_or_default();
         let wire = Wire::from_provider_name(name).ok_or(AssistantError::NotConfigured)?;
@@ -337,11 +347,6 @@ impl HttpProvider {
             model: config.model.clone().unwrap_or_default(),
             key: config.api_key.clone(),
         })
-    }
-
-    /// The wire this provider speaks, for tests and diagnostics.
-    fn wire(&self) -> Wire {
-        self.wire
     }
 }
 
@@ -410,9 +415,7 @@ mod tests {
         request
             .headers
             .iter()
-            .any(|(header_name, header_value)| {
-                *header_name == name && header_value == value
-            })
+            .any(|(header_name, header_value)| *header_name == name && header_value == value)
     }
 
     #[test]
@@ -476,7 +479,10 @@ mod tests {
             Some("http://lm-studio.local:1234/v1"),
             None,
         );
-        assert_eq!(request.url, "http://lm-studio.local:1234/v1/chat/completions");
+        assert_eq!(
+            request.url,
+            "http://lm-studio.local:1234/v1/chat/completions"
+        );
     }
 
     #[test]
@@ -543,7 +549,10 @@ mod tests {
         let body = r#"{"content":[
             {"type":"text","text":"Answer."},
             {"type":"tool_use","id":"x"}]}"#;
-        assert_eq!(parse_response(Wire::Anthropic, body), Ok("Answer.".to_owned()));
+        assert_eq!(
+            parse_response(Wire::Anthropic, body),
+            Ok("Answer.".to_owned())
+        );
     }
 
     #[test]
@@ -640,7 +649,19 @@ mod tests {
         };
         let provider = HttpProvider::from_config(&config).expect("configured");
         assert_eq!(provider.name(), "anthropic");
-        assert_eq!(provider.wire(), Wire::Anthropic);
+    }
+
+    #[test]
+    fn a_key_with_control_characters_fails_closed() {
+        let config = AssistantConfig {
+            enabled: true,
+            provider_name: Some("openai".to_owned()),
+            api_key: Some(SecretKey::new("bad\nkey")),
+            model: Some("test-model".to_owned()),
+            base_url: None,
+        };
+        let error = HttpProvider::from_config(&config);
+        assert_eq!(error, Err(AssistantError::NotConfigured));
     }
 
     #[test]

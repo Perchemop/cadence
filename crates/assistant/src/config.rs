@@ -90,6 +90,23 @@ pub struct AssistantConfig {
     pub base_url: Option<String>,
 }
 
+/// A trimmed, non-empty view of an optional setting.
+fn trimmed(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+/// The provider names the assistant speaks natively (case-insensitive).
+///
+/// Keep in step with the wire mapping in `http::Wire::from_provider_name`,
+/// which turns these same names into their protocols.
+pub(crate) fn is_known_provider(name: &str) -> bool {
+    let lowered = name.to_ascii_lowercase();
+    matches!(
+        lowered.as_str(),
+        "openai" | "anthropic" | "ollama" | "gemini"
+    )
+}
+
 impl AssistantConfig {
     /// Whether the assistant is enabled **and** fully configured.
     ///
@@ -100,26 +117,11 @@ impl AssistantConfig {
     /// * a key must be set unless the provider needs none (a local Ollama);
     /// * an OpenAI-compatible server needs an address.
     pub fn is_configured(&self) -> bool {
-        let provider = self
-            .provider_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|name| !name.is_empty());
-        let model = self
-            .model
-            .as_deref()
-            .map(str::trim)
-            .filter(|model| !model.is_empty());
-        let base_url = self
-            .base_url
-            .as_deref()
-            .map(str::trim)
-            .filter(|url| !url.is_empty());
-        let known = matches!(
-            provider,
-            Some("openai") | Some("anthropic") | Some("ollama") | Some("gemini")
-        );
-        let keyless = provider == Some("ollama");
+        let provider = trimmed(self.provider_name.as_deref());
+        let model = trimmed(self.model.as_deref());
+        let base_url = trimmed(self.base_url.as_deref());
+        let known = provider.is_some_and(is_known_provider);
+        let keyless = provider.is_some_and(|name| name.eq_ignore_ascii_case("ollama"));
         self.enabled
             && provider.is_some()
             && model.is_some()

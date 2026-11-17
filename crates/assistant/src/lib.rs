@@ -129,6 +129,20 @@ mod tests {
     }
 
     #[test]
+    fn provider_names_are_case_insensitive() {
+        // The wire mapping lowercases names, so the config gate must too —
+        // a capitalised "Ollama" is still the keyless local server.
+        let ollama = AssistantConfig {
+            enabled: true,
+            provider_name: Some("Ollama".to_owned()),
+            api_key: None,
+            model: Some("test-model".to_owned()),
+            base_url: None,
+        };
+        assert!(ollama.is_configured());
+    }
+
+    #[test]
     fn a_model_is_required_before_the_assistant_is_configured() {
         let no_model = AssistantConfig {
             enabled: true,
