@@ -117,6 +117,42 @@ jobs:
             cp ../SHA256SUMS.txt .
           )
 
+      - name: Build the release notes body
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # Version used inside CHANGELOG headers (tag without the leading 'v')
+          VER="${TAG#v}"
+          BODY="release-notes.md"
+          : > "$BODY"
+          printf '## Cadence %s\n\n' "$TAG" >> "$BODY"
+          # --- Token metrics (ledger) ---
+          if [ -f docs/tokens.json ]; then
+            TOTAL="$(jq -r '.total_tokens_since_start // "n/a"' docs/tokens.json)"
+            RELEASE_TOK="$(jq -r '.release_tokens // "n/a"' docs/tokens.json)"
+            printf 'Token usage this release: %s. Cumulative since project start: %s.\n\n' "$RELEASE_TOK" "$TOTAL" >> "$BODY"
+          fi
+          # --- Summary ---
+          printf '## Summary\n\n' >> "$BODY"
+          printf 'Cadence %s ships the features and fixes tracked for this release. See the Added / Changed / Fixed sections below for details.\n\n' "$VER" >> "$BODY"
+          # --- Content from CHANGELOG.md (single source of truth per §6.4) ---
+          printf '## Added / Changed / Fixed\n\n' >> "$BODY"
+          awk -v ver="$VER" '
+            $0 ~ ("^## \\[" ver "\\]") { inblock=1; next }
+            inblock && /^## \[/ { inblock=0 }
+            inblock { print }
+          ' CHANGELOG.md | sed -e 's/^### /## /' >> "$BODY"
+          printf '\n---\n' >> "$BODY"
+          # --- Artefact list + checksums ---
+          printf '## Artefacts\n\n' >> "$BODY"
+          for f in artefacts/upload/*; do
+            name="$(basename "$f")"
+            printf '* %s\n' "$name" >> "$BODY"
+          done
+          printf '\nChecksums:\n\n' >> "$BODY"
+          cat artefacts/upload/SHA256SUMS.txt >> "$BODY"
+          printf '\nInstall the platform-specific installer (double-click to install), then run Cadence from your app drawer / start menu / Applications folder.\n' >> "$BODY"
+
       - name: Publish the GitHub Release
         shell: bash
         env:
@@ -125,7 +161,7 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           gh release create "$TAG" \
             --title "Cadence $TAG" \
-            --generate-notes \
+            --notes-file release-notes.md \
             artefacts/upload/*
 
   sbom:

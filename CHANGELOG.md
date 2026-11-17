@@ -8,9 +8,20 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 ~45K in the 0.12.0 cycle. The ledger's CI update on each tag is queued
 (`ROADMAP.md`).
 
-## [Unreleased]
+## [0.14.0] — 2026-11-16
 
 ### Added
+- Optional AI assistant, foundation slice: a new `cadence-assistant` crate
+  (off by default, bring-your-own-key). It defines the provider seam
+  (`AssistantProvider` with a deterministic mock for tests and a fail-closed
+  no-op), typed `ProposedChange` suggestions each carrying a rationale, and
+  `Proposal::validate`, which checks every proposal against the live project
+  — unknown activities, progress above 100, self- and duplicate
+  relationships, blank names, and zero durations (reserved for milestones,
+  which the assistant must not create). The API key is wrapped in a
+  `SecretKey` that never appears in `Debug` or serialised output. No network
+  code ships in this slice; provider backends, command-stack wiring and the
+  review panel are the next slices.
 - Programme audit: four new schedule-quality checks — `AUDIT-UNNECESSARY`
   (hard date constraint on a non-critical activity), `AUDIT-LONGLAG`
   (relationship lag above the configurable threshold, default 5 working
@@ -23,6 +34,8 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 - Workspace version 0.13.0 → 0.14.0: the new check ids and the
   `AuditConfig.long_lag_days` field are public-API additions that break
   exhaustive construction (semver check).
+- Dependency: `rfd` 0.17.2 → 0.18.0 (file-dialog backend; all 18 required
+  checks green, evidence re-rendered).
 
 ## [0.12.1] — 2026-11-07
 

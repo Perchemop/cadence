@@ -3,6 +3,46 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-16 — optional AI assistant: foundation crate
+
+The first slice of the owner-approved AI-integration research lands as a new
+`cadence-assistant` workspace crate — the provider-agnostic foundation only,
+so every behaviour stays testable headlessly (K.13):
+
+- **Provider seam.** `AssistantProvider` (`complete`/`name`) with a
+  deterministic `MockProvider` for tests and a fail-closed `NoopProvider`;
+  `AssistantError` carries plain-language reasons (not configured, refused,
+  malformed output, network) and never key material. No network code ships in
+  this slice — HTTP backends arrive next, behind the same seam.
+- **Typed proposals.** `ProposedChange` (create activity/relationship, set
+  duration/progress), each carrying a rationale the review panel can cite;
+  `Proposal::validate` returns *all* problems at once — unknown activities,
+  progress above 100, self- and duplicate relationships, blank names, and
+  zero durations (reserved for milestones, which the assistant must not
+  create). Validation runs against the real `cadence-core` `Project` model.
+- **Secret hygiene.** `SecretKey` prints `SecretKey("**redacted**")` in Debug
+  and serialises as the literal `"<redacted>"`, so settings files, logs and
+  crash reports cannot carry a key; `AssistantConfig` is off by default and
+  `is_configured()` gates the feature.
+- **Tests.** 13 headless unit tests covering the validation matrix, config
+  gating and the secret-redaction invariant.
+- **Tracking.** `CHANGELOG.md` (Unreleased/Added), the ROADMAP AI item and
+  this file updated. The unused `cadence-assistant` workspace-dependency
+  entry was removed again (nothing consumes the crate yet — the next slice
+  re-adds it with the command-stack wiring, per the dead-code rule).
+- **Evidence.** All 18 required checks green on PR #155 (Verify on four
+  platforms, Package (Linux), Static analysis (rust), Lockfile freshness,
+  Secret/Personal data scans, Semver, CodeQL, Evidence, Bill of materials);
+  merged as bee1fef.
+- **Dependency triage.** Dependabot PRs reviewed: #161 (rfd 0.18) merged;
+  #156 (install-action) awaiting rebase; #157/#159/#160 (egui 0.37 family)
+  closed with reasons — a toolkit bump is its own slice per guide II.30.3.
+  #158 (rusqlite 0.42) was closed blaming the rendered-evidence SIGSEGV, then
+  **re-opened after the evidence job crashed identically on a docs-only
+  merge commit and passed on re-run with no code change** — the crash is the
+  flaky software-Vulkan evidence job, not the bump; see issue #163 (quarantine
+  record per the guide's flaky-test policy M.5).
+
 ## 2026-11-15 — lookahead published snapshots: delete, variance highlighting, test coverage, records reconciliation
 
 Audit of the published-snapshots stage against `ROADMAP.md` and
