@@ -11,6 +11,7 @@
 //! script reading stdout and a person reading the terminal each need their
 //! own copy of the story.
 
+use std::io::Write;
 use std::process::ExitCode;
 
 use cadence_commands::{Command, CommandStack, CreateActivity, CreateRelationship};
