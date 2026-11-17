@@ -1,9 +1,12 @@
-//! Cadence's optional AI assistant: the provider-agnostic foundation.
+//! Cadence's optional AI assistant: the provider seam, its HTTP backends, and
+//! the typed proposal a model response becomes.
 //!
-//! The assistant is **off by default**. Nothing in this crate performs I/O or
-//! reaches the network; it defines the contract a model backend implements, the
-//! typed shape a suggestion takes, and the validation that runs before a
-//! suggestion can be shown to the user.
+//! The assistant is **off by default**. No network call ever happens on its
+//! own: the HTTP backends run only through an explicitly configured
+//! [`AssistantConfig`] (provider, model and key, where one is needed) and only
+//! when the application calls [`HttpProvider::complete`] in response to an
+//! explicit user action. With nothing configured the feature is hidden and
+//! fails closed.
 //!
 //! Three rules shape the design:
 //!
@@ -17,13 +20,15 @@
 //!   blank names, milestone-only zero durations.
 //! * **No secret is ever printed.** [`SecretKey`] redacts itself in `Debug` and
 //!   serialises as `"<redacted>"`, so a settings file, log line or crash report
-//!   cannot carry it.
+//!   cannot carry it; HTTP errors never echo request material either.
 
 mod config;
+mod http;
 mod proposal;
 mod provider;
 
 pub use config::{AssistantConfig, SecretKey};
+pub use http::HttpProvider;
 pub use proposal::{Proposal, ProposalError, ProposedChange};
 pub use provider::{
     AssistantError, AssistantProvider, AssistantProviderName, MockProvider, NoopProvider,
@@ -86,6 +91,8 @@ mod tests {
             enabled: true,
             provider_name: Some("openai".to_owned()),
             api_key: Some(SecretKey::new("not-a-real-credential")),
+            model: Some("test-model".to_owned()),
+            base_url: None,
         };
         assert!(full.is_configured());
 
@@ -103,6 +110,57 @@ mod tests {
     }
 
     #[test]
+    fn a_local_ollama_server_needs_no_api_key() {
+        let ollama = AssistantConfig {
+            enabled: true,
+            provider_name: Some("ollama".to_owned()),
+            api_key: None,
+            model: Some("test-model".to_owned()),
+            base_url: None,
+        };
+        assert!(ollama.is_configured());
+
+        // Any hosted provider still requires a key.
+        let hosted = AssistantConfig {
+            provider_name: Some("openai".to_owned()),
+            ..ollama
+        };
+        assert!(!hosted.is_configured());
+    }
+
+    #[test]
+    fn a_model_is_required_before_the_assistant_is_configured() {
+        let no_model = AssistantConfig {
+            enabled: true,
+            provider_name: Some("openai".to_owned()),
+            api_key: Some(SecretKey::new("not-a-real-credential")),
+            model: None,
+            base_url: None,
+        };
+        assert!(!no_model.is_configured());
+
+        let blank_model = AssistantConfig {
+            model: Some("   ".to_owned()),
+            ..no_model
+        };
+        assert!(!blank_model.is_configured());
+    }
+
+    #[test]
+    fn a_config_saved_before_the_http_slice_still_parses() {
+        // Settings written by the foundation slice carry no model or base_url;
+        // they must still load (and simply not yet be usable until a model is
+        // chosen).
+        let legacy = r#"{"enabled":true,"provider_name":"openai","api_key":"<redacted>"}"#;
+        let config: AssistantConfig = serde_json::from_str(legacy).expect("legacy settings parse");
+        assert!(config.enabled);
+        assert_eq!(config.provider_name.as_deref(), Some("openai"));
+        assert_eq!(config.model, None);
+        assert_eq!(config.base_url, None);
+        assert!(!config.is_configured());
+    }
+
+    #[test]
     fn api_key_never_appears_in_debug_or_serialised_output() {
         let key = SecretKey::new("not-a-real-credential");
         assert_eq!(format!("{key:?}"), "SecretKey(\"**redacted**\")");
@@ -117,6 +175,8 @@ mod tests {
             enabled: true,
             provider_name: Some("openai".to_owned()),
             api_key: Some(SecretKey::new("not-a-real-credential")),
+            model: Some("test-model".to_owned()),
+            base_url: None,
         };
         let json = serde_json::to_string(&config).expect("serialise");
         assert!(!json.contains("not-a-real-credential"));

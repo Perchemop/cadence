@@ -253,8 +253,10 @@ acceptance criteria drive implementation; it does not promise a release date.
       **Foundation landed (2026-11-16, PR #155):** the `cadence-assistant`
       crate — provider seam with mock/no-op backends, typed `ProposedChange`
       suggestions, headless `Proposal::validate` against the live project,
-      and a self-redacting `SecretKey`; 13 headless tests. Next: HTTP
-      provider backends behind the seam, command-stack wiring so accepted
+      and a self-redacting `SecretKey`; 13 headless tests. **HTTP backends
+      landed (2026-11-17):** OpenAI / Anthropic / Ollama / Gemini wires behind
+      the same seam (D30) — keyless local Ollama, model required, plain-language
+      errors, no test sockets. Next: command-stack wiring so accepted
       proposals become ordinary undoable commands, and the review panel.
 - [x] **Lookahead / field planning (Aphex-inspired)** — rolling short-interval
       windows derived from the master schedule, weekly work plans with

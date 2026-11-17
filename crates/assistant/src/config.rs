@@ -65,22 +65,65 @@ impl<'de> Deserialize<'de> for SecretKey {
 /// The default is **off**: `enabled` is `false`, so [`AssistantConfig::is_configured`]
 /// returns `false` regardless of the other fields. The UI must hide the
 /// assistant feature until the user explicitly enables it and configures a
-/// provider and an API key.
+/// provider, a model and — for hosted providers — an API key.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct AssistantConfig {
     /// Whether the assistant feature is active at all.
     pub enabled: bool,
     /// The configured provider, if any.
+    ///
+    /// Known names: `openai`, `anthropic`, `ollama`, `gemini`. Any other
+    /// non-empty name is treated as an OpenAI-compatible server and requires
+    /// [`AssistantConfig::base_url`].
     pub provider_name: Option<String>,
     /// The configured API key, if any.
+    ///
+    /// A locally hosted server (Ollama) needs no key.
     pub api_key: Option<SecretKey>,
+    /// The model identifier to request from the provider (for example
+    /// `gpt-4o-mini` or a locally pulled Ollama tag).
+    #[serde(default)]
+    pub model: Option<String>,
+    /// An optional server address overriding the provider's default
+    /// endpoint — required for OpenAI-compatible servers.
+    #[serde(default)]
+    pub base_url: Option<String>,
 }
 
 impl AssistantConfig {
     /// Whether the assistant is enabled **and** fully configured.
     ///
     /// The UI must hide the assistant feature when this returns `false`.
+    /// The rules:
+    ///
+    /// * a provider name and a model must be set;
+    /// * a key must be set unless the provider needs none (a local Ollama);
+    /// * an OpenAI-compatible server needs an address.
     pub fn is_configured(&self) -> bool {
-        self.enabled && self.provider_name.is_some() && self.api_key.is_some()
+        let provider = self
+            .provider_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty());
+        let model = self
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|model| !model.is_empty());
+        let base_url = self
+            .base_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|url| !url.is_empty());
+        let known = matches!(
+            provider,
+            Some("openai") | Some("anthropic") | Some("ollama") | Some("gemini")
+        );
+        let keyless = provider == Some("ollama");
+        self.enabled
+            && provider.is_some()
+            && model.is_some()
+            && (self.api_key.is_some() || keyless)
+            && (known || base_url.is_some())
     }
 }

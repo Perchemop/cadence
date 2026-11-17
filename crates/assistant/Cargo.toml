@@ -11,8 +11,9 @@ description = "Model-agnostic AI assistant foundation for Cadence (off by defaul
 [dependencies]
 cadence-core.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+ureq.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
 time.workspace = true

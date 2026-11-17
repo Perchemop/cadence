@@ -668,3 +668,43 @@ all eight kinds, including the two mandatory pins.
 activities — the same D10 rounding in both passes, zero total float, and an
 explicit pin overriding both network logic and the data-date floor. Recorded
 actual dates are never moved by a pin: a pin cannot turn a fact into a plan.
+
+## D30 — The assistant's HTTP backends: four wires, keyless Ollama, no test sockets (2026-11-17)
+
+The second `cadence-assistant` slice (owner-approved research
+`docs/research/ai-integration.md`, 2026-10-27) adds the network half behind the
+D-seam `AssistantProvider` trait. Decisions:
+
+- **Four wire protocols**, one per configured provider name: OpenAI
+  chat-completions (also the protocol spoken by any other non-empty,
+  non-`ollama`/`anthropic`/`gemini` name — the de-facto compatibility
+  standard), Anthropic Messages (`x-api-key` + a pinned `anthropic-version` +
+  a required `max_tokens`), Ollama's native `/api/chat` (no auth, stream
+  disabled), and Gemini `generateContent` (`x-goog-api-key`, model in the
+  URL). Shapes were written from the providers' published API references
+  (October 2026), not from memory.
+- **A model is now required** (`AssistantConfig.model`, serde default so old
+  settings files still parse), and an OpenAI-compatible server requires an
+  explicit `base_url`. `is_configured` enforces both, so `from_config` fails
+  closed with `NotConfigured` — the UI keeps gating on the one function.
+- **A local Ollama needs no API key**: `is_configured` exempts it, and the
+  request carries no `Authorization` header at all.
+- **`ureq` is reused** (same workspace dependency, same rustls feature set as
+  the update check) — no new dependency families. Connect timeout 5 s (fail
+  fast like the update check), read timeout 120 s (generation is genuinely
+  slow), write 30 s.
+- **Error mapping, plain language:** 401/403 and other 4xx are `Refused`
+  (a configuration problem); 408/429/5xx and transport faults are `Network`,
+  with the provider's own short JSON error message as detail (truncated to
+  200 chars) — never the raw body, and never request material, so no error
+  can echo the key. Key handling stays with `SecretKey`; a test asserts the
+  key never reaches a request body or URL on any wire.
+- **No test opens a socket** (flaky/network policy, M.5): request building and
+  response parsing are pure functions asserted directly; the only untested
+  step is the thin `ureq` glue in `complete`, documented as such.
+
+The workspace version moves 0.14.0 → 0.15.0 (public `AssistantConfig` gains
+two fields — `constructible_struct_adds_field`), and `Cargo.lock` is
+regenerated from the Lockfile workflow's artefact (D26 path), because the
+crate now consumes `serde_json` and `ureq` at runtime.
+
