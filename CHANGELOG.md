@@ -15,7 +15,8 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   real providers behind the same `AssistantProvider` seam — OpenAI
   chat-completions (and OpenAI-compatible servers such as LM Studio or vLLM
   via a configurable server address), Anthropic Messages, a locally hosted
-  Ollama (no API key needed, streaming off), and Google Gemini. Requests are
+  Ollama (no API key needed, streaming off), and Google Gemini. A keyless
+  OpenAI-compatible server needs no API key either. Requests are
   built and responses parsed by headless, socket-free pure functions;
   transport errors map to plain-language failures (refused vs. retryable)
   that never echo request material. The assistant remains off by default and

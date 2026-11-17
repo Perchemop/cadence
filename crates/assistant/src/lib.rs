@@ -129,6 +129,18 @@ mod tests {
     }
 
     #[test]
+    fn a_keyless_openai_compatible_server_needs_only_its_address() {
+        let config = AssistantConfig {
+            enabled: true,
+            provider_name: Some("lm-studio".to_owned()),
+            api_key: None,
+            model: Some("test-model".to_owned()),
+            base_url: Some("http://lm-studio.local:1234/v1".to_owned()),
+        };
+        assert!(config.is_configured());
+    }
+
+    #[test]
     fn provider_names_are_case_insensitive() {
         // The wire mapping lowercases names, so the config gate must too —
         // a capitalised "Ollama" is still the keyless local server.

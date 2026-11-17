@@ -149,10 +149,9 @@ fn build_request(
     let base = base_url.trim().trim_end_matches('/');
     let serialise = |value: serde_json::Value| value.to_string();
     let user_message = json!([{"role": "user", "content": prompt}]);
-    let (url, auth, body) = match wire {
+    let (url, body) = match wire {
         Wire::OpenAI | Wire::OpenAICompatible => (
             format!("{base}/chat/completions"),
-            bearer_header(key),
             serialise(json!({
                 "model": model,
                 "messages": user_message,
@@ -160,10 +159,6 @@ fn build_request(
         ),
         Wire::Anthropic => (
             format!("{base}/v1/messages"),
-            vec![
-                api_key_header("x-api-key", key),
-                ("anthropic-version", ANTHROPIC_VERSION.to_owned()),
-            ],
             serialise(json!({
                 "model": model,
                 "max_tokens": MAX_TOKENS,
@@ -172,7 +167,6 @@ fn build_request(
         ),
         Wire::Ollama => (
             format!("{base}/api/chat"),
-            Vec::new(),
             serialise(json!({
                 "model": model,
                 "messages": user_message,
@@ -181,14 +175,13 @@ fn build_request(
         ),
         Wire::Gemini => (
             format!("{base}/models/{model}:generateContent"),
-            vec![api_key_header("x-goog-api-key", key)],
             serialise(json!({
                 "contents": [{"parts": [{"text": prompt}]}],
             })),
         ),
     };
+    let mut headers = auth_headers(wire, key);
     // Every protocol body is JSON; the content-type header is shared.
-    let mut headers = auth;
     headers.push(("content-type", "application/json".to_owned()));
     HttpRequest {
         method: "POST",
@@ -198,20 +191,26 @@ fn build_request(
     }
 }
 
-/// The bearer header pair, or an empty list when no key is set.
-fn bearer_header(key: Option<&SecretKey>) -> Vec<(&'static str, String)> {
-    match key {
-        Some(key) => vec![("authorization", format!("Bearer {}", key.as_str()))],
-        None => Vec::new(),
+/// The authentication headers for a wire, omitting every credential header
+/// when no key is set.
+///
+/// A keyless server — a local Ollama, or an OpenAI-compatible server without
+/// a key — must never carry an empty credential header such as
+/// `x-api-key: `; the header is simply absent.
+fn auth_headers(wire: Wire, key: Option<&SecretKey>) -> Vec<(&'static str, String)> {
+    let key = match key {
+        Some(key) => key.as_str().to_owned(),
+        None => return Vec::new(),
+    };
+    match wire {
+        Wire::OpenAI | Wire::OpenAICompatible => vec![("authorization", format!("Bearer {key}"))],
+        Wire::Anthropic => vec![
+            ("x-api-key", key),
+            ("anthropic-version", ANTHROPIC_VERSION.to_owned()),
+        ],
+        Wire::Ollama => Vec::new(),
+        Wire::Gemini => vec![("x-goog-api-key", key)],
     }
-}
-
-/// A named key header, empty when no key is set.
-fn api_key_header(name: &'static str, key: Option<&SecretKey>) -> (&'static str, String) {
-    (
-        name,
-        key.map(SecretKey::as_str).unwrap_or_default().to_owned(),
-    )
 }
 
 /// Extract the completion text from a successful provider response.
@@ -384,7 +383,13 @@ impl AssistantProvider for HttpProvider {
                 let body = response.into_string().unwrap_or_default();
                 Err(failure(status, &body))
             }
-            Err(other) => Err(AssistantError::Network(other.to_string())),
+            // Transport-level failures (DNS, refused connection, timeout,
+            // bad URL): a fixed plain-language phrase. The underlying error
+            // text can echo request context such as the endpoint URL, so it
+            // is deliberately not copied into the error.
+            Err(_) => Err(AssistantError::Network(
+                "connection or address problem".to_owned(),
+            )),
         }
     }
 }
@@ -601,9 +606,33 @@ mod tests {
     }
 
     #[test]
-    fn other_client_errors_map_to_refused() {
+    fn other_client_errors_map_to_refused_without_detail() {
         let body = r#"{"error":{"message":"no such model"}}"#;
+        assert_eq!(failure(400, body), AssistantError::Refused);
         assert_eq!(failure(404, body), AssistantError::Refused);
+        assert_eq!(failure(422, body), AssistantError::Refused);
+        // The configuration-problem class stays payload-less: the provider's
+        // message is reserved for the retryable network detail.
+        assert!(matches!(failure(400, body), AssistantError::Refused));
+    }
+
+    #[test]
+    fn keyless_requests_carry_no_credential_headers_at_all() {
+        for wire in [
+            Wire::OpenAI,
+            Wire::OpenAICompatible,
+            Wire::Anthropic,
+            Wire::Gemini,
+            Wire::Ollama,
+        ] {
+            let request = request_for(wire, None, None);
+            for (name, _) in &request.headers {
+                assert!(
+                    !matches!(*name, "authorization" | "x-api-key" | "x-goog-api-key"),
+                    "{wire:?} emitted credential header {name} without a key"
+                );
+            }
+        }
     }
 
     #[test]

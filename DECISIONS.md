@@ -689,6 +689,16 @@ D-seam `AssistantProvider` trait. Decisions:
   closed with `NotConfigured` — the UI keeps gating on the one function.
 - **A local Ollama needs no API key**: `is_configured` exempts it, and the
   request carries no `Authorization` header at all.
+
+**Extension (2026-11-18, from the second-opinion review):** a keyless
+**OpenAI-compatible** server — any custom provider name with its own
+`base_url` — is also valid without a key. Local inference servers (LM
+Studio, vLLM) commonly run without one, and the wire layer already omits
+every credential header when no key is set; `is_configured` now matches
+that, so the advertised keyless use actually configures. Credential headers
+are likewise omitted entirely (never emitted empty) when keyless, and
+transport-level failures carry a fixed plain-language phrase rather than
+the transport error's own text, which can echo request context.
 - **`ureq` is reused** (same workspace dependency, same rustls feature set as
   the update check) — no new dependency families. Connect timeout 5 s (fail
   fast like the update check), read timeout 120 s (generation is genuinely

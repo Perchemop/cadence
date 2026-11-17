@@ -114,14 +114,18 @@ impl AssistantConfig {
     /// The rules:
     ///
     /// * a provider name and a model must be set;
-    /// * a key must be set unless the provider needs none (a local Ollama);
-    /// * an OpenAI-compatible server needs an address.
+    /// * a key must be set unless the provider needs none — a local Ollama,
+    ///   or an OpenAI-compatible server with its own address (local
+    ///   inference servers commonly run without a key, and the wire layer
+    ///   omits the credential header when none is set);
+    /// * an OpenAI-compatible server always needs an address.
     pub fn is_configured(&self) -> bool {
         let provider = trimmed(self.provider_name.as_deref());
         let model = trimmed(self.model.as_deref());
         let base_url = trimmed(self.base_url.as_deref());
         let known = provider.is_some_and(is_known_provider);
-        let keyless = provider.is_some_and(|name| name.eq_ignore_ascii_case("ollama"));
+        let keyless = provider.is_some_and(|name| name.eq_ignore_ascii_case("ollama"))
+            || (provider.is_some_and(|name| !is_known_provider(name)) && base_url.is_some());
         self.enabled
             && provider.is_some()
             && model.is_some()
