@@ -551,7 +551,7 @@ fn print_schedule_output(project: &Project, json: bool) -> Result<(), String> {
                     cadence_interchange::schedule::schedule_export(project, &schedule)
                 );
             } else {
-                print_schedule(project, &schedule);
+                print_schedule(project, &schedule).map_err(|e| e.to_string())?;
             }
             Ok(())
         }
@@ -580,7 +580,7 @@ fn reschedule_command(path: &str, json: bool, data_date: Option<Date>) -> Result
                     cadence_interchange::schedule::schedule_export(&project, &schedule)
                 );
             } else {
-                print_schedule(&project, &schedule);
+                print_schedule(&project, &schedule).map_err(|e| e.to_string())?;
                 print_progress_summary(&project, data_date);
             }
             Ok(())
@@ -766,11 +766,29 @@ fn execute(
         .map_err(|error| format!("demo setup failed: {error}"))
 }
 
-fn print_schedule(project: &Project, schedule: &Schedule) {
-    println!("{}", project.name);
-    println!("Project start:  {}", schedule.project_start);
-    println!("Project finish: {}", schedule.project_finish);
-    println!();
+fn print_schedule(project: &Project, schedule: &Schedule) -> std::io::Result<()> {
+    let mut out = std::io::stdout().lock();
+
+    match writeln!(out, "{}", project.name) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => std::process::exit(0),
+        Err(e) => return Err(e),
+    }
+    match writeln!(out, "Project start:  {}", schedule.project_start) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => std::process::exit(0),
+        Err(e) => return Err(e),
+    }
+    match writeln!(out, "Project finish: {}", schedule.project_finish) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => std::process::exit(0),
+        Err(e) => return Err(e),
+    }
+    match writeln!(out) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => std::process::exit(0),
+        Err(e) => return Err(e),
+    }
 
     let headers = [
         "Activity",
@@ -815,19 +833,44 @@ fn print_schedule(project: &Project, schedule: &Schedule) {
     }
 
     for (header, width) in headers.iter().zip(widths.iter()) {
-        print!("{header:<width$}  ", width = *width);
+        match write!(out, "{header:<width$}  ", width = *width) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => std::process::exit(0),
+            Err(e) => return Err(e),
+        }
     }
-    println!();
+    match writeln!(out) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => std::process::exit(0),
+        Err(e) => return Err(e),
+    }
 
     for width in &widths {
-        print!("{}  ", "-".repeat(*width));
+        match write!(out, "{}  ", "-".repeat(*width)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => std::process::exit(0),
+            Err(e) => return Err(e),
+        }
     }
-    println!();
+    match writeln!(out) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => std::process::exit(0),
+        Err(e) => return Err(e),
+    }
 
     for row in &rows {
         for (cell, width) in row.iter().zip(widths.iter()) {
-            print!("{cell:<width$}  ", width = *width);
+            match write!(out, "{cell:<width$}  ", width = *width) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => std::process::exit(0),
+                Err(e) => return Err(e),
+            }
         }
-        println!();
+        match writeln!(out) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => std::process::exit(0),
+            Err(e) => return Err(e),
+        }
     }
+    Ok(())
 }
