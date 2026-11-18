@@ -3,6 +3,53 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-18 — capability inventory + parity refresh (designer role)
+
+Docs-only slice (guide II.27.B capability inventory + II.27.D parity review).
+**No code changed**: no `crates/**`, workflow, `.opencode/` or `.github/` file
+was touched; CHANGELOG and DECISIONS untouched because no user-facing surface
+changed. Every status below was verified against the branch's actual code and
+tests (`main` @ `7755c92`) before being recorded.
+
+- **`docs/capability-inventory.md` created — first edition, 61 rows**
+  (54 implemented, 5 partial, 2 not started). The file did not exist before:
+  capability claims lived only in `docs/parity.md` and
+  `REQUIREMENTS_TRACEABILITY.md`. Every `implemented` row names its evidence
+  (test, CLI surface or GUI view); 18 audit `CheckId` variants and the nine
+  GUI views (`Ctrl+1`–`Ctrl+9`) were counted in source, not from memory.
+- **Assistant inventoried honestly as backend-only** (CAP-056…061): provider
+  configuration, consent/secret hygiene, proposal generation and review/apply
+  are each `partial` — the `cadence-assistant` crate (51 headless tests) has
+  config + four wire protocols + validation + undoable command mapping, but
+  there is **no UI, no prompt construction from project data and no review
+  panel**, so no assistant capability is user-reachable yet. Document
+  understanding (CAP-060) and broader advice/enrichment proposals (CAP-061)
+  are `not started`. The "assistant proposes, planner disposes" rule is
+  stated on every assistant row.
+- **One partial verdict for an existing capability**: interchange losslessness
+  is JSON-only (CAP-046) — WBS and named calendars import empty from
+  MSPDI/MPX/CSV; the limitation is documented in `interchange::json`, so the
+  row is `partial`, not a regression.
+- **`docs/parity.md` refreshed** with a per-group parity section vs the
+  reference products. Corrections of stale/over-claimed rows: the audit row
+  said "14 core checks" — the code has **18**; the "first tagged release" row
+  said *in progress* — releases `v0.3.0`…`v0.14.0` are tagged; the AI row
+  said *approved — queued* — three backend slices have landed (PRs #155,
+  #174, #175); the crate-layout row omitted `ui-egui`, `interchange` and
+  `assistant`; the persistence row now records schema v10. New honest gaps
+  recorded rather than hidden: EVM lacks EAC/BAC/TCPI/VAC; P6-style
+  resource curves/time-phased rates are missing; **Asta and ProjectLibre have
+  no approved research note, so no parity claim is made against them**.
+  Exceeds-reference items recorded: headless `--json` audit/comparison/schedule
+  surfaces, keyless local-Ollama/OpenAI-compatible support (D30), and
+  progress-driven rescheduling as an explicit property-tested engine mode
+  (D24).
+- **Observation for a future slice (not done here, docs-scope only):** the
+  landed assistant slices are recorded in the traceability file's
+  future-expansion table but have no `R31+` rows in
+  `REQUIREMENTS_TRACEABILITY.md`; the next assistant slice (review panel)
+  should add them.
+
 ## 2026-11-17 — optional AI assistant: HTTP provider backends (merged)
 
 The network half of the assistant landed behind the provider seam and was
