@@ -3,6 +3,39 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-18 — review panel specification drafted (planning slice, no code)
+
+The **assistant review panel** — the last assistant stage per
+[`docs/research/ai-integration.md`](docs/research/ai-integration.md) ("the
+assistant proposes, the planner disposes") — is now specified and ticketed
+under the guide §5.6 Case-3 path (`/to-spec` + `/to-tickets`):
+
+- **Spec:** [`docs/specs/review-panel.spec.md`](docs/specs/review-panel.spec.md).
+  Recommendation: the Assistant becomes a **tenth centre view tab** (argued
+  from the shell's nine-view pattern, the inspector-owned right side and the
+  Audit-view precedent for a stage-based workflow); the provider call runs
+  **off the UI thread** with the same `std::thread` + `mpsc` pattern the
+  update check uses; the prompt is built on the UI thread from the live
+  project, the reply is parsed and validated against the project, and Apply
+  maps the accepted changes through `map_proposal_to_commands` into the real
+  `CommandStack` (undo works with no special case). **Eight open questions**
+  (view placement, shortcut, apply granularity, settings/key storage,
+  configuration surface, prompt wording ownership, unconfigured visibility,
+  cancellation) are listed with recommendations — **the owner reviews the
+  spec before RP-1 starts** (human gate, §5.6.3/§2.3).
+- **Tickets:** `docs/tickets/RP-1.md` … `RP-6.md` — RP-1 prompt builder +
+  response parser (assistant, headless); RP-2 settings storage, key
+  session-only (assistant); RP-3 view shell + enabling state (ui-egui);
+  RP-4 request flow + review rendering + apply/discard (ui-egui);
+  RP-5 keyboard + AccessKit harness pass; RP-6 usage docs + tracking.
+- **No code changed in this slice.** Only `docs/specs/`, `docs/tickets/`
+  and this file were touched; `CHANGELOG.md` and `DECISIONS.md` are
+  deliberately untouched (no released surface changed; no decision made —
+  the spec *proposes*, the owner disposes).
+- **Implementation waits on the open ui-egui owner branch (PR #173)
+  resolving**, so the first implementation ticket starts from a current
+  `main` without colliding with in-flight owner work.
+
 ## 2026-11-18 — OpenCode workflow commands (guide §5.6.3) + docs reference index (§5.7.2)
 
 Process-infrastructure slice; no application code touched (no `crates/**`,
