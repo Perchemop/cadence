@@ -753,4 +753,35 @@ binary or the release assets.
   no indexing or compression layer is installed alongside it. If that
   changes, record the reason here first.
 
+## D32 — The §5.6.3 workflow commands are repository files, not private config (2026-11-18)
+
+The seven OpenCode workflow commands — `/grill-me`, `/to-spec`,
+`/to-tickets`, `/tdd`, `/implement`, `/implement-spec`, `/code-review` —
+are committed to `.opencode/command/` rather than kept only in the
+maintainer's private `~/.config/opencode/`. They encode the guide §5.6.3
+specifications, and each file carries a pointer to the §5.6.5
+reconciliation table, so a command file cannot bypass the guide's rules:
+the stricter rule wins, and the guide wins over any command file (guide
+Authority preamble).
+
+Consequences:
+
+- Any contributor cloning the repository gets the same disciplined
+  workflow; the command files are versioned and reviewed like code (§5.5
+  item 12 — instructions readable by everyone, no private-machine notes).
+- The files restate rules that also live in the local guide; when the
+  guide changes, this directory is synced in the same session (§12.3), and
+  the §5.6.5 pointer in every file is the backstop that keeps drift
+  harmless.
+- `ci.sh`'s default ignore list excludes `.opencode/**` from its
+  auto-commit (by design, so agent-local configuration never leaks into a
+  commit). Repository-tracked `.opencode/` content is therefore committed
+  directly with the asserted `Cadence Dev <dev@example.com>` identity and
+  then verified through `ci.sh` like any other change — the recorded
+  precedent in this repository (42e7677, "agents: add a dedicated UI/UX
+  designer subagent").
+- `docs/reference/index.md` (guide §5.7.2) is added as the agent-team
+  documentation pre-loading index — one line per `docs/` file, grouped —
+  and is regenerated whenever the docs tree changes.
+
 
