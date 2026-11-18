@@ -1,0 +1,137 @@
+name: Signing key rotation
+
+# Generates a fresh minisign keypair for release-artefact signing ON THE
+# RUNNER and stores the private key (and, when one is in use, its password)
+# as repository Actions secrets. The private key exists only as a GitHub
+# Actions secret: it is never written to the repository, never printed, and
+# never leaves the runner except into the secret store (guide §7.2 — the key
+# is generated on the runner, never on a developer machine).
+#
+# This workflow is triggered by hand (workflow_dispatch only): the human
+# triggers the first rotation and every later one.
+#
+# The workflow's own GITHUB_TOKEN cannot manage repository secrets (GitHub
+# grants it no secret-management permission), so `gh secret set`
+# authenticates with the SECRET_MANAGEMENT_TOKEN secret — a fine-grained PAT
+# with "Secrets: read and write" on this repository, or a classic PAT with
+# the repo scope, set once by the maintainer (docs/update-signing.md).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rotate:
+    name: Generate a new release signing key on the runner
+    runs-on: ubuntu-latest
+    steps:
+      # Same pinned install as the release workflow: the official minisign
+      # 0.12 release asset, checked against the SHA-256 recorded below (taken
+      # from that asset on 2026-11-18) before anything runs (D33).
+      - name: Install the pinned minisign binary
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --retry 3 \
+            -o minisign.tar.gz \
+            "https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-linux.tar.gz"
+          echo "9a599b48ba6eb7b1e80f12f36b94ceca7c00b7a5173c95c3efc88d9822957e73  minisign.tar.gz" | sha256sum --check
+          tar -xzf minisign.tar.gz minisign-linux/x86_64/minisign
+          install -m 0755 minisign-linux/x86_64/minisign "$RUNNER_TEMP/bin/minisign"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Generate the key pair on the runner
+        env:
+          RELEASE_SIGNING_PASSWORD: ${{ secrets.RELEASE_SIGNING_PASSWORD }}
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          rm -f minisign.pub minisign.key
+          if [ -n "$RELEASE_SIGNING_PASSWORD" ]; then
+            # A password secret is in use, so the key is generated encrypted;
+            # minisign reads the password twice from stdin when no terminal is
+            # attached (verified in the minisign 0.12 source, get_line.c).
+            printf '%s\n' "$RELEASE_SIGNING_PASSWORD" "$RELEASE_SIGNING_PASSWORD" \
+              | minisign -G -f \
+                  -c "untrusted comment: Cadence release signing secret key" \
+                  -p minisign.pub -s minisign.key
+          else
+            minisign -G -W -f \
+              -c "untrusted comment: Cadence release signing secret key" \
+              -p minisign.pub -s minisign.key
+          fi
+
+      - name: Self-test the fresh key pair
+        env:
+          RELEASE_SIGNING_PASSWORD: ${{ secrets.RELEASE_SIGNING_PASSWORD }}
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          printf 'cadence signing self-test\n' > selftest.txt
+          feed_password() {
+            [ -n "$RELEASE_SIGNING_PASSWORD" ] && printf '%s\n' "$RELEASE_SIGNING_PASSWORD"
+            return 0
+          }
+          feed_password | minisign -S -s minisign.key -x selftest.txt.minisig selftest.txt
+          minisign -V -p minisign.pub -x selftest.txt.minisig selftest.txt
+
+      - name: Store the private key as a repository secret
+        env:
+          GH_TOKEN: ${{ secrets.SECRET_MANAGEMENT_TOKEN }}
+          RELEASE_SIGNING_PASSWORD: ${{ secrets.RELEASE_SIGNING_PASSWORD }}
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          if [ -z "$GH_TOKEN" ]; then
+            echo "SECRET_MANAGEMENT_TOKEN is not set." >&2
+            echo "The workflow token cannot manage repository secrets, so the new" >&2
+            echo "key cannot be stored. Set SECRET_MANAGEMENT_TOKEN to a fine-grained" >&2
+            echo "PAT with 'Secrets: read and write' on this repository (or a classic" >&2
+            echo "PAT with the repo scope) and run this workflow again; the key" >&2
+            echo "generated in this run is discarded with the runner." >&2
+            echo "See docs/update-signing.md for the one-time setup." >&2
+            exit 1
+          fi
+          gh secret set RELEASE_SIGNING_KEY --repo "$GITHUB_REPOSITORY" < minisign.key
+          if [ -n "$RELEASE_SIGNING_PASSWORD" ]; then
+            gh secret set RELEASE_SIGNING_PASSWORD \
+              --repo "$GITHUB_REPOSITORY" --body "$RELEASE_SIGNING_PASSWORD"
+          fi
+
+      # Only PUBLIC key material appears in the summary. The private key is
+      # never printed, logged, uploaded or attached anywhere.
+      - name: Publish the public key and fingerprint to the summary
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP"
+          FPR="$(sha256sum minisign.pub | cut -d ' ' -f 1)"
+          KEYID="$(sed -n 's/^untrusted comment: minisign public key //p' minisign.pub)"
+          {
+            echo '## New release signing public key'
+            echo
+            echo '```text'
+            cat minisign.pub
+            echo '```'
+            echo
+            echo "- Key ID: \`$KEYID\`"
+            echo "- Fingerprint (SHA-256 of the public key file): \`$FPR\`"
+            echo
+            echo '### Maintainer follow-up (guide §7.2)'
+            echo
+            echo '1. Record the new public key, key ID and fingerprint in `docs/update-signing.md` (replace the current-fingerprint placeholder, and note the old fingerprint, the rotation date and the reason).'
+            echo '2. Ship a new Cadence release that carries the new public key **before** any further release artefacts are signed with the old key, with a Security banner in the release notes.'
+            echo '3. The private key has been stored as the repository secrets `RELEASE_SIGNING_KEY` (and `RELEASE_SIGNING_PASSWORD` when one is in use). It was generated on this runner and never left GitHub; it must never be copied to a developer machine.'
+            echo
+            echo 'Only public key material is shown above.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove the key material from the runner
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/minisign.key" "$RUNNER_TEMP/minisign.pub" \
+                "$RUNNER_TEMP/selftest.txt" "$RUNNER_TEMP/selftest.txt.minisig" \
+                "$RUNNER_TEMP/minisign.tar.gz"

@@ -3,9 +3,10 @@ name: Release
 # Publishes a GitHub Release for a semver tag (v*.*.*): builds the release
 # binary on all four platforms, wraps each into a platform installer
 # (.deb on Linux, .dmg on macOS, .msi on Windows), attaches them with
-# SHA-256 checksums, and uses GitHub's generated notes (PR titles) as the
-# release body. Installers are required by the suite standards — raw binaries
-# alone are an incomplete release.
+# SHA-256 checksums signed with minisign (key custody per
+# docs/update-signing.md), and uses GitHub's generated notes (PR titles) as
+# the release body. Installers are required by the suite standards — raw
+# binaries alone are an incomplete release.
 on:
   push:
     tags: ["v*.*.*"]
@@ -117,6 +118,57 @@ jobs:
             cp ../SHA256SUMS.txt .
           )
 
+      - name: Install the pinned minisign binary
+        shell: bash
+        run: |
+          # The signing tool is pinned exactly: the official minisign 0.12
+          # release asset, verified against the SHA-256 recorded below (taken
+          # from that asset on 2026-11-18) before anything runs. URL and
+          # asset name verified against the project's public releases page
+          # (D33).
+          mkdir -p "$RUNNER_TEMP/bin"
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --retry 3 \
+            -o minisign.tar.gz \
+            "https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-linux.tar.gz"
+          echo "9a599b48ba6eb7b1e80f12f36b94ceca7c00b7a5173c95c3efc88d9822957e73  minisign.tar.gz" | sha256sum --check
+          tar -xzf minisign.tar.gz minisign-linux/x86_64/minisign
+          install -m 0755 minisign-linux/x86_64/minisign "$RUNNER_TEMP/bin/minisign"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Sign the checksums
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          RELEASE_SIGNING_PASSWORD: ${{ secrets.RELEASE_SIGNING_PASSWORD }}
+        shell: bash
+        run: |
+          cd artefacts
+          if [ -z "$RELEASE_SIGNING_KEY" ]; then
+            echo "RELEASE_SIGNING_KEY is not set." >&2
+            echo "Run the 'Signing key rotation' workflow once to generate the" >&2
+            echo "release signing key on the runner (see docs/update-signing.md)." >&2
+            exit 1
+          fi
+          # The private key exists only as an Actions secret (guide §7.2): it
+          # is written to a file, used, and removed. It is never printed, so
+          # no log can carry it.
+          printf '%s' "$RELEASE_SIGNING_KEY" > minisign.key
+          trap 'rm -f minisign.key derived.pub' EXIT
+          feed_password() {
+            [ -n "$RELEASE_SIGNING_PASSWORD" ] && printf '%s\n' "$RELEASE_SIGNING_PASSWORD"
+            return 0
+          }
+          # Without a terminal minisign reads the password as a plain stdin
+          # line; with an unencrypted key it reads nothing.
+          feed_password | minisign -S -s minisign.key -x SHA256SUMS.txt.minisig \
+            -t "Cadence ${GITHUB_REF_NAME} checksums" SHA256SUMS.txt
+          # Self-check before publishing: recreate the public key from the
+          # stored secret key and verify the fresh signature with it, so a
+          # corrupted or wrong-key secret fails the release, not the user.
+          feed_password | minisign -R -f -s minisign.key -p derived.pub
+          minisign -V -p derived.pub -x SHA256SUMS.txt.minisig SHA256SUMS.txt
+          cp SHA256SUMS.txt.minisig upload/
+
       - name: Build the release notes body
         shell: bash
         run: |
@@ -151,6 +203,9 @@ jobs:
           done
           printf '\nChecksums:\n\n' >> "$BODY"
           cat artefacts/upload/SHA256SUMS.txt >> "$BODY"
+          if [ -f artefacts/upload/SHA256SUMS.txt.minisig ]; then
+            printf '\nThe checksum file is signed with minisign (SHA256SUMS.txt.minisig). The current signing public key and verification steps are documented in docs/update-signing.md in the repository.\n' >> "$BODY"
+          fi
           printf '\nInstall the platform-specific installer (double-click to install), then run Cadence from your app drawer / start menu / Applications folder.\n' >> "$BODY"
 
       - name: Publish the GitHub Release

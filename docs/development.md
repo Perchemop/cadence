@@ -85,6 +85,32 @@ a success. Without it the script cannot distinguish "every check that exists
 has passed" from "only one check has registered yet", and it reported a false
 success once while the security workflow was still running.
 
+## Release signing (`.github/workflows/release.yml`, `.github/workflows/signing-key.yml`)
+
+Every release attaches `SHA256SUMS.txt` and its minisign signature,
+`SHA256SUMS.txt.minisig`; the signature is created before the release is
+published, and a missing signing key fails the release. The signing keypair
+is generated on the Actions runner by the hand-triggered **Signing key
+rotation** workflow and lives only in repository secrets — never on a
+developer machine. Mechanism, current public key and rotation procedure:
+[`update-signing.md`](update-signing.md) (D33).
+
+Repository secrets used (names only — values are never written anywhere in
+the repository):
+
+- `RELEASE_SIGNING_KEY` — the minisign secret key file, used by the release
+  workflow to sign `SHA256SUMS.txt`.
+- `RELEASE_SIGNING_PASSWORD` — optional passphrase protecting that key; when
+  it is absent the key is stored unencrypted (still a secret).
+- `SECRET_MANAGEMENT_TOKEN` — a PAT that lets the rotation workflow's
+  `gh secret set` update the two secrets above; the workflow's own
+  `GITHUB_TOKEN` has no secret-management permission. Use a fine-grained PAT
+  with "Secrets: read and write" on this repository, or a classic PAT with
+  the `repo` scope.
+
+Both workflows install the minisign binary pinned to the official 0.12
+release asset and verify its SHA-256 before use.
+
 ## Lockfile workflow (`.github/workflows/lockfile.yml`)
 
 `Cargo.lock` cannot be regenerated locally, so this workflow resolves the

@@ -29,6 +29,27 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   transport errors map to plain-language failures (refused vs. retryable)
   that never echo request material. The assistant remains off by default and
   only ever calls a provider in response to an explicit user action.
+- OpenCode workflow command definitions (guide §5.6.3) under
+  `.opencode/command/`: `/grill-me` (read-only interrogation), `/to-spec`,
+  `/to-tickets`, `/tdd` (red/green/refactor, every phase verified through
+  `ci.sh` with a recorded red-run ID), `/implement` (single-ticket session;
+  commit via ci.sh; merge via `ci.sh merge`), `/implement-spec` (worktree
+  isolation; sub-agents obey the no-local-builds rule) and `/code-review`
+  (read-only, four axes: architectural, tactical, clean-room, secrets).
+  Each file states its purpose, invocation and binding rules, and points at
+  the §5.6.5 reconciliation table so no command file can bypass the guide's
+  rules (D32). Also added `docs/reference/index.md`, the §5.7.2
+  documentation pre-loading index for agent teams, regenerated when the
+  docs tree changes.
+- Release-artefact signing: the release workflow signs `SHA256SUMS.txt` with
+  minisign and attaches the signature as `SHA256SUMS.txt.minisig` before the
+  release is published (a missing signing key fails the release rather than
+  publishing unsigned, and the fresh signature is verified on the runner
+  before upload). The signing keypair is generated on the GitHub Actions
+  runner by a new hand-triggered `Signing key rotation` workflow and exists
+  only as repository secrets — never on a developer machine. Mechanism,
+  public key and rotation procedure in `docs/update-signing.md` (D33).
+
 
 ### Changed
 - `AssistantConfig` gains `model` and `base_url` (both with serde defaults,
