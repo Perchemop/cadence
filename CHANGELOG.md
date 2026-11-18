@@ -11,6 +11,14 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 ## [0.15.0] — Unreleased
 
 ### Added
+- Optional AI assistant, command-stack wiring: `map_proposal_to_commands`
+  turns an already-validated `Proposal` into the ordinary undoable
+  `cadence-commands` values — create-activity, finish-to-start relationship
+  with no lag, set-duration, and set-progress (percent converted to the
+  command layer's basis points at this one boundary). A proposal that fails
+  validation maps to an error and never a partial command list, so an
+  accepted suggestion now applies, undoes and redoes exactly like a manual
+  edit. Pure, headless, fully tested against the real command stack.
 - Optional AI assistant, HTTP backends: `cadence-assistant` now speaks to
   real providers behind the same `AssistantProvider` seam — OpenAI
   chat-completions (and OpenAI-compatible servers such as LM Studio or vLLM

@@ -22,11 +22,13 @@
 //!   serialises as `"<redacted>"`, so a settings file, log line or crash report
 //!   cannot carry it; HTTP errors never echo request material either.
 
+mod command_map;
 mod config;
 mod http;
 mod proposal;
 mod provider;
 
+pub use command_map::map_proposal_to_commands;
 pub use config::{AssistantConfig, SecretKey};
 pub use http::HttpProvider;
 pub use proposal::{Proposal, ProposalError, ProposedChange};

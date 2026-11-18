@@ -3,6 +3,78 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-17 — optional AI assistant: HTTP provider backends (merged)
+
+The network half of the assistant landed behind the provider seam and was
+merged to `main` as PR #174 (`10df2c6`, all post-merge checks green):
+
+- **Four wire protocols** (D30): OpenAI chat-completions — also spoken by any
+  custom provider name, i.e. OpenAI-compatible servers such as LM Studio or
+  vLLM, which require their own `base_url`; Anthropic Messages with the
+  pinned `anthropic-version` and the required `max_tokens`; a locally hosted
+  Ollama (no key, streaming off); Google Gemini `generateContent` with the
+  model in the URL. Shapes verified against the vendors' published API
+  references (October 2026).
+- **Config.** `AssistantConfig` gains `model` and `base_url` (serde defaults;
+  settings saved by 0.14.0 still load). A model is required, a local Ollama
+  needs no key, a keyless OpenAI-compatible server needs only its address,
+  and credential headers are omitted entirely (never empty) when keyless.
+- **Errors.** Plain-language mapping: 401/403 and other 4xx are `Refused`
+  (configuration problems); 408/429/5xx and transport faults are `Network`,
+  carrying only the status and the provider's own short JSON error message —
+  request material is never echoed. Keys never appear in a request body or
+  URL (tested on every wire).
+- **Tests.** 24 headless tests in `http.rs` (request shapes, response
+  parsing for all four protocols, error boundaries, redaction invariants)
+  plus four config tests; no test opens a socket.
+- **Second-opinion review.** A reviewer pass on the finished diff found one
+  major (keyless OpenAI-compatible servers were rejected by
+  `is_configured`, contradicting the advertised support) and two minors
+  (empty credential headers when keyless; transport-error text echoing
+  request context). All fixed before merge with regression tests; recorded
+  as the D30 extension.
+- **Records.** D30 + D31, CHANGELOG 0.15.0, ROADMAP, traceability, the
+  README privacy note for the opt-in provider calls, and the guide-sync note
+  in `docs/current-model-map.md`.
+
+Verification: PR #174 required checks green (Verify on four platforms,
+Package, Semver, Lockfile, Security scans, Personal data scan — runs
+44253699727/44253699682/44253699890/44253699731 on `10df2c6`).
+
+## 2026-11-18 — optional AI assistant: command-stack wiring
+
+Accepted proposals now become ordinary undoable commands. New
+`crates/assistant/src/command_map.rs`:
+
+- **`map_proposal_to_commands`.** A pure, headless translation from a
+  validated `Proposal` to `cadence-commands::Command` values in proposal
+  order: `CreateActivity`, `CreateRelationship` (plainest finish-to-start
+  link, no lag — the planner edits type and lag afterwards, exactly as for a
+  manually added link), `SetActivityDuration`, and `SetActivityProgress`
+  (whole percentage converted to the command layer's basis points at this
+  one boundary). Identifiers come from the live project's next free ids.
+- **No partial application.** The mapping re-runs `Proposal::validate`
+  against the live project and returns the first problem as an error — never
+  a partial command list.
+- **Same undo path as manual edits.** Eight headless workflow tests apply the
+  mapped commands through the real `CommandStack` on a real `Project` and
+  assert the resulting state *and* that undo restores the previous state,
+  including a multi-change proposal undone one change at a time.
+- **Process note.** A first implementation by a parallel subagent was
+  discarded: it worked directly in the shared checkout instead of its
+  assigned worktree (violating the file-ownership rule), never compiled
+  (invented undo-description strings, a missing `Some(...)`, a struct
+  pattern on a unit variant, no `cadence-commands` dependency), and included
+  a fake coverage test. The landed module was re-derived against the real
+  `cadence-commands`/`cadence-core` sources; the salvage informed the shape
+  but every claim was verified in the source first.
+- **Tracking.** `CHANGELOG.md` (0.15.0/Added), the ROADMAP AI item and
+  `REQUIREMENTS_TRACEABILITY.md` updated. Next assistant slice: the review
+  panel.
+
+Verification: CI run for this slice on `opencode/ci-cmdstack` (result
+recorded in `CHANGELOG.md` and the PR once green).
+
 ## 2026-11-16 — optional AI assistant: foundation crate
 
 The first slice of the owner-approved AI-integration research lands as a new
