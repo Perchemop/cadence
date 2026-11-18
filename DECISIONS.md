@@ -837,3 +837,50 @@ release is published" directive.
 
 
 
+## D34 — Token ledger: measured usage from local OpenCode records, aggregated locally, validated in CI (2026-11-18)
+
+The token ledger (guide §24) is now **measured**, not seeded. The
+`docs/tokens.json` seed values (~1.2M total / ~45K per release) were
+placeholder estimates; the measured-only rule (guide §19 rule 3) requires
+every number to come from actual records, so they are replaced by real
+aggregates and the ledger gains a per-release table in `docs/tokens.md`.
+
+- **Data source.** The local OpenCode session store on the maintainer's
+  machine — a SQLite database, by default
+  `~/.local/share/opencode/opencode.db`. Its `session_v2` table carries
+  per-session token aggregates (`tokens_input`, `tokens_output`,
+  `tokens_reasoning`, `tokens_cache_read`, `tokens_cache_write`) with
+  millisecond timestamps; `project.worktree` identifies the repository a
+  session belonged to.
+- **Design.** CI cannot read a local store, so the work is split:
+  `scripts/token-ledger.py` (stdlib-only, run by the maintainer before
+  tagging a release) aggregates the records and rewrites
+  `docs/tokens.md` + `docs/tokens.json` together; a CI step ("Token ledger
+  consistency" in `ci.yml`) validates that the two committed files are
+  mutually consistent and that the JSON shape the app's build-time
+  release-notes reader depends on is intact. **CI validates only — it
+  never computes token numbers.**
+- **What counts.** The sum of the store's five per-session token columns
+  for sessions attributable to this repository by path (the checkout and
+  its `cadence-*` worktrees), bucketed by release-tag date into cycles
+  `(previous tag, this tag]`; sessions that started before the first tag
+  fall into the first release's cycle.
+- **Privacy constraints (binding on the script).** It reads only numeric
+  usage columns and path/timestamp metadata; it never reads message or
+  part tables, message JSON, session titles, or any content that could
+  carry conversation text. It opens the store read-only (falling back to a
+  read-only temp copy when the live store is locked) and performs no
+  network access.
+- **Known limitation — the ledger is a floor, not a ceiling.** Sessions
+  launched from the home directory (orchestrator sessions and their
+  subagents) are not attributable to any repository by this store and are
+  excluded. The measured total is therefore a conservative underestimate
+  of the true development cost, and the numbers can only grow when the
+  script is re-run after more attributable work. This limitation is stated
+  in `docs/tokens.md` next to the numbers.
+- **Compatibility.** `total_tokens_since_start`, `release_tokens` and
+  `release_version` keep their names and meaning (the app's release-notes
+  reader in `crates/ui-egui/src/lib.rs` deserialises them); the guide §24
+  `releases` array is additive — serde ignores unknown fields. CI asserts
+  the reader keys are present so a future schema change cannot silently
+  break the in-app popup.

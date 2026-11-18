@@ -52,6 +52,123 @@ jobs:
           fi
           echo "Token discipline OK: no raw colour literals outside crates/ui-egui/src/design.rs."
 
+      # The token ledger (guide §24, D34) is aggregated from local usage
+      # records by scripts/token-ledger.py, which CI cannot run. CI therefore
+      # only validates that the two committed ledger files are mutually
+      # consistent and that the JSON shape the app's build-time reader
+      # depends on is intact. Validation only — CI never computes numbers.
+      - name: Token ledger consistency (docs/tokens.md and docs/tokens.json)
+        if: runner.os == 'Linux'
+        run: |
+          python3 - <<'PY'
+          import json, re, sys
+
+          failures = []
+
+          def fail(msg):
+              failures.append(msg)
+
+          try:
+              with open("docs/tokens.json", encoding="utf-8") as f:
+                  ledger = json.load(f)
+          except (OSError, ValueError) as exc:
+              print(f"::error::docs/tokens.json does not parse as JSON: {exc}")
+              sys.exit(1)
+
+          # Keys the app's build-time release-notes reader depends on.
+          for key in ("total_tokens_since_start", "release_tokens",
+                      "release_version", "current_version"):
+              if key not in ledger:
+                  fail(f"docs/tokens.json is missing required key '{key}'")
+          for key in ("total_tokens_since_start", "release_tokens"):
+              if key in ledger and not isinstance(ledger[key], int):
+                  fail(f"docs/tokens.json '{key}' must be an integer")
+
+          releases = ledger.get("releases")
+          if not isinstance(releases, list) or not releases:
+              fail("docs/tokens.json 'releases' must be a non-empty list")
+              releases = []
+
+          prev_cumulative = 0
+          for rel in releases:
+              version = rel.get("version")
+              if not isinstance(version, str) or not re.fullmatch(r"\d+\.\d+\.\d+", version):
+                  fail(f"releases entry has bad version: {version!r}")
+              if not isinstance(rel.get("date"), str) or not re.fullmatch(
+                  r"\d{4}-\d{2}-\d{2}", rel.get("date", "")
+              ):
+                  fail(f"release {version!r} has bad date: {rel.get('date')!r}")
+              for key in ("tokens_this", "tokens_cumulative"):
+                  value = rel.get(key)
+                  if not isinstance(value, int) or value < 0:
+                      fail(f"release {version!r} has bad '{key}': {value!r}")
+              if isinstance(rel.get("tokens_this"), int) and isinstance(
+                  rel.get("tokens_cumulative"), int
+              ):
+                  if rel["tokens_cumulative"] != prev_cumulative + rel["tokens_this"]:
+                      fail(
+                          f"release {version!r}: tokens_cumulative does not equal "
+                          "the previous cumulative plus tokens_this"
+                      )
+                  prev_cumulative = rel["tokens_cumulative"]
+
+          if releases and "total_tokens_since_start" in ledger:
+              if ledger["total_tokens_since_start"] != releases[-1]["tokens_cumulative"]:
+                  fail(
+                      "total_tokens_since_start does not equal the last release's "
+                      "tokens_cumulative"
+                  )
+          if releases and "release_version" in ledger:
+              match = [r for r in releases if r.get("version") == ledger["release_version"]]
+              if not match:
+                  fail("release_version does not match any entry in 'releases'")
+              elif "release_tokens" in ledger and ledger["release_tokens"] != match[-1]["tokens_this"]:
+                  fail("release_tokens does not equal release_version's tokens_this")
+          if releases and "current_version" in ledger and \
+                  ledger["current_version"] != releases[-1]["version"]:
+              fail("current_version is not the newest release version")
+
+          rows = []
+          with open("docs/tokens.md", encoding="utf-8") as f:
+              for line in f:
+                  m = re.match(
+                      r"\|\s*v(\d+\.\d+\.\d+)\s*\|\s*(\d{4}-\d{2}-\d{2})\s*\|"
+                      r"\s*([\d,]+)\s*\|\s*([\d,]+)\s*\|",
+                      line,
+                  )
+                  if m:
+                      rows.append(
+                          (
+                              m.group(1),
+                              m.group(2),
+                              int(m.group(3).replace(",", "")),
+                              int(m.group(4).replace(",", "")),
+                          )
+                      )
+          if not rows:
+              fail("docs/tokens.md has no ledger rows matching the §24 table schema")
+          expected = [
+              (r["version"], r["date"], r["tokens_this"], r["tokens_cumulative"])
+              for r in releases
+              if isinstance(r.get("version"), str) and isinstance(r.get("date"), str)
+          ]
+          if rows != expected:
+              fail(
+                  "docs/tokens.md rows and docs/tokens.json 'releases' disagree "
+                  f"(md has {len(rows)} rows, json has {len(expected)} entries, "
+                  "or a value/date differs)"
+              )
+
+          if failures:
+              for message in failures:
+                  print(f"::error::{message}")
+              sys.exit(1)
+          print(
+              "Token ledger OK: docs/tokens.md and docs/tokens.json are mutually "
+              "consistent and the app-reader JSON shape is intact."
+          )
+          PY
+
       - name: Clippy
         if: runner.os == 'Linux'
         run: cargo clippy --workspace --all-targets -- -D warnings

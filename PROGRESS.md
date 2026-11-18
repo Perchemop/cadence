@@ -3,6 +3,33 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-18 — token ledger: measured usage from local OpenCode records (D34)
+
+Tooling slice; no application code touched (no `crates/**`):
+
+- **`scripts/token-ledger.py`** (stdlib-only) aggregates the real per-session
+  token columns from the local OpenCode store (`session_v2`), attributes
+  sessions by path (checkout + `cadence-*` worktrees), buckets them by
+  release-tag date and rewrites `docs/tokens.md` + `docs/tokens.json`
+  together. Privacy constraints in the script docstring: numeric aggregates
+  and path/timestamp metadata only — message content is never read.
+- **`docs/tokens.md`** created (guide §24 per-release table); measured totals:
+  6,790,816 tokens cumulative, the 0.13.0 cycle the largest (+3,279,251).
+  The ledger is a measured floor: home-directory sessions (orchestrators and
+  subagents) are not attributable by the store and are excluded.
+- **`docs/tokens.json`** keeps the app reader's three keys
+  (`total_tokens_since_start` / `release_tokens` / `release_version`) and
+  adds the §24 `releases` array; `release_tokens` 0 is the measured v0.14.0
+  cycle (no attributable sessions in its window).
+- **CI** gains the "Token ledger consistency" step (Linux, in `verify`):
+  validates tokens.md ↔ tokens.json mutual consistency, running-cumulative
+  arithmetic, date/number formats and the reader's JSON keys. Validation
+  only — CI never computes token numbers.
+- **Records:** CHANGELOG (0.15.0 Added + header note), D34, this file.
+
+Verification: CI run for this slice on `opencode/ci-tokens` (result
+recorded in the PR once green).
+
 ## 2026-11-18 — OpenCode workflow commands (guide §5.6.3) + docs reference index (§5.7.2)
 
 Process-infrastructure slice; no application code touched (no `crates/**`,

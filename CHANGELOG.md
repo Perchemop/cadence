@@ -3,14 +3,24 @@
 All notable changes to Cadence are documented here. The format loosely
 follows Keep a Changelog; releases use git tags.
 
-**Token usage metrics (cumulative):** tracked in `docs/tokens.json` (the
-CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
-~45K in the 0.12.0 cycle. The ledger's CI update on each tag is queued
-(`ROADMAP.md`).
+**Token usage metrics (cumulative):** tracked in `docs/tokens.json` and
+`docs/tokens.md` (the measured ledger, guide §24). Values are aggregated from
+the local OpenCode usage records by `scripts/token-ledger.py` and validated
+for internal consistency in CI; the ledger is a measured floor, not a
+ceiling (D34).
 
 ## [0.15.0] — Unreleased
 
 ### Added
+- Measured token ledger (guide §24): `scripts/token-ledger.py` aggregates
+  real per-session token usage from the local OpenCode records into
+  `docs/tokens.md` (per-release table) and `docs/tokens.json` (the app
+  reader's data, shape preserved), bucketed by release-tag date. CI
+  validates that the two committed files stay mutually consistent — it
+  never computes the numbers itself. The ledger replaces the old seed
+  values with measured totals (6,790,816 tokens attributable to Cadence so
+  far; a conservative floor — see D34 for the data source, privacy
+  constraints and the home-directory attribution limitation).
 - Optional AI assistant, command-stack wiring: `map_proposal_to_commands`
   turns an already-validated `Proposal` into the ordinary undoable
   `cadence-commands` values — create-activity, finish-to-start relationship
