@@ -3,6 +3,40 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-18 — optional AI assistant: command-stack wiring
+
+Accepted proposals now become ordinary undoable commands. New
+`crates/assistant/src/command_map.rs`:
+
+- **`map_proposal_to_commands`.** A pure, headless translation from a
+  validated `Proposal` to `cadence-commands::Command` values in proposal
+  order: `CreateActivity`, `CreateRelationship` (plainest finish-to-start
+  link, no lag — the planner edits type and lag afterwards, exactly as for a
+  manually added link), `SetActivityDuration`, and `SetActivityProgress`
+  (whole percentage converted to the command layer's basis points at this
+  one boundary). Identifiers come from the live project's next free ids.
+- **No partial application.** The mapping re-runs `Proposal::validate`
+  against the live project and returns the first problem as an error — never
+  a partial command list.
+- **Same undo path as manual edits.** Eight headless workflow tests apply the
+  mapped commands through the real `CommandStack` on a real `Project` and
+  assert the resulting state *and* that undo restores the previous state,
+  including a multi-change proposal undone one change at a time.
+- **Process note.** A first implementation by a parallel subagent was
+  discarded: it worked directly in the shared checkout instead of its
+  assigned worktree (violating the file-ownership rule), never compiled
+  (invented undo-description strings, a missing `Some(...)`, a struct
+  pattern on a unit variant, no `cadence-commands` dependency), and included
+  a fake coverage test. The landed module was re-derived against the real
+  `cadence-commands`/`cadence-core` sources; the salvage informed the shape
+  but every claim was verified in the source first.
+- **Tracking.** `CHANGELOG.md` (0.15.0/Added), the ROADMAP AI item and
+  `REQUIREMENTS_TRACEABILITY.md` updated. Next assistant slice: the review
+  panel.
+
+Verification: CI run for this slice on `opencode/ci-cmdstack` (result
+recorded in `CHANGELOG.md` and the PR once green).
+
 ## 2026-11-16 — optional AI assistant: foundation crate
 
 The first slice of the owner-approved AI-integration research lands as a new

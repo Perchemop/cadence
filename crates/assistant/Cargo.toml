@@ -9,6 +9,7 @@ repository.workspace = true
 description = "Model-agnostic AI assistant foundation for Cadence (off by default, bring-your-own-key)"
 
 [dependencies]
+cadence-commands.workspace = true
 cadence-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true

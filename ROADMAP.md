@@ -256,8 +256,11 @@ acceptance criteria drive implementation; it does not promise a release date.
       and a self-redacting `SecretKey`; 13 headless tests. **HTTP backends
       landed (2026-11-17):** OpenAI / Anthropic / Ollama / Gemini wires behind
       the same seam (D30) — keyless local Ollama, model required, plain-language
-      errors, no test sockets. Next: command-stack wiring so accepted
-      proposals become ordinary undoable commands, and the review panel.
+      errors, no test sockets. **Command-stack wiring landed (2026-11-18):**
+      `map_proposal_to_commands` turns validated proposals into the ordinary
+      undoable commands, so accepted suggestions apply, undo and redo exactly
+      like manual edits. Next: the review panel that shows a proposal, cites
+      its rationales and applies it on acceptance.
 - [x] **Lookahead / field planning (Aphex-inspired)** — rolling short-interval
       windows derived from the master schedule, weekly work plans with
       owner/promise tracking, a daily diary and huddle briefing, production
