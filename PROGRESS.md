@@ -3,6 +3,44 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-17 — optional AI assistant: HTTP provider backends (merged)
+
+The network half of the assistant landed behind the provider seam and was
+merged to `main` as PR #174 (`10df2c6`, all post-merge checks green):
+
+- **Four wire protocols** (D30): OpenAI chat-completions — also spoken by any
+  custom provider name, i.e. OpenAI-compatible servers such as LM Studio or
+  vLLM, which require their own `base_url`; Anthropic Messages with the
+  pinned `anthropic-version` and the required `max_tokens`; a locally hosted
+  Ollama (no key, streaming off); Google Gemini `generateContent` with the
+  model in the URL. Shapes verified against the vendors' published API
+  references (October 2026).
+- **Config.** `AssistantConfig` gains `model` and `base_url` (serde defaults;
+  settings saved by 0.14.0 still load). A model is required, a local Ollama
+  needs no key, a keyless OpenAI-compatible server needs only its address,
+  and credential headers are omitted entirely (never empty) when keyless.
+- **Errors.** Plain-language mapping: 401/403 and other 4xx are `Refused`
+  (configuration problems); 408/429/5xx and transport faults are `Network`,
+  carrying only the status and the provider's own short JSON error message —
+  request material is never echoed. Keys never appear in a request body or
+  URL (tested on every wire).
+- **Tests.** 24 headless tests in `http.rs` (request shapes, response
+  parsing for all four protocols, error boundaries, redaction invariants)
+  plus four config tests; no test opens a socket.
+- **Second-opinion review.** A reviewer pass on the finished diff found one
+  major (keyless OpenAI-compatible servers were rejected by
+  `is_configured`, contradicting the advertised support) and two minors
+  (empty credential headers when keyless; transport-error text echoing
+  request context). All fixed before merge with regression tests; recorded
+  as the D30 extension.
+- **Records.** D30 + D31, CHANGELOG 0.15.0, ROADMAP, traceability, the
+  README privacy note for the opt-in provider calls, and the guide-sync note
+  in `docs/current-model-map.md`.
+
+Verification: PR #174 required checks green (Verify on four platforms,
+Package, Semver, Lockfile, Security scans, Personal data scan — runs
+44253699727/44253699682/44253699890/44253699731 on `10df2c6`).
+
 ## 2026-11-18 — optional AI assistant: command-stack wiring
 
 Accepted proposals now become ordinary undoable commands. New
