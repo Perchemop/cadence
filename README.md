@@ -158,6 +158,17 @@ sends one GET request to the public GitHub Releases API. The request includes
 no project data, account, identifier or token; the answer is cached for a few
 hours and failures are reported without blocking the application.
 
+The optional AI assistant is the one feature that can talk to a model
+provider, and only ever on your explicit instruction. It is off by default and
+stays hidden until you enable it and configure a provider (OpenAI, Anthropic,
+a locally hosted Ollama, Google Gemini, or any OpenAI-compatible server), a
+model and — for hosted providers — your own API key. When you ask it for a
+suggestion, the prompt you submit is sent to exactly the provider you
+configured and nowhere else; nothing is sent on its own, nothing is retained
+by Cadence, and there is no telemetry. A locally hosted Ollama keeps the
+whole conversation on your machine. The API key is stored redacted: it never
+appears in logs, crash reports or serialised settings.
+
 Badges do not lie here: nothing in this project measures you. The only metrics
 recorded are the ones GitHub reports publicly (release downloads, clones,
 issues), for the maintainer's own context — see

@@ -20,6 +20,17 @@ the failover plugin, so the structure never depends on which model is running.
   `~/.config/opencode/AGENTS.md` (II.30 stanza + hierarchy wording) and
   `~/.config/opencode/instructions/rust-skills.md` (GUI section). MCP config
   needed no change (Context7 already enabled).
+- `guide.md` revision **2026-11-17** (1677 lines, read in full via the
+  synchronized ruleset before the assistant HTTP-backends slice): §19
+  token-efficiency skills + measured-only rule, §20 dead-code prohibition,
+  §23 config appendices, §24 token/contributor schemas, §25 external catalogs
+  + use rules, II.26.7 dev-identity authorship, II.29 fifth scan surface
+  (crash payload), §7.1 mandatory crash scrub, §7.2 signing-key compromise
+  procedure, §9.1–9.4 restructure, 14 house rules, §17 binding Rust summary.
+  No new repo obligation beyond what D27/D28 already adopt; this slice
+  observes §20 (every file written is reachable and tested) and the §25
+  use rules (provider APIs verified from the vendors' own published
+  references).
 
 ## Active provider
 

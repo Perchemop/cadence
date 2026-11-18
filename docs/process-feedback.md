@@ -34,3 +34,32 @@ Workaround I used (if any): parsed the rustfmt diff out of the failing job
 Confirm: did NOT violate clean-room / v0.1.0 gate / no-secrets /
   CI-before-client-try / no meta-guide push
 ```
+
+---
+
+```text
+PROCESS FEEDBACK
+Date / session: 2026-11-18
+What I was trying to do: land the assistant HTTP-backends slice with the
+  fmt gate green on the first verification round (no cargo locally).
+Block or friction: hand-writing rustfmt-conformant code is unreliable.
+  Round 2 failed the fmt gate; round 3 failed clippy on a concat! I had
+  added purely to keep a line under 100 columns (fmt and clippy disagree
+  about how to express a long string literal). Each round trip costs a
+  full multi-platform Verify, roughly 15 minutes. This repeats the
+  2026-11-02 entry below from a different angle.
+Why the current guide/addendum caused it (or did not cover it): the guide
+  bans cargo locally (correctly) but does not distinguish the standalone
+  rustfmt binary — a millisecond pure-text transformer over edited files,
+  no workspace resolution, no build — from cargo subcommands, so
+  hand-formatting looked like the only local option.
+Suggested change (one concrete edit): record in the guide's K.11 local-work
+  allowance that running the standalone `rustfmt` binary directly (never
+  `cargo fmt`) on edited files is permitted text processing; CI's
+  `cargo fmt --check --all` remains the authoritative gate.
+Severity: slows-work
+Workaround I used (if any): ran `rustfmt --edition 2021 <files>` directly;
+  output byte-identical to the CI gate's formatter, no cargo invoked.
+Confirm: did NOT violate clean-room / v0.1.0 gate / no-secrets /
+  CI-before-client-try / no meta-guide push
+```

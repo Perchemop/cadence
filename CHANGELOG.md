@@ -8,6 +8,27 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
 ~45K in the 0.12.0 cycle. The ledger's CI update on each tag is queued
 (`ROADMAP.md`).
 
+## [0.15.0] — Unreleased
+
+### Added
+- Optional AI assistant, HTTP backends: `cadence-assistant` now speaks to
+  real providers behind the same `AssistantProvider` seam — OpenAI
+  chat-completions (and OpenAI-compatible servers such as LM Studio or vLLM
+  via a configurable server address), Anthropic Messages, a locally hosted
+  Ollama (no API key needed, streaming off), and Google Gemini. A keyless
+  OpenAI-compatible server needs no API key either. Requests are
+  built and responses parsed by headless, socket-free pure functions;
+  transport errors map to plain-language failures (refused vs. retryable)
+  that never echo request material. The assistant remains off by default and
+  only ever calls a provider in response to an explicit user action.
+
+### Changed
+- `AssistantConfig` gains `model` and `base_url` (both with serde defaults,
+  so settings saved by 0.14.0 still load). A model is now required before the
+  assistant counts as configured, a local Ollama no longer needs an API key,
+  and an OpenAI-compatible server requires its own address. Workspace version
+  0.14.0 → 0.15.0 (public-struct field additions; semver check).
+
 ## [0.14.0] — 2026-11-16
 
 ### Added

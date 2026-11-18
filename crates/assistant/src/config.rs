@@ -65,22 +65,71 @@ impl<'de> Deserialize<'de> for SecretKey {
 /// The default is **off**: `enabled` is `false`, so [`AssistantConfig::is_configured`]
 /// returns `false` regardless of the other fields. The UI must hide the
 /// assistant feature until the user explicitly enables it and configures a
-/// provider and an API key.
+/// provider, a model and — for hosted providers — an API key.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct AssistantConfig {
     /// Whether the assistant feature is active at all.
     pub enabled: bool,
     /// The configured provider, if any.
+    ///
+    /// Known names: `openai`, `anthropic`, `ollama`, `gemini`. Any other
+    /// non-empty name is treated as an OpenAI-compatible server and requires
+    /// [`AssistantConfig::base_url`].
     pub provider_name: Option<String>,
     /// The configured API key, if any.
+    ///
+    /// A locally hosted server (Ollama) needs no key.
     pub api_key: Option<SecretKey>,
+    /// The model identifier to request from the provider (for example
+    /// `gpt-4o-mini` or a locally pulled Ollama tag).
+    #[serde(default)]
+    pub model: Option<String>,
+    /// An optional server address overriding the provider's default
+    /// endpoint — required for OpenAI-compatible servers.
+    #[serde(default)]
+    pub base_url: Option<String>,
+}
+
+/// A trimmed, non-empty view of an optional setting.
+fn trimmed(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+/// The provider names the assistant speaks natively (case-insensitive).
+///
+/// Keep in step with the wire mapping in `http::Wire::from_provider_name`,
+/// which turns these same names into their protocols.
+pub(crate) fn is_known_provider(name: &str) -> bool {
+    let lowered = name.to_ascii_lowercase();
+    matches!(
+        lowered.as_str(),
+        "openai" | "anthropic" | "ollama" | "gemini"
+    )
 }
 
 impl AssistantConfig {
     /// Whether the assistant is enabled **and** fully configured.
     ///
     /// The UI must hide the assistant feature when this returns `false`.
+    /// The rules:
+    ///
+    /// * a provider name and a model must be set;
+    /// * a key must be set unless the provider needs none — a local Ollama,
+    ///   or an OpenAI-compatible server with its own address (local
+    ///   inference servers commonly run without a key, and the wire layer
+    ///   omits the credential header when none is set);
+    /// * an OpenAI-compatible server always needs an address.
     pub fn is_configured(&self) -> bool {
-        self.enabled && self.provider_name.is_some() && self.api_key.is_some()
+        let provider = trimmed(self.provider_name.as_deref());
+        let model = trimmed(self.model.as_deref());
+        let base_url = trimmed(self.base_url.as_deref());
+        let known = provider.is_some_and(is_known_provider);
+        let keyless = provider.is_some_and(|name| name.eq_ignore_ascii_case("ollama"))
+            || (provider.is_some_and(|name| !is_known_provider(name)) && base_url.is_some());
+        self.enabled
+            && provider.is_some()
+            && model.is_some()
+            && (self.api_key.is_some() || keyless)
+            && (known || base_url.is_some())
     }
 }
