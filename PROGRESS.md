@@ -44,6 +44,14 @@ tests (`main` @ `7755c92`) before being recorded.
   surfaces, keyless local-Ollama/OpenAI-compatible support (D30), and
   progress-driven rescheduling as an explicit property-tested engine mode
   (D24).
+- **Verification.** PR #178; the authoritative check set on head `1cf61a8`
+  (Verify on four platforms + Package, the six Security checks, Lockfile
+  freshness, Personal data scan). Note: the `pull_request` trigger registered
+  no runs for this PR (GitHub-side event suppression; a close/reopen also
+  produced none), so CI/Security/Lockfile were verified via
+  `workflow_dispatch` on the branch, which uses the identical workflow files;
+  the Personal data scan has no dispatch trigger and rides the synchronize
+  event of this amendment.
 - **Observation for a future slice (not done here, docs-scope only):** the
   landed assistant slices are recorded in the traceability file's
   future-expansion table but have no `R31+` rows in
