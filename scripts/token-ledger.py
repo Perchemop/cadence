@@ -341,8 +341,11 @@ def main() -> int:
         return 0
 
     docs = checkout / "docs"
-    json_path = docs / "tokens.json"
-    md_path = docs / "tokens.md"
+    if not docs.is_dir():
+        print(f"error: {docs} not found (run inside the repository)", file=sys.stderr)
+        return 1
+    json_path = checkout / LEDGER_JSON
+    md_path = checkout / LEDGER_MD
     write_ledger_json(
         json_path, rows, total, (rows[-1][0], rows[-1][1], rows[-1][2], rows[-1][3])
     )
