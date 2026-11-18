@@ -36,6 +36,31 @@ under the guide §5.6 Case-3 path (`/to-spec` + `/to-tickets`):
   resolving**, so the first implementation ticket starts from a current
   `main` without colliding with in-flight owner work.
 
+## 2026-11-18 — OpenCode workflow commands (guide §5.6.3) + docs reference index (§5.7.2)
+
+Process-infrastructure slice; no application code touched (no `crates/**`,
+no `.github/**`):
+
+- **Seven command definitions** in `.opencode/command/` — `grill-me.md`
+  (read-only `agent: plan` interrogation), `to-spec.md`, `to-tickets.md`,
+  `tdd.md` (red/green/refactor with every phase verified through
+  `ci.sh run "TDD …"` and a recorded red-run ID), `implement.md`
+  (single-ticket `/new` session; commit via ci.sh; merge only via
+  `ci.sh merge`), `implement-spec.md` (worktree isolation; sub-agents obey
+  the HARD BUILD RULE — no local builds, verification through `ci.sh`) and
+  `code-review.md` (`agent: plan` + `subtask: true`; architectural,
+  tactical, clean-room and secrets axes). Each file states purpose,
+  invocation and the binding §5.6.3 rules, and points at the §5.6.5
+  reconciliation table (D32).
+- **`docs/reference/index.md`** — the §5.7.2 documentation pre-loading
+  index for agent teams: one line per file in `docs/`, grouped (product &
+  scope, research, design, audits & quality gates, process & records);
+  regenerated when docs change.
+- **Records:** CHANGELOG (0.15.0 Added), D32, this file.
+
+Verification: CI run for this slice on `opencode/ci-commands` (result
+recorded in the PR once green).
+
 ## 2026-11-17 — optional AI assistant: HTTP provider backends (merged)
 
 The network half of the assistant landed behind the provider seam and was
