@@ -41,6 +41,15 @@ CI-managed ledger, guide §12.1). Current seed values: ~1.2M total since start,
   rules (D32). Also added `docs/reference/index.md`, the §5.7.2
   documentation pre-loading index for agent teams, regenerated when the
   docs tree changes.
+- Release-artefact signing: the release workflow signs `SHA256SUMS.txt` with
+  minisign and attaches the signature as `SHA256SUMS.txt.minisig` before the
+  release is published (a missing signing key fails the release rather than
+  publishing unsigned, and the fresh signature is verified on the runner
+  before upload). The signing keypair is generated on the GitHub Actions
+  runner by a new hand-triggered `Signing key rotation` workflow and exists
+  only as repository secrets — never on a developer machine. Mechanism,
+  public key and rotation procedure in `docs/update-signing.md` (D33).
+
 
 ### Changed
 - `AssistantConfig` gains `model` and `base_url` (both with serde defaults,
