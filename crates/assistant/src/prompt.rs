@@ -136,9 +136,8 @@ pub fn parse_proposal_response(text: &str) -> Result<Proposal, AssistantError> {
             "the answer was wrapped in a code fence that never closed".to_owned(),
         )
     })?;
-    let value: serde_json::Value = serde_json::from_str(json).map_err(|_| {
-        AssistantError::MalformedOutput("the answer was not valid JSON".to_owned())
-    })?;
+    let value: serde_json::Value = serde_json::from_str(json)
+        .map_err(|_| AssistantError::MalformedOutput("the answer was not valid JSON".to_owned()))?;
     let proposal: Proposal = serde_json::from_value(value).map_err(|_| {
         AssistantError::MalformedOutput(
             "the answer was not the expected proposal object with \"prose\" and \"changes\""
