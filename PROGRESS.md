@@ -3,6 +3,25 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-19 — user-directed skills: relocation, invocation policy, records (D35)
+
+Process-infrastructure slice; no application code touched:
+
+- The D31 skill packs were relocated from `~/.config/opencode/.agents/skills/`
+  to `~/.config/opencode/skill/` (the directory this OpenCode build loads);
+  invocation verified in-session (`poteto-mode` loaded, registry hot-reloaded).
+- The owner's auto-invocation directive is codified in the global ruleset and
+  mirrored into `.opencode/agents/orchestrator.md` so every future Cadence
+  session invokes matching skills automatically (`lean-build` was invoked for
+  the RP-1/RP-2 slice in flight).
+- pstack licence verified from source: MIT (`LICENSE` + `plugin.json`), —
+  the guide §22.2.3 "Apache-2.0" claim is superseded by the licence file
+  (§25 use-rule 3); recorded as D35 and flagged to the owner.
+- Records: DECISIONS D35, `.opencode/agents/orchestrator.md`, this file.
+
+Verification: CI run for this slice on `opencode/ci-skills` (result recorded
+in the PR once green).
+
 ## 2026-11-18 — token ledger: measured usage from local OpenCode records (D34)
 
 Tooling slice; no application code touched (no `crates/**`):

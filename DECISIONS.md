@@ -884,3 +884,33 @@ aggregates and the ledger gains a per-release table in `docs/tokens.md`.
   `releases` array is additive — serde ignores unknown fields. CI asserts
   the reader keys are present so a future schema change cannot silently
   break the in-app popup.
+## D35 — User-directed skills: relocation, invocation policy, and the pstack licence verification (2026-11-19)
+
+The owner-directed skill packs (D31) were installed into
+`~/.config/opencode/.agents/skills/`, which this OpenCode build does not load —
+invocation failed with "Unable to load skill" for both `poteto-mode` and
+`caveman`. The packs were **relocated to `~/.config/opencode/skill/<name>/`**
+(the location the working built-in skills occupy), after which the registry
+hot-reloaded and `poteto-mode` loaded successfully in-session. Lesson recorded:
+the upstream `npx skills add` target directory is not the directory this
+runtime loads.
+
+- **Invocation policy (owner directive, codified in the global ruleset
+  2026-11-19):** user-directed skills are invoked automatically when a task
+  matches their trigger; skipping a trigger match is a process defect. The
+  `caveman` family stays manual-only (owner toggles the style), per the
+  policy's plain-language guard (II.22).
+- **pstack licence verified from source:** `pstack/LICENSE` and
+  `plugin.json` both declare **MIT** (© Lauren Tan). The "Apache-2.0" claim in
+  guide §22.2.3 (2026-11-18 revision) is superseded by the licence file —
+  §25 use-rule 3: the source repo's LICENSE governs. ATTRIBUTION.md already
+  records MIT; no change needed there.
+- **§19/§22 posture adopted (guide 2026-11-19):** reference-catalog,
+  adapt-don't-install. The D31 installation used `npx skills add -a opencode`
+  (an OpenCode target, not Claude Code), and the packs now live in the
+  §19-sanctioned directory; the relocation completes the adaptation.
+- **Repo-level enforcement:** `.opencode/agents/orchestrator.md` carries the
+  invocation policy so every future Cadence session auto-invokes per trigger.
+
+No shipped artefact changes: these are maintainer-machine and process files.
+
