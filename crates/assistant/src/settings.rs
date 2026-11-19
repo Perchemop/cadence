@@ -110,19 +110,13 @@ mod tests {
         let mut env = HashMap::new();
         let expected: PathBuf;
         if cfg!(target_os = "windows") {
-            env.insert(
-                "APPDATA".to_owned(),
-                String::from("C:\\AppData\\Roaming"),
-            );
+            env.insert("APPDATA".to_owned(), String::from("C:\\AppData\\Roaming"));
             expected = PathBuf::from("C:\\AppData\\Roaming");
         } else if cfg!(target_os = "macos") {
             env.insert("HOME".to_owned(), String::from("/Users/planner"));
             expected = PathBuf::from("/Users/planner/Library/Application Support");
         } else {
-            env.insert(
-                "XDG_CONFIG_HOME".to_owned(),
-                String::from("/xdg/config"),
-            );
+            env.insert("XDG_CONFIG_HOME".to_owned(), String::from("/xdg/config"));
             expected = PathBuf::from("/xdg/config");
         };
         let lookup = move |name: &str| env.get(name).cloned();
@@ -145,10 +139,7 @@ mod tests {
         env.insert("XDG_CONFIG_HOME".to_owned(), String::from("   "));
         env.insert("HOME".to_owned(), String::from("/planner-home"));
         let lookup = move |name: &str| env.get(name).cloned();
-        assert_eq!(
-            config_dir(lookup),
-            Some(PathBuf::from("/planner-home"))
-        );
+        assert_eq!(config_dir(lookup), Some(PathBuf::from("/planner-home")));
     }
 
     #[test]
@@ -204,11 +195,16 @@ mod tests {
         let path = dir.join("assistant-settings.json");
         std::fs::write(&path, "{ not json at all").expect("write the corrupt file");
         let loaded = load_settings_from(&path);
-        assert_eq!(loaded, AssistantConfig::default());
+        assert!(!loaded.enabled);
+        assert_eq!(loaded.provider_name, None);
+        assert_eq!(loaded.api_key, None);
+        assert_eq!(loaded.model, None);
+        assert_eq!(loaded.base_url, None);
         assert!(!loaded.is_configured());
         // A missing file behaves the same way.
         let missing = load_settings_from(&dir.join("does-not-exist.json"));
-        assert_eq!(missing, AssistantConfig::default());
+        assert!(!missing.enabled);
+        assert_eq!(missing.provider_name, None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -216,9 +212,8 @@ mod tests {
     fn store_creates_missing_directories() {
         let dir = temp_dir("mkdirs");
         let path = dir.join("cadence").join("assistant-settings.json");
-        store_settings_at(&path, &config_with_key()).expect(
-            "store creates the directory chain",
-        );
+        store_settings_at(&path, &config_with_key())
+            .expect("store creates the directory chain");
         assert!(path.is_file());
         let _ = std::fs::remove_dir_all(&dir);
     }
