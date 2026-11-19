@@ -29,6 +29,7 @@ cadence-commands = { path = "crates/commands", version = "0.16.0" }
 cadence-persistence = { path = "crates/persistence", version = "0.16.0" }
 cadence-interchange = { path = "crates/interchange", version = "0.16.0" }
 cadence-ui-egui = { path = "crates/ui-egui", version = "0.16.0" }
+cadence-assistant = { path = "crates/assistant", version = "0.16.0" }
 
 time = { version = "0.3", features = ["formatting", "parsing", "serde"] }
 serde = { version = "1", features = ["derive"] }

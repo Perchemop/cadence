@@ -55,8 +55,8 @@ use egui::accesskit::Role;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use time::{Date, Month};
 
-/// The nine view-tab labels of the shell, in display order.
-const VIEW_TABS: [&str; 9] = [
+/// The ten view-tab labels of the shell, in display order.
+const VIEW_TABS: [&str; 10] = [
     "Table",
     "Gantt",
     "Resources",
@@ -66,6 +66,7 @@ const VIEW_TABS: [&str; 9] = [
     "Lookahead",
     "Diary",
     "Production",
+    "Assistant",
 ];
 
 /// The AccessKit roles a user can act on directly. This mirrors the input set
