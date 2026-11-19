@@ -1034,3 +1034,24 @@ The one-time signing setup hit two facts worth recording:
   caught a silent no-op at release time (fail loud, never publish unsigned),
   but the fix removes the wasted release round.
 
+## D39 — EVM completion slice: EAC/BAC/TCPI/VAC metrics (2026-11-20)
+
+- **Scope:** Extend `EvmMetrics` with three new PMI-standard earned-value
+  projections: EAC (estimate at completion), TCPI (to-complete performance
+  index), and VAC (variance at completion).
+- **Formulas implemented:**
+  - EAC = BAC / CPI (when CPI defined), otherwise EAC = BAC (fallback when
+    CPI undefined / denominator zero)
+  - TCPI = (BAC − EV) / (BAC − AC) (None when BAC == AC, zero-denominator
+    convention per PMI)
+  - VAC = BAC − EAC (positive = under budget, negative = over budget)
+- **Dependencies:** Uses existing `budget_at_completion`, `actual_cost`,
+  `earned_value`, `planned_value` from the activity model; no new data
+  fields required.
+- **Test pattern:** Unit tests in `crates/core/src/model.rs` verify each
+  formula's happy path, zero-division fallbacks, boundary conditions
+  (progress 0%, 100%), and determinism.
+- **Acceptance criteria:** All new EVM metrics computed correctly from
+  existing inputs; zero-denominator conventions match existing module
+  conventions for CPI/SPI None-values; TDD red/green CI cycle passed.
+

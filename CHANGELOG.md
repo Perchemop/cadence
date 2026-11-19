@@ -13,6 +13,20 @@ orchestrators and subagents), and the strict path-attributable subset
 the current mapping is the accurate parent-chain figure with its
 over-attribution caveat recorded.
 
+## [0.16.0] — Unreleased
+
+### Added
+- EVM extended metrics: EAC (estimate at completion), TCPI (to-complete performance index), VAC (variance at completion) computed from existing BAC/EV/AC inputs
+- New `estimate_at_completion`, `to_complete_performance_index`, `variance_at_completion` fields in `EvmMetrics` struct
+- Updated `EvmMetrics::for_activity` and `engine::evm_metrics` to compute the new standard earned-value projections per PMI standard
+
+### Changed
+- Extended `EvmMetrics` with three new result fields
+- Updated project-level EVM metrics aggregation in `engine.rs`
+
+### Fixed
+- Zero-denominator conventions for TCPI (BAC == AC) and EAC fallback (CPI undefined)
+
 ## [0.15.0] — 2026-11-19
 
 ### Added
