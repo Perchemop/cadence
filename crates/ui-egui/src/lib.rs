@@ -2538,8 +2538,8 @@ impl CadenceApp {
                             (ViewMode::Lookahead, "Lookahead (Ctrl+7)"),
                             (ViewMode::Diary, "Diary (Ctrl+8)"),
                             (ViewMode::Production, "Production (Ctrl+9)"),
-                                (ViewMode::Assistant, "Assistant"),
-                            ] {
+                            (ViewMode::Assistant, "Assistant"),
+                        ] {
                             if ui.radio(self.view_mode == mode, label).clicked() {
                                 self.view_mode = mode;
                             }
