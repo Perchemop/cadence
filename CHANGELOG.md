@@ -13,7 +13,7 @@ orchestrators and subagents), and the strict path-attributable subset
 the current mapping is the accurate parent-chain figure with its
 over-attribution caveat recorded.
 
-## [0.15.0] — Unreleased
+## [0.15.0] — 2026-11-19
 
 ### Added
 - Measured token ledger with two-tier attribution (guide §24; D34 + D36):
