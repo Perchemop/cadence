@@ -52,7 +52,7 @@ jobs:
           fi
           echo "Token discipline OK: no raw colour literals outside crates/ui-egui/src/design.rs."
 
-      # The token ledger (guide §24, D34) is aggregated from local usage
+      # The token ledger (guide §24, D34/D36) is aggregated from local usage
       # records by scripts/token-ledger.py, which CI cannot run. CI therefore
       # only validates that the two committed ledger files are mutually
       # consistent and that the JSON shape the app's build-time reader
@@ -112,12 +112,41 @@ jobs:
                       )
                   prev_cumulative = rel["tokens_cumulative"]
 
+          # Two-tier attribution (D36): headline totals are the
+          # orchestration-inclusive Tier A+B; the *_direct keys are the strict
+          # path-attributable Tier-A subset. All are additive over the §24
+          # schema and validated when present.
+          direct_sum = 0
+          for rel in releases:
+              if "tokens_direct" in rel:
+                  value = rel["tokens_direct"]
+                  if not isinstance(value, int) or value < 0:
+                      fail(f"release {rel.get('version')!r} has bad 'tokens_direct': {value!r}")
+                  elif isinstance(rel.get("tokens_this"), int) and value > rel["tokens_this"]:
+                      fail(
+                          f"release {rel.get('version')!r}: tokens_direct exceeds "
+                          "tokens_this (direct is a strict subset of the headline)"
+                      )
+                  direct_sum += value if isinstance(value, int) and value >= 0 else 0
+
+          for key in ("tokens_unreleased", "tokens_direct_unreleased", "total_tokens_direct"):
+              if key in ledger and (not isinstance(ledger[key], int) or ledger[key] < 0):
+                  fail(f"docs/tokens.json '{key}' must be a non-negative integer")
+
           if releases and "total_tokens_since_start" in ledger:
-              if ledger["total_tokens_since_start"] != releases[-1]["tokens_cumulative"]:
+              unreleased = ledger.get("tokens_unreleased", 0)
+              if isinstance(unreleased, int) and unreleased >= 0 and \
+                      ledger["total_tokens_since_start"] != releases[-1]["tokens_cumulative"] + unreleased:
                   fail(
                       "total_tokens_since_start does not equal the last release's "
-                      "tokens_cumulative"
+                      "tokens_cumulative plus tokens_unreleased"
                   )
+          if "total_tokens_direct" in ledger and \
+                  ledger["total_tokens_direct"] != direct_sum + ledger.get("tokens_direct_unreleased", 0):
+              fail(
+                  "total_tokens_direct does not equal the sum of the releases' "
+                  "tokens_direct plus tokens_direct_unreleased"
+              )
           if releases and "release_version" in ledger:
               match = [r for r in releases if r.get("version") == ledger["release_version"]]
               if not match:
@@ -133,7 +162,7 @@ jobs:
               for line in f:
                   m = re.match(
                       r"\|\s*v(\d+\.\d+\.\d+)\s*\|\s*(\d{4}-\d{2}-\d{2})\s*\|"
-                      r"\s*([\d,]+)\s*\|\s*([\d,]+)\s*\|",
+                      r"\s*([\d,]+)\s*\|\s*([\d,]+)\s*\|\s*([\d,]+)\s*\|",
                       line,
                   )
                   if m:
@@ -143,12 +172,19 @@ jobs:
                               m.group(2),
                               int(m.group(3).replace(",", "")),
                               int(m.group(4).replace(",", "")),
+                              int(m.group(5).replace(",", "")),
                           )
                       )
           if not rows:
               fail("docs/tokens.md has no ledger rows matching the §24 table schema")
           expected = [
-              (r["version"], r["date"], r["tokens_this"], r["tokens_cumulative"])
+              (
+                  r["version"],
+                  r["date"],
+                  r["tokens_this"],
+                  r["tokens_cumulative"],
+                  r.get("tokens_direct", 0),
+              )
               for r in releases
               if isinstance(r.get("version"), str) and isinstance(r.get("date"), str)
           ]

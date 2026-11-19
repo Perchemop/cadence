@@ -6,21 +6,37 @@ follows Keep a Changelog; releases use git tags.
 **Token usage metrics (cumulative):** tracked in `docs/tokens.json` and
 `docs/tokens.md` (the measured ledger, guide §24). Values are aggregated from
 the local OpenCode usage records by `scripts/token-ledger.py` and validated
-for internal consistency in CI; the ledger is a measured floor, not a
-ceiling (D34).
+for internal consistency in CI. Attribution is two-tier (D36): the headline
+totals are orchestration-inclusive (Tier A+B, parent-chain closure over
+orchestrators and subagents), and the strict path-attributable subset
+(Direct, Tier A) is reported alongside — the D34 floor was a lower bound;
+the current mapping is the accurate parent-chain figure with its
+over-attribution caveat recorded.
 
 ## [0.15.0] — Unreleased
 
 ### Added
-- Measured token ledger (guide §24): `scripts/token-ledger.py` aggregates
-  real per-session token usage from the local OpenCode records into
-  `docs/tokens.md` (per-release table) and `docs/tokens.json` (the app
-  reader's data, shape preserved), bucketed by release-tag date. CI
-  validates that the two committed files stay mutually consistent — it
-  never computes the numbers itself. The ledger replaces the old seed
-  values with measured totals (6,790,816 tokens attributable to Cadence so
-  far; a conservative floor — see D34 for the data source, privacy
-  constraints and the home-directory attribution limitation).
+- Measured token ledger with two-tier attribution (guide §24; D34 + D36):
+  `scripts/token-ledger.py` aggregates real per-session token usage from the
+  local OpenCode records into `docs/tokens.md` (per-release table) and
+  `docs/tokens.json` (the app reader's data, shape preserved), bucketed by
+  release-tag date. Tier A attributes sessions by path (the checkout, its
+  `cadence-*` worktrees and the store's opencode-managed worktree
+  directories) — the strict floor: 6,790,816 tokens. Tier A+B adds the
+  parent-chain closure — every ancestor orchestrator and descendant
+  subagent of a direct session — as the headline total: 1,711,676,910
+  tokens across 12 attributed sessions (the two multi-repo orchestrator
+  sessions carry 1.70B of it; an orchestrator that touched several
+  repositories attributes wholly to Cadence, an accepted conservative
+  over-attribution — the direct column is the strict lower bound). CI
+  validates that the two committed files stay mutually consistent,
+  including the new Direct column and the unreleased-cycle totals — it
+  never computes the numbers itself. The old D34 figure was a measured
+  floor that excluded all home-directory orchestrator sessions; the
+  two-tier ledger is the accurate parent-chain mapping, with both bounds
+  reported honestly. Privacy constraints unchanged: numeric usage columns
+  and path/timestamp/ID metadata only (the opaque `parent_id` links are
+  used solely for attribution); conversation content is never read.
 - Optional AI assistant, command-stack wiring: `map_proposal_to_commands`
   turns an already-validated `Proposal` into the ordinary undoable
   `cadence-commands` values — create-activity, finish-to-start relationship

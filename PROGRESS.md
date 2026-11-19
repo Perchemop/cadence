@@ -3,6 +3,53 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-19 — token ledger: accurate parent-chain attribution (D36)
+
+Tooling slice; no application code touched (no `crates/**`):
+
+- **`scripts/token-ledger.py`** gains a second attribution tier on top of the
+  D34 path rule. Tier A (direct) = directory/project-worktree path match plus
+  the store's `worktree`-table directories for this repository's projects
+  (catches opencode-managed worktrees without a repo-prefixed name).
+  Tier A+B (headline) = Tier A plus the transitive parent-chain closure:
+  every ancestor orchestrator and every descendant subagent of a direct
+  session (`session_v2.parent_id`; siblings excluded). The D34 floor is kept
+  as the reported "Direct (Tier A)" subset.
+- **Measured result** (store read 2026-11-19): Tier A 10 sessions /
+  6,790,816 tokens — byte-identical to the D34 floor, confirming no
+  attribution regression. Tier A+B 12 sessions / 1,711,676,910 tokens: two
+  ancestor `build` orchestrators carry 1,704,886,094 tokens (bucketed by
+  start time into 0.3.0 +1,125,404,657 and 0.11.0 +579,494,770); 832 of 844
+  store sessions stay excluded. Documented caveat: cross-repo orchestrators
+  attribute wholly to Cadence (no per-repo split exists in the store), so
+  the headline leans high and the direct column is the strict lower bound.
+- **Unreleased-cycle consistency fix:** the D34 script added
+  after-newest-tag sessions to `total_tokens_since_start` while CI asserted
+  equality with the last release's cumulative — a latent red-CI trap on the
+  first mid-cycle regeneration. The ledger now emits additive
+  `tokens_unreleased` / `tokens_direct_unreleased` keys and CI validates
+  `total == last cumulative + tokens_unreleased` (both 0 today).
+- **`docs/tokens.md` / `docs/tokens.json`** regenerated: the §24 table gains
+  an additive "Direct (Tier A)" column and the JSON additive
+  `tokens_direct` / `total_tokens_direct` / `*_unreleased` keys; the app
+  reader's three keys keep their names (`total_tokens_since_start` is now
+  the Tier A+B headline). Privacy constraints unchanged and restated in the
+  script docstring: numeric usage columns plus path/timestamp/ID metadata
+  only (the opaque `parent_id` is used solely for attribution); message,
+  part, title and message-JSON data are never read; store opened read-only;
+  no network.
+- **CI** ("Token ledger consistency", Linux): extended to validate the new
+  md column and JSON keys (direct ≤ headline per release, direct-total
+  arithmetic, unreleased totals) — validation only, CI never computes token
+  numbers. Negative-tested locally: tampered md column, tampered JSON
+  direct, broken total arithmetic, direct-exceeds-headline and negative
+  unreleased all fail the gate; the regenerated files pass.
+- **Records:** DECISIONS D36, CHANGELOG (0.15.0 amendment + header note),
+  this file.
+
+Verification: CI run for this slice on `opencode/ci-tokens2` (result
+recorded in the PR once green).
+
 ## 2026-11-19 — user-directed skills: relocation, invocation policy, records (D35)
 
 Process-infrastructure slice; no application code touched:

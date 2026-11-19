@@ -914,3 +914,57 @@ runtime loads.
 
 No shipped artefact changes: these are maintainer-machine and process files.
 
+## D36 — Token ledger attribution: two-tier parent-chain mapping (2026-11-19)
+
+D34's ledger was honest but coarse: it attributed sessions by path only
+(checkout + `cadence-*` worktrees), which measured a floor of 6,790,816
+tokens and silently excluded every orchestrator session and its subagent
+tree — the bulk of real development usage, launched from the home directory.
+The store's `session_v2.parent_id` links make the missing mapping computable,
+so the ledger gains a second attribution tier.
+
+- **Tier A — direct (strict floor, unchanged rule plus one widening).** A
+  session is directly attributable when its own directory, its project's
+  `worktree`, or a directory the store's `worktree` table lists for one of
+  the repository's projects, is the checkout or a `cadence-*` sibling
+  worktree. The `worktree`-table widening catches opencode-managed worktree
+  paths whose names carry no repo prefix (e.g.
+  `~/.local/share/opencode/worktree/<id>/shell-polish`). Tier A is reported
+  per release as `tokens_direct` (JSON) and the "Direct (Tier A)" column
+  (tokens.md).
+- **Tier A+B — orchestration-inclusive (headline).** Seed = the Tier-A set;
+  add every transitive ancestor (the orchestrators that spawned direct
+  sessions) and every transitive descendant (further subagents) over the
+  parent links. Siblings — other children of an ancestor — are neither and
+  stay excluded. Release rows and `total_tokens_since_start` report Tier A+B.
+- **Measured result (store read 2026-11-19):** Tier A 10 sessions /
+  6,790,816 tokens (identical to the D34 floor, confirming no regression);
+  Tier A+B 12 sessions / 1,711,676,910 tokens — the two ancestor `build`
+  orchestrators carry 1,704,886,094 tokens, bucketed by start time into the
+  0.3.0 (+1,125,404,657) and 0.11.0 (+579,494,770) cycles; 832 of 844 store
+  sessions remain excluded.
+- **Accepted caveat — conservative over-attribution.** An orchestrator that
+  worked across multiple repositories attributes wholly to Cadence under the
+  ancestor rule: the store records no per-repository split inside a session.
+  Tier A+B therefore leans high; the direct Tier-A figure is the strict
+  lower bound. Both are measured; the ledger stays accuracy-over-precision
+  with the floor/ceiling honesty stated next to the numbers.
+- **Unreleased-cycle consistency fix (same machinery).** The D34 script added
+  after-newest-tag sessions to `total_tokens_since_start` while CI asserted
+  `total == last release's tokens_cumulative` — a latent contradiction that
+  would turn CI red on the first mid-cycle regeneration. The ledger now
+  reports `tokens_unreleased` / `tokens_direct_unreleased` additively and CI
+  validates `total == last cumulative + tokens_unreleased`.
+- **Privacy wall reaffirmed and extended.** The script still reads only
+  numeric usage columns plus path/timestamp/ID metadata — now including
+  `parent_id`, an opaque ID used solely to build the attribution graph. It
+  never reads message or part tables, message JSON, session titles, or any
+  content that could carry conversation text; the store is opened read-only
+  and no network access is performed.
+- **Compatibility.** The app reader's three keys keep their names and
+  meaning (`total_tokens_since_start` is now the Tier A+B headline); all new
+  keys and the `tokens_direct` release field are additive (serde ignores
+  unknown fields). CI's "Token ledger consistency" step validates the new
+  fields and the extended tokens.md table — validation only, CI never
+  computes token numbers.
+
