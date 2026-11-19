@@ -155,6 +155,7 @@ enum ViewMode {
     Lookahead,
     Diary,
     Production,
+    Assistant,
 }
 
 /// Severity of a `status_message`, used to pick its colour.
@@ -445,6 +446,12 @@ pub struct CadenceApp {
     /// Buffer for the note text while a note is being edited.
     diary_edit_buffer: String,
     lag_buffer: String,
+    /// Edit buffer for assistant model (plain String, not Option<String>).
+    assistant_model_edit: String,
+    /// Edit buffer for assistant base URL (plain String, not Option<String>).
+    assistant_base_url_edit: String,
+    /// Edit buffer for assistant API key (plain String, not Option<SecretKey>).
+    assistant_api_key_edit: String,
     last_rel: Option<cadence_core::model::RelationshipId>,
     name_buffer: String,
     duration_buffer: String,
@@ -485,6 +492,11 @@ pub struct CadenceApp {
     /// Whether the periodic auto-update check may run. Only the headless
     /// render tests turn it off: `cargo test` must not touch the network.
     update_checks_enabled: bool,
+    assistant_config: cadence_assistant::AssistantConfig,
+    assistant_request_buffer: String,
+    assistant_receiver: Option<mpsc::Receiver<Result<String, cadence_assistant::AssistantError>>>,
+    assistant_proposal: Option<cadence_assistant::Proposal>,
+    assistant_validation_errors: Vec<cadence_assistant::ProposalError>,
     link_predecessor: Option<ActivityId>,
     link_successor: Option<ActivityId>,
     link_type_index: usize,
@@ -678,6 +690,14 @@ impl CadenceApp {
             show_release_notes: false,
             last_update_check: None,
             update_checks_enabled: true,
+            assistant_config: cadence_assistant::AssistantConfig::default(),
+            assistant_request_buffer: String::new(),
+            assistant_receiver: None,
+            assistant_proposal: None,
+            assistant_validation_errors: Vec::new(),
+            assistant_model_edit: String::new(),
+            assistant_base_url_edit: String::new(),
+            assistant_api_key_edit: String::new(),
             scroll_to_selection: false,
             audit_report: None,
             audit_status_applied: None,
@@ -2518,6 +2538,7 @@ impl CadenceApp {
                             (ViewMode::Lookahead, "Lookahead (Ctrl+7)"),
                             (ViewMode::Diary, "Diary (Ctrl+8)"),
                             (ViewMode::Production, "Production (Ctrl+9)"),
+                            (ViewMode::Assistant, "Assistant"),
                         ] {
                             if ui.radio(self.view_mode == mode, label).clicked() {
                                 self.view_mode = mode;
@@ -2620,6 +2641,11 @@ impl CadenceApp {
                             "Production",
                             "Production: record actual progress per activity and date",
                         ),
+                        (
+                            ViewMode::Assistant,
+                            "Assistant",
+                            "AI assistant for proposal review",
+                        ),
                     ] {
                         let selected = self.view_mode == mode;
                         let icon = match mode {
@@ -2632,6 +2658,7 @@ impl CadenceApp {
                             ViewMode::Lookahead => egui_phosphor::regular::MAGNIFYING_GLASS,
                             ViewMode::Diary => egui_phosphor::regular::NOTE_PENCIL,
                             ViewMode::Production => egui_phosphor::regular::GAUGE,
+                            ViewMode::Assistant => egui_phosphor::regular::MAGNIFYING_GLASS,
                         };
                         if *first {
                             *first = false;
@@ -5239,6 +5266,119 @@ impl CadenceApp {
                                 });
                         }
                     });
+                });
+            }
+            ViewMode::Assistant => {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    // Sync edit buffers to config fields before checking configured state
+                    self.assistant_config.model = Some(self.assistant_model_edit.clone());
+                    self.assistant_config.base_url = Some(self.assistant_base_url_edit.clone());
+                    self.assistant_config.api_key = {
+                        let key = &self.assistant_api_key_edit;
+                        if key.is_empty() {
+                            None
+                        } else {
+                            Some(cadence_assistant::SecretKey::new(key.clone()))
+                        }
+                    };
+                    // Unconfigured state: show explanation + config form
+                    if !self.assistant_config.is_configured() {
+                        ui.heading("Assistant");
+                        ui.label("An optional AI assistant that can propose project changes");
+                        ui.label("for your review before applying. No network call happens");
+                        ui.label("until you configure a provider and press Request proposal");
+                        ui.separator();
+                        ui.group(|ui| {
+                            ui.checkbox(&mut self.assistant_config.enabled, "Enable assistant");
+                            ui.add_space(4.0);
+                            ui.label("Provider:");
+                            egui::ComboBox::from_id_salt("assistant_provider")
+                                .selected_text(
+                                    self.assistant_config
+                                        .provider_name
+                                        .as_deref()
+                                        .unwrap_or(""),
+                                )
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut self.assistant_config.provider_name,
+                                        Some("openai".to_owned()),
+                                        "OpenAI",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.assistant_config.provider_name,
+                                        Some("anthropic".to_owned()),
+                                        "Anthropic",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.assistant_config.provider_name,
+                                        Some("ollama".to_owned()),
+                                        "Ollama",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.assistant_config.provider_name,
+                                        Some("gemini".to_owned()),
+                                        "Gemini",
+                                    );
+                                });
+                            ui.add_space(4.0);
+                            ui.label("Model:");
+                            let model_label = ui.label("Model");
+                            ui.text_edit_singleline(&mut self.assistant_model_edit)
+                                .labelled_by(model_label.id);
+                            ui.add_space(4.0);
+                            ui.label("Base URL (optional):");
+                            let base_url_label = ui.label("Base URL");
+                            ui.text_edit_singleline(&mut self.assistant_base_url_edit)
+                                .labelled_by(base_url_label.id);
+                            ui.add_space(4.0);
+                            ui.label("API key:");
+                            let api_key_label = ui.label("API key");
+                            ui.text_edit_singleline(&mut self.assistant_api_key_edit)
+                                .labelled_by(api_key_label.id);
+                            ui.hyperlink("(stored session-only; never persisted)");
+                        });
+                        ui.separator();
+                        ui.label("Configure a provider and model above, then press ");
+                        ui.button("Request proposal").on_disabled_hover_text(
+                            "RP-4 owns the request flow; no network path exists in this ticket.",
+                        );
+                        ui.label(": the request button is disabled until RP-4 implements it.");
+                        return;
+                    }
+
+                    // Configured state: request text field + disabled request button
+                    ui.heading("Assistant");
+                    ui.label("A proposal is in flight from the configured provider.");
+                    ui.separator();
+                    let request_label = ui.label("Request");
+                    ui.text_edit_singleline(&mut self.assistant_request_buffer)
+                        .labelled_by(request_label.id);
+                    ui.separator();
+                    ui.group(|ui| {
+                        ui.label("Configuration:");
+                        ui.checkbox(&mut self.assistant_config.enabled, "Enable assistant");
+                        ui.add_space(4.0);
+                        if ui.button("Change provider").clicked() {
+                            self.assistant_config.enabled = false;
+                            self.assistant_config.provider_name = None;
+                            self.assistant_config.model = None;
+                            self.assistant_config.base_url = None;
+                            self.assistant_config.api_key = None;
+                        }
+                        ui.label("Request proposal").
+                            on_disabled_hover_text(
+                        "RP-4 owns the request flow; no network path may exist in this ticket — verify no provider construction with default config."
+                    );
+                    });
+                    ui.separator();
+                    if ui.button("Return to unconfigured").clicked() {
+                        self.assistant_config.enabled = false;
+                        self.assistant_config.provider_name = None;
+                        self.assistant_config.model = None;
+                        self.assistant_config.base_url = None;
+                        self.assistant_config.api_key = None;
+                    }
                 });
             }
         }
