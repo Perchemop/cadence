@@ -1866,9 +1866,15 @@ mod tests {
         let metrics = EvmMetrics::for_activity(&activity, 5_000);
         // When CPI is undefined, EAC falls back to BAC
         let eac = metrics.estimate_at_completion;
-        assert!(eac.is_some(), "EAC should be Some even when CPI is undefined");
+        assert!(
+            eac.is_some(),
+            "EAC should be Some even when CPI is undefined"
+        );
         let eac_val = eac.unwrap();
-        assert!((eac_val - 1000.0).abs() < 1e-9, "EAC was {eac_val} (fallback to BAC)");
+        assert!(
+            (eac_val - 1000.0).abs() < 1e-9,
+            "EAC was {eac_val} (fallback to BAC)"
+        );
         // VAC = BAC - EAC = 1000 - 1000 = 0
         assert_eq!(metrics.variance_at_completion, 0);
     }
@@ -1897,7 +1903,10 @@ mod tests {
         // TCPI denominator is (BAC - AC) = 0, should be None
 
         let metrics = EvmMetrics::for_activity(&activity, 5_000);
-        assert_eq!(metrics.to_complete_performance_index, None, "TCPI should be None when BAC == AC (zero denominator)");
+        assert_eq!(
+            metrics.to_complete_performance_index, None,
+            "TCPI should be None when BAC == AC (zero denominator)"
+        );
     }
 
     #[test]
