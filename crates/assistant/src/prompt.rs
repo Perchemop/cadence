@@ -68,7 +68,6 @@ mod tests {
         let mut dig = Activity::new(ActivityId::new(1), "Dig foundations", 3);
         dig.percent_complete = Some(2_500); // basis points: 25%
         let pour = Activity::new(ActivityId::new(2), "Pour concrete", 5);
-        pour.percent_complete = None;
         project.activities.push(dig);
         project.activities.push(pour);
         project.relationships.push(Relationship::new(
@@ -123,10 +122,18 @@ mod tests {
             assert!(prompt.contains(variant), "prompt must name {variant}");
         }
         for field in [
-            "name", "duration_days", "predecessor", "successor", "activity", "percent",
+            "name",
+            "duration_days",
+            "predecessor",
+            "successor",
+            "activity",
+            "percent",
             "rationale",
         ] {
-            assert!(prompt.contains(field), "prompt must state the field {field}");
+            assert!(
+                prompt.contains(field),
+                "prompt must state the field {field}"
+            );
         }
         // The validation rules the changes must already obey.
         assert!(prompt.contains("milestone"), "zero-duration rule missing");
@@ -149,9 +156,11 @@ mod tests {
         let mut project = Project::new("Wide programme", start_date());
         let extra = ACTIVITY_SNAPSHOT_CAP as u64 + 3;
         for id in 1..=extra {
-            project
-                .activities
-                .push(Activity::new(ActivityId::new(id), format!("Activity {id}"), 1));
+            project.activities.push(Activity::new(
+                ActivityId::new(id),
+                format!("Activity {id}"),
+                1,
+            ));
         }
         let prompt = build_proposal_prompt(&project, "Add a hoarding activity.");
         assert!(
@@ -242,7 +251,10 @@ mod tests {
         assert_eq!(proposal.changes.len(), 1);
         assert!(matches!(
             &proposal.changes[0],
-            ProposedChange::SetActivityDuration { duration_days: 4, .. }
+            ProposedChange::SetActivityDuration {
+                duration_days: 4,
+                ..
+            }
         ));
     }
 }
