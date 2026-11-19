@@ -12,6 +12,7 @@ description = "egui/eframe user interface for Cadence"
 cadence-core.workspace = true
 cadence-commands.workspace = true
 cadence-persistence.workspace = true
+cadence-assistant.workspace = true
 eframe.workspace = true
 egui.workspace = true
 rfd = "0.18"
