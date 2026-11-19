@@ -1498,8 +1498,11 @@ impl EvmMetrics {
         } else {
             None
         };
-        // VAC = BAC - EAC
-        let vac = bac - saturate_i64(i128::from(eac.unwrap_or(bac as f64)));
+        // VAC = BAC - EAC, saturated like the other cost fields (EAC is f64;
+        // the public cost fields are i64, so the difference is rounded and
+        // clamped into range).
+        let eac_value = eac.unwrap_or(bac as f64);
+        let vac = saturate_i64((bac as f64 - eac_value).round() as i128);
 
         Self {
             budget_at_completion: bac,
