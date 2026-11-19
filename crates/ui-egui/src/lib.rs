@@ -5264,11 +5264,9 @@ impl CadenceApp {
                     // Unconfigured state: show explanation + config form
                     if !self.assistant_config.is_configured() {
                         ui.heading("Assistant");
-                        ui.label(
-                            "An optional AI assistant that can propose project changes " \
-                            "for your review before applying. No network call happens " \
-                            "until you configure a provider and press \"Request proposal\"."
-                        );
+                        ui.label("An optional AI assistant that can propose project changes");
+                        ui.label("for your review before applying. No network call happens");
+                        ui.label("until you configure a provider and press Request proposal");
                         ui.separator();
                         ui.group(|ui| {
                             ui.checkbox(&mut self.assistant_config.enabled, "Enable assistant");
@@ -5323,23 +5321,17 @@ impl CadenceApp {
                             ui.hyperlink("(stored session-only; never persisted)");
                         });
                         ui.separator();
-                        ui.label(
-                            "Configure a provider and model above, then press ",
-                        );
+                        ui.label("Configure a provider and model above, then press ");
                         ui.button("Request proposal").on_disabled_hover_text(
                             "RP-4 owns the request flow; no network path exists in this ticket.",
                         );
-                        ui.label(
-                            ": the request button is disabled until RP-4 implements it.",
-                        );
+                        ui.label(": the request button is disabled until RP-4 implements it.");
                         return;
                     }
 
                     // Configured state: request text field + disabled request button
                     ui.heading("Assistant");
-                    ui.label(
-                        "A proposal is in flight from the configured provider."
-                    );
+                    ui.label("A proposal is in flight from the configured provider.");
                     ui.separator();
                     let request_label = ui.label("Request");
                     ui.text_edit_singleline(&mut self.assistant_request_buffer)
