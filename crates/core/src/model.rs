@@ -1832,7 +1832,7 @@ mod tests {
 
     #[test]
     fn evm_metrics_omit_indices_without_a_denominator() {
-        let mut activity = Activity::new(ActivityId(1), "A", 4);
+        let activity = Activity::new(ActivityId(1), "A", 4);
 
         let metrics = EvmMetrics::for_activity(&activity, 0);
         assert_eq!(metrics.budget_at_completion, 0);
