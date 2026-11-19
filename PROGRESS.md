@@ -3,6 +3,26 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-19 — release signing bootstrap + v0.15.0 readiness
+
+The signing key exists, the release is dated, and the tag is next:
+
+- **Signing key bootstrap (D38):** the minisign keypair was generated and its
+  secret key stored as the `RELEASE_SIGNING_KEY` repository secret per the
+  owner's direction; local material shredded in the same pipeline. Public key,
+  key ID `5F50A5EC98109664` and fingerprint recorded in
+  `docs/update-signing.md`; v0.15.0 is the first signed release.
+- **Workflow fix:** minisign 0.12 silently no-ops bare-positional file
+  arguments — the release workflow's sign/verify steps now pass `-m` explicitly
+  (the post-sign self-verify would have failed the release loudly either way).
+- **RP-1/RP-2 landed** (PR #182): prompt builder + response parser and settings
+  storage, with recorded red/green run IDs per §5.6.4.
+- **CHANGELOG:** the 0.15.0 section is dated 2026-11-19 — the release notes
+  body derives from it at tag time.
+
+Verification: CI run for this slice on `opencode/ci-signing-docs` (result
+recorded in the PR once green); the release itself is the next verification.
+
 ## 2026-11-19 — assistant review panel, RP-1 + RP-2: prompt/parser seam and settings storage (D37)
 
 `crates/assistant` slice; no UI touched (RP-3+ pending on the review-panel

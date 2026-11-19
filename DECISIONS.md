@@ -1006,3 +1006,31 @@ PROGRESS.md. Decisions the tickets left open:
 
 No new dependencies; the lockfile is unchanged.
 
+## D38 — Signing-key bootstrap deviation and the minisign positional fix (2026-11-19)
+
+The one-time signing setup hit two facts worth recording:
+
+- **Bootstrap deviation (owner-directed "do it for me"):** the rotation
+  workflow's self-store step requires a `SECRET_MANAGEMENT_TOKEN` (a PAT the
+  owner had not yet created), and PATs cannot be created programmatically.
+  The release was otherwise ready, so the keypair was generated locally in a
+  single pipeline that uploaded the secret key with `gh secret set` and
+  shredded the local material in the same command chain. End state per §7.2:
+  the private key's only resting place is the repository secret
+  `RELEASE_SIGNING_KEY`; no copy remains on any machine; the key never
+  appears in logs, arguments, or the repository. The runner-side rotation
+  workflow (D33) remains the standing procedure for every future rotation;
+  the `SECRET_MANAGEMENT_TOKEN` one-time setup is still recommended so future
+  rotations never touch a developer machine. The public key, key ID
+  `5F50A5EC98109664` and fingerprint
+  `1eeba006282e225fb95ed5f47f4cb939a3e56603349bb00ce903290941ac47db` are
+  recorded in `docs/update-signing.md`, and v0.15.0 is the first release
+  shipped with this key.
+- **Minisign 0.12 positional argument finding:** `minisign -S/-V` with a bare
+  positional file argument exits 0 **silently without signing or verifying**
+  (observed on the Debian 0.12-1 arm64 build during the self-test). The
+  release workflow's sign and verify steps used that form; both now pass
+  `-m <file>` explicitly. The workflow's post-sign self-verify would have
+  caught a silent no-op at release time (fail loud, never publish unsigned),
+  but the fix removes the wasted release round.
+

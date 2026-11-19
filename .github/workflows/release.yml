@@ -161,12 +161,12 @@ jobs:
           # Without a terminal minisign reads the password as a plain stdin
           # line; with an unencrypted key it reads nothing.
           feed_password | minisign -S -s minisign.key -x SHA256SUMS.txt.minisig \
-            -t "Cadence ${GITHUB_REF_NAME} checksums" SHA256SUMS.txt
+            -t "Cadence ${GITHUB_REF_NAME} checksums" -m SHA256SUMS.txt
           # Self-check before publishing: recreate the public key from the
           # stored secret key and verify the fresh signature with it, so a
           # corrupted or wrong-key secret fails the release, not the user.
           feed_password | minisign -R -f -s minisign.key -p derived.pub
-          minisign -V -p derived.pub -x SHA256SUMS.txt.minisig SHA256SUMS.txt
+          minisign -V -p derived.pub -x SHA256SUMS.txt.minisig -m SHA256SUMS.txt
           cp SHA256SUMS.txt.minisig upload/
 
       - name: Build the release notes body

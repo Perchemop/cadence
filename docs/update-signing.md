@@ -39,20 +39,17 @@ procedure (guide §7.2).
 
 ## Current signing public key
 
-> **Placeholder — to be filled in by the maintainer after the first key
-> rotation.** Run the `Signing key rotation` workflow once, then copy the
-> public key, key ID and fingerprint from its job summary here, and note
-> which release first ships the key.
->
-> - Public key:
->
->   ```text
->   (pending — no release signing key has been generated yet)
->   ```
->
-> - Key ID: (pending)
-> - Fingerprint (SHA-256 of the public key file): (pending)
-> - First shipped in release: (pending)
+- Public key:
+
+  ```text
+  untrusted comment: minisign public key 5F50A5EC98109664
+  RWRklhCY7KVQXwkZxgCEBZlkKIMESvqbVLkrI5Gfv6mvE4M/3Oc95kxb
+  ```
+
+- Key ID: `5F50A5EC98109664`
+- Fingerprint (SHA-256 of the public key file):
+  `1eeba006282e225fb95ed5f47f4cb939a3e56603349bb00ce903290941ac47db`
+- First shipped in release: **v0.15.0**
 
 ## Where the private key lives
 
@@ -70,6 +67,17 @@ the secret store with `gh secret set`. It is never generated on, copied to,
 or printed from a developer machine, and it never appears in logs, artefacts,
 or the repository. The rotation job removes all key material from the runner
 when it finishes.
+
+**Bootstrap deviation (recorded, D38).** The key above was generated during
+the one-time setup before the rotation workflow could self-store (that path
+needs a `SECRET_MANAGEMENT_TOKEN`, which had not been created). Per the
+owner's direction the pair was generated locally in a single pipeline that
+uploaded the secret key to the repository secret store and shredded the local
+material in the same breath — the key's only resting place is the Actions
+secret, and no copy remains on any machine. From the next rotation onward the
+runner-side workflow is the standing procedure: create the
+`SECRET_MANAGEMENT_TOKEN` (One-time setup below) and future rotations never
+touch a developer machine.
 
 ## One-time setup
 
