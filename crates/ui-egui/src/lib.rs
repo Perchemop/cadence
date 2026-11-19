@@ -446,6 +446,12 @@ pub struct CadenceApp {
     /// Buffer for the note text while a note is being edited.
     diary_edit_buffer: String,
     lag_buffer: String,
+    /// Edit buffer for assistant model (plain String, not Option<String>).
+    assistant_model_edit: String,
+    /// Edit buffer for assistant base URL (plain String, not Option<String>).
+    assistant_base_url_edit: String,
+    /// Edit buffer for assistant API key (plain String, not Option<SecretKey>).
+    assistant_api_key_edit: String,
     last_rel: Option<cadence_core::model::RelationshipId>,
     name_buffer: String,
     duration_buffer: String,
@@ -689,6 +695,9 @@ impl CadenceApp {
             assistant_receiver: None,
             assistant_proposal: None,
             assistant_validation_errors: Vec::new(),
+            assistant_model_edit: String::new(),
+            assistant_base_url_edit: String::new(),
+            assistant_api_key_edit: String::new(),
             scroll_to_selection: false,
             audit_report: None,
             audit_status_applied: None,
@@ -5261,6 +5270,17 @@ impl CadenceApp {
             }
             ViewMode::Assistant => {
                 egui::CentralPanel::default().show(ui, |ui| {
+                    // Sync edit buffers to config fields before checking configured state
+                    self.assistant_config.model = Some(self.assistant_model_edit.clone());
+                    self.assistant_config.base_url = Some(self.assistant_base_url_edit.clone());
+                    self.assistant_config.api_key = {
+                        let key = &self.assistant_api_key_edit;
+                        if key.is_empty() {
+                            None
+                        } else {
+                            Some(cadence_assistant::SecretKey::new(key.clone()))
+                        }
+                    };
                     // Unconfigured state: show explanation + config form
                     if !self.assistant_config.is_configured() {
                         ui.heading("Assistant");
@@ -5306,17 +5326,17 @@ impl CadenceApp {
                             ui.add_space(4.0);
                             ui.label("Model:");
                             let model_label = ui.label("Model");
-                            ui.text_edit_singleline(&mut self.assistant_config.model)
+                            ui.text_edit_singleline(&mut self.assistant_model_edit)
                                 .labelled_by(model_label.id);
                             ui.add_space(4.0);
                             ui.label("Base URL (optional):");
                             let base_url_label = ui.label("Base URL");
-                            ui.text_edit_singleline(&mut self.assistant_config.base_url)
+                            ui.text_edit_singleline(&mut self.assistant_base_url_edit)
                                 .labelled_by(base_url_label.id);
                             ui.add_space(4.0);
                             ui.label("API key:");
                             let api_key_label = ui.label("API key");
-                            ui.text_edit_singleline(&mut self.assistant_config.api_key)
+                            ui.text_edit_singleline(&mut self.assistant_api_key_edit)
                                 .labelled_by(api_key_label.id);
                             ui.hyperlink("(stored session-only; never persisted)");
                         });
@@ -5335,8 +5355,7 @@ impl CadenceApp {
                     ui.separator();
                     let request_label = ui.label("Request");
                     ui.text_edit_singleline(&mut self.assistant_request_buffer)
-                        .labelled_by(request_label.id)
-                        .desired_width(f32::INFINITE);
+                        .labelled_by(request_label.id);
                     ui.separator();
                     ui.group(|ui| {
                         ui.label("Configuration:");
