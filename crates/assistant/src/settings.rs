@@ -85,9 +85,8 @@ fn store_settings_at(path: &Path, config: &AssistantConfig) -> Result<(), String
             format!("the assistant settings directory could not be created: {error}")
         })?;
     }
-    std::fs::write(path, json).map_err(|error| {
-        format!("the assistant settings file could not be written: {error}")
-    })?;
+    std::fs::write(path, json)
+        .map_err(|error| format!("the assistant settings file could not be written: {error}"))?;
     Ok(())
 }
 
