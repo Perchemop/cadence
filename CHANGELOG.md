@@ -55,6 +55,30 @@ over-attribution caveat recorded.
   transport errors map to plain-language failures (refused vs. retryable)
   that never echo request material. The assistant remains off by default and
   only ever calls a provider in response to an explicit user action.
+- Optional AI assistant, prompt + parser seam (review panel RP-1):
+  `build_proposal_prompt` builds the minimal working prompt from the live
+  project — a compact snapshot (project name, start date, per-activity
+  id/name/duration/percent, relationships) hard-capped at 500 activities
+  with an explicit truncation notice, the planner's request verbatim, the
+  four typed change variants with their exact field names, the validation
+  rules, and the one-JSON-object output contract. `parse_proposal_response`
+  turns a model completion back into a reviewable `Proposal`, accepting the
+  bare JSON object or the same object inside one markdown code fence and
+  rejecting everything else as `MalformedOutput` with a plain-language
+  detail that never echoes the body. Prose in a completion is never
+  interpreted — the typed-change schema, the review gate and command
+  validation are the injection defence. Pure, headless, fully tested.
+- Optional AI assistant, settings storage (review panel RP-2):
+  `cadence-assistant` now persists its off-by-default configuration to a
+  platform settings file (`<config dir>/cadence/assistant-settings.json` —
+  the XDG config directory or HOME on Linux, APPDATA on Windows,
+  HOME/Library/Application Support on macOS; a hand-rolled lookup, no new
+  dependency). `store_settings` drops the API key before writing — the key
+  is session-only, honouring `SecretKey`'s `"<redacted>"` serialiser
+  invariant, so a settings file provably cannot round-trip a key.
+  `load_settings` never fails the caller: a missing, unreadable or
+  unparseable file yields the default (off) configuration. The review
+  panel's shell wiring (RP-3) consumes these functions.
 - OpenCode workflow command definitions (guide §5.6.3) under
   `.opencode/command/`: `/grill-me` (read-only interrogation), `/to-spec`,
   `/to-tickets`, `/tdd` (red/green/refactor, every phase verified through

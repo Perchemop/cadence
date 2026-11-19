@@ -968,3 +968,41 @@ so the ledger gains a second attribution tier.
   fields and the extended tokens.md table — validation only, CI never
   computes token numbers.
 
+## D37 — Assistant review-panel slice: settings file location and test seams (2026-11-19)
+
+RP-1 and RP-2 of the review-panel spec
+(`docs/specs/review-panel.spec.md`) landed in `crates/assistant`:
+`prompt.rs` (the `build_proposal_prompt` / `parse_proposal_response` seam)
+and `settings.rs` (the `settings_path` / `load_settings` /
+`store_settings` storage). TDD evidence: RP-1 red run 44500433308 (commit
+4013487, 5 tests failing for the expected reasons on all four Verify
+platforms) and green run 44504244460 (commit 85d3437, `=== CI RESULT:
+SUCCESS ===`); RP-2 red run 44511538745 (commit adef464, 5 expected
+failures on Ubuntu, 4 on Windows and macOS) with its green run recorded in
+PROGRESS.md. Decisions the tickets left open:
+
+- **Settings file name and layout.** The tickets fixed the platform
+  directory rules but not the file name: the module stores
+  `<platform config dir>/cadence/assistant-settings.json`. An app-named
+  subdirectory follows the XDG convention (applications do not clutter the
+  config root) and gives the file a self-describing name;
+  `store_settings` creates the directory chain.
+- **No `tempfile` dev-dependency.** The RP-2 ticket requires no new
+  dependency (lockfile unchanged), so the tests hand-roll a unique temp
+  directory (pid + nanos) under the platform temp dir and remove it
+  afterwards. Tradeoff: ~15 lines of test helper instead of a
+  battle-tested dev-dep; acceptable at this scale and trivially
+  replaceable later.
+- **Test seams without environment mutation.** `std::env::set_var` is
+  process-global and racy under the test harness's parallel threads, so
+  `config_dir` takes the environment lookup as a closure and load/store
+  are path-parameterised private helpers the public functions delegate
+  to. Tests inject values and write only inside their own temp directory,
+  exactly as the ticket's acceptance requires. The platform branch
+  conditions use `cfg!`, so every branch compiles on every platform.
+- **No `PartialEq` on `AssistantConfig`.** The corrupt-file test asserts
+  field-by-field instead of whole-struct equality, avoiding a production
+  type change outside the ticket's declared target files.
+
+No new dependencies; the lockfile is unchanged.
+
