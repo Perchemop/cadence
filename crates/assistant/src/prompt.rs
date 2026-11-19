@@ -34,9 +34,88 @@ pub const ACTIVITY_SNAPSHOT_CAP: usize = 500;
 /// Pure and deterministic for a given project and request. The prompt
 /// contains programme data only — it has no access to the API key, which is
 /// a type-level guarantee of this signature.
-pub fn build_proposal_prompt(_project: &Project, _request: &str) -> String {
-    // Red-phase stub: replaced by the real builder in the green phase.
-    String::new()
+pub fn build_proposal_prompt(project: &Project, request: &str) -> String {
+    let total = project.activities.len();
+    let shown = total.min(ACTIVITY_SNAPSHOT_CAP);
+    let truncated = total > ACTIVITY_SNAPSHOT_CAP;
+
+    let mut prompt = String::new();
+    prompt.push_str(
+        "You are the scheduling assistant inside Cadence, a construction programme \
+         planner. The planner reviews every change you propose before anything is \
+         applied: only the typed changes listed under \"changes\" can ever take \
+         effect, and each one is validated against the programme first.\n\n",
+    );
+    prompt.push_str("=== Programme snapshot ===\n");
+    prompt.push_str(&format!("Project name: {}\n", project.name));
+    prompt.push_str(&format!("Start date: {}\n", project.start_date));
+    prompt.push_str(&format!("Activities ({shown}):\n"));
+    for activity in project.activities.iter().take(ACTIVITY_SNAPSHOT_CAP) {
+        let percent = match activity.percent_complete {
+            Some(basis_points) => format!("{}", basis_points / 100),
+            None => "not set".to_owned(),
+        };
+        prompt.push_str(&format!(
+            "- id {} | name {} | duration_days {} | percent_complete {percent}\n",
+            activity.id, activity.name, activity.original_duration
+        ));
+    }
+    if truncated {
+        prompt.push_str(&format!(
+            "The activity list was truncated: showing the first \
+             {ACTIVITY_SNAPSHOT_CAP} of {total} activities. Activities not listed \
+             must not be referenced.\n"
+        ));
+    }
+    prompt.push_str(&format!(
+        "Relationships ({}):\n",
+        project.relationships.len()
+    ));
+    for relationship in &project.relationships {
+        prompt.push_str(&format!(
+            "- predecessor {} -> successor {}\n",
+            relationship.predecessor, relationship.successor
+        ));
+    }
+    prompt.push('\n');
+    prompt.push_str("=== The planner's request ===\n");
+    prompt.push_str(request);
+    prompt.push_str("\n\n");
+    prompt.push_str("=== The changes you may propose ===\n");
+    prompt.push_str(
+        "Each change is one JSON object whose single key names the variant. Every \
+         change carries a \"rationale\" string explaining why you suggest it — a \
+         change without a rationale is invalid. The four variants and their exact \
+         field names:\n\n\
+         - CreateActivity: {\"CreateActivity\": {\"name\": \"<activity name>\", \
+         \"duration_days\": <positive whole days>, \"rationale\": \"<why>\"}}\n\
+         - CreateRelationship: {\"CreateRelationship\": {\"predecessor\": <activity \
+         id>, \"successor\": <activity id>, \"rationale\": \"<why>\"}}\n\
+         - SetActivityDuration: {\"SetActivityDuration\": {\"activity\": <activity \
+         id>, \"duration_days\": <positive whole days>, \"rationale\": \"<why>\"}}\n\
+         - SetActivityProgress: {\"SetActivityProgress\": {\"activity\": <activity \
+         id>, \"percent\": <whole number>, \"rationale\": \"<why>\"}}\n\n\
+         Rules every change must obey; changes that break them are rejected before \
+         the planner reviews anything:\n\
+         - duration_days is a positive whole number of working days; a duration of \
+         zero is never allowed, because zero is reserved for milestones;\n\
+         - percent is a whole number from 0 to 100;\n\
+         - predecessor, successor and activity must be activity ids that appear in \
+         the snapshot above;\n\
+         - a relationship must not link an activity to itself and must not repeat a \
+         relationship that already exists;\n\
+         - an activity name must not be blank.\n\n",
+    );
+    prompt.push_str("=== How to answer ===\n");
+    prompt.push_str(
+        "Respond with exactly one JSON object and no surrounding commentary — no \
+         greeting, no markdown, no explanation outside the object:\n\n\
+         {\"prose\": \"<your explanation for the planner>\", \"changes\": [<change \
+         objects>]}\n\n\
+         The \"prose\" value is your plain-language explanation for the planner. \
+         The \"changes\" array holds the typed change objects described above.\n",
+    );
+    prompt
 }
 
 /// Parse a model completion into a [`Proposal`].
@@ -45,11 +124,43 @@ pub fn build_proposal_prompt(_project: &Project, _request: &str) -> String {
 /// fence; anything else is [`AssistantError::MalformedOutput`] with a
 /// plain-language detail. Never runs a command, never touches a project,
 /// never interprets the prose as instructions.
-pub fn parse_proposal_response(_text: &str) -> Result<Proposal, AssistantError> {
-    // Red-phase stub: replaced by the real parser in the green phase.
-    Err(AssistantError::MalformedOutput(
-        "not implemented yet".to_owned(),
-    ))
+pub fn parse_proposal_response(text: &str) -> Result<Proposal, AssistantError> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Err(AssistantError::MalformedOutput(
+            "the answer was empty".to_owned(),
+        ));
+    }
+    let json = strip_code_fence(trimmed).ok_or_else(|| {
+        AssistantError::MalformedOutput(
+            "the answer was wrapped in a code fence that never closed".to_owned(),
+        )
+    })?;
+    let value: serde_json::Value = serde_json::from_str(json).map_err(|_| {
+        AssistantError::MalformedOutput("the answer was not valid JSON".to_owned())
+    })?;
+    let proposal: Proposal = serde_json::from_value(value).map_err(|_| {
+        AssistantError::MalformedOutput(
+            "the answer was not the expected proposal object with \"prose\" and \"changes\""
+                .to_owned(),
+        )
+    })?;
+    Ok(proposal)
+}
+
+/// Strip one markdown code fence from an already-trimmed answer.
+///
+/// Returns the inner JSON text, or `None` when the answer opens a fence that
+/// never closes. An answer with no fence is returned unchanged.
+fn strip_code_fence(trimmed: &str) -> Option<&str> {
+    let rest = match trimmed.strip_prefix("```") {
+        Some(rest) => rest,
+        None => return Some(trimmed),
+    };
+    // Drop the optional language tag on the opening fence line.
+    let rest = rest.split_once('\n').map(|(_, after)| after).unwrap_or("");
+    let end = rest.rfind("```")?;
+    Some(rest[..end].trim())
 }
 
 #[cfg(test)]
