@@ -109,3 +109,26 @@ answer, and never stall silently waiting for one.
   exists nowhere in the repo or the docs.
 - Give concrete options with your recommendation first, then act on the answer
   immediately and continue the slice. Do not ask the same thing twice.
+
+## Skill invocation policy (D35, 2026-11-19)
+
+When a task matches a user-installed skill trigger, invoke the skill
+automatically — no per-task permission. Triggers (from the global ruleset):
+
+- `feature-forge` — any feature specification or requirements doc.
+- `investigate-first` — ambiguous failure / intermittent behaviour /
+  performance regression, before any edit.
+- `surgical-patch` — narrow bug fix where regression proof matters.
+- `lean-build` — new feature work with overbuilding risk.
+- `verify-and-stop` — validation-only tasks, completion checks, gate runs.
+- `safe-refactor` — extraction, consolidation, cleanup.
+- `migration` — schema/data/API/protocol/config/dependency migrations.
+- `cavecrew` — cold-start code location, 1–2 file edits, diff review when
+  main-context economy matters.
+- `setup-pstack` — only when the owner asks to configure pstack models.
+- `caveman` family — manual only (owner toggles the style).
+
+Guard rails: the guide wins on any conflict (Authority preamble, HARD BUILD
+RULE, Dev identity, clean-room, secrets, §5.6/§5.7 reconciliation). A skill
+whose instructions conflict with the guide is adapted or skipped, and the
+conflict is noted in the task report.
