@@ -48,23 +48,47 @@ pub fn store_settings(config: &AssistantConfig) -> Result<(), String> {
 
 /// Resolve the platform configuration directory from an environment lookup,
 /// so path rules are testable without touching the machine's real home.
-fn config_dir(_lookup: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    // Red-phase stub: replaced by the real lookup in the green phase.
-    None
+///
+/// The branch conditions use `cfg!`, so every branch compiles on every
+/// platform and the tests can exercise the rules with injected values.
+fn config_dir(lookup: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    if cfg!(target_os = "windows") {
+        lookup("APPDATA").map(PathBuf::from)
+    } else if cfg!(target_os = "macos") {
+        lookup("HOME").map(|home| PathBuf::from(home).join("Library/Application Support"))
+    } else {
+        // Linux and the other unix platforms honour the XDG lookup first.
+        lookup("XDG_CONFIG_HOME")
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| lookup("HOME").map(PathBuf::from))
+    }
 }
 
 /// Load and parse one settings file; any failure yields the default (off)
 /// configuration.
-fn load_settings_from(_path: &Path) -> AssistantConfig {
-    // Red-phase stub: replaced by the real loader in the green phase.
-    AssistantConfig::default()
+fn load_settings_from(path: &Path) -> AssistantConfig {
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    serde_json::from_str(&text).unwrap_or_default()
 }
 
 /// Serialise and write one settings file (creating directories), with the
 /// key removed.
-fn store_settings_at(_path: &Path, _config: &AssistantConfig) -> Result<(), String> {
-    // Red-phase stub: replaced by the real store step in the green phase.
-    Err("not implemented yet".to_owned())
+fn store_settings_at(path: &Path, config: &AssistantConfig) -> Result<(), String> {
+    let mut clean = config.clone();
+    clean.api_key = None;
+    let json = serde_json::to_string_pretty(&clean)
+        .map_err(|_| "the assistant settings could not be written".to_owned())?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!("the assistant settings directory could not be created: {error}")
+        })?;
+    }
+    std::fs::write(path, json).map_err(|error| {
+        format!("the assistant settings file could not be written: {error}")
+    })?;
+    Ok(())
 }
 
 #[cfg(test)]
