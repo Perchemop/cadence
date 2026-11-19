@@ -3,6 +3,24 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-20 — EVM completion slice (P1 gap)
+
+- **EAC/BAC/TCPI/VAC implementation:** Extended `EvmMetrics` struct with
+  `estimate_at_completion`, `to_complete_performance_index`, and
+  `variance_at_completion` fields (`crates/core/src/model.rs`).
+- **Updated `EvmMetrics::for_activity`** to compute EAC (BAC/CPI fallback),
+  TCPI ((BAC-EV)/(BAC-AC) zero-denominator convention), and VAC (BAC-EAC).
+- **Updated `engine::evm_metrics`** to aggregate the new metrics from all
+  activities.
+- **Added unit tests** for all three new metrics including happy paths,
+  zero-division fallbacks, boundary conditions (0%/100% progress), and
+  determinism verification (`crates/core/src/model.rs` tests).
+- **CHANGELOG:** added `## [0.16.0] — Unreleased` section.
+- **CAP-029** now marks EAC/BAC/TCPI/VAC as implemented in
+  `docs/capability-inventory.md`.
+- **Parity update:** `docs/parity.md` EVM row marked from partial → done.
+- **DECISIONS.md:** entry D39 records the EVM completion slice decisions.
+
 ## 2026-11-19 — release signing bootstrap + v0.15.0 readiness
 
 The signing key exists, the release is dated, and the tag is next:
