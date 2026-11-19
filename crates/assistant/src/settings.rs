@@ -212,8 +212,7 @@ mod tests {
     fn store_creates_missing_directories() {
         let dir = temp_dir("mkdirs");
         let path = dir.join("cadence").join("assistant-settings.json");
-        store_settings_at(&path, &config_with_key())
-            .expect("store creates the directory chain");
+        store_settings_at(&path, &config_with_key()).expect("store creates the directory chain");
         assert!(path.is_file());
         let _ = std::fs::remove_dir_all(&dir);
     }
