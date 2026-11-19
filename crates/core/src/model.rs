@@ -1832,7 +1832,7 @@ mod tests {
 
     #[test]
     fn evm_metrics_omit_indices_without_a_denominator() {
-        let activity = Activity::new(ActivityId(1), "A", 4);
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
 
         let metrics = EvmMetrics::for_activity(&activity, 0);
         assert_eq!(metrics.budget_at_completion, 0);
@@ -1862,7 +1862,7 @@ mod tests {
 
     #[test]
     fn evm_metrics_eac_fallback_when_cpi_undefined() {
-        let activity = Activity::new(ActivityId(1), "A", 4);
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
         activity.budget_at_completion = Some(1_000);
         // actual_cost is None, so CPI is None
 
@@ -1900,7 +1900,7 @@ mod tests {
 
     #[test]
     fn evm_metrics_tcpi_zero_denominator() {
-        let activity = Activity::new(ActivityId(1), "A", 4);
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
         activity.budget_at_completion = Some(1_000);
         // actual_cost = 1000, so BAC == AC
         // TCPI denominator is (BAC - AC) = 0, should be None
