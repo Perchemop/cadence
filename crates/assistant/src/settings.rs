@@ -21,8 +21,6 @@ use crate::config::AssistantConfig;
 /// The user-level settings file path, or `None` when the environment
 /// provides no configuration directory.
 pub fn settings_path() -> Option<PathBuf> {
-    // Red-phase stub: `config_dir` always yields `None` until the green
-    // phase, so the path is always `None`.
     config_dir(|name| std::env::var(name).ok())
         .map(|dir| dir.join("cadence").join("assistant-settings.json"))
 }
@@ -30,7 +28,6 @@ pub fn settings_path() -> Option<PathBuf> {
 /// Load the assistant settings; any missing file, read failure or parse
 /// failure yields the default (off) configuration. Never fails the caller.
 pub fn load_settings() -> AssistantConfig {
-    // Red-phase stub: `load_settings_from` always yields the default.
     settings_path()
         .map(|path| load_settings_from(&path))
         .unwrap_or_default()
@@ -43,8 +40,6 @@ pub fn load_settings() -> AssistantConfig {
 /// created when missing. Returns a plain-language error string for the
 /// status bar on failure.
 pub fn store_settings(config: &AssistantConfig) -> Result<(), String> {
-    // Red-phase stub: `store_settings_at` always refuses until the green
-    // phase.
     match settings_path() {
         Some(path) => store_settings_at(&path, config),
         None => Err("no settings directory is available".to_owned()),
@@ -108,16 +103,15 @@ mod tests {
     #[test]
     fn config_dir_uses_the_injected_environment_values() {
         let mut env = HashMap::new();
-        let expected: PathBuf;
-        if cfg!(target_os = "windows") {
+        let expected: PathBuf = if cfg!(target_os = "windows") {
             env.insert("APPDATA".to_owned(), String::from("C:\\AppData\\Roaming"));
-            expected = PathBuf::from("C:\\AppData\\Roaming");
+            PathBuf::from("C:\\AppData\\Roaming")
         } else if cfg!(target_os = "macos") {
             env.insert("HOME".to_owned(), String::from("/Users/planner"));
-            expected = PathBuf::from("/Users/planner/Library/Application Support");
+            PathBuf::from("/Users/planner/Library/Application Support")
         } else {
             env.insert("XDG_CONFIG_HOME".to_owned(), String::from("/xdg/config"));
-            expected = PathBuf::from("/xdg/config");
+            PathBuf::from("/xdg/config")
         };
         let lookup = move |name: &str| env.get(name).cloned();
         assert_eq!(config_dir(lookup), Some(expected));
