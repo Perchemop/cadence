@@ -5292,37 +5292,35 @@ impl CadenceApp {
                             ui.checkbox(&mut self.assistant_config.enabled, "Enable assistant");
                             ui.add_space(4.0);
                             ui.label("Provider:");
-                            ui.add(
-                                egui::ComboBox::from_id_salt("assistant_provider")
-                                    .selected_text(
-                                        self.assistant_config
-                                            .provider_name
-                                            .as_deref()
-                                            .unwrap_or(""),
-                                    )
-                                    .show_ui(|ui| {
-                                        ui.selectable_value(
-                                            &mut self.assistant_config.provider_name,
-                                            Some("openai".to_owned()),
-                                            "OpenAI",
-                                        );
-                                        ui.selectable_value(
-                                            &mut self.assistant_config.provider_name,
-                                            Some("anthropic".to_owned()),
-                                            "Anthropic",
-                                        );
-                                        ui.selectable_value(
-                                            &mut self.assistant_config.provider_name,
-                                            Some("ollama".to_owned()),
-                                            "Ollama",
-                                        );
-                                        ui.selectable_value(
-                                            &mut self.assistant_config.provider_name,
-                                            Some("gemini".to_owned()),
-                                            "Gemini",
-                                        );
-                                    }),
-                            );
+                            egui::ComboBox::from_id_salt("assistant_provider")
+                                .selected_text(
+                                    self.assistant_config
+                                        .provider_name
+                                        .as_deref()
+                                        .unwrap_or(""),
+                                )
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut self.assistant_config.provider_name,
+                                        Some("openai".to_owned()),
+                                        "OpenAI",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.assistant_config.provider_name,
+                                        Some("anthropic".to_owned()),
+                                        "Anthropic",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.assistant_config.provider_name,
+                                        Some("ollama".to_owned()),
+                                        "Ollama",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.assistant_config.provider_name,
+                                        Some("gemini".to_owned()),
+                                        "Gemini",
+                                    );
+                                });
                             ui.add_space(4.0);
                             ui.label("Model:");
                             let model_label = ui.label("Model");
