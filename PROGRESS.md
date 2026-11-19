@@ -3,6 +3,47 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-19 — assistant review panel, RP-1 + RP-2: prompt/parser seam and settings storage (D37)
+
+`crates/assistant` slice; no UI touched (RP-3+ pending on the review-panel
+series). Both tickets verify headless; no new dependencies, lockfile
+unchanged:
+
+- **RP-1 — prompt builder + response parser** (`crates/assistant/src/
+  prompt.rs`): `build_proposal_prompt` builds the deterministic minimal
+  working prompt — compact project snapshot (name, start date, per-activity
+  id/name/duration/percent, relationships) capped at 500 activities with an
+  explicit truncation notice, the planner's request verbatim, the four
+  typed change variants with their exact field names, the validation rules,
+  and the one-JSON-object output contract. `parse_proposal_response`
+  accepts the bare JSON object or the same object inside one markdown code
+  fence and rejects everything else as `AssistantError::MalformedOutput`
+  with a plain-language detail that never echoes the body; prose is never
+  interpreted. Six headless tests, including the injection-shape test.
+- **RP-2 — settings storage** (`crates/assistant/src/settings.rs`):
+  `settings_path` (platform config directory via `cfg!` branches — XDG
+  config dir or HOME on Linux, APPDATA on Windows, HOME/Library/Application
+  Support on macOS; hand-rolled, no new dependency; the file is
+  `cadence/assistant-settings.json`), `load_settings` (never fails the
+  caller — a missing, unreadable or unparseable file yields the default
+  off config) and `store_settings` (drops the API key before writing —
+  session-only, honouring `SecretKey`'s `"<redacted>"` serialiser invariant
+  — and creates the directory chain). Seven headless tests using injected
+  environment values or self-owned temporary directories.
+- **TDD evidence**: RP-1 red run 44500433308 (commit 4013487, 5 expected
+  failures) and green run 44504244460 (commit 85d3437, `=== CI RESULT:
+  SUCCESS ===`). RP-2 red run 44511538745 (commit adef464, 5 expected
+  failures on Ubuntu, 4 on Windows/macOS) and green run 44514726568
+  (commit f3259c8, `=== CI RESULT: SUCCESS ===`). Records: CHANGELOG
+  0.15.0 Added, DECISIONS D37, REQUIREMENTS_TRACEABILITY AI row.
+- Pre-existing, non-gating: `Evidence (rendered)` fails on the CI runner
+  (wgpu "No adapter found" — no Vulkan adapter for the ui-egui kittest
+  evidence job); the check is not in `.ci-required.txt` and is unrelated to
+  this slice (no `crates/ui-egui/**` change).
+
+Verification: PR #182 (`opencode/ci-rp12` → `main`), required checks green
+on the slice head.
+
 ## 2026-11-19 — token ledger: accurate parent-chain attribution (D36)
 
 Tooling slice; no application code touched (no `crates/**`):

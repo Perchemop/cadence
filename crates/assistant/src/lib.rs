@@ -25,16 +25,20 @@
 mod command_map;
 mod config;
 mod http;
+mod prompt;
 mod proposal;
 mod provider;
+mod settings;
 
 pub use command_map::map_proposal_to_commands;
 pub use config::{AssistantConfig, SecretKey};
 pub use http::HttpProvider;
+pub use prompt::{build_proposal_prompt, parse_proposal_response, ACTIVITY_SNAPSHOT_CAP};
 pub use proposal::{Proposal, ProposalError, ProposedChange};
 pub use provider::{
     AssistantError, AssistantProvider, AssistantProviderName, MockProvider, NoopProvider,
 };
+pub use settings::{load_settings, settings_path, store_settings};
 
 use serde::{Deserialize, Serialize};
 
