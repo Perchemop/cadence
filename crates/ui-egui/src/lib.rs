@@ -3001,22 +3001,18 @@ impl CadenceApp {
                         Some(message) => {
                             let severity = StatusSeverity::from_message(&message);
                             let (glyph, color) = match severity {
-                                StatusSeverity::Info => (
-                                    egui_phosphor::regular::INFO,
-                                    palette.text_muted,
-                                ),
-                                StatusSeverity::Success => (
-                                    egui_phosphor::regular::CHECK_CIRCLE,
-                                    palette.ok,
-                                ),
-                                StatusSeverity::Warning => (
-                                    egui_phosphor::regular::WARNING,
-                                    palette.warn,
-                                ),
-                                StatusSeverity::Error => (
-                                    egui_phosphor::regular::X_CIRCLE,
-                                    palette.critical,
-                                ),
+                                StatusSeverity::Info => {
+                                    (egui_phosphor::regular::INFO, palette.text_muted)
+                                }
+                                StatusSeverity::Success => {
+                                    (egui_phosphor::regular::CHECK_CIRCLE, palette.ok)
+                                }
+                                StatusSeverity::Warning => {
+                                    (egui_phosphor::regular::WARNING, palette.warn)
+                                }
+                                StatusSeverity::Error => {
+                                    (egui_phosphor::regular::X_CIRCLE, palette.critical)
+                                }
                             };
                             ui.label(
                                 egui::RichText::new(format!("{glyph} {message}"))
@@ -3026,7 +3022,9 @@ impl CadenceApp {
                         }
                         None => {
                             ui.label(
-                                egui::RichText::new("Ready").small().color(palette.text_muted),
+                                egui::RichText::new("Ready")
+                                    .small()
+                                    .color(palette.text_muted),
                             );
                         }
                     }
@@ -3036,17 +3034,12 @@ impl CadenceApp {
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         let range = match self.schedule.as_ref() {
                             Ok(schedule) => {
-                                format!(
-                                    "{} to {}",
-                                    schedule.project_start, schedule.project_finish
-                                )
+                                format!("{} to {}", schedule.project_start, schedule.project_finish)
                             }
                             Err(_) => "Cannot schedule".to_string(),
                         };
-                        let mut facts = format!(
-                            "{range} · {} activities",
-                            self.project.activities.len()
-                        );
+                        let mut facts =
+                            format!("{range} · {} activities", self.project.activities.len());
                         if self.critical_count > 0 {
                             facts.push_str(&format!(" · {} critical", self.critical_count));
                         }
@@ -3055,11 +3048,7 @@ impl CadenceApp {
                             let cpi = metrics.cost_performance_index.unwrap_or(0.0);
                             facts.push_str(&format!(" · SPI {spi:.2} · CPI {cpi:.2}"));
                         }
-                        ui.label(
-                            egui::RichText::new(facts)
-                                .small()
-                                .color(palette.text_muted),
-                        );
+                        ui.label(egui::RichText::new(facts).small().color(palette.text_muted));
                     });
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         // Identity: subtle bottom-right per the suite standard;
@@ -3093,11 +3082,7 @@ impl CadenceApp {
                         } else {
                             ("✓ Saved", palette.ok)
                         };
-                        ui.label(
-                            egui::RichText::new(save_text)
-                                .small()
-                                .color(save_color),
-                        );
+                        ui.label(egui::RichText::new(save_text).small().color(save_color));
                     });
                 });
             });

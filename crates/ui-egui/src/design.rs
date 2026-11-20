@@ -30,19 +30,15 @@ pub mod chrome {
 
     /// The one primary action per row (e.g. "New activity"): accent fill,
     /// no stroke, high-contrast label.
-    pub fn primary(label: impl Into<String>) -> egui::Button {
-        egui::Button::new(
-            egui::RichText::new(label.into())
-                .color(ACCENT_ON)
-                .strong(),
-        )
-        .fill(ACCENT)
-        .stroke(egui::Stroke::NONE)
+    pub fn primary(label: impl Into<String>) -> egui::Button<'static> {
+        egui::Button::new(egui::RichText::new(label.into()).color(ACCENT_ON).strong())
+            .fill(ACCENT)
+            .stroke(egui::Stroke::NONE)
     }
 
     /// Toolbar/quick actions: invisible chrome until hovered. Hover and
     /// active fills come from the token-driven widget visuals in [`apply`].
-    pub fn ghost(label: impl Into<String>) -> egui::Button {
+    pub fn ghost(label: impl Into<String>) -> egui::Button<'static> {
         egui::Button::new(label.into())
             .fill(Color32::TRANSPARENT)
             .stroke(egui::Stroke::NONE)
@@ -51,7 +47,7 @@ pub mod chrome {
     /// View tabs. Selected: accent-tinted fill, strong text and an accent
     /// hairline; idle: transparent with muted text. State is therefore
     /// conveyed by fill + weight + stroke, never colour alone.
-    pub fn tab(dark: bool, selected: bool, label: impl Into<String>) -> egui::Button {
+    pub fn tab(dark: bool, selected: bool, label: impl Into<String>) -> egui::Button<'static> {
         let p = palette(dark);
         let text = if selected {
             egui::RichText::new(label.into()).strong().color(p.text)
