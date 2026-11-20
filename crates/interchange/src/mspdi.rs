@@ -836,6 +836,10 @@ mod tests {
         let start = date(2026, Month::January, 5);
         let mut project = Project::new("WBS Test", start);
 
+        // Add WBS nodes to the tree so export can validate them
+        project.wbs.add(WbsId(1), "Survey", project.wbs.root()).expect("add WBS 1");
+        project.wbs.add(WbsId(2), "Excavate", project.wbs.root()).expect("add WBS 2");
+
         let mut survey = Activity::new(ActivityId(1), "Survey", 2);
         survey.wbs = Some(WbsId(1));
         project.activities.push(survey);
