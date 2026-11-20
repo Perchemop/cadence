@@ -36,8 +36,8 @@ use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use cadence_core::model::FULL_UNITS;
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, EvmMetrics,
-    LinkType, LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntryId, Project, RelationshipId,
-    ResourceId, ResourceKind,
+    LinkType, LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntryId, Project,
+    RelationshipId, ResourceId, ResourceKind,
 };
 use cadence_core::wbs::WbsId;
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
@@ -6905,7 +6905,8 @@ fn render_gantt(
         // Draw coarse timescale (months, quarters, years) above fine timescale
         if pixels_per_day > 8.0 {
             // Show months at medium+ zoom, quarters at very zoomed out
-            let month_origin = Date::from_calendar_date(origin.year(), origin.month(), 1).unwrap_or(origin);
+            let month_origin =
+                Date::from_calendar_date(origin.year(), origin.month(), 1).unwrap_or(origin);
             let mut current = month_origin;
             while current <= finish {
                 let x = rect.min.x
@@ -7017,8 +7018,8 @@ fn render_gantt(
         // Different from today line - shows the date values are computed against
         if let Some(status) = status_date {
             if status >= origin && status <= finish {
-                let x =
-                    rect.min.x + (status.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
+                let x = rect.min.x
+                    + (status.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
                 // Dotted line with small markers
                 let stroke = egui::Stroke::new(1.0, palette.status_date);
                 let dash_pattern = 4.0;
@@ -7445,9 +7446,10 @@ fn render_gantt(
                         activity.constraint,
                         Constraint::MustStartOn(_) | Constraint::MustFinishOn(_)
                     ) {
-                        let constraint_date = activity.constraint.date().expect(
-                            "MustStartOn/MustFinishOn always carry a date",
-                        );
+                        let constraint_date = activity
+                            .constraint
+                            .date()
+                            .expect("MustStartOn/MustFinishOn always carry a date");
                         let constraint_x_start =
                             (constraint_date.to_julian_day() - origin.to_julian_day()) as f32
                                 * pixels_per_day;
@@ -7478,8 +7480,7 @@ fn render_gantt(
 
                             // Add a small diamond marker at the start of the constraint
                             let diamond_size = 4.0;
-                            let diamond_center =
-                                Pos2::new(constraint_x, (start_y + end_y) / 2.0);
+                            let diamond_center = Pos2::new(constraint_x, (start_y + end_y) / 2.0);
                             let diamond_points = vec![
                                 Pos2::new(diamond_center.x, diamond_center.y - diamond_size / 2.0),
                                 Pos2::new(diamond_center.x + diamond_size / 2.0, diamond_center.y),
