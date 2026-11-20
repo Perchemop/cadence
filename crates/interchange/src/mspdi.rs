@@ -45,11 +45,11 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use cadence_core::engine::schedule;
-use cadence_core::{Calendar, CalendarId, CalendarSet, WbsId};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Constraint, LinkType,
     Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind, FULL_UNITS,
 };
+use cadence_core::{Calendar, CalendarId, CalendarSet, WbsId};
 use time::Date;
 
 use crate::xml::{escape, parse_document, Element};
@@ -857,9 +857,6 @@ mod tests {
     // New test: Named calendars are imported from MSPDI
     #[test]
     fn named_calendars_are_imported_from_mspdi() {
-        let start = date(2026, Month::January, 5);
-        let mut project = Project::new("Calendar Test", start);
-
         // This test verifies that MSPDI with calendars imports them correctly.
         // We create an MSPDI document with a calendar section manually.
         let mspdi = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
