@@ -570,6 +570,12 @@ pub struct CadenceApp {
     visible_columns: BTreeSet<SortKey>,
     /// WBS nodes the user has collapsed in the outline (UI-only state).
     collapsed_wbs: HashSet<WbsId>,
+    /// Pending activity deletion for confirmation dialog.
+    pending_delete_activity_id: Option<ActivityId>,
+    /// Import dialog state.
+    show_import_dialog: bool,
+    /// Export dialog state.
+    show_export_dialog: bool,
 }
 
 /// Whether an activity passes the table filter: a case-insensitive substring
@@ -749,6 +755,9 @@ impl CadenceApp {
             show_split_gantt: true,
             visible_columns: SortKey::all_columns(),
             collapsed_wbs: HashSet::new(),
+            pending_delete_activity_id: None,
+            show_import_dialog: false,
+            show_export_dialog: false,
         }
     }
 
@@ -1420,6 +1429,66 @@ impl CadenceApp {
             self.scroll_to_selection = true;
             self.set_status("Activity created.");
         }
+    }
+
+    /// Duplicate the selected activity (used by Edit → Duplicate).
+    /// This creates a copy of the selected activity with a new ID.
+    /// Note: Full implementation would require a DuplicateActivity command.
+    fn duplicate_selected_activity(&mut self) {
+        if let Some(id) = self.selected {
+            self.set_status("Duplicate activity: feature coming soon – use Ctrl+C to copy in Table view");
+        }
+    }
+
+    /// Delete the selected activity (with confirmation) (used by Edit → Delete).
+    fn delete_selected_activity(&mut self) {
+        if let Some(id) = self.selected {
+            self.pending_delete_activity_id = Some(id);
+            self.confirm_delete_activity = true;
+        }
+    }
+
+    /// Break incoming links to a selected activity (used by Edit → Break link).
+    fn break_incoming_links(&mut self, activity_id: ActivityId) {
+        let relationships: Vec<RelationshipId> = self
+            .project
+            .relationships
+            .iter()
+            .filter_map(|r| {
+                if r.successor == activity_id {
+                    Some(r.id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if relationships.is_empty() {
+            self.set_status("No incoming links to break.");
+            return;
+        }
+
+        // Delete each relationship individually
+        for rel_id in relationships {
+            let _ = self.stack.execute(
+                &mut self.project,
+                Box::new(cadence_commands::DeleteRelationship { id: rel_id }),
+            );
+        }
+        self.recompute();
+        self.set_status("Links broken.");
+    }
+
+    /// Start a new project dialog (used by File → New).
+    fn new_project(&mut self) {
+        // For now, just create a new empty project
+        let project = Project::new("New project", today());
+        self.project = project;
+        self.project_path = None;
+        self.stack = CommandStack::new();
+        self.selected = None;
+        self.dirty = false;
+        self.set_status("New project created.");
     }
 
     /// Load the calendar editor buffers for the given calendar.
@@ -2437,8 +2506,13 @@ impl CadenceApp {
                     let icon_redo = egui_phosphor::regular::ARROW_CLOCKWISE;
 
                     // ─── Zone 1: Menu Bar ───
+                    // File menu: document operations (file system interactions)
                     ui.menu_button(format!("{icon_file} File"), |ui| {
                         ui.set_min_width(160.0);
+                        // File: New Project / Open / Save / Import / Export
+                        if ui.button("New project…").clicked() {
+                            self.new_project();
+                        }
                         if ui.button("Open… (Ctrl+O)").clicked() {
                             self.open_dialog();
                         }
@@ -2461,12 +2535,21 @@ impl CadenceApp {
                             });
                             ui.separator();
                         }
+                        // Import / Export section
+                        ui.separator();
+                        if ui.button("Import…").clicked() {
+                            self.show_import_dialog = true;
+                        }
+                        if ui.button("Export…").clicked() {
+                            self.show_export_dialog = true;
+                        }
                         if ui.button("Save report").clicked() {
                             self.save_report();
                         }
                         if ui.button("Print report…").clicked() {
                             self.print_report_dialog();
                         }
+                        // Gantt print with proper context
                         if ui
                             .add_enabled(
                                 self.view_mode == ViewMode::Gantt,
@@ -2500,8 +2583,10 @@ impl CadenceApp {
                         }
                     });
 
+                    // Edit menu: editing operations (actions that modify the project)
                     ui.menu_button(format!("{icon_edit} Edit"), |ui| {
                         ui.set_min_width(160.0);
+                        // Undo/Redo
                         if ui
                             .add_enabled(self.stack.can_undo(), egui::Button::new("Undo (Ctrl+Z)"))
                             .clicked()
@@ -2519,8 +2604,25 @@ impl CadenceApp {
                             self.refresh_selection();
                         }
                         ui.separator();
+                        // Activity operations
                         if ui.button("New activity (Ctrl+N)").clicked() {
                             self.create_activity();
+                        }
+                        if ui.button("Duplicate activity").clicked() {
+                            self.duplicate_selected_activity();
+                        }
+                        if ui.button("Delete activity").clicked() {
+                            if let Some(id) = self.selected {
+                                self.confirm_delete_activity = true;
+                                self.pending_delete_activity_id = Some(id);
+                            }
+                        }
+                        ui.separator();
+                        // Relationship operations
+                        if ui.button("Break link").clicked() {
+                            if let Some(id) = self.selected {
+                                self.break_incoming_links(id);
+                            }
                         }
                     });
 
@@ -6554,7 +6656,7 @@ fn render_gantt(
     pixels_per_day_out: &mut f32,
     drag_link_type_index: &mut usize,
     drag: &mut Option<GanttDrag>,
-    _status_date: Option<Date>,
+    status_date: Option<Date>,
     dark: bool,
     selected_id: Option<ActivityId>,
     selected_out: &mut Option<ActivityId>,
@@ -6635,8 +6737,68 @@ fn render_gantt(
         let clip = ui.clip_rect().intersect(rect);
         painter.set_clip_rect(clip);
 
-        // Weekly hairlines and the today line: structure in low-contrast
-        // strokes, so colour stays reserved for meaning.
+        // Two-tier timescale header (V6): coarse bands above fine bands
+        let palette = design::palette(dark);
+        let header_color = palette.text;
+        let coarse_band_height = 16.0; // Height for months/quarters header
+        let fine_band_height = 20.0;   // Height for days/weeks header
+
+        // Draw coarse timescale (months, quarters, years) above fine timescale
+        if pixels_per_day > 8.0 {
+            // Show months at medium+ zoom, quarters at very zoomed out
+            let month_origin = origin.with_day(1);
+            let mut current = month_origin;
+            while current <= finish {
+                let x = rect.min.x + (current.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
+                let x_end = x + pixels_per_day; // Month cell width (variable, approximate)
+                if x_end > clip.min.x && x < clip.max.x {
+                    // Month label
+                    let month_name = match current.month() {
+                        Month::January => "Jan",
+                        Month::February => "Feb",
+                        Month::March => "Mar",
+                        Month::April => "Apr",
+                        Month::May => "May",
+                        Month::June => "Jun",
+                        Month::July => "Jul",
+                        Month::August => "Aug",
+                        Month::September => "Sep",
+                        Month::October => "Oct",
+                        Month::November => "Nov",
+                        Month::December => "Dec",
+                    };
+                    let label_x = x + 2.0;
+                    if current.month() == Month::January {
+                        // Jan marks a new year - also shows year
+                        let year_str = current.year().to_string();
+                        painter.glyph_position(
+                            egui::GlyphPosition::absolute(Vec2::new(label_x, rect.min.y + 2.0)),
+                            egui::FontId::proportional(10.0),
+                            &format!("{}-{}", month_name, year_str),
+                        );
+                    } else {
+                        painter.glyph_position(
+                            egui::GlyphPosition::absolute(Vec2::new(label_x, rect.min.y + 2.0)),
+                            egui::FontId::proportional(10.0),
+                            month_name,
+                        );
+                    }
+                }
+                // Advance to next month
+                let next_month = match current.month() {
+                    Month::December => Date::from_calendar_date(current.year() + 1, Month::January, 1).ok(),
+                    _ => Date::from_calendar_date(current.year(), current.month(), 1).ok().and_then(|_| {
+                        Date::from_julian_day(current.to_julian_day() + 32).ok().and_then(|d| {
+                            Date::from_calendar_date(d.year(), d.month(), 1).ok()
+                        })
+                    }),
+                };
+                current = next_month.unwrap_or(current);
+                if current == month_origin { break; } // Safety break
+            }
+        }
+
+        // Fine timescale header (days/weeks) - weekly hairlines
         let grid_color = palette.grid;
         let mut week_origin = origin;
         while week_origin < finish {
@@ -6680,10 +6842,40 @@ fn render_gantt(
             ));
         }
 
+        // Status date line: dotted indicator for EVM/earned value status
+        // Different from today line - shows the date values are computed against
+        if let Some(status) = status_date {
+            if status >= origin && status <= finish {
+                let x =
+                    rect.min.x + (status.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
+                // Dotted line with small markers
+                let stroke = egui::Stroke::new(1.0, palette.status_date);
+                let dash_pattern = 4.0;
+                let mut points = Vec::new();
+                let mut current_x = rect.min.y + header_height;
+                while current_x < rect.max.y {
+                    let x1 = x;
+                    let y1 = current_x;
+                    let x2 = x;
+                    let y2 = (current_x + dash_pattern).min(rect.max.y);
+                    points.push(Pos2::new(x1, y1));
+                    points.push(Pos2::new(x2, y2));
+                    current_x += dash_pattern * 2.0;
+                }
+                if points.len() >= 2 {
+                    painter.line_segment(
+                        [points[0], points[points.len() - 1]],
+                        stroke,
+                    );
+                }
+            }
+        }
+
         // Non-working day shading: tint columns for weekends/holidays so the
         // working calendar reads off the canvas without extra chrome. Drawn
         // before bars and arrows so it stays in the background.
-        let non_working_fill = design::translucent(palette.non_working, 30);
+        // Improved visibility: use 45% opacity for better contrast.
+        let non_working_fill = design::translucent(palette.non_working, 45);
         for day in 0..=(total_days as i32) {
             let date = Date::from_julian_day(origin.to_julian_day() + day).unwrap_or(origin);
             if project.calendar.is_working_day(date) {
@@ -7081,6 +7273,61 @@ fn render_gantt(
                                     egui::Stroke::new(1.0, palette.text_muted),
                                 );
                             }
+                        }
+                    }
+
+                    // Constraint markers: dashed lines at constrained edges for
+                    // MustStartOn/MustFinishOn constraints. These visual markers help
+                    // users understand when a task has a fixed-date constraint.
+                    use cadence_core::model::Constraint;
+                    if let Some(constraint_date) = activity.constraint.date() {
+                        let constraint_x_start =
+                            (constraint_date.to_julian_day() - origin.to_julian_day()) as f32
+                                * pixels_per_day;
+                        let constraint_x = rect.min.x + constraint_x_start;
+
+                        // Only draw if the constraint date is within or adjacent to the bar
+                        if constraint_x >= bar.min.x - pixels_per_day
+                            && constraint_x <= bar.max.x + pixels_per_day
+                        {
+                            // Dashed line marker at the constraint
+                            let stroke = egui::Stroke::new(
+                                1.0,
+                                design::translucent(palette.critical, 180),
+                            );
+                            // Draw a small dashed marker with dots
+                            let marker_length = 8.0;
+                            let start_y = bar.min.y + 2.0;
+                            let end_y = bar.max.y - 2.0;
+
+                            // Draw short dashes
+                            for offset in [0.0, marker_length / 2.0] {
+                                painter.line_segment(
+                                    [
+                                        Pos2::new(constraint_x, start_y + offset),
+                                        Pos2::new(constraint_x, end_y - offset),
+                                    ],
+                                    stroke.clone(),
+                                );
+                            }
+
+                            // Add a small diamond marker at the start of the constraint
+                            let diamond_size = 4.0;
+                            let diamond_center = Pos2::new(
+                                constraint_x,
+                                (start_y + end_y) / 2.0,
+                            );
+                            let diamond_points = vec![
+                                Pos2::new(diamond_center.x, diamond_center.y - diamond_size / 2.0),
+                                Pos2::new(diamond_center.x + diamond_size / 2.0, diamond_center.y),
+                                Pos2::new(diamond_center.x, diamond_center.y + diamond_size / 2.0),
+                                Pos2::new(diamond_center.x - diamond_size / 2.0, diamond_center.y),
+                            ];
+                            painter.add(egui::Shape::Path(egui::epaint::PathShape::convex_polygon(
+                                diamond_points,
+                                palette.critical,
+                                egui::epaint::PathStroke::new(1.0, palette.critical),
+                            )));
                         }
                     }
                 }

@@ -42,7 +42,11 @@ pub struct Palette {
     /// Extreme background (e.g. the Gantt canvas inside a panel).
     pub deep: Color32,
     /// Non-working day background tint (weekends/holidays on Gantt canvas).
+    /// Non-working day background tint (weekends/holidays on Gantt canvas).
+    /// Better contrast: more distinct from both light and dark backgrounds.
     pub non_working: Color32,
+    /// Status date line color (dotted indicator separate from today line).
+    pub status_date: Color32,
     /// Visible keyboard-focus ring stroke colour.
     pub focus_ring: Color32,
 }
@@ -61,7 +65,8 @@ pub const fn palette(dark: bool) -> Palette {
             ok: Color32::from_rgb(0x4A, 0xDE, 0x80),
             warn: Color32::from_rgb(0xFB, 0xBF, 0x24),
             deep: Color32::from_rgb(0x11, 0x13, 0x18),
-            non_working: Color32::from_rgb(0x1A, 0x1E, 0x27),
+            non_working: Color32::from_rgb(0x1A, 0x1E, 0x27), // Dark theme: subtle dark grey
+            status_date: Color32::from_rgba_unmultiplied(0xF8, 0x71, 0x71, 128), // Accent tint, 50% opacity
             focus_ring: FOCUS_RING,
         }
     } else {
@@ -76,7 +81,8 @@ pub const fn palette(dark: bool) -> Palette {
             ok: Color32::from_rgb(0x15, 0x80, 0x3D),
             warn: Color32::from_rgb(0xB4, 0x53, 0x09),
             deep: Color32::from_rgb(0xEC, 0xEE, 0xF1),
-            non_working: Color32::from_rgb(0xEA, 0xEC, 0xEF),
+            non_working: Color32::from_rgb(0xF0, 0xF4, 0xF8), // Light theme: very light blue-grey
+            status_date: Color32::from_rgba_unmultiplied(0xB9, 0x1C, 0x1C, 128), // Red tint, 50% opacity
             focus_ring: FOCUS_RING,
         }
     }
