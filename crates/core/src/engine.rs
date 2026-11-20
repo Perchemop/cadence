@@ -631,6 +631,23 @@ pub fn evm_metrics(
     } else {
         None
     };
+    // EAC = BAC / CPI when CPI is defined; otherwise fallback to BAC
+    let eac_value = if let Some(cpi) = cpi {
+        total_bac as f64 / cpi
+    } else {
+        total_bac as f64
+    };
+    // TCPI = (BAC - EV) / (BAC - AC) with zero-denominator convention
+    // None when BAC == AC (cannot compute required performance index).
+    let tcpi = if total_bac != total_ac {
+        Some((total_bac as f64 - total_ev as f64) / (total_bac as f64 - total_ac as f64))
+    } else {
+        None
+    };
+    // VAC = BAC - EAC, saturated like the other cost fields (EAC is f64;
+    // the public cost fields are i64, so the difference is rounded and
+    // clamped into range).
+    let vac = saturate_i64(total_bac - (eac_value.round() as i128));
 
     EvmMetrics {
         budget_at_completion: saturate_i64(total_bac),
@@ -641,6 +658,9 @@ pub fn evm_metrics(
         schedule_variance: saturate_i64(sv),
         cost_performance_index: cpi,
         schedule_performance_index: spi,
+        estimate_at_completion: Some(eac_value),
+        to_complete_performance_index: tcpi,
+        variance_at_completion: vac,
     }
 }
 

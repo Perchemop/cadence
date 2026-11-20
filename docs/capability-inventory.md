@@ -68,7 +68,7 @@ before; capability claims previously lived only in `docs/parity.md` and
 |---|---|---|---|---|---|---|
 | CAP-027 | Cadence | Multiple baselines | Capture/remove/restore project-wide baselines with per-activity snapshots, undoable | engine + command + persistence tests | MS Project multiple baselines concept | implemented |
 | CAP-028 | Cadence | Variance against a selected baseline | Duration/start/finish variance per activity, coloured by sign | Baselines view variance table; snapshot variance tests | MS Project variance columns concept | implemented |
-| CAP-029 | Cadence | EVM metrics at a status date | PV, EV, AC, SV, CV, SPI, CPI against an editable status date | `engine::evm_metrics` unit tests (D13); Baselines view panel. NB: EAC/BAC/TCPI/VAC are **not** computed yet — recorded as a gap in `docs/parity.md` | PMBOK EVM formulas (public standard) | implemented |
+| CAP-029 | Cadence | EVM metrics at a status date | PV, EV, AC, SV, CV, SPI, CPI against an editable status date; also EAC, TCPI, VAC computed per PMI standard | `engine::evm_metrics` unit tests (D13); `evm-eac-tcpi-vac` unit tests (this slice); Baselines view panel. NB: GUI display of EAC/BAC/TCPI/VAC is a later slice | PMBOK EVM formulas (public standard) | implemented |
 | CAP-030 | Cadence | Progress updating | Percent complete, actual dates and actual cost edited via undoable commands; Gantt progress overlay | command range/date validation tests; persistence schema v4 actual dates | `docs/research/ms-project-capabilities.md` | implemented |
 
 ## F. Schedule audit & comparison

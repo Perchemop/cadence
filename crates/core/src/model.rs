@@ -1426,6 +1426,15 @@ pub struct EvmMetrics {
     pub cost_performance_index: Option<f64>,
     /// Schedule performance index: EV / PV (None when PV is zero).
     pub schedule_performance_index: Option<f64>,
+    /// Estimate at completion: BAC / CPI (CPI-based projection).
+    /// None when CPI is zero/undefined; falls back to BAC.
+    pub estimate_at_completion: Option<f64>,
+    /// To-complete performance index: (BAC - EV) / (BAC - AC).
+    /// None when BAC == AC (zero denominator convention).
+    pub to_complete_performance_index: Option<f64>,
+    /// Variance at completion: BAC - EAC.
+    /// Positive = over budget, Negative = under budget.
+    pub variance_at_completion: i64,
 }
 
 /// Saturate an `i128` value into the `i64` range used by [`EvmMetrics`].
@@ -1448,6 +1457,12 @@ impl EvmMetrics {
     /// Cost and schedule performance indices are `None` when their denominator
     /// is zero, so an activity with no budget or no planned work does not
     /// report a misleading ratio.
+    ///
+    /// Estimate at completion, to-complete performance index and variance at
+    /// completion are computed per the PMI standard:
+    /// - EAC = BAC / CPI (when CPI is defined), otherwise EAC = BAC
+    /// - TCPI = (BAC - EV) / (BAC - AC) (None when BAC == AC, zero-denominator convention)
+    /// - VAC = BAC - EAC
     pub fn for_activity(activity: &Activity, planned_fraction: i64) -> Self {
         let bac = activity.budget_at_completion.unwrap_or(0);
         let ac = activity.actual_cost.unwrap_or(0);
@@ -1469,6 +1484,25 @@ impl EvmMetrics {
         } else {
             None
         };
+        // EAC = BAC / CPI when CPI is defined; otherwise fallback to BAC
+        let eac = if let Some(cpi) = cpi {
+            Some(bac as f64 / cpi)
+        } else {
+            // CPI undefined → assume current burn rate continues; EAC equals budget
+            Some(bac as f64)
+        };
+        // TCPI = (BAC - EV) / (BAC - AC) with zero-denominator convention:
+        // None when BAC == AC (cannot compute required performance index).
+        let tcpi = if bac != ac {
+            Some((bac as f64 - ev as f64) / (bac as f64 - ac as f64))
+        } else {
+            None
+        };
+        // VAC = BAC - EAC, saturated like the other cost fields (EAC is f64;
+        // the public cost fields are i64, so the difference is rounded and
+        // clamped into range).
+        let eac_value = eac.unwrap_or(bac as f64);
+        let vac = saturate_i64((bac as f64 - eac_value).round() as i128);
 
         Self {
             budget_at_completion: bac,
@@ -1479,6 +1513,9 @@ impl EvmMetrics {
             schedule_variance: sv,
             cost_performance_index: cpi,
             schedule_performance_index: spi,
+            estimate_at_completion: eac,
+            to_complete_performance_index: tcpi,
+            variance_at_completion: vac,
         }
     }
 }
@@ -1803,6 +1840,146 @@ mod tests {
         assert_eq!(metrics.earned_value, 0);
         assert_eq!(metrics.cost_performance_index, None);
         assert_eq!(metrics.schedule_performance_index, None);
+    }
+
+    #[test]
+    fn evm_metrics_eac_when_cpi_defined() {
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
+        activity.budget_at_completion = Some(1_000);
+        activity.actual_cost = Some(500);
+        activity.percent_complete = Some(5_000); // 50% complete
+
+        let metrics = EvmMetrics::for_activity(&activity, 5_000);
+        // CPI = EV / AC = 500 / 500 = 1.0
+        // EAC = BAC / CPI = 1000 / 1.0 = 1000
+        let eac = metrics.estimate_at_completion;
+        assert!(eac.is_some(), "EAC should be Some when CPI is defined");
+        let eac_val = eac.unwrap();
+        assert!((eac_val - 1000.0).abs() < 1e-9, "EAC was {eac_val}");
+        // VAC = BAC - EAC = 1000 - 1000 = 0
+        assert_eq!(metrics.variance_at_completion, 0);
+    }
+
+    #[test]
+    fn evm_metrics_eac_fallback_when_cpi_undefined() {
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
+        activity.budget_at_completion = Some(1_000);
+        // actual_cost is None, so CPI is None
+
+        let metrics = EvmMetrics::for_activity(&activity, 5_000);
+        // When CPI is undefined, EAC falls back to BAC
+        let eac = metrics.estimate_at_completion;
+        assert!(
+            eac.is_some(),
+            "EAC should be Some even when CPI is undefined"
+        );
+        let eac_val = eac.unwrap();
+        assert!(
+            (eac_val - 1000.0).abs() < 1e-9,
+            "EAC was {eac_val} (fallback to BAC)"
+        );
+        // VAC = BAC - EAC = 1000 - 1000 = 0
+        assert_eq!(metrics.variance_at_completion, 0);
+    }
+
+    #[test]
+    fn evm_metrics_tcpi_when_bac_ne_ac() {
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
+        activity.budget_at_completion = Some(1_000);
+        activity.actual_cost = Some(500);
+        activity.percent_complete = Some(8_000); // 80% earned (basis points: 80 * 100 = 8000)
+
+        let metrics = EvmMetrics::for_activity(&activity, 5_000);
+        // BAC = 1000, EV = 800, AC = 500
+        // TCPI = (BAC - EV) / (BAC - AC) = (1000 - 800) / (1000 - 500) = 200 / 500 = 0.4
+        let tcpi = metrics.to_complete_performance_index;
+        assert!(tcpi.is_some(), "TCPI should be Some when BAC != AC");
+        let tcpi_val = tcpi.unwrap();
+        assert!((tcpi_val - 0.4).abs() < 1e-9, "TCPI was {tcpi_val}");
+    }
+
+    #[test]
+    fn evm_metrics_tcpi_zero_denominator() {
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
+        activity.budget_at_completion = Some(1_000);
+        activity.actual_cost = Some(1_000); // BAC = AC = 1000
+                                            // TCPI denominator is (BAC - AC) = 0, should be None
+
+        let metrics = EvmMetrics::for_activity(&activity, 5_000);
+        assert_eq!(
+            metrics.to_complete_performance_index, None,
+            "TCPI should be None when BAC == AC (zero denominator)"
+        );
+    }
+
+    #[test]
+    fn evm_metrics_tcpi_boundary_100_percent() {
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
+        activity.budget_at_completion = Some(1_000);
+        activity.actual_cost = Some(200);
+        activity.percent_complete = Some(10_000); // 100% complete
+
+        let metrics = EvmMetrics::for_activity(&activity, 5_000);
+        // BAC = 1000, EV = 1000, AC = 200
+        // TCPI = (1000 - 1000) / (1000 - 200) = 0 / 800 = 0.0
+        let tcpi = metrics.to_complete_performance_index;
+        assert!(tcpi.is_some(), "TCPI should be Some at 100% completion");
+        let tcpi_val = tcpi.unwrap();
+        assert!((tcpi_val - 0.0).abs() < 1e-9, "TCPI was {tcpi_val} at 100%");
+        // EAC = BAC / CPI, CPI = 1000 / 200 = 5.0, EAC = 1000 / 5.0 = 200
+        let eac = metrics.estimate_at_completion;
+        assert!(eac.is_some());
+        let eac_val = eac.unwrap();
+        assert!((eac_val - 200.0).abs() < 1e-9, "EAC was {eac_val}");
+        // VAC = BAC - EAC = 1000 - 200 = 800
+        assert_eq!(metrics.variance_at_completion, 800);
+    }
+
+    #[test]
+    fn evm_metrics_vac_positive_over_budget() {
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
+        activity.budget_at_completion = Some(1_000);
+        activity.actual_cost = Some(200);
+        activity.percent_complete = Some(5_000); // 50% complete
+
+        let metrics = EvmMetrics::for_activity(&activity, 5_000);
+        // CPI = 500 / 200 = 2.5
+        // EAC = 1000 / 2.5 = 400
+        // VAC = BAC - EAC = 1000 - 400 = 600 (positive = under budget / ahead)
+        let eac = metrics.estimate_at_completion.unwrap();
+        assert!((eac - 400.0).abs() < 1e-9, "EAC was {eac}");
+        assert_eq!(metrics.variance_at_completion, 600);
+    }
+
+    #[test]
+    fn evm_metrics_vac_negative_under_budget() {
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
+        activity.budget_at_completion = Some(1_000);
+        activity.actual_cost = Some(800);
+        activity.percent_complete = Some(5_000); // 50% complete
+
+        let metrics = EvmMetrics::for_activity(&activity, 5_000);
+        // CPI = 500 / 800 = 0.625
+        // EAC = 1000 / 0.625 = 1600
+        // VAC = BAC - EAC = 1000 - 1600 = -600 (negative = over budget / behind)
+        let eac = metrics.estimate_at_completion.unwrap();
+        assert!((eac - 1600.0).abs() < 1e-9, "EAC was {eac}");
+        assert_eq!(metrics.variance_at_completion, -600);
+    }
+
+    #[test]
+    fn evm_metrics_determinism() {
+        let mut activity = Activity::new(ActivityId(1), "A", 4);
+        activity.budget_at_completion = Some(5_000);
+        activity.actual_cost = Some(3_000);
+        activity.percent_complete = Some(4_000); // 40% complete
+
+        let planned_fraction = 5_000; // basis points
+
+        let m1 = EvmMetrics::for_activity(&activity, planned_fraction);
+        let m2 = EvmMetrics::for_activity(&activity, planned_fraction);
+
+        assert_eq!(m1, m2, "EVM metrics should be deterministic across calls");
     }
 
     #[test]

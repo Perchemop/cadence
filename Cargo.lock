@@ -678,7 +678,7 @@ checksum = "776dfebd015e2d8732c684a2c71003674ccb49457b539b9e82151ba38e96dd7c"
 
 [[package]]
 name = "cadence-app"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "cadence-commands",
  "cadence-core",
@@ -690,7 +690,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-assistant"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "cadence-commands",
  "cadence-core",
@@ -703,7 +703,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-commands"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "cadence-core",
  "serde",
@@ -712,7 +712,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-core"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "proptest",
  "serde",
@@ -723,7 +723,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-interchange"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "cadence-core",
  "proptest",
@@ -732,7 +732,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-persistence"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "cadence-core",
  "rusqlite",
@@ -742,7 +742,7 @@ dependencies = [
 
 [[package]]
 name = "cadence-ui-egui"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "cadence-assistant",
  "cadence-commands",
@@ -5439,9 +5439,9 @@ dependencies = [
 
 [[package]]
 name = "zcheapstr"
-version = "1.2.0"
+version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "939f186d9ecebe044315a5cb6d6f78568bbc21152adc954d5a0c2f58bdbc9920"
+checksum = "2347b6f50c4f669a282af57bf950debeacb9ce86de21b5b12932178dda691315"
 dependencies = [
  "serde",
 ]
