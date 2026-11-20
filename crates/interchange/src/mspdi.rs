@@ -1135,26 +1135,56 @@ mod tests {
 </Project>"#;
 
         let project = import(document).expect("import");
-        assert!(project.calendars.len() >= 3, "expected at least 3 calendars, got {}", project.calendars.len());
+        assert!(
+            project.calendars.len() >= 3,
+            "expected at least 3 calendars, got {}",
+            project.calendars.len()
+        );
 
         // Check that calendars were imported with correct names
-        let cal_names: Vec<&str> = project.calendars.calendars().iter().map(|c| c.name.as_str()).collect();
-        assert!(cal_names.contains(&"Standard"), "Standard calendar not found");
-        assert!(cal_names.contains(&"7 Day Week"), "7 Day Week calendar not found");
-        assert!(cal_names.contains(&"Holiday Calendar"), "Holiday Calendar not found");
+        let cal_names: Vec<&str> = project
+            .calendars
+            .calendars()
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        assert!(
+            cal_names.contains(&"Standard"),
+            "Standard calendar not found"
+        );
+        assert!(
+            cal_names.contains(&"7 Day Week"),
+            "7 Day Week calendar not found"
+        );
+        assert!(
+            cal_names.contains(&"Holiday Calendar"),
+            "Holiday Calendar not found"
+        );
 
         // Verify the standard calendar has weekends off (Monday=1, Sunday=0)
         // 1111110 means Mon-Sat working = 6 working days
-        let standard_cal = project.calendars.named(CalendarId(1)).expect("Standard calendar");
+        let standard_cal = project
+            .calendars
+            .named(CalendarId(1))
+            .expect("Standard calendar");
         assert_eq!(standard_cal.calendar.working_days_per_week(), 6);
 
         // Verify 7-day week calendar (all days working)
-        let seven_day_cal = project.calendars.named(CalendarId(2)).expect("7 day calendar");
+        let seven_day_cal = project
+            .calendars
+            .named(CalendarId(2))
+            .expect("7 day calendar");
         assert_eq!(seven_day_cal.calendar.working_days_per_week(), 7);
 
         // Verify holiday calendar has holidays
-        let holiday_cal = project.calendars.named(CalendarId(3)).expect("Holiday calendar");
-        assert!(holiday_cal.calendar.holidays().count() >= 2, "expected at least 2 holidays");
+        let holiday_cal = project
+            .calendars
+            .named(CalendarId(3))
+            .expect("Holiday calendar");
+        assert!(
+            holiday_cal.calendar.holidays().count() >= 2,
+            "expected at least 2 holidays"
+        );
     }
 
     #[test]
