@@ -68,15 +68,21 @@ placed, and how cluttered it feels; must stay usable for entry-level users.
   dead-code, clone-on-Copy, fmt-collapse rounds — each fixed from the CI
   log, never bypassed).
 
-### Pending release (documented per the release directive)
+### Released: v0.17.0 (2026-11-21)
 
-`main` is 10+ commits ahead of tag `v0.16.2`, including this redesign. The
-next release should cut **v0.17.0** (visible UI change) with: workspace
-version bump, CHANGELOG section (drafted above under [Unreleased]), release
-notes with installers + `SHA256SUMS.txt` + signature, token ledger row, and
-README screenshot refresh once the owner confirms the new look ("does this
-work / feel right?" gate). Deferred polish (dialog danger styling, empty-
-state type size, inspector separators) is queued for the same release train.
+**v0.17.0 shipped** with the chrome redesign from the multi-agent design audit.
+Release workflow run `44829423233` completed successfully on tag `v0.17.0`.
+
+Artefacts attached:
+- cadence-linux-x86_64.deb
+- cadence-linux-aarch64.deb
+- cadence-macos-aarch64.dmg
+- cadence-windows-x86_64.msi
+- SHA256SUMS.txt + SHA256SUMS.txt.minisig (minisign signature)
+- cadence-sbom-cyclonedx (CycloneDX SBOM)
+
+Token ledger updated: cumulative 1,711,676,910 (Tier A+B), this release 0 tokens.
+`main` is current with the release tag — no commits ahead.
 
 ### Deferred (from the audit, not in this slice)
 
