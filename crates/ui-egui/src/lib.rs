@@ -7466,7 +7466,7 @@ fn render_gantt(
                                         Pos2::new(constraint_x, start_y + offset),
                                         Pos2::new(constraint_x, end_y - offset),
                                     ],
-                                    stroke.clone(),
+                                    stroke,
                                 );
                             }
 
