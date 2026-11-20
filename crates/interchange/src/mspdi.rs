@@ -837,25 +837,26 @@ mod tests {
         let mut project = Project::new("WBS Test", start);
 
         // Add WBS nodes to the tree so export can validate them
-        project.wbs.add(WbsId(1), "Survey", project.wbs.root()).expect("add WBS 1");
-        project.wbs.add(WbsId(2), "Excavate", project.wbs.root()).expect("add WBS 2");
+        // (root is WbsId(1), so children start at 2)
+        project.wbs.add(WbsId(2), "Survey", project.wbs.root()).expect("add WBS 2");
+        project.wbs.add(WbsId(3), "Excavate", project.wbs.root()).expect("add WBS 3");
 
         let mut survey = Activity::new(ActivityId(1), "Survey", 2);
-        survey.wbs = Some(WbsId(1));
+        survey.wbs = Some(WbsId(2));
         project.activities.push(survey);
 
         let mut excavate = Activity::new(ActivityId(2), "Excavate", 3);
-        excavate.wbs = Some(WbsId(2));
+        excavate.wbs = Some(WbsId(3));
         project.activities.push(excavate);
 
         let document = export(&project).expect("export");
         // WBS codes are written as plain numbers in MSPDI
-        assert!(document.contains("<WBS>1</WBS>"));
         assert!(document.contains("<WBS>2</WBS>"));
+        assert!(document.contains("<WBS>3</WBS>"));
 
         let loaded = import(&document).expect("import");
-        assert_eq!(loaded.activities[0].wbs, Some(WbsId(1)));
-        assert_eq!(loaded.activities[1].wbs, Some(WbsId(2)));
+        assert_eq!(loaded.activities[0].wbs, Some(WbsId(2)));
+        assert_eq!(loaded.activities[1].wbs, Some(WbsId(3)));
     }
 
     // New test: Named calendars are imported from MSPDI
