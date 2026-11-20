@@ -1887,7 +1887,7 @@ mod tests {
         let mut activity = Activity::new(ActivityId(1), "A", 4);
         activity.budget_at_completion = Some(1_000);
         activity.actual_cost = Some(500);
-        activity.percent_complete = Some(800); // 80% earned
+        activity.percent_complete = Some(8_000); // 80% earned (basis points: 80 * 100 = 8000)
 
         let metrics = EvmMetrics::for_activity(&activity, 5_000);
         // BAC = 1000, EV = 800, AC = 500
@@ -1902,8 +1902,8 @@ mod tests {
     fn evm_metrics_tcpi_zero_denominator() {
         let mut activity = Activity::new(ActivityId(1), "A", 4);
         activity.budget_at_completion = Some(1_000);
-        // actual_cost = 1000, so BAC == AC
-        // TCPI denominator is (BAC - AC) = 0, should be None
+        activity.actual_cost = Some(1_000); // BAC = AC = 1000
+                                            // TCPI denominator is (BAC - AC) = 0, should be None
 
         let metrics = EvmMetrics::for_activity(&activity, 5_000);
         assert_eq!(
