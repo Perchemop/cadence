@@ -50,6 +50,33 @@ placed, and how cluttered it feels; must stay usable for entry-level users.
   to the new ghost labels; Window removed from the menu-bar assertion;
   `ViewMode` made public with a `set_view_mode` seam for hosts/tests.
 - Release-notes dialog copy updated for the new chrome.
+- **Jargon scrub:** the internal "RP-4" ticket-ID strings are gone from the
+  Assistant view; user-facing copy explains the request flow ships later.
+- **CI workflow fix:** the evidence job's SIGSEGV check wrote
+  `crashed:value` to `$GITHUB_OUTPUT` (must be `key=value`); the job now
+  passes and is green on run `44822114868`.
+
+### Verification
+
+- Green CI run `44822114868` on `main`: Verify (ubuntu-latest,
+  ubuntu-24.04-arm, windows-latest, macos-latest), Package (Linux),
+  Evidence (rendered), Packaging plan — all success; Semver job skipped as
+  in all prior runs (event-gated, not in `.ci-required.txt`).
+- Interim runs recorded: `44819994633` (all authoritative checks green;
+  evidence job failed on the workflow format bug, fixed after), plus the
+  red repair chain `44734939827`→`44822114868` (formatting, dependency,
+  dead-code, clone-on-Copy, fmt-collapse rounds — each fixed from the CI
+  log, never bypassed).
+
+### Pending release (documented per the release directive)
+
+`main` is 10+ commits ahead of tag `v0.16.2`, including this redesign. The
+next release should cut **v0.17.0** (visible UI change) with: workspace
+version bump, CHANGELOG section (drafted above under [Unreleased]), release
+notes with installers + `SHA256SUMS.txt` + signature, token ledger row, and
+README screenshot refresh once the owner confirms the new look ("does this
+work / feel right?" gate). Deferred polish (dialog danger styling, empty-
+state type size, inspector separators) is queued for the same release train.
 
 ### Deferred (from the audit, not in this slice)
 
