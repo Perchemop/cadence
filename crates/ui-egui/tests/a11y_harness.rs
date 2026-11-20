@@ -10,9 +10,10 @@
 //!
 //! Gates covered:
 //!
-//! 1. **Reachability.** Every piece of chrome a user must operate — the nine
-//!    view tabs, the menu bar, Undo/Redo, the status-bar Shortcuts button,
-//!    the bottom-right version button, the table filter field and the
+//! 1. **Reachability.** Every piece of chrome a user must operate — the core
+//!    view tabs, the More-views menu (with every specialist view asserted
+//!    active by name), the menu bar, Undo/Redo, the status-bar Shortcuts
+//!    button, the bottom-right version label, the table filter field and the
 //!    "Critical only" checkbox — is exposed to AccessKit with a label
 //!    (S2-20: no unreachable controls).
 //! 2. **Named inputs.** egui_kittest 0.35.0 does not yet auto-fail on input
@@ -55,18 +56,22 @@ use egui::accesskit::Role;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use time::{Date, Month};
 
-/// The ten view-tab labels of the shell, in display order.
-const VIEW_TABS: [&str; 10] = [
-    "Table",
-    "Gantt",
-    "Resources",
-    "Baselines",
-    "Calendars",
-    "Audit",
-    "Lookahead",
-    "Diary",
-    "Production",
-    "Assistant",
+/// The core view-tab labels of the shell, in display order. The seven
+/// specialist views live inside the grouped More-views menu (and the View
+/// menu); [`all_specialist_views`] drives the switcher to each of them so
+/// their reachability is asserted too.
+const VIEW_TABS: [&str; 3] = ["Table", "Gantt", "Resources"];
+
+/// Every specialist view behind the More-views menu, with the label the
+/// switcher shows when that view is active.
+const SPECIALIST_VIEWS: [(&str, cadence_ui_egui::ViewMode); 7] = [
+    ("Baselines", cadence_ui_egui::ViewMode::Baselines),
+    ("Calendars", cadence_ui_egui::ViewMode::Calendars),
+    ("Lookahead", cadence_ui_egui::ViewMode::Lookahead),
+    ("Diary", cadence_ui_egui::ViewMode::Diary),
+    ("Production", cadence_ui_egui::ViewMode::Production),
+    ("Audit", cadence_ui_egui::ViewMode::Audit),
+    ("Assistant", cadence_ui_egui::ViewMode::Assistant),
 ];
 
 /// The AccessKit roles a user can act on directly. This mirrors the input set
@@ -206,8 +211,9 @@ fn unnamed_inputs(harness: &egui_kittest::Harness<'_>) -> Vec<String> {
         .collect()
 }
 
-/// The nine view tabs must each be reachable by name through the button role
-/// (the tab strip is styled buttons, not an egui tab widget), exactly once.
+/// The core view tabs must each be reachable by name through the button role
+/// (the tab strip is styled buttons, not an egui tab widget), exactly once,
+/// and the More-views menu button must be present for the specialist views.
 #[test]
 fn the_shell_exposes_view_tabs_to_accesskit() {
     let mut app = build_app();
@@ -222,6 +228,16 @@ fn the_shell_exposes_view_tabs_to_accesskit() {
         );
     }
 
+    // The grouped menu behind which the seven specialist views live. The
+    // query is role-agnostic: egui's menu-button role mapping is an
+    // implementation detail.
+    let more = labels_containing(&harness, "More views");
+    assert_eq!(
+        more.len(),
+        1,
+        "expected exactly one More-views menu button in the AccessKit tree, found: {more:?}"
+    );
+
     // The plain role query must also succeed without panicking: the shell
     // exposes at least as many buttons as it has view tabs.
     let buttons = harness.get_all_by_role(Role::Button).count();
@@ -230,6 +246,23 @@ fn the_shell_exposes_view_tabs_to_accesskit() {
         "the shell exposes only {buttons} buttons for {len} view tabs",
         len = VIEW_TABS.len(),
     );
+}
+
+/// Every specialist view must be reachable: when the switcher is driven to
+/// one of them, its name becomes the visible menu label in row 2, so a
+/// screen reader can always answer "where am I?".
+#[test]
+fn every_specialist_view_is_reachable_by_name() {
+    for (name, mode) in SPECIALIST_VIEWS {
+        let mut app = build_app();
+        app.set_view_mode(mode);
+        let harness = build_harness(&mut app, true);
+        let matches = labels_containing(&harness, name);
+        assert!(
+            !matches.is_empty(),
+            "specialist view {name:?} is not exposed to AccessKit when active"
+        );
+    }
 }
 
 /// Toolbar, menu bar, status bar and version chrome must all be labelled —
@@ -242,12 +275,13 @@ fn the_toolbar_buttons_carry_labels() {
     let harness = build_harness(&mut app, true);
 
     // Undo/Redo: present, button-role, labelled, and exposed as disabled
-    // while there is nothing to undo/redo.
-    for name in ["Undo (Ctrl+Z)", "Redo (Ctrl+Y)"] {
+    // while there is nothing to undo/redo. The shortcut hints live in the
+    // tooltips, so the visible labels are the bare words.
+    for name in ["Undo", "Redo"] {
         let matches = labels_containing(&harness, name);
         assert!(
             !matches.is_empty(),
-            "no AccessKit node carries {name:?}; the toolbar undo/redo pair is unreachable"
+            "no AccessKit node carries {name:?}; the quick-access undo/redo pair is unreachable"
         );
         for (role, label) in &matches {
             assert_eq!(*role, Role::Button, "{name:?} should be a button");
@@ -264,10 +298,10 @@ fn the_toolbar_buttons_carry_labels() {
         );
     }
 
-    // Menu bar: File, Edit, View, Window, Help (menu buttons; the query is
+    // Menu bar: File, Edit, View, Help (menu buttons; the query is
     // role-agnostic because egui's menu-button role mapping is an
     // implementation detail).
-    for menu in ["File", "Edit", "View", "Window", "Help"] {
+    for menu in ["File", "Edit", "View", "Help"] {
         let matches = labels_containing(&harness, menu);
         assert!(
             !matches.is_empty(),

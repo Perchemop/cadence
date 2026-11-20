@@ -15,6 +15,51 @@ over-attribution caveat recorded.
 
 ## [0.16.0] — 2026-11-20
 
+## [Unreleased] — Chrome redesign (owner design audit)
+
+### Changed
+- **Two-tier view switcher.** The flat 10-tab strip is replaced by three core
+  tabs (Table, Gantt, Resources) plus a grouped "More views" menu (Plan &
+  time: Baselines, Calendars; Progress & site: Lookahead, Diary, Production;
+  Quality & assist: Audit, Assistant). When a specialist view is active, its
+  name becomes the visible menu label, so the current location is always
+  shown. All Ctrl+1…Ctrl+9 shortcuts are unchanged. The View menu, the tab
+  strip and the More-views menu all render from one `VIEW_META` table.
+- **Menu bar simplified.** The Window menu is removed: the theme toggle lives
+  in the View menu, the split-Gantt toggle is a checkbox in the Table filter
+  row, and the Columns chooser moved from the global chrome into the Table
+  filter row (view-scoped controls belong in their views). The duplicate
+  File ▸ Exit item is gone (Close remains). Menu titles drop their icons;
+  menu items keep their shortcut hints.
+- **Quick-access cluster.** New activity is the one primary-styled button;
+  Undo/Redo sit beside it as ghost buttons with the shortcut hints in their
+  tooltips instead of their labels. The version button left the toolbar; the
+  version is now a subtle bottom-right status-bar label that still opens the
+  release notes (suite standard §12.1).
+- **Status bar rebuilt.** Left: the transient status message with a severity
+  glyph (state never rides on colour alone) or "Ready". Middle: plain-language
+  schedule facts (range, activity count, critical count) plus SPI/CPI when a
+  baseline is active — the seven-abbreviation EVM string is gone (the full
+  breakdown remains in the Baselines view). Right: save state, the Shortcuts
+  button, and the version. The duplicate zoom readout and the misplaced
+  trailing separator are removed.
+- **Tab styling.** Unselected tabs no longer wear a critical-red hairline
+  (semantic colour misuse); tabs now use the shared chrome kit — selected:
+  accent-tinted fill, strong text, accent hairline; idle: transparent with
+  muted text. The Lookahead/Assistant shared-icon defect is fixed (binoculars
+  vs chat).
+- **Chrome button kit.** `design::chrome::{primary, ghost, tab}` centralise
+  chrome button styling on the design tokens (`ACCENT_ON` added for text on
+  accent fills); the shell no longer hand-rolls fills and strokes.
+
+### Fixed
+- CI: the 2026-11-20 Gantt/menu commits left `main` red (formatting, a
+  missing `cadence-interchange` dependency in `ui-egui`, dead bindings, a
+  clone-on-Copy, an unused-import set and an orphaned method). All repaired;
+  the Edit menu now routes Delete through `delete_selected_activity`.
+- Import/export dialogs are wired end-to-end (File ▸ Import…/Export…), backed
+  by `cadence-interchange` (json/mspdi/mpx/csv in; json/mspdi/csv out).
+
 ## [0.16.1] — 2026-11-20
 
 ### Fixed

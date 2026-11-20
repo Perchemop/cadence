@@ -143,9 +143,10 @@ impl SortKey {
     }
 }
 
-/// Which top-level view is shown.
+/// Which top-level view is shown. Public so an embedding host (and the
+/// AccessKit harness) can select the initial view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ViewMode {
+pub enum ViewMode {
     Table,
     Gantt,
     Resources,
@@ -157,6 +158,122 @@ enum ViewMode {
     Production,
     Assistant,
 }
+
+/// Which chrome group a view belongs to in the two-tier view switcher: the
+/// three core tabs stay always visible; the seven specialist views live in
+/// labelled groups inside the More-views menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ViewGroup {
+    /// Always-visible core tabs (Table, Gantt, Resources).
+    Core,
+    /// "Plan & time" group: snapshots and working calendars.
+    PlanTime,
+    /// "Progress & site" group: site records and short-interval planning.
+    ProgressSite,
+    /// "Quality & assist" group: schedule quality and the assistant.
+    Quality,
+}
+
+impl ViewGroup {
+    /// The caption rendered above the group in the menus.
+    fn label(self) -> &'static str {
+        match self {
+            ViewGroup::Core => "Core views",
+            ViewGroup::PlanTime => "Plan & time",
+            ViewGroup::ProgressSite => "Progress & site",
+            ViewGroup::Quality => "Quality & assist",
+        }
+    }
+}
+
+/// Everything the chrome needs to present a view, in one place: the View
+/// menu, the core tab strip and the More-views menu all render from this
+/// table, so the three surfaces can never drift apart. Fields:
+/// `(mode, label, tooltip, icon, group, shortcut)` — the shortcut string is
+/// shown in the View menu only and matches the Ctrl+N handler verbatim.
+/// Entries are ordered by group so menu captions never repeat.
+const VIEW_META: [(ViewMode, &str, &str, &str, ViewGroup, &str); 10] = [
+    (
+        ViewMode::Table,
+        "Table",
+        "Activity table: list, sort, edit and link activities",
+        egui_phosphor::regular::TABLE,
+        ViewGroup::Core,
+        "Ctrl+1",
+    ),
+    (
+        ViewMode::Gantt,
+        "Gantt",
+        "Gantt chart: bars, dependencies, milestones, today line",
+        egui_phosphor::regular::CHART_BAR,
+        ViewGroup::Core,
+        "Ctrl+2",
+    ),
+    (
+        ViewMode::Resources,
+        "Resources",
+        "Assignments, usage histograms and cost rates",
+        egui_phosphor::regular::USERS,
+        ViewGroup::Core,
+        "Ctrl+3",
+    ),
+    (
+        ViewMode::Baselines,
+        "Baselines",
+        "Saved schedule snapshots to compare against",
+        egui_phosphor::regular::STACK,
+        ViewGroup::PlanTime,
+        "Ctrl+4",
+    ),
+    (
+        ViewMode::Calendars,
+        "Calendars",
+        "Working-day calendars and holiday exceptions",
+        egui_phosphor::regular::CALENDAR,
+        ViewGroup::PlanTime,
+        "Ctrl+5",
+    ),
+    (
+        ViewMode::Lookahead,
+        "Lookahead",
+        "Rolling short-interval window and snapshots",
+        egui_phosphor::regular::BINOCULARS,
+        ViewGroup::ProgressSite,
+        "Ctrl+7",
+    ),
+    (
+        ViewMode::Diary,
+        "Diary",
+        "Dated site notes linked to activities",
+        egui_phosphor::regular::NOTE_PENCIL,
+        ViewGroup::ProgressSite,
+        "Ctrl+8",
+    ),
+    (
+        ViewMode::Production,
+        "Production",
+        "Actual progress per activity and date",
+        egui_phosphor::regular::GAUGE,
+        ViewGroup::ProgressSite,
+        "Ctrl+9",
+    ),
+    (
+        ViewMode::Audit,
+        "Audit",
+        "Schedule-quality checks over the programme",
+        egui_phosphor::regular::SHIELD_CHECK,
+        ViewGroup::Quality,
+        "Ctrl+6",
+    ),
+    (
+        ViewMode::Assistant,
+        "Assistant",
+        "AI assistant for proposal review",
+        egui_phosphor::regular::CHAT_CIRCLE_TEXT,
+        ViewGroup::Quality,
+        "",
+    ),
+];
 
 /// Severity of a `status_message`, used to pick its colour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -607,6 +724,37 @@ impl CadenceApp {
     /// Return the design tokens for the current theme.
     fn design_tokens(&self) -> DesignTokens {
         DesignTokens::for_dark(self.dark)
+    }
+
+    /// Select the top-level view to show (used by embedding hosts and tests).
+    pub fn set_view_mode(&mut self, mode: ViewMode) {
+        self.view_mode = mode;
+    }
+
+    /// The grouped list of specialist views inside the More-views menu,
+    /// rendered from [`VIEW_META`] with weak group captions.
+    fn more_views_menu(&mut self, ui: &mut Ui) {
+        ui.set_min_width(180.0);
+        let mut group = None;
+        for (mode, label, tooltip, _icon, meta_group, shortcut) in VIEW_META {
+            if meta_group == ViewGroup::Core {
+                continue;
+            }
+            if group != Some(meta_group) {
+                group = Some(meta_group);
+                ui.separator();
+                ui.weak(meta_group.label());
+            }
+            let hint = if shortcut.is_empty() {
+                label.to_string()
+            } else {
+                format!("{label} ({shortcut})")
+            };
+            let response = ui.radio(self.view_mode == mode, hint);
+            if response.on_hover_text(tooltip).clicked() {
+                self.view_mode = mode;
+            }
+        }
     }
 
     /// Build the application from a loaded project.
@@ -2556,10 +2704,10 @@ impl CadenceApp {
             }
         }
 
-        // ─── TOP BAR: Three-zone layout ───
-        // Zone 1: Menu bar (File / Edit / Window / Help)
-        // Zone 2: View tab strip (Table, Gantt, Resources, …)
-        // Zone 3: Tool actions (Columns, Undo, Redo, Version)
+        // ─── TOP BAR ───
+        // Row 1: File / Edit / View / Help menus plus the quick-access
+        // cluster (New activity, Undo, Redo). Global commands only; every
+        // view-scoped control lives in the view that owns it.
         egui::Panel::top("toolbar")
             .frame(egui::Frame::new().fill(self.design_tokens().panel_bg))
             .show(ui, |ui| {
@@ -2567,22 +2715,11 @@ impl CadenceApp {
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
 
-                    // Phosphor Icons (MIT) glyphs for the command bar; each
-                    // sits beside a text label so meaning is never icon-only.
-                    let icon_file = egui_phosphor::regular::FOLDER;
-                    let icon_edit = egui_phosphor::regular::PENCIL;
-                    let icon_view = egui_phosphor::regular::EYE;
-                    let icon_window = egui_phosphor::regular::APP_WINDOW;
-                    let icon_help = egui_phosphor::regular::QUESTION;
-                    let icon_columns = egui_phosphor::regular::COLUMNS;
-                    let icon_undo = egui_phosphor::regular::ARROW_COUNTER_CLOCKWISE;
-                    let icon_redo = egui_phosphor::regular::ARROW_CLOCKWISE;
-
-                    // ─── Zone 1: Menu Bar ───
-                    // File menu: document operations (file system interactions)
-                    ui.menu_button(format!("{icon_file} File"), |ui| {
+                    // File menu: document operations (file system interactions).
+                    // Shortcut hints stay inside menus, where they teach
+                    // without cluttering the chrome.
+                    ui.menu_button("File", |ui| {
                         ui.set_min_width(160.0);
-                        // File: New Project / Open / Save / Import / Export
                         if ui.button("New project…").clicked() {
                             self.new_project();
                         }
@@ -2595,7 +2732,6 @@ impl CadenceApp {
                         if ui.button("Save as…").clicked() {
                             self.save_as_dialog();
                         }
-                        ui.separator();
                         if !self.recent_files.is_empty() {
                             ui.menu_button("Recent files", |ui| {
                                 let recent = self.recent_files.clone();
@@ -2606,9 +2742,7 @@ impl CadenceApp {
                                     }
                                 }
                             });
-                            ui.separator();
                         }
-                        // Import / Export section
                         ui.separator();
                         if ui.button("Import…").clicked() {
                             self.show_import_dialog = true;
@@ -2651,13 +2785,10 @@ impl CadenceApp {
                         if ui.button("Close (Ctrl+W)").clicked() {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
-                        if ui.button("Exit").clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
                     });
 
-                    // Edit menu: editing operations (actions that modify the project)
-                    ui.menu_button(format!("{icon_edit} Edit"), |ui| {
+                    // Edit menu: editing operations (actions that modify the project).
+                    ui.menu_button("Edit", |ui| {
                         ui.set_min_width(160.0);
                         // Undo/Redo
                         if ui
@@ -2696,52 +2827,37 @@ impl CadenceApp {
                         }
                     });
 
-                    // ─── View menu: pure view switching (the tab strip is the
-                    // always-visible twin of this list) ───
-                    ui.menu_button(format!("{icon_view} View"), |ui| {
-                        ui.set_min_width(180.0);
-                        for (mode, label) in [
-                            (ViewMode::Table, "Table (Ctrl+1)"),
-                            (ViewMode::Gantt, "Gantt (Ctrl+2)"),
-                            (ViewMode::Resources, "Resources (Ctrl+3)"),
-                            (ViewMode::Baselines, "Baselines (Ctrl+4)"),
-                            (ViewMode::Calendars, "Calendars (Ctrl+5)"),
-                            (ViewMode::Audit, "Audit (Ctrl+6)"),
-                            (ViewMode::Lookahead, "Lookahead (Ctrl+7)"),
-                            (ViewMode::Diary, "Diary (Ctrl+8)"),
-                            (ViewMode::Production, "Production (Ctrl+9)"),
-                            (ViewMode::Assistant, "Assistant"),
-                        ] {
-                            if ui.radio(self.view_mode == mode, label).clicked() {
+                    // ─── View menu: the two-tier view list shared with the
+                    // tab strip (rendered from VIEW_META so the two surfaces
+                    // can never drift), plus the appearance toggle. ───
+                    ui.menu_button("View", |ui| {
+                        ui.set_min_width(200.0);
+                        let mut group = None;
+                        for (mode, label, _tooltip, _icon, meta_group, shortcut) in VIEW_META {
+                            if group != Some(meta_group) {
+                                group = Some(meta_group);
+                                if meta_group != ViewGroup::Core {
+                                    ui.separator();
+                                }
+                                ui.weak(meta_group.label());
+                            }
+                            let hint = if shortcut.is_empty() {
+                                label.to_string()
+                            } else {
+                                format!("{label} ({shortcut})")
+                            };
+                            if ui.radio(self.view_mode == mode, hint).clicked() {
                                 self.view_mode = mode;
                             }
                         }
-                    });
-
-                    // ─── Window menu: chrome that is not view switching ───
-                    ui.menu_button(format!("{icon_window} Window"), |ui| {
-                        ui.set_min_width(160.0);
+                        ui.separator();
                         if ui.button("Toggle theme (Ctrl+D)").clicked() {
                             self.dark = !self.dark;
                             apply_theme(&ctx, self.dark);
                         }
-                        if ui
-                            .add_enabled(
-                                self.view_mode == ViewMode::Table,
-                                egui::Button::new(if self.show_split_gantt {
-                                    "Hide split Gantt"
-                                } else {
-                                    "Show split Gantt"
-                                }),
-                            )
-                            .on_disabled_hover_text("The split Gantt sits beside the Table view.")
-                            .clicked()
-                        {
-                            self.show_split_gantt = !self.show_split_gantt;
-                        }
                     });
 
-                    ui.menu_button(format!("{icon_help} Help"), |ui| {
+                    ui.menu_button("Help", |ui| {
                         ui.set_min_width(160.0);
                         if ui.button("Keyboard shortcuts (F1)").clicked() {
                             self.show_shortcuts_dialog = true;
@@ -2763,284 +2879,228 @@ impl CadenceApp {
                         }
                     });
 
-                    ui.separator();
-
-                    // ─── Zone 2: View Tab Strip ───
-                    let first = &mut true;
-                    for (mode, label, tooltip) in [
-                        (
-                            ViewMode::Table,
-                            "Table",
-                            "Activity table: list, sort, edit and link activities",
-                        ),
-                        (
-                            ViewMode::Gantt,
-                            "Gantt",
-                            "Gantt chart: bars, dependencies, milestones and the today line",
-                        ),
-                        (
-                            ViewMode::Resources,
-                            "Resources",
-                            "Resources: assignments, daily usage histograms and cost rates",
-                        ),
-                        (
-                            ViewMode::Baselines,
-                            "Baselines",
-                            "Baselines: saved snapshots of the schedule to compare against",
-                        ),
-                        (
-                            ViewMode::Calendars,
-                            "Calendars",
-                            "Calendars: working-day calendars and holiday exceptions",
-                        ),
-                        (
-                            ViewMode::Audit,
-                            "Audit",
-                            "Schedule-quality audit: DCMA-style checks over the programme",
-                        ),
-                        (
-                            ViewMode::Lookahead,
-                            "Lookahead",
-                            "Lookahead: rolling short-interval window and published snapshots",
-                        ),
-                        (
-                            ViewMode::Diary,
-                            "Diary",
-                            "Diary: dated site notes linked to activities and lookahead windows",
-                        ),
-                        (
-                            ViewMode::Production,
-                            "Production",
-                            "Production: record actual progress per activity and date",
-                        ),
-                        (
-                            ViewMode::Assistant,
-                            "Assistant",
-                            "AI assistant for proposal review",
-                        ),
-                    ] {
-                        let selected = self.view_mode == mode;
-                        let icon = match mode {
-                            ViewMode::Table => egui_phosphor::regular::TABLE,
-                            ViewMode::Gantt => egui_phosphor::regular::CHART_BAR,
-                            ViewMode::Resources => egui_phosphor::regular::USERS,
-                            ViewMode::Baselines => egui_phosphor::regular::STACK,
-                            ViewMode::Calendars => egui_phosphor::regular::CALENDAR,
-                            ViewMode::Audit => egui_phosphor::regular::SHIELD_CHECK,
-                            ViewMode::Lookahead => egui_phosphor::regular::MAGNIFYING_GLASS,
-                            ViewMode::Diary => egui_phosphor::regular::NOTE_PENCIL,
-                            ViewMode::Production => egui_phosphor::regular::GAUGE,
-                            ViewMode::Assistant => egui_phosphor::regular::MAGNIFYING_GLASS,
-                        };
-                        if *first {
-                            *first = false;
-                        } else {
-                            ui.separator();
+                    // ─── Quick access: the one primary action and the global
+                    // undo/redo pair. Shortcut hints live in the tooltips; the
+                    // labels stay short so the bar reads at a glance. ───
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .add(design::chrome::primary(format!(
+                                "{} New activity",
+                                egui_phosphor::regular::PLUS
+                            )))
+                            .on_hover_text("Create a new activity (Ctrl+N)")
+                            .clicked()
+                        {
+                            self.create_activity();
                         }
                         if ui
-                            .add(
-                                egui::Button::new(format!("{icon} {label}"))
-                                    .selected(selected)
-                                    .frame(selected)
-                                    .fill(if selected {
-                                        self.design_tokens().accent_bg
-                                    } else {
-                                        egui::Color32::TRANSPARENT
-                                    })
-                                    .stroke(egui::Stroke::new(
-                                        1.0,
-                                        if selected {
-                                            self.design_tokens().accent
-                                        } else {
-                                            self.design_tokens().critical.linear_multiply(0.2)
-                                        },
-                                    )),
+                            .add_enabled(
+                                self.stack.can_undo(),
+                                design::chrome::ghost(format!(
+                                    "{} Undo",
+                                    egui_phosphor::regular::ARROW_COUNTER_CLOCKWISE
+                                )),
                             )
+                            .on_hover_text("Undo the last edit (Ctrl+Z)")
+                            .on_disabled_hover_text("Nothing to undo")
+                            .clicked()
+                        {
+                            let _ = self.stack.undo(&mut self.project);
+                            self.recompute();
+                            self.refresh_selection();
+                        }
+                        if ui
+                            .add_enabled(
+                                self.stack.can_redo(),
+                                design::chrome::ghost(format!(
+                                    "{} Redo",
+                                    egui_phosphor::regular::ARROW_CLOCKWISE
+                                )),
+                            )
+                            .on_hover_text("Redo the last undone edit (Ctrl+Y)")
+                            .on_disabled_hover_text("Nothing to redo")
+                            .clicked()
+                        {
+                            let _ = self.stack.redo(&mut self.project);
+                            self.recompute();
+                            self.refresh_selection();
+                        }
+                    });
+                });
+            });
+
+        // ─── Row 2: the view switcher ───
+        // Three core tabs plus a grouped More-views menu for the seven
+        // specialist views. When a specialist view is active it becomes the
+        // menu label, so the current location is always visible.
+        egui::Panel::top("view_switcher")
+            .frame(egui::Frame::new().fill(self.design_tokens().panel_bg))
+            .show(ui, |ui| {
+                ui.add_space(2.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    for (mode, label, tooltip, icon, group, _shortcut) in VIEW_META {
+                        if group != ViewGroup::Core {
+                            continue;
+                        }
+                        if ui
+                            .add(design::chrome::tab(
+                                self.dark,
+                                self.view_mode == mode,
+                                format!("{icon} {label}"),
+                            ))
                             .on_hover_text(tooltip)
                             .clicked()
                         {
                             self.view_mode = mode;
                         }
                     }
+                    // The grouped menu; its label shows the active specialist
+                    // view (emphasised), or "More views" when a core tab is
+                    // active — so "where am I?" always has a visible answer.
+                    let active_specialist = VIEW_META
+                        .iter()
+                        .find(|(mode, _, _, _, group, _)| {
+                            *group != ViewGroup::Core && self.view_mode == *mode
+                        })
+                        .map(|(_, label, _, icon, _, _)| format!("{icon} {label}"));
+                    let menu_label: egui::RichText = match &active_specialist {
+                        Some(label) => egui::RichText::new(label.clone()).strong(),
+                        None => egui::RichText::new(format!(
+                            "{} More views",
+                            egui_phosphor::regular::CARET_DOWN
+                        )),
+                    };
+                    ui.menu_button(menu_label, |ui| {
+                        self.more_views_menu(ui);
+                    })
+                    .response
+                    .on_hover_text(
+                        "Baselines, Calendars, Lookahead, Diary, Production, Audit and the Assistant",
+                    );
+                });
+            });
 
-                    ui.separator();
-
-                    // ─── Zone 3: Tool Actions ───
-                    // Columns chooser (prominent position), gated to the Table
-                    // view: the chooser only affects table columns.
-                    ui.add_enabled_ui(self.view_mode == ViewMode::Table, |ui| {
-                        let columns_menu =
-                            ui.menu_button(format!("{icon_columns} Columns"), |ui| {
-                                ui.set_min_width(180.0);
-                                ui.heading("Visible columns");
-                                for key in SortKey::ordered_columns() {
-                                    let mut visible = self.visible_columns.contains(&key);
-                                    if ui.checkbox(&mut visible, key.label()).changed() {
-                                        if visible {
-                                            self.visible_columns.insert(key);
-                                        } else {
-                                            self.visible_columns.remove(&key);
-                                        }
-                                    }
-                                }
-                                ui.separator();
-                                if ui.button("Reset to default").clicked() {
-                                    self.visible_columns = SortKey::all_columns();
-                                }
-                            });
-                        columns_menu
-                            .response
-                            .on_disabled_hover_text("Columns apply to the Table view.");
+        // Status bar: transient feedback on the left, schedule facts in the
+        // middle, and state + help + identity on the right. It is a bottom
+        // panel, so it must be added before the per-view `CentralPanel`
+        // (which claims the remaining space).
+        egui::Panel::bottom("status_bar")
+            .frame(egui::Frame::new().fill(self.design_tokens().panel_bg))
+            .show(ui, |ui| {
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 16.0;
+                    let palette = design::palette(self.dark);
+                    // Left: the most recent status message with a severity
+                    // glyph, so the state never rides on colour alone.
+                    let now = Instant::now();
+                    self.maybe_clear_status(now);
+                    let message = self.status_message.clone();
+                    match message {
+                        Some(message) => {
+                            let severity = StatusSeverity::from_message(&message);
+                            let (glyph, color) = match severity {
+                                StatusSeverity::Info => (
+                                    egui_phosphor::regular::INFO,
+                                    palette.text_muted,
+                                ),
+                                StatusSeverity::Success => (
+                                    egui_phosphor::regular::CHECK_CIRCLE,
+                                    palette.ok,
+                                ),
+                                StatusSeverity::Warning => (
+                                    egui_phosphor::regular::WARNING,
+                                    palette.warn,
+                                ),
+                                StatusSeverity::Error => (
+                                    egui_phosphor::regular::X_CIRCLE,
+                                    palette.critical,
+                                ),
+                            };
+                            ui.label(
+                                egui::RichText::new(format!("{glyph} {message}"))
+                                    .small()
+                                    .color(color),
+                            );
+                        }
+                        None => {
+                            ui.label(
+                                egui::RichText::new("Ready").small().color(palette.text_muted),
+                            );
+                        }
+                    }
+                    // Centre: the schedule facts, in plain language. The full
+                    // earned-value breakdown lives in the Baselines view; only
+                    // the two indices are surfaced here.
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        let range = match self.schedule.as_ref() {
+                            Ok(schedule) => {
+                                format!(
+                                    "{} to {}",
+                                    schedule.project_start, schedule.project_finish
+                                )
+                            }
+                            Err(_) => "Cannot schedule".to_string(),
+                        };
+                        let mut facts = format!(
+                            "{range} · {} activities",
+                            self.project.activities.len()
+                        );
+                        if self.critical_count > 0 {
+                            facts.push_str(&format!(" · {} critical", self.critical_count));
+                        }
+                        if let (true, Some(metrics)) = (self.baseline_active, &self.evm_metrics) {
+                            let spi = metrics.schedule_performance_index.unwrap_or(0.0);
+                            let cpi = metrics.cost_performance_index.unwrap_or(0.0);
+                            facts.push_str(&format!(" · SPI {spi:.2} · CPI {cpi:.2}"));
+                        }
+                        ui.label(
+                            egui::RichText::new(facts)
+                                .small()
+                                .color(palette.text_muted),
+                        );
                     });
-
-                    ui.separator();
-
-                    // Undo/Redo with primary styling when enabled
-                    if ui
-                        .add_enabled(
-                            self.stack.can_undo(),
-                            egui::Button::new(format!("{icon_undo} Undo (Ctrl+Z)"))
-                                .fill(self.design_tokens().primary_bg)
-                                .stroke(egui::Stroke::new(1.0, self.design_tokens().accent)),
-                        )
-                        .on_hover_text("Undo the last edit (Ctrl+Z)")
-                        .clicked()
-                    {
-                        let _ = self.stack.undo(&mut self.project);
-                        self.recompute();
-                        self.refresh_selection();
-                    }
-                    if ui
-                        .add_enabled(
-                            self.stack.can_redo(),
-                            egui::Button::new(format!("{icon_redo} Redo (Ctrl+Y)"))
-                                .fill(self.design_tokens().primary_bg)
-                                .stroke(egui::Stroke::new(1.0, self.design_tokens().accent)),
-                        )
-                        .on_hover_text("Redo the last undone edit (Ctrl+Y)")
-                        .clicked()
-                    {
-                        let _ = self.stack.redo(&mut self.project);
-                        self.recompute();
-                        self.refresh_selection();
-                    }
-
-                    // Version button (clickable for release notes)
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Identity: subtle bottom-right per the suite standard;
+                        // a click opens the release notes.
                         if ui
-                            .small_button(update_check::current_version())
-                            .on_hover_text("Click to view release notes")
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new(update_check::current_version())
+                                        .small()
+                                        .color(palette.text_muted),
+                                )
+                                .fill(egui::Color32::TRANSPARENT),
+                            )
+                            .on_hover_text("Release notes")
                             .clicked()
                         {
                             self.show_release_notes = true;
                         }
+                        // F1 footer: the keyboard reference is one click away
+                        // from anywhere, matching the F1 binding.
+                        if ui
+                            .small_button("Shortcuts (F1)")
+                            .on_hover_text("Open the keyboard reference (F1)")
+                            .clicked()
+                        {
+                            self.show_shortcuts_dialog = true;
+                        }
+                        // Save indicator: a word, not a colour alone.
+                        let (save_text, save_color) = if self.dirty {
+                            ("● Unsaved", palette.critical)
+                        } else {
+                            ("✓ Saved", palette.ok)
+                        };
+                        ui.label(
+                            egui::RichText::new(save_text)
+                                .small()
+                                .color(save_color),
+                        );
                     });
                 });
             });
-
-        // Status bar: project dates and counts, critical count, zoom, and the
-        // most recent status message. It is a bottom panel, so it must be added
-        // before the per-view `CentralPanel` (which claims the remaining
-        // space).
-        egui::Panel::bottom("status_bar").show(ui, |ui| {
-            ui.add_space(4.0);
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 16.0;
-                let range = match self.schedule.as_ref() {
-                    Ok(schedule) => {
-                        format!("{} to {}", schedule.project_start, schedule.project_finish)
-                    }
-                    Err(_) => "Cannot schedule".to_string(),
-                };
-                let critical_count = self.critical_count;
-                let palette = design::palette(self.dark);
-                // Left: project range, activity count, and the critical count
-                // (coloured so criticality never relies on the number alone).
-                ui.label(
-                    egui::RichText::new(format!(
-                        "{range}   {} activities",
-                        self.project.activities.len()
-                    ))
-                    .small()
-                    .color(palette.text_muted),
-                );
-                if critical_count > 0 {
-                    let critical_text = if critical_count == 1 {
-                        "1 critical activity".to_string()
-                    } else {
-                        format!("{critical_count} critical activities")
-                    };
-                    ui.label(
-                        egui::RichText::new(critical_text)
-                            .small()
-                            .color(palette.critical),
-                    );
-                }
-                // Centre: earned-value metrics when a baseline is active, or a
-                // short hint when none has been captured. These wrap naturally
-                // at narrow widths instead of clipping.
-                if let (true, Some(metrics)) = (self.baseline_active, &self.evm_metrics) {
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "PV {}  EV {}  AC {}  SV {}  CV {}  SPI {:.2}  CPI {:.2}",
-                            metrics.planned_value,
-                            metrics.earned_value,
-                            metrics.actual_cost,
-                            metrics.schedule_variance,
-                            metrics.cost_variance,
-                            metrics.schedule_performance_index.unwrap_or(0.0),
-                            metrics.cost_performance_index.unwrap_or(0.0),
-                        ))
-                        .small()
-                        .color(palette.text_muted),
-                    );
-                } else {
-                    ui.label(
-                        egui::RichText::new("No baseline")
-                            .small()
-                            .color(palette.text_muted),
-                    );
-                }
-                let now = Instant::now();
-                self.maybe_clear_status(now);
-                if let Some(message) = &self.status_message {
-                    ui.label("   ·   ");
-                    let severity = StatusSeverity::from_message(message);
-                    ui.label(
-                        egui::RichText::new(message)
-                            .weak()
-                            .small()
-                            .color(severity.color(self.dark)),
-                    );
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Save indicator: a word, not a colour alone.
-                    let (save_text, save_color) = if self.dirty {
-                        ("● unsaved", palette.critical)
-                    } else {
-                        ("✓ saved", palette.ok)
-                    };
-                    ui.label(egui::RichText::new(save_text).small().color(save_color));
-                    let zoom_text = format!("{:.0}%", self.pixels_per_day / 14.0 * 100.0);
-                    ui.label(
-                        egui::RichText::new(zoom_text.clone())
-                            .small()
-                            .color(palette.text_muted),
-                    )
-                    .on_hover_text(format!("Gantt zoom: {zoom_text}\nCtrl+wheel to zoom"));
-                    // F1 footer: the keyboard reference is one click away from
-                    // anywhere, matching the F1 binding.
-                    if ui
-                        .small_button("Shortcuts (F1)")
-                        .on_hover_text("Open the keyboard reference (F1)")
-                        .clicked()
-                    {
-                        self.show_shortcuts_dialog = true;
-                    }
-                });
-            });
-            ui.separator();
-        });
 
         match self.view_mode {
             ViewMode::Table => {
@@ -3519,6 +3579,32 @@ impl CadenceApp {
                                     .small(),
                             );
                         }
+                        ui.separator();
+                        // The Columns chooser lives here because it only
+                        // affects this table; a view-scoped control belongs in
+                        // its view, not in the global chrome.
+                        ui.menu_button("Columns", |ui| {
+                            ui.set_min_width(180.0);
+                            ui.heading("Visible columns");
+                            for key in SortKey::ordered_columns() {
+                                let mut visible = self.visible_columns.contains(&key);
+                                if ui.checkbox(&mut visible, key.label()).changed() {
+                                    if visible {
+                                        self.visible_columns.insert(key);
+                                    } else {
+                                        self.visible_columns.remove(&key);
+                                    }
+                                }
+                            }
+                            ui.separator();
+                            if ui.button("Reset to default").clicked() {
+                                self.visible_columns = SortKey::all_columns();
+                            }
+                        });
+                        // The split-Gantt toggle next to the data it splits
+                        // (moved here from the former Window menu).
+                        let split = ui.checkbox(&mut self.show_split_gantt, "Split Gantt");
+                        split.on_hover_text("Show the Gantt chart beside the activity table");
                     });
                 });
                 // Apply any change from this frame before the rows are drawn.
@@ -6254,14 +6340,17 @@ impl CadenceApp {
                             );
                             ui.add_space(8.0);
                             ui.label(
-                                "• Three-zone toolbar: a menu bar, a view-tab strip, and a tool \
-                                 cluster, with focus rings and a zoom readout in the status bar."
+                                "• Calmer chrome: the menu bar keeps only the four global menus, \
+                                 the view switcher shows the three core views plus a grouped \
+                                 More-views menu, and view-scoped controls (filter, columns, \
+                                 split Gantt) moved into the views that own them."
                             );
                             ui.add_space(8.0);
                             ui.label(
-                                "• Menu taxonomy: a new Window menu owns the theme toggle and the \
-                                 split-Gantt switch; the File menu gains Close (Ctrl+W) and Exit; \
-                                 the File menu lists the ten most recent projects for this session."
+                                "• Quick access: New activity is the one primary button; Undo and \
+                                 Redo sit beside it with their shortcuts in the tooltips. The \
+                                 theme toggle lives in the View menu; the status bar now shows \
+                                 the message, plain-language schedule facts and SPI/CPI only."
                             );
                             ui.add_space(16.0);
                             ui.separator();

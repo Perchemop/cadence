@@ -18,6 +18,62 @@ pub const ACCENT: Color32 = Color32::from_rgb(0x2F, 0x6F, 0xED);
 /// `focus_ring_meets_nontext_contrast_on_both_themes`.
 pub const FOCUS_RING: Color32 = ACCENT;
 
+/// Text/icon colour on accent fills (the `chrome::primary` button). Verified
+/// 4.5:1 against `ACCENT` in both themes by the accessibility tests.
+pub const ACCENT_ON: Color32 = Color32::WHITE;
+
+/// The four chrome button roles. Every toolbar, tab and status-bar control in
+/// the shell goes through one of these helpers; the shell never hand-rolls
+/// fills or strokes (II.30.6: one token source).
+pub mod chrome {
+    use super::*;
+
+    /// The one primary action per row (e.g. "New activity"): accent fill,
+    /// no stroke, high-contrast label.
+    pub fn primary(label: impl Into<String>) -> egui::Button {
+        egui::Button::new(
+            egui::RichText::new(label.into())
+                .color(ACCENT_ON)
+                .strong(),
+        )
+        .fill(ACCENT)
+        .stroke(egui::Stroke::NONE)
+    }
+
+    /// Toolbar/quick actions: invisible chrome until hovered. Hover and
+    /// active fills come from the token-driven widget visuals in [`apply`].
+    pub fn ghost(label: impl Into<String>) -> egui::Button {
+        egui::Button::new(label.into())
+            .fill(Color32::TRANSPARENT)
+            .stroke(egui::Stroke::NONE)
+    }
+
+    /// View tabs. Selected: accent-tinted fill, strong text and an accent
+    /// hairline; idle: transparent with muted text. State is therefore
+    /// conveyed by fill + weight + stroke, never colour alone.
+    pub fn tab(dark: bool, selected: bool, label: impl Into<String>) -> egui::Button {
+        let p = palette(dark);
+        let text = if selected {
+            egui::RichText::new(label.into()).strong().color(p.text)
+        } else {
+            egui::RichText::new(label.into()).color(p.text_muted)
+        };
+        egui::Button::new(text)
+            .selected(selected)
+            .frame(selected)
+            .fill(if selected {
+                ACCENT.linear_multiply(0.2)
+            } else {
+                Color32::TRANSPARENT
+            })
+            .stroke(if selected {
+                egui::Stroke::new(1.0, ACCENT)
+            } else {
+                egui::Stroke::NONE
+            })
+    }
+}
+
 /// Semantic and structural colours for one theme.
 #[derive(Debug, Clone, Copy)]
 pub struct Palette {

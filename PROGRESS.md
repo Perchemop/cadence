@@ -3,6 +3,61 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-21 — Chrome redesign from the multi-agent design audit
+
+Owner complaint: does not like how the app looks, where the toolbars are
+placed, and how cluttered it feels; must stay usable for entry-level users.
+
+### Audit findings (three parallel reviewers)
+
+1. **Layout inventory:** the single wrapping top bar held 19 interactive
+   controls + ~12 separators (5 menus, 10 tabs, Columns menu, Undo/Redo with
+   shortcut labels, a version button); the default Table view stacked four
+   chrome rows (toolbar, filter row, split-Gantt toolbar, status bar) and
+   ~63 clickable controls; the View menu duplicated the tab strip 1:1;
+   Undo/Redo existed twice in two styles; Close and Exit did the same thing.
+2. **Design/clutter audit:** 10 distinct button treatments (only 2 tokenised);
+   31 labels carrying visible keyboard shortcuts; a separator between every
+   pair of view tabs; unselected tabs stroked in critical red (semantic
+   colour misuse); a 7-number EVM jargon string in the status bar; "RP-4"
+   ticket IDs leaking into user text; Lookahead/Assistant sharing one icon;
+   7 off-scale font sizes; four competing spacing rhythms.
+3. **Redesign proposal:** two-row chrome (menus + quick access; view
+   switcher), two-tier view organisation (3 core tabs + grouped More-views
+   menu from one `VIEW_META` table), view-scoped controls moved into their
+   views, a tokenised chrome button kit, and a rebuilt status bar.
+
+### Implemented (slices 1–4)
+
+- `design.rs`: added `ACCENT_ON` and the `chrome::{primary, ghost, tab}`
+  button kit (tokens only; selected-tab state = fill + weight + hairline,
+  never colour alone).
+- `lib.rs`: added `ViewGroup` + the `VIEW_META` metadata table; rebuilt the
+  tab strip as 3 core tabs + grouped More-views menu (active specialist view
+  becomes the menu label); rebuilt the View menu from the same table with
+  group captions; deleted the Window menu (theme → View; split Gantt →
+  Table filter row); moved the Columns chooser into the Table filter row;
+  removed the File ▸ Exit duplicate and the doubled separators; dropped
+  menu-title icons; added the quick-access cluster (primary New activity,
+  ghost Undo/Redo, shortcut hints in tooltips); removed the toolbar version
+  button; fixed the Lookahead/Assistant shared icon (BINOCULARS /
+  CHAT_CIRCLE_TEXT); rebuilt the status bar (severity-glyph message /
+  plain-language facts + SPI·CPI / save, Shortcuts, subtle version label);
+  removed the EVM jargon string and the duplicate zoom readout.
+- `tests/a11y_harness.rs`: updated for the two-tier switcher — core tabs
+  asserted exactly once, More-views button asserted, every specialist view
+  asserted reachable by name when active; Undo/Redo label assertions updated
+  to the new ghost labels; Window removed from the menu-bar assertion;
+  `ViewMode` made public with a `set_view_mode` seam for hosts/tests.
+- Release-notes dialog copy updated for the new chrome.
+
+### Deferred (from the audit, not in this slice)
+
+- "RP-4" ticket-ID strings and raw activity IDs in the Assistant/variance
+  views (jargon scrub, next slice).
+- Per-dialog danger styling for the 17 confirm modals; empty-state type size.
+- Inspector section separators (headings alone would carry the structure).
+
 ## 2026-11-21 — Design audit (owner complaint: look, toolbar placement, clutter)
 
 Owner complaint: does not like how the app looks, where the toolbars are
