@@ -13,7 +13,7 @@ orchestrators and subagents), and the strict path-attributable subset
 the current mapping is the accurate parent-chain figure with its
 over-attribution caveat recorded.
 
-## [0.16.0] — Unreleased
+## [0.16.0] — 2026-11-20
 
 ### Added
 - EVM extended metrics: EAC (estimate at completion), TCPI (to-complete performance index), VAC (variance at completion) computed from existing BAC/EV/AC inputs
