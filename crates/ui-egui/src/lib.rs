@@ -36,8 +36,8 @@ use cadence_core::lookahead::{lookahead, LookaheadEntry};
 use cadence_core::model::FULL_UNITS;
 use cadence_core::model::{
     Activity, ActivityId, Baseline, BaselineId, Calendar, Constraint, DailyNoteId, EvmMetrics,
-    LinkType, LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntryId, Project, ResourceId,
-    ResourceKind,
+    LinkType, LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntryId, Project, RelationshipId,
+    ResourceId, ResourceKind,
 };
 use cadence_core::wbs::WbsId;
 use egui::{Align2, Color32, ComboBox, Context, Grid, Pos2, Rect, ScrollArea, Sense, Ui, Vec2};
@@ -594,6 +594,14 @@ fn activity_matches_filter(
                 .and_then(|s| s.activity(activity.id))
                 .map(|r| r.critical)
                 .unwrap_or(false))
+}
+
+/// Export format for the export dialog.
+#[derive(Clone, Copy)]
+enum ExportFormat {
+    Json,
+    Mspdi,
+    Csv,
 }
 
 impl CadenceApp {
@@ -1436,7 +1444,7 @@ impl CadenceApp {
     /// This creates a copy of the selected activity with a new ID.
     /// Note: Full implementation would require a DuplicateActivity command.
     fn duplicate_selected_activity(&mut self) {
-        if let Some(id) = self.selected {
+        if let Some(_id) = self.selected {
             self.set_status(
                 "Duplicate activity: feature coming soon - use Ctrl+C to copy in Table view",
             );
@@ -1978,14 +1986,6 @@ impl CadenceApp {
             }
             Err(e) => self.set_status(format!("Import failed: {e}")),
         }
-    }
-
-    /// Export format enum.
-    #[derive(Clone, Copy)]
-    enum ExportFormat {
-        Json,
-        Mspdi,
-        Csv,
     }
 
     /// Export the current project to a file.
@@ -6905,7 +6905,7 @@ fn render_gantt(
         // Draw coarse timescale (months, quarters, years) above fine timescale
         if pixels_per_day > 8.0 {
             // Show months at medium+ zoom, quarters at very zoomed out
-            let month_origin = origin.with_day(1);
+            let month_origin = Date::from_calendar_date(origin.year(), origin.month(), 1).unwrap_or(origin);
             let mut current = month_origin;
             while current <= finish {
                 let x = rect.min.x
@@ -6928,19 +6928,24 @@ fn render_gantt(
                         Month::December => "Dec",
                     };
                     let label_x = x + 2.0;
+                    let label_y = rect.min.y + 2.0;
                     if current.month() == Month::January {
                         // Jan marks a new year - also shows year
                         let year_str = current.year().to_string();
-                        painter.glyph_position(
-                            egui::GlyphPosition::absolute(Vec2::new(label_x, rect.min.y + 2.0)),
-                            egui::FontId::proportional(10.0),
+                        painter.text(
+                            Pos2::new(label_x, label_y),
+                            Align2::LEFT_TOP,
                             &format!("{}-{}", month_name, year_str),
+                            egui::FontId::proportional(10.0),
+                            palette.text,
                         );
                     } else {
-                        painter.glyph_position(
-                            egui::GlyphPosition::absolute(Vec2::new(label_x, rect.min.y + 2.0)),
-                            egui::FontId::proportional(10.0),
+                        painter.text(
+                            Pos2::new(label_x, label_y),
+                            Align2::LEFT_TOP,
                             month_name,
+                            egui::FontId::proportional(10.0),
+                            palette.text,
                         );
                     }
                 }

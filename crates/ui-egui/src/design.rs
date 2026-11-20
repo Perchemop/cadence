@@ -52,7 +52,7 @@ pub struct Palette {
 }
 
 /// The palette for the requested theme.
-pub const fn palette(dark: bool) -> Palette {
+pub fn palette(dark: bool) -> Palette {
     if dark {
         Palette {
             bg: Color32::from_rgb(0x16, 0x18, 0x1D),
