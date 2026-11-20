@@ -22,7 +22,6 @@ use cadence_commands::{
 };
 use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
-use cadence_interchange::{csv, json, mpx, mspdi};
 
 use cadence_core::calendar_set::CalendarId;
 use cadence_core::clash::location_clashes;
@@ -2686,10 +2685,7 @@ impl CadenceApp {
                             self.duplicate_selected_activity();
                         }
                         if ui.button("Delete activity").clicked() {
-                            if let Some(id) = self.selected {
-                                self.confirm_delete_activity = true;
-                                self.pending_delete_activity_id = Some(id);
-                            }
+                            self.delete_selected_activity();
                         }
                         ui.separator();
                         // Relationship operations
@@ -6932,7 +6928,7 @@ fn render_gantt(
                         painter.text(
                             Pos2::new(label_x, label_y),
                             Align2::LEFT_TOP,
-                            &format!("{}-{}", month_name, year_str),
+                            format!("{month_name}-{year_str}"),
                             egui::FontId::proportional(10.0),
                             palette.text,
                         );

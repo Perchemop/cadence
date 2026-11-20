@@ -3,6 +3,29 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-21 — Design audit (owner complaint: look, toolbar placement, clutter)
+
+Owner complaint: does not like how the app looks, where the toolbars are
+placed, and how cluttered it feels; must stay usable for entry-level users.
+
+- **Multi-agent audit launched** (three parallel reviewers): (1) full
+  chrome/toolbar placement inventory, (2) visual-design + clutter audit
+  (colour discipline, button-style consistency, label verbosity, ranked
+  clutter sources), (3) redesign proposal (panel architecture, view
+  grouping, de-cluttering moves, styling rules, implementation slices).
+  Findings and the redesign plan will be recorded here when the agents
+  report.
+- **CI repair en route:** the 2026-11-20 Gantt/menu commits were red on
+  `main` (formatting, then compile errors masked by the format job:
+  missing `cadence-interchange` dependency in `ui-egui`, dead bindings
+  `header_color`/`coarse_band_height`/`fine_band_height`/`palette`).
+  Fixed in commits `cfef3af`, `4eef0f6`; green run recorded here once the
+  run completes.
+- **Import/export dialogs wired** (from the 2026-11-20 menu work): the
+  File menu Import/Export entries now open real dialogs backed by
+  `cadence-interchange` (json/mspdi/mpx/csv import; json/mspdi/csv export)
+  via `import_from_path` / `export_to_path`.
+
 ## 2026-11-20 — Gantt enhancements and menu overhaul
 
 ### V5: Non-working day shading visibility
