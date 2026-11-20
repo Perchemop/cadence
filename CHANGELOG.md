@@ -27,10 +27,25 @@ over-attribution caveat recorded.
 - MSPDI export includes WBS codes
 - New `CalendarSet` import from MSPDI `<Project><Calendars>` with weekly pattern and holidays
 
+### Gantt Visualizations (V5-V8)
+- Improved non-working day shading visibility: opacity increased from 30% to 45%
+- Added status date dotted line indicator in Gantt (separate from today line)
+- Added constraint markers for MustStartOn/MustFinishOn constraints:
+  - Dashed vertical lines at constrained dates
+  - Diamond markers to indicate constraint position
+
+### Menu System Overhaul (V9)
+- Reorganized File menu with comprehensive file operations
+- Added: New project, Import, Export
+- Reorganized Edit menu
+- Added: Duplicate activity (placeholder with guidance), Delete activity, Break link
+- Added helper methods for new menu actions
+
 ### Changed
 - Extended `EvmMetrics` with three new result fields
 - Updated project-level EVM metrics aggregation in `engine.rs`
 - Updated MSPDI documentation comment to include WBS and Calendars elements
+- Added `status_date` color field to design palette
 
 ### Fixed
 - Zero-denominator conventions for TCPI (BAC == AC) and EAC fallback (CPI undefined)

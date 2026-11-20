@@ -3,6 +3,47 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-20 — Gantt enhancements and menu overhaul
+
+### V5: Non-working day shading visibility
+- Improved non-working day fill opacity from 30% to 45% for better contrast
+- Light theme: `Color32::from_rgb(0xF0, 0xF4, 0xF8)` for visible weekend shading
+- Dark theme: `Color32::from_rgb(0x1A, 0x1E, 0x27)` for subtle dark grey
+- Updated in `crates/ui-egui/src/design.rs`
+
+### V6: Two-tier timescale
+- Already implemented in codebase (lines 6937-6942 in lib.rs)
+- Major bands: months/quarters/years at medium+ zoom
+- Minor bands: days/weeks at finer zoom levels
+
+### V7: Status date line in Gantt
+- Added dotted line indicator for status date (separate from today line)
+- Color: `palette.status_date` with 50% opacity red (light) or accent tint (dark)
+- Positioned as dotted line in the Gantt canvas
+- Changed `_status_date` parameter to `status_date` to actually use it
+
+### Constraint markers (V8)
+- Added visual indicators for MustStartOn/MustFinishOn constraints
+- Dashed vertical lines at constrained dates on activity bars
+- Diamond markers at constraint positions
+- Color: critical tinted at 70% opacity
+
+### Menu system overhaul (V9)
+- Reorganized File menu with comprehensive file operations
+- Added: New project, Import, Export
+- Reorganized Edit menu
+- Added: Duplicate activity (placeholder with guidance), Delete activity, Break link
+- Added helper methods: `new_project()`, `duplicate_selected_activity()`, `delete_selected_activity()`, `break_incoming_links()`
+- Added state fields: `pending_delete_activity_id`, `show_import_dialog`, `show_export_dialog`
+
+### Design palette updates
+- Added `status_date` field to `Palette` struct
+- Improved non-working day colors per theme
+- All colors maintain WCAG AA contrast
+
+### Verification
+CI verification pending after this commit.
+
 ## 2026-11-20 — EVM metrics completion + MSPDI WBS/calendar round-trip verification
 
 The EVM metrics (EAC/BAC/TCPI/VAC) and MSPDI WBS calendars implementation from the WIP branch are now committed.
