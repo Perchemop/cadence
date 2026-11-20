@@ -46,9 +46,10 @@ use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::engine::schedule;
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
-    LinkType, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind, WbsId,
+    LinkType, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
     FULL_UNITS,
 };
+use cadence_core::WbsId;
 use time::Date;
 
 use crate::xml::{escape, parse_document, Element};

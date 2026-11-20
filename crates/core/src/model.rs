@@ -19,9 +19,6 @@ use time::{Date, Duration};
 use crate::calendar_set::{CalendarId, CalendarSet, CalendarSetError};
 use crate::wbs::{WbsId, WbsTree};
 
-/// Re-export WbsId for downstream crates (interchange, etc.).
-pub use crate::wbs::WbsId;
-
 /// Stable identifier for an [`Activity`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
