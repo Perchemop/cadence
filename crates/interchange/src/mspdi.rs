@@ -44,8 +44,8 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use cadence_core::{Calendar, CalendarId, CalendarSet, NamedCalendar, WbsId};
 use cadence_core::engine::schedule;
+use cadence_core::{Calendar, CalendarId, CalendarSet, WbsId};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Constraint, LinkType,
     Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind, FULL_UNITS,
@@ -113,7 +113,7 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap_or([false; 7]);
-            let calendar = Calendar::new(workweek).unwrap_or_else(|_| Calendar::weekend());
+            let mut calendar = Calendar::new(workweek).unwrap_or_else(|_| Calendar::weekend());
             // Read holidays
             let mut holidays = Vec::new();
             for h in cal.children_named("Date") {
@@ -125,11 +125,14 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
             }
             calendar = calendar.with_holidays(holidays);
             let cid = CalendarId(cal_id);
+            // Clone for potential fallback in unwrap_or_else
+            let cal_name_for_fallback = cal_name.clone();
+            let calendar_for_fallback = calendar.clone();
             calendar_set
                 .add(cid, cal_name, calendar)
                 .unwrap_or_else(|_| {
-                    let alt_name = format!("{} (imported)", cal_name);
-                    let _ = calendar_set.add(cid, alt_name, calendar);
+                    let alt_name = format!("{} (imported)", cal_name_for_fallback);
+                    let _ = calendar_set.add(cid, alt_name, calendar_for_fallback);
                 });
         }
     }
