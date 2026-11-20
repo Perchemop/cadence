@@ -15,6 +15,12 @@ over-attribution caveat recorded.
 
 ## [0.16.0] — 2026-11-20
 
+## [0.16.1] — 2026-11-20
+
+### Fixed
+- Evidence pipeline: fix egui_kittest feature (eframe instead of winit) for phase 2b rendered evidence pipeline
+- CI: add lavapipe (mesa-vulkan-drivers) installation for rendered evidence job
+
 ### Added
 - EVM extended metrics: EAC (estimate at completion), TCPI (to-complete performance index), VAC (variance at completion) computed from existing BAC/EV/AC inputs
 - MSPDI import now supports WBS codes (Task/WBS element) and named calendars
