@@ -100,14 +100,18 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
     let mut calendar_set = CalendarSet::new();
     if let Some(calendars) = root.child("Calendars") {
         for cal in calendars.children_named("Calendar") {
-            let cal_id = cal.parse_of::<u64>("UID")?;
+            let cal_id = cal
+                .parse_of::<u64>("UID")
+                .ok_or_else(|| InterchangeError::MissingField("Calendar/UID".to_string()))?;
             let cal_name = cal.text_of("Name").unwrap_or_default();
             let workweek_raw = cal.text_of("WorkWeek").unwrap_or("1111110");
             let workweek: [bool; 7] = workweek_raw
                 .chars()
                 .take(7)
                 .map(|c| c == '1')
-                .collect::<TryFrom<_>>::ok()
+                .collect::<Vec<bool>>()
+                .try_into()
+                .ok()
                 .unwrap_or([false; 7]);
             let calendar = Calendar::new(workweek).unwrap_or_else(|_| Calendar::weekend());
             // Read holidays
