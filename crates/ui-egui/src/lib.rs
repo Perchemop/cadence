@@ -5537,10 +5537,7 @@ impl CadenceApp {
                             ui.label("Provider:");
                             egui::ComboBox::from_id_salt("assistant_provider")
                                 .selected_text(
-                                    self.assistant_config
-                                        .provider_name
-                                        .as_deref()
-                                        .unwrap_or(""),
+                                    self.assistant_config.provider_name.as_deref().unwrap_or(""),
                                 )
                                 .show_ui(ui, |ui| {
                                     ui.selectable_value(
