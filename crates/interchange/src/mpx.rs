@@ -22,9 +22,13 @@
 //! as `0` (material), `1` (work) and `2` (cost) — the same codes Microsoft
 //! Project uses.
 //!
-//! `Units` in `[assignments]` is a fraction of one whole unit, so `1` is 100%
+//! `Units` in `[assignments]` is a fraction of one whole unit, so `1` is 100%.
 //! and `0.5` is half an assignment; it is converted to and from Cadence's
-//! basis-point assignment units. MPX carries no resource cost rate that maps
+//! basis-point assignment units. **MPX has no WBS or named calendar concept
+//! in its format.** WBS codes and calendar assignments import as empty/default
+//! values. This is a documented format limitation, not a bug.
+//!
+//! MPX carries no resource cost rate that maps
 //! cleanly to `Resource::cost_per_unit`, so that rate imports as zero.
 
 use std::fmt::Write as _;

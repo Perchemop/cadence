@@ -32,10 +32,9 @@
 //!   a round trip can recover the project start date; the reader uses them
 //!   only for that. If no date appears anywhere in the file, the imported
 //!   project starts today.
-//!
-//! Fields are quoted and escaped per RFC 4180, and a semicolon inside a list
-//! cell is escaped with a backslash, so activity and resource names may
-//! contain commas, quotes, newlines and semicolons.
+//! * **CSV has no named calendar concept** — calendar assignments import as
+//!   empty/default. CSV also has no WBS column; WBS codes are not carried.
+//!   These are documented format limitations, not bugs.
 
 use cadence_core::engine::schedule;
 use cadence_core::model::{
