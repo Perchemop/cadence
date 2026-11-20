@@ -22,6 +22,7 @@ use cadence_commands::{
 };
 use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
+use cadence_interchange::{csv, json, mpx, mspdi};
 
 use cadence_core::calendar_set::CalendarId;
 use cadence_core::clash::location_clashes;
@@ -1436,7 +1437,9 @@ impl CadenceApp {
     /// Note: Full implementation would require a DuplicateActivity command.
     fn duplicate_selected_activity(&mut self) {
         if let Some(id) = self.selected {
-            self.set_status("Duplicate activity: feature coming soon – use Ctrl+C to copy in Table view");
+            self.set_status(
+                "Duplicate activity: feature coming soon - use Ctrl+C to copy in Table view",
+            );
         }
     }
 
@@ -1937,6 +1940,77 @@ impl CadenceApp {
         match std::fs::write(&path, report) {
             Ok(()) => self.set_status(format!("Report written to {}", path.display())),
             Err(error) => self.set_status(format!("Cannot write {}: {error}", path.display())),
+        }
+    }
+
+    /// Import a project from a file (JSON, MSPDI, MPX, CSV).
+    fn import_from_path(&mut self, path: std::path::PathBuf) {
+        let text = match std::fs::read_to_string(&path) {
+            Ok(t) => t,
+            Err(e) => {
+                self.set_status(format!("Cannot read {}: {e}", path.display()));
+                return;
+            }
+        };
+
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let project = match ext {
+            "json" => cadence_interchange::json::import(&text),
+            "xml" | "mspdi" => cadence_interchange::mspdi::import(&text),
+            "mpx" => cadence_interchange::mpx::import(&text),
+            "csv" => cadence_interchange::csv::import(&text),
+            _ => {
+                self.set_status(format!("Unsupported format: {ext}"));
+                return;
+            }
+        };
+
+        match project {
+            Ok(project) => {
+                self.project = project;
+                self.project_path = Some(path.clone());
+                self.add_to_recent_files(path.clone());
+                self.stack = CommandStack::new();
+                self.selected = None;
+                self.dirty = false;
+                self.recompute();
+                self.set_status(format!("Imported {}", path.display()));
+            }
+            Err(e) => self.set_status(format!("Import failed: {e}")),
+        }
+    }
+
+    /// Export format enum.
+    #[derive(Clone, Copy)]
+    enum ExportFormat {
+        Json,
+        Mspdi,
+        Csv,
+    }
+
+    /// Export the current project to a file.
+    fn export_to_path(&mut self, path: std::path::PathBuf, format: ExportFormat) {
+        let text = match format {
+            ExportFormat::Json => cadence_interchange::json::export(&self.project),
+            ExportFormat::Mspdi => match cadence_interchange::mspdi::export(&self.project) {
+                Ok(t) => t,
+                Err(e) => {
+                    self.set_status(format!("Export failed: {e}"));
+                    return;
+                }
+            },
+            ExportFormat::Csv => match cadence_interchange::csv::export(&self.project) {
+                Ok(t) => t,
+                Err(e) => {
+                    self.set_status(format!("Export failed: {e}"));
+                    return;
+                }
+            },
+        };
+
+        match std::fs::write(&path, text) {
+            Ok(()) => self.set_status(format!("Exported to {}", path.display())),
+            Err(e) => self.set_status(format!("Cannot write {}: {e}", path.display())),
         }
     }
 
@@ -6002,6 +6076,91 @@ impl CadenceApp {
             }
         }
 
+        // Import dialog
+        if self.show_import_dialog {
+            let mut open = true;
+            egui::Window::new("Import project")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    ui.label("Import a project from a file.");
+                    ui.add_space(8.0);
+                    ui.label("Supported formats:");
+                    ui.label("- Cadence JSON (.json)");
+                    ui.label("- Microsoft Project XML (.xml, .mspdi)");
+                    ui.label("- MPX (.mpx)");
+                    ui.label("- CSV (.csv)");
+                    ui.add_space(12.0);
+                    if ui.button("Choose file...").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Project files", &["json", "xml", "mspdi", "mpx", "csv"])
+                            .pick_file()
+                        {
+                            self.import_from_path(path);
+                        }
+                    }
+                    ui.add_space(8.0);
+                    if ui.button("Cancel").clicked() {
+                        self.show_import_dialog = false;
+                    }
+                });
+            if !open {
+                self.show_import_dialog = false;
+            }
+        }
+
+        // Export dialog
+        if self.show_export_dialog {
+            let mut open = true;
+            egui::Window::new("Export project")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .show(&ctx, |ui| {
+                    ui.label("Export the current project to a file.");
+                    ui.add_space(8.0);
+                    ui.label("Export format:");
+                    if ui.button("Cadence JSON").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("JSON", &["json"])
+                            .set_file_name(format!("{}.json", file_stem(&self.project.name)))
+                            .save_file()
+                        {
+                            self.export_to_path(path, ExportFormat::Json);
+                        }
+                        self.show_export_dialog = false;
+                    }
+                    if ui.button("MSPDI (Microsoft Project XML)").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("XML", &["xml"])
+                            .set_file_name(format!("{}.xml", file_stem(&self.project.name)))
+                            .save_file()
+                        {
+                            self.export_to_path(path, ExportFormat::Mspdi);
+                        }
+                        self.show_export_dialog = false;
+                    }
+                    if ui.button("CSV (activities only)").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("CSV", &["csv"])
+                            .set_file_name(format!("{}.csv", file_stem(&self.project.name)))
+                            .save_file()
+                        {
+                            self.export_to_path(path, ExportFormat::Csv);
+                        }
+                        self.show_export_dialog = false;
+                    }
+                    ui.add_space(8.0);
+                    if ui.button("Cancel").clicked() {
+                        self.show_export_dialog = false;
+                    }
+                });
+            if !open {
+                self.show_export_dialog = false;
+            }
+        }
+
         if self.show_shortcuts_dialog {
             let mut open = true;
             egui::Window::new("Keyboard shortcuts")
@@ -6741,7 +6900,7 @@ fn render_gantt(
         let palette = design::palette(dark);
         let header_color = palette.text;
         let coarse_band_height = 16.0; // Height for months/quarters header
-        let fine_band_height = 20.0;   // Height for days/weeks header
+        let fine_band_height = 20.0; // Height for days/weeks header
 
         // Draw coarse timescale (months, quarters, years) above fine timescale
         if pixels_per_day > 8.0 {
@@ -6749,7 +6908,8 @@ fn render_gantt(
             let month_origin = origin.with_day(1);
             let mut current = month_origin;
             while current <= finish {
-                let x = rect.min.x + (current.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
+                let x = rect.min.x
+                    + (current.to_julian_day() - origin.to_julian_day()) as f32 * pixels_per_day;
                 let x_end = x + pixels_per_day; // Month cell width (variable, approximate)
                 if x_end > clip.min.x && x < clip.max.x {
                     // Month label
@@ -6786,15 +6946,21 @@ fn render_gantt(
                 }
                 // Advance to next month
                 let next_month = match current.month() {
-                    Month::December => Date::from_calendar_date(current.year() + 1, Month::January, 1).ok(),
-                    _ => Date::from_calendar_date(current.year(), current.month(), 1).ok().and_then(|_| {
-                        Date::from_julian_day(current.to_julian_day() + 32).ok().and_then(|d| {
-                            Date::from_calendar_date(d.year(), d.month(), 1).ok()
-                        })
-                    }),
+                    Month::December => {
+                        Date::from_calendar_date(current.year() + 1, Month::January, 1).ok()
+                    }
+                    _ => Date::from_calendar_date(current.year(), current.month(), 1)
+                        .ok()
+                        .and_then(|_| {
+                            Date::from_julian_day(current.to_julian_day() + 32)
+                                .ok()
+                                .and_then(|d| Date::from_calendar_date(d.year(), d.month(), 1).ok())
+                        }),
                 };
                 current = next_month.unwrap_or(current);
-                if current == month_origin { break; } // Safety break
+                if current == month_origin {
+                    break;
+                } // Safety break
             }
         }
 
@@ -6851,22 +7017,12 @@ fn render_gantt(
                 // Dotted line with small markers
                 let stroke = egui::Stroke::new(1.0, palette.status_date);
                 let dash_pattern = 4.0;
-                let mut points = Vec::new();
-                let mut current_x = rect.min.y + header_height;
-                while current_x < rect.max.y {
-                    let x1 = x;
-                    let y1 = current_x;
-                    let x2 = x;
-                    let y2 = (current_x + dash_pattern).min(rect.max.y);
-                    points.push(Pos2::new(x1, y1));
-                    points.push(Pos2::new(x2, y2));
-                    current_x += dash_pattern * 2.0;
-                }
-                if points.len() >= 2 {
-                    painter.line_segment(
-                        [points[0], points[points.len() - 1]],
-                        stroke,
-                    );
+                let mut current_y = rect.min.y + header_height;
+                while current_y < rect.max.y {
+                    let y1 = current_y;
+                    let y2 = (current_y + dash_pattern).min(rect.max.y);
+                    painter.line_segment([Pos2::new(x, y1), Pos2::new(x, y2)], stroke);
+                    current_y += dash_pattern * 2.0;
                 }
             }
         }
@@ -7280,7 +7436,13 @@ fn render_gantt(
                     // MustStartOn/MustFinishOn constraints. These visual markers help
                     // users understand when a task has a fixed-date constraint.
                     use cadence_core::model::Constraint;
-                    if let Some(constraint_date) = activity.constraint.date() {
+                    if matches!(
+                        activity.constraint,
+                        Constraint::MustStartOn(_) | Constraint::MustFinishOn(_)
+                    ) {
+                        let constraint_date = activity.constraint.date().expect(
+                            "MustStartOn/MustFinishOn always carry a date",
+                        );
                         let constraint_x_start =
                             (constraint_date.to_julian_day() - origin.to_julian_day()) as f32
                                 * pixels_per_day;
@@ -7291,10 +7453,8 @@ fn render_gantt(
                             && constraint_x <= bar.max.x + pixels_per_day
                         {
                             // Dashed line marker at the constraint
-                            let stroke = egui::Stroke::new(
-                                1.0,
-                                design::translucent(palette.critical, 180),
-                            );
+                            let stroke =
+                                egui::Stroke::new(1.0, design::translucent(palette.critical, 180));
                             // Draw a small dashed marker with dots
                             let marker_length = 8.0;
                             let start_y = bar.min.y + 2.0;
@@ -7313,21 +7473,21 @@ fn render_gantt(
 
                             // Add a small diamond marker at the start of the constraint
                             let diamond_size = 4.0;
-                            let diamond_center = Pos2::new(
-                                constraint_x,
-                                (start_y + end_y) / 2.0,
-                            );
+                            let diamond_center =
+                                Pos2::new(constraint_x, (start_y + end_y) / 2.0);
                             let diamond_points = vec![
                                 Pos2::new(diamond_center.x, diamond_center.y - diamond_size / 2.0),
                                 Pos2::new(diamond_center.x + diamond_size / 2.0, diamond_center.y),
                                 Pos2::new(diamond_center.x, diamond_center.y + diamond_size / 2.0),
                                 Pos2::new(diamond_center.x - diamond_size / 2.0, diamond_center.y),
                             ];
-                            painter.add(egui::Shape::Path(egui::epaint::PathShape::convex_polygon(
-                                diamond_points,
-                                palette.critical,
-                                egui::epaint::PathStroke::new(1.0, palette.critical),
-                            )));
+                            painter.add(egui::Shape::Path(
+                                egui::epaint::PathShape::convex_polygon(
+                                    diamond_points,
+                                    palette.critical,
+                                    egui::epaint::PathStroke::new(1.0, palette.critical),
+                                ),
+                            ));
                         }
                     }
                 }
