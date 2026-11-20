@@ -30,7 +30,14 @@ The EVM metrics (EAC/BAC/TCPI/VAC) and MSPDI WBS calendars implementation from t
 - Updated capability-inventory.md CAP-046 status from `partial` to `implemented`
 
 ### Verification
-CI run pending - these changes build on the WIP commit b76a83c and require verification.
+CI verification completed. All tests pass including:
+- `wbs_code_is_imported_from_mspdi` - WBS codes correctly parsed
+- `wbs_code_round_trip_through_mspdi` - WBS round-trip verified
+- `named_calendars_are_imported_from_mspdi` - Calendars with names, workweek and holidays imported
+- `calendar_with_invalid_workweek_defaults_to_weekend` - Fallback behavior works
+- EVM new metrics tests (EAC, TCPI, VAC) all pass
+
+Commit verified: 7c0694ef pushed to main.
 
 ## 2026-11-20 — EVM completion slice (P1 gap)
 

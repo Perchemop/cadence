@@ -25,11 +25,11 @@ clippy with warnings denied, release binary packaged for all three.
 | Command layer (typed, undo/redo) | 100% | command tests per family |
 | SQLite project files (schema v4, migrations) | 100% | persistence round-trip/migration tests |
 | Resources, histograms, leveling | 100% | engine + command + property tests |
-| Baselines, variance, EVM | 100% | engine tests, GUI Baselines view |
+| Baselines, variance, EVM (including EAC/BAC/TCPI/VAC) | 100% | engine tests, GUI Baselines view |
 | Progress updating | 100% | command + persistence tests |
 | Gantt + table GUI | 100% of built views | Phase-2/3 QC checklists (interactive parts hands-on) |
 | Reports (Markdown + PDF) and printing | 100% | report + PDF writer tests; dialog hands-on |
-| Interchange MSPDI / MPX / CSV / JSON | 100% of documented subsets | round-trip + property tests |
+| Interchange MSPDI (WBS + calendars), MPX, CSV, JSON | 100% of documented subsets | round-trip + property tests |
 | CI: multi-OS verify + release artefacts | 100% | runs on every push; release.yml on tags |
 | Accessibility | 100% (code-level audit) | WCAG AA contrast tests; AccessKit on through eframe; keyboard-only pass over every view; pointer-free link creation and Gantt zoom; limits recorded in `ACCESSIBILITY.md` |
 | Crash reporting | stub | local panic hook + crash log (guide §6.1 allows a stub) |
