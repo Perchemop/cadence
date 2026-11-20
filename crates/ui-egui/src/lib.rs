@@ -6821,7 +6821,6 @@ fn render_gantt(
     selected_out: &mut Option<ActivityId>,
 ) -> bool {
     let tokens = DesignTokens::for_dark(dark);
-    let palette = design::palette(dark);
     let current_schedule = match schedule.as_ref() {
         Ok(schedule) => schedule,
         Err(error) => {
@@ -6898,9 +6897,6 @@ fn render_gantt(
 
         // Two-tier timescale header (V6): coarse bands above fine bands
         let palette = design::palette(dark);
-        let header_color = palette.text;
-        let coarse_band_height = 16.0; // Height for months/quarters header
-        let fine_band_height = 20.0; // Height for days/weeks header
 
         // Draw coarse timescale (months, quarters, years) above fine timescale
         if pixels_per_day > 8.0 {
