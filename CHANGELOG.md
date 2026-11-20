@@ -15,7 +15,9 @@ over-attribution caveat recorded.
 
 ## [0.16.0] — 2026-11-20
 
-## [Unreleased] — Chrome redesign (owner design audit)
+## [Unreleased]
+
+## [0.17.0] — 2026-11-21
 
 ### Changed
 - **Two-tier view switcher.** The flat 10-tab strip is replaced by three core
