@@ -838,8 +838,14 @@ mod tests {
 
         // Add WBS nodes to the tree so export can validate them
         // (root is WbsId(1), so children start at 2)
-        project.wbs.add(WbsId(2), "Survey", project.wbs.root()).expect("add WBS 2");
-        project.wbs.add(WbsId(3), "Excavate", project.wbs.root()).expect("add WBS 3");
+        project
+            .wbs
+            .add(WbsId(2), "Survey", project.wbs.root())
+            .expect("add WBS 2");
+        project
+            .wbs
+            .add(WbsId(3), "Excavate", project.wbs.root())
+            .expect("add WBS 3");
 
         let mut survey = Activity::new(ActivityId(1), "Survey", 2);
         survey.wbs = Some(WbsId(2));
