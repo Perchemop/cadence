@@ -117,22 +117,19 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
             let calendar = Calendar::new(workweek).unwrap_or_else(|_| Calendar::weekend());
             // Read holidays
             let mut holidays = Vec::new();
-            if let Some(holiday_nodes) = cal.children_named("Date") {
-                for h in holiday_nodes {
-                    if let Some(date_text) = h.text_of("Date") {
-                        if let Some(d) = parse_date_prefix(date_text) {
-                            holidays.push(d);
-                        }
+            for h in cal.children_named("Date") {
+                if let Some(date_text) = h.text_of("Date") {
+                    if let Some(d) = parse_date_prefix(date_text) {
+                        holidays.push(d);
                     }
                 }
             }
             calendar = calendar.with_holidays(holidays);
             let cid = CalendarId(cal_id);
-            calendar_set.add(cid, &cal_name, calendar)
-                .unwrap_or_else(|_| {
-                    let alt_name = format!("{} (imported)", cal_name);
-                    calendar_set.add(cid, &alt_name, calendar).ok()
-                });
+            if let Err(_) = calendar_set.add(cid, cal_name, calendar) {
+                let alt_name = format!("{} (imported)", cal_name);
+                let _ = calendar_set.add(cid, alt_name, calendar);
+            }
         }
     }
     project.calendars = calendar_set;
