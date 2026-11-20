@@ -263,9 +263,9 @@ jobs:
         id: sigsegv_check
         run: |
           if grep -iq 'SIGSEGV' /tmp/evidence_run1.log; then
-            echo "crashed:true" >> $GITHUB_OUTPUT
+            echo "crashed=true" >> $GITHUB_OUTPUT
           else
-            echo "crashed:false" >> $GITHUB_OUTPUT
+            echo "crashed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Render evidence (attempt 2 with gl fallback)

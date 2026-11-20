@@ -5584,15 +5584,16 @@ impl CadenceApp {
                         ui.separator();
                         ui.label("Configure a provider and model above, then press ");
                         ui.button("Request proposal").on_disabled_hover_text(
-                            "RP-4 owns the request flow; no network path exists in this ticket.",
+                            "The proposal request is not wired up yet; \
+                             it will arrive in a future release.",
                         );
-                        ui.label(": the request button is disabled until RP-4 implements it.");
+                        ui.label(": the request button is disabled until the request flow ships.");
                         return;
                     }
 
                     // Configured state: request text field + disabled request button
                     ui.heading("Assistant");
-                    ui.label("A proposal is in flight from the configured provider.");
+                    ui.label("The assistant is configured and ready.");
                     ui.separator();
                     let request_label = ui.label("Request");
                     ui.text_edit_singleline(&mut self.assistant_request_buffer)
@@ -5609,10 +5610,10 @@ impl CadenceApp {
                             self.assistant_config.base_url = None;
                             self.assistant_config.api_key = None;
                         }
-                        ui.label("Request proposal").
-                            on_disabled_hover_text(
-                        "RP-4 owns the request flow; no network path may exist in this ticket — verify no provider construction with default config."
-                    );
+                        ui.button("Request proposal").on_disabled_hover_text(
+                            "The proposal request is not wired up yet; \
+                             it will arrive in a future release.",
+                        );
                     });
                     ui.separator();
                     if ui.button("Return to unconfigured").clicked() {
