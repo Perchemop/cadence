@@ -15,9 +15,11 @@
 //! | `Task/ActualCost` | [`Activity::actual_cost`] (minor units) |
 //! | `Task/ActualStart`, `Task/ActualFinish` | [`Activity::actual_start`], [`Activity::actual_finish`] |
 //! | `Task/PredecessorLink` | [`Relationship`] (type and lag) |
+//! | `Task/WBS` | [`Activity::wbs`] — WBS outline code |
 //! | `Resource/UID`, `Name`, `Type`, `MaxUnits` | [`Resource`] |
 //! | `Assignment/TaskUID`, `ResourceUID`, `Units` | [`Activity::resources`], [`Activity::assignment_units`] |
 //! | `Task/Baseline` | [`Baseline`] snapshots |
+//! | `Project/Calendars/Calendar` | [`CalendarSet`] — named calendars with working-time |
 //!
 //! Durations are converted at eight working hours per day, matching the
 //! default Microsoft Project calendar. Link lag is written in tenths of a
@@ -34,16 +36,20 @@
 //!
 //! Two MSPDI constraints have no exact Cadence equivalent: *must start on* is
 //! read as *start no earlier than* and *must finish on* as *finish no earlier
-//! than*. Everything the reader does not model (cost rate tables, custom
-//! fields, calendars) is ignored rather than rejected.
+//! than*. Named calendars are imported from `<Project><Calendars>` and added
+//! to the project's calendar set. The WBS outline code is imported from
+//! `Task/WBS` and stored on the activity. Everything the reader does not
+//! model (resource cost rates, custom fields) is ignored rather than rejected.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
+use cadence_core::calendar_set::{Calendar, CalendarId, CalendarSet};
 use cadence_core::engine::schedule;
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Constraint, LinkType,
-    Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind, FULL_UNITS,
+    Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind, WbsId,
+    FULL_UNITS,
 };
 use time::Date;
 
@@ -92,6 +98,46 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
     let mut project = Project::new(name, start_date);
     let mut baselines: BTreeMap<i64, Vec<ActivityBaselineSnapshot>> = BTreeMap::new();
 
+    // --- Named calendars from <Project><Calendars> ---------------------------
+    let mut calendar_set = CalendarSet::new();
+    if let Some(calendars) = root.child("Calendars") {
+        for cal in calendars.children_named("Calendar") {
+            let cal_id = cal.parse_of::<u64>("UID")?;
+            let cal_name = cal.text_of("Name").unwrap_or_default();
+            let workweek_raw = cal.text_of("WorkWeek").unwrap_or("1111110");
+            let workweek: [bool; 7] = workweek_raw
+                .chars()
+                .take(7)
+                .map(|c| c == '1')
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap_or([false; 7]);
+            let calendar = Calendar::new(workweek).unwrap_or_else(|_| Calendar::weekend());
+            // Read holidays
+            let mut holidays = Vec::new();
+            if let Some(holiday_nodes) = cal.children_named("Date") {
+                for h in holiday_nodes {
+                    if let Some(date_text) = h.text_of("Date") {
+                        if let Some(d) = parse_date_prefix(date_text) {
+                            holidays.push(d);
+                        }
+                    }
+                }
+            }
+            calendar = calendar.with_holidays(holidays);
+            let cid = CalendarId(cal_id);
+            calendar_set
+                .add(cid, &cal_name, calendar)
+                .unwrap_or_else(|_| {
+                    let alt_name = format!("{} (imported)", cal_name);
+                    calendar_set.add(cid, &alt_name, calendar).ok()
+                });
+        }
+    }
+    project.calendars = calendar_set;
+
+    // --- Import tasks with WBS codes ---------------------------------------
+    let mut wbs_map: std::collections::HashMap<u64, WbsId> = std::collections::HashMap::new();
     if let Some(tasks) = root.child("Tasks") {
         for task in tasks.children_named("Task") {
             let uid = task_uid(task)?;
@@ -117,6 +163,13 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
             activity.actual_start = task.text_of("ActualStart").and_then(parse_date_prefix);
             activity.actual_finish = task.text_of("ActualFinish").and_then(parse_date_prefix);
 
+            // Import WBS code from Task/WBS
+            if let Some(wbs_text) = task.text_of("WBS") {
+                if let Ok(wbs_id) = wbs_text.parse::<u64>() {
+                    wbs_map.insert(uid, WbsId(wbs_id));
+                }
+            }
+
             for baseline in task.children_named("Baseline") {
                 let number = baseline.parse_of::<i64>("Number").unwrap_or(0);
                 let baseline_duration = match baseline.text_of("Duration") {
@@ -138,6 +191,14 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
         }
     }
 
+    // --- Apply WBS codes to activities -------------------------------------
+    for (uid, wbs_id) in &wbs_map {
+        if let Some(activity) = project.activities.iter_mut().find(|a| a.id.0 == *uid) {
+            activity.wbs = Some(*wbs_id);
+        }
+    }
+
+    // --- Relationships -----------------------------------------------------
     let mut next_relationship = 1u64;
     if let Some(tasks) = root.child("Tasks") {
         for task in tasks.children_named("Task") {
@@ -174,6 +235,7 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
         }
     }
 
+    // --- Resources -------------------------------------------------------
     if let Some(resources) = root.child("Resources") {
         for resource in resources.children_named("Resource") {
             let Some(uid) = resource.parse_of::<u64>("UID") else {
@@ -327,7 +389,7 @@ pub fn export(project: &Project) -> Result<String, InterchangeError> {
                 );
             }
             None => output.push_str("      <ConstraintDate>NA</ConstraintDate>\n"),
-        }
+        };
 
         if let Some(percent) = activity.percent_complete {
             let _ = writeln!(
@@ -363,6 +425,11 @@ pub fn export(project: &Project) -> Result<String, InterchangeError> {
                 "      <ActualFinish>{}</ActualFinish>",
                 format_datetime(finish, "17:00:00")
             );
+        }
+
+        // Export WBS code
+        if let Some(wbs) = activity.wbs {
+            let _ = writeln!(output, "      <WBS>{}</WBS>", wbs.0);
         }
 
         for relationship in project
@@ -758,6 +825,68 @@ mod tests {
         assert_eq!(
             loaded.baselines[0].snapshots[0].baseline_start,
             Some(date(2026, Month::January, 5))
+        );
+    }
+
+    // New test: WBS code import from MSPDI
+    #[test]
+    fn wbs_code_is_imported_from_mspdi() {
+        let start = date(2026, Month::January, 5);
+        let mut project = Project::new("WBS Test", start);
+
+        let mut survey = Activity::new(ActivityId(1), "Survey", 2);
+        survey.wbs = Some(WbsId(1));
+        project.activities.push(survey);
+
+        let mut excavate = Activity::new(ActivityId(2), "Excavate", 3);
+        excavate.wbs = Some(WbsId(2));
+        project.activities.push(excavate);
+
+        let document = export(&project).expect("export");
+        // WBS codes are written as plain numbers in MSPDI
+        assert!(document.contains("<WBS>1</WBS>"));
+        assert!(document.contains("<WBS>2</WBS>"));
+
+        let loaded = import(&document).expect("import");
+        assert_eq!(loaded.activities[0].wbs, Some(WbsId(1)));
+        assert_eq!(loaded.activities[1].wbs, Some(WbsId(2)));
+    }
+
+    // New test: Named calendars are imported from MSPDI
+    #[test]
+    fn named_calendars_are_imported_from_mspdi() {
+        let start = date(2026, Month::January, 5);
+        let mut project = Project::new("Calendar Test", start);
+
+        // This test verifies that MSPDI with calendars imports them correctly.
+        // We create an MSPDI document with a calendar section manually.
+        let mspdi = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Project xmlns="http://schemas.microsoft.com/project">
+  <Name>Calendar Test</Name>
+  <StartDate>2026-01-05T08:00:00</StartDate>
+  <Calendars>
+    <Calendar>
+      <UID>1</UID>
+      <Name>Six day</Name>
+      <WorkWeek>1111110</WorkWeek>
+    </Calendar>
+  </Calendars>
+  <Tasks>
+    <Task>
+      <UID>1</UID>
+      <Name>Survey</Name>
+      <Duration>PT8H0M0S</Duration>
+      <ConstraintType>0</ConstraintType>
+    </Task>
+  </Tasks>
+</Project>"#;
+
+        let loaded = import(mspdi).expect("import");
+        // The project should have the named calendar in its calendar set
+        assert_eq!(loaded.calendars.len(), 1);
+        assert_eq!(
+            loaded.calendars.named(CalendarId(1)).expect("named").name,
+            "Six day"
         );
     }
 
