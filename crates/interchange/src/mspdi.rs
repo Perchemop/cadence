@@ -126,7 +126,7 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
             }
             calendar = calendar.with_holidays(holidays);
             let cid = CalendarId(cal_id);
-            if let Err(_) = calendar_set.add(cid, cal_name, calendar.clone()) {
+            if calendar_set.add(cid, cal_name, calendar.clone()).is_err() {
                 let alt_name = format!("{} (imported)", cal_name);
                 let _ = calendar_set.add(cid, alt_name, calendar);
             }
@@ -1182,7 +1182,7 @@ mod tests {
             .named(CalendarId(3))
             .expect("Holiday calendar");
         assert!(
-            holiday_cal.calendar.holidays().into_iter().count() >= 2,
+            holiday_cal.calendar.holidays().iter().count() >= 2,
             "expected at least 2 holidays"
         );
     }
