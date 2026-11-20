@@ -44,12 +44,11 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use cadence_core::calendar_set::{Calendar, CalendarId, CalendarSet};
+use cadence_core::{Calendar, CalendarId, CalendarSet, NamedCalendar, WbsId};
 use cadence_core::engine::schedule;
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Constraint, LinkType,
-    Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind, WbsId,
-    FULL_UNITS,
+    Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind, FULL_UNITS,
 };
 use time::Date;
 
@@ -102,8 +101,10 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
     let mut calendar_set = CalendarSet::new();
     if let Some(calendars) = root.child("Calendars") {
         for cal in calendars.children_named("Calendar") {
-            let cal_id = cal.parse_of::<u64>("UID")?;
-            let cal_name = cal.text_of("Name").unwrap_or_default();
+            let cal_id = cal
+                .parse_of::<u64>("UID")
+                .ok_or_else(|| InterchangeError::MissingField("Calendar/UID".to_string()))?;
+            let cal_name = cal.text_of("Name").unwrap_or_default().to_string();
             let workweek_raw = cal.text_of("WorkWeek").unwrap_or("1111110");
             let workweek: [bool; 7] = workweek_raw
                 .chars()
@@ -115,22 +116,20 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
             let calendar = Calendar::new(workweek).unwrap_or_else(|_| Calendar::weekend());
             // Read holidays
             let mut holidays = Vec::new();
-            if let Some(holiday_nodes) = cal.children_named("Date") {
-                for h in holiday_nodes {
-                    if let Some(date_text) = h.text_of("Date") {
-                        if let Some(d) = parse_date_prefix(date_text) {
-                            holidays.push(d);
-                        }
+            for h in cal.children_named("Date") {
+                if let Some(date_text) = h.text_of("Date") {
+                    if let Some(d) = parse_date_prefix(date_text) {
+                        holidays.push(d);
                     }
                 }
             }
             calendar = calendar.with_holidays(holidays);
             let cid = CalendarId(cal_id);
             calendar_set
-                .add(cid, &cal_name, calendar)
+                .add(cid, cal_name, calendar)
                 .unwrap_or_else(|_| {
                     let alt_name = format!("{} (imported)", cal_name);
-                    calendar_set.add(cid, &alt_name, calendar).ok()
+                    let _ = calendar_set.add(cid, alt_name, calendar);
                 });
         }
     }
