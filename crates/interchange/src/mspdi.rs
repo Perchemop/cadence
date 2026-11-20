@@ -114,7 +114,7 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
                 .try_into()
                 .ok()
                 .unwrap_or([false; 7]);
-            let calendar = Calendar::new(workweek).unwrap_or_else(|_| Calendar::weekend());
+            let mut calendar = Calendar::new(workweek).unwrap_or_else(|_| Calendar::weekend());
             // Read holidays
             let mut holidays = Vec::new();
             for h in cal.children_named("Date") {
@@ -126,7 +126,7 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
             }
             calendar = calendar.with_holidays(holidays);
             let cid = CalendarId(cal_id);
-            if let Err(_) = calendar_set.add(cid, cal_name, calendar) {
+            if let Err(_) = calendar_set.add(cid, cal_name, calendar.clone()) {
                 let alt_name = format!("{} (imported)", cal_name);
                 let _ = calendar_set.add(cid, alt_name, calendar);
             }
@@ -135,7 +135,7 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
     project.calendars = calendar_set;
 
     // --- Import tasks with WBS codes -------------------------------------
-    let mut wbs_map: std::collections::HashMap<u64, WbsId> = std::collections::HashMap::new();
+    let mut _wbs_map: std::collections::HashMap<u64, WbsId> = std::collections::HashMap::new();
     if let Some(tasks) = root.child("Tasks") {
         for task in tasks.children_named("Task") {
             let uid = task_uid(task)?;
@@ -1182,7 +1182,7 @@ mod tests {
             .named(CalendarId(3))
             .expect("Holiday calendar");
         assert!(
-            holiday_cal.calendar.holidays().count() >= 2,
+            holiday_cal.calendar.holidays().into_iter().count() >= 2,
             "expected at least 2 holidays"
         );
     }
