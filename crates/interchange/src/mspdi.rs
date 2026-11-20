@@ -118,10 +118,8 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
             // Read holidays
             let mut holidays = Vec::new();
             for h in cal.children_named("Date") {
-                if let Some(date_text) = h.text_of("Date") {
-                    if let Some(d) = parse_date_prefix(date_text) {
-                        holidays.push(d);
-                    }
+                if let Some(d) = parse_date_prefix(h.text_trimmed()) {
+                    holidays.push(d);
                 }
             }
             calendar = calendar.with_holidays(holidays);
@@ -1079,6 +1077,10 @@ mod tests {
     fn wbs_code_round_trip_through_mspdi() {
         let start = date(2026, Month::January, 5);
         let mut project = Project::new("WBS Round Trip", start);
+
+        // Add WBS nodes to the project's WBS tree
+        // Root node (WbsId(1)) already exists as "Project"
+        project.wbs.add(WbsId(2), "Build", WbsId(1)).unwrap();
 
         let mut activity_a = Activity::new(ActivityId(1), "Design", 2);
         activity_a.wbs = Some(WbsId(1));
