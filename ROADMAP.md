@@ -25,7 +25,7 @@ clippy with warnings denied, release binary packaged for all three.
 | Command layer (typed, undo/redo) | 100% | command tests per family |
 | SQLite project files (schema v4, migrations) | 100% | persistence round-trip/migration tests |
 | Resources, histograms, leveling | 100% | engine + command + property tests |
-| Baselines, variance, EVM (including EAC/BAC/TCPI/VAC) | 100% | engine tests, GUI Baselines view |
+| Baselines, variance, EVM (with EAC/TCPI/VAC computed) | 95% | engine tests; EAC/TCPI/VAC GUI display pending |
 | Progress updating | 100% | command + persistence tests |
 | Gantt + table GUI | 100% of built views | Phase-2/3 QC checklists (interactive parts hands-on) |
 | Reports (Markdown + PDF) and printing | 100% | report + PDF writer tests; dialog hands-on |
