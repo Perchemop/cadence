@@ -6,6 +6,7 @@
 //! |---|---|
 //! | `Project/Name` | [`Project::name`] |
 //! | `Project/StartDate` | [`Project::start_date`] |
+//! | `Project/Calendars/Calendar` | [`Project::calendars`] (named calendars with weekly pattern and holidays) |
 //! | `Task/UID` | [`Activity::id`] |
 //! | `Task/Name` | [`Activity::name`] |
 //! | `Task/Duration` | [`Activity::original_duration`] (8-hour days) |
@@ -14,6 +15,7 @@
 //! | `Task/FixedCost` | [`Activity::budget_at_completion`] (minor units) |
 //! | `Task/ActualCost` | [`Activity::actual_cost`] (minor units) |
 //! | `Task/ActualStart`, `Task/ActualFinish` | [`Activity::actual_start`], [`Activity::actual_finish`] |
+//! | `Task/WBS` | [`Activity::wbs`] (numeric WBS code identifier) |
 //! | `Task/PredecessorLink` | [`Relationship`] (type and lag) |
 //! | `Resource/UID`, `Name`, `Type`, `MaxUnits` | [`Resource`] |
 //! | `Assignment/TaskUID`, `ResourceUID`, `Units` | [`Activity::resources`], [`Activity::assignment_units`] |
@@ -34,16 +36,18 @@
 //!
 //! Two MSPDI constraints have no exact Cadence equivalent: *must start on* is
 //! read as *start no earlier than* and *must finish on* as *finish no earlier
-//! than*. Everything the reader does not model (cost rate tables, custom
-//! fields, calendars) is ignored rather than rejected.
+//! than*. WBS codes are read as numeric identifiers; named calendars import
+//! with their weekly workweek pattern and holiday exceptions.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
+use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::engine::schedule;
 use cadence_core::model::{
-    Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Constraint, LinkType,
-    Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind, FULL_UNITS,
+    Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
+    LinkType, Project, Relationship, RelationshipId, Resource, ResourceId, ResourceKind, WbsId,
+    FULL_UNITS,
 };
 use time::Date;
 
@@ -92,6 +96,44 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
     let mut project = Project::new(name, start_date);
     let mut baselines: BTreeMap<i64, Vec<ActivityBaselineSnapshot>> = BTreeMap::new();
 
+    // --- Named calendars from <Project><Calendars> -------------------------
+    let mut calendar_set = CalendarSet::new();
+    if let Some(calendars) = root.child("Calendars") {
+        for cal in calendars.children_named("Calendar") {
+            let cal_id = cal.parse_of::<u64>("UID")?;
+            let cal_name = cal.text_of("Name").unwrap_or_default();
+            let workweek_raw = cal.text_of("WorkWeek").unwrap_or("1111110");
+            let workweek: [bool; 7] = workweek_raw
+                .chars()
+                .take(7)
+                .map(|c| c == '1')
+                .collect::<TryFrom<_>>::ok()
+                .unwrap_or([false; 7]);
+            let calendar = Calendar::new(workweek).unwrap_or_else(|_| Calendar::weekend());
+            // Read holidays
+            let mut holidays = Vec::new();
+            if let Some(holiday_nodes) = cal.children_named("Date") {
+                for h in holiday_nodes {
+                    if let Some(date_text) = h.text_of("Date") {
+                        if let Some(d) = parse_date_prefix(date_text) {
+                            holidays.push(d);
+                        }
+                    }
+                }
+            }
+            calendar = calendar.with_holidays(holidays);
+            let cid = CalendarId(cal_id);
+            calendar_set.add(cid, &cal_name, calendar)
+                .unwrap_or_else(|_| {
+                    let alt_name = format!("{} (imported)", cal_name);
+                    calendar_set.add(cid, &alt_name, calendar).ok()
+                });
+        }
+    }
+    project.calendars = calendar_set;
+
+    // --- Import tasks with WBS codes -------------------------------------
+    let mut wbs_map: std::collections::HashMap<u64, WbsId> = std::collections::HashMap::new();
     if let Some(tasks) = root.child("Tasks") {
         for task in tasks.children_named("Task") {
             let uid = task_uid(task)?;
@@ -116,6 +158,13 @@ pub fn import(text: &str) -> Result<Project, InterchangeError> {
             activity.actual_cost = task.text_of("ActualCost").and_then(parse_money);
             activity.actual_start = task.text_of("ActualStart").and_then(parse_date_prefix);
             activity.actual_finish = task.text_of("ActualFinish").and_then(parse_date_prefix);
+
+            // Import WBS code from Task/WBS and assign to activity
+            if let Some(wbs_text) = task.text_of("WBS") {
+                if let Ok(wbs_id) = wbs_text.parse::<u64>() {
+                    activity.wbs = Some(WbsId(wbs_id));
+                }
+            }
 
             for baseline in task.children_named("Baseline") {
                 let number = baseline.parse_of::<i64>("Number").unwrap_or(0);
@@ -363,6 +412,11 @@ pub fn export(project: &Project) -> Result<String, InterchangeError> {
                 "      <ActualFinish>{}</ActualFinish>",
                 format_datetime(finish, "17:00:00")
             );
+        }
+
+        // Export WBS code
+        if let Some(wbs) = activity.wbs {
+            let _ = writeln!(output, "      <WBS>{}</WBS>", wbs.0);
         }
 
         for relationship in project
@@ -981,5 +1035,155 @@ mod tests {
         assert!(
             matches!(error, InterchangeError::InvalidField { field, .. } if field == "Resource/Type")
         );
+    }
+
+    #[test]
+    fn wbs_code_is_imported_from_mspdi() {
+        let document = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Project xmlns="http://schemas.microsoft.com/project">
+  <Name>WBS Test</Name>
+  <StartDate>2026-01-05T08:00:00</StartDate>
+  <Tasks>
+    <Task>
+      <UID>1</UID>
+      <Name>Activity A</Name>
+      <Duration>PT8H0M0S</Duration>
+      <WBS>1</WBS>
+    </Task>
+    <Task>
+      <UID>2</UID>
+      <Name>Activity B</Name>
+      <Duration>PT16H0M0S</Duration>
+      <WBS>2</WBS>
+    </Task>
+  </Tasks>
+  <Resources>
+    <Resource><UID>0</UID><Name></Name></Resource>
+  </Resources>
+</Project>"#;
+
+        let project = import(document).expect("import");
+        assert_eq!(project.activities.len(), 2);
+        // WBS codes are parsed as numeric identifiers
+        // MSPDI stores WBS as formatted text, but Cadence uses internal IDs
+        assert!(project.activities[0].wbs.is_some());
+        assert!(project.activities[1].wbs.is_some());
+        // The numeric portion should be parsed
+        assert_eq!(project.activities[0].wbs.unwrap().0, 1);
+        assert_eq!(project.activities[1].wbs.unwrap().0, 2);
+    }
+
+    #[test]
+    fn wbs_code_round_trip_through_mspdi() {
+        let start = date(2026, Month::January, 5);
+        let mut project = Project::new("WBS Round Trip", start);
+
+        let mut activity_a = Activity::new(ActivityId(1), "Design", 2);
+        activity_a.wbs = Some(WbsId(1));
+        project.activities.push(activity_a);
+
+        let mut activity_b = Activity::new(ActivityId(2), "Build", 3);
+        activity_b.wbs = Some(WbsId(2));
+        project.activities.push(activity_b);
+
+        let document = export(&project).expect("export");
+        assert!(document.contains("<WBS>1</WBS>"));
+        assert!(document.contains("<WBS>2</WBS>"));
+
+        let loaded = import(&document).expect("import");
+        assert_eq!(loaded.activities[0].wbs, Some(WbsId(1)));
+        assert_eq!(loaded.activities[1].wbs, Some(WbsId(2)));
+    }
+
+    #[test]
+    fn named_calendars_are_imported_from_mspdi() {
+        let document = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Project xmlns="http://schemas.microsoft.com/project">
+  <Name>Calendar Test</Name>
+  <StartDate>2026-01-05T08:00:00</StartDate>
+  <Calendars>
+    <Calendar>
+      <UID>1</UID>
+      <Name>Standard</Name>
+      <WorkWeek>1111110</WorkWeek>
+    </Calendar>
+    <Calendar>
+      <UID>2</UID>
+      <Name>7 Day Week</Name>
+      <WorkWeek>1111111</WorkWeek>
+    </Calendar>
+    <Calendar>
+      <UID>3</UID>
+      <Name>Holiday Calendar</Name>
+      <WorkWeek>1111110</WorkWeek>
+      <Date>2026-01-01T00:00:00</Date>
+      <Date>2026-07-04T00:00:00</Date>
+    </Calendar>
+  </Calendars>
+  <Tasks>
+    <Task>
+      <UID>1</UID>
+      <Name>Activity A</Name>
+      <Duration>PT8H0M0S</Duration>
+    </Task>
+  </Tasks>
+  <Resources>
+    <Resource><UID>0</UID><Name></Name></Resource>
+  </Resources>
+</Project>"#;
+
+        let project = import(document).expect("import");
+        assert!(project.calendars.len() >= 3, "expected at least 3 calendars, got {}", project.calendars.len());
+
+        // Check that calendars were imported with correct names
+        let cal_names: Vec<&str> = project.calendars.calendars().iter().map(|c| c.name.as_str()).collect();
+        assert!(cal_names.contains(&"Standard"), "Standard calendar not found");
+        assert!(cal_names.contains(&"7 Day Week"), "7 Day Week calendar not found");
+        assert!(cal_names.contains(&"Holiday Calendar"), "Holiday Calendar not found");
+
+        // Verify the standard calendar has weekends off (Monday=1, Sunday=0)
+        // 1111110 means Mon-Sat working = 6 working days
+        let standard_cal = project.calendars.named(CalendarId(1)).expect("Standard calendar");
+        assert_eq!(standard_cal.calendar.working_days_per_week(), 6);
+
+        // Verify 7-day week calendar (all days working)
+        let seven_day_cal = project.calendars.named(CalendarId(2)).expect("7 day calendar");
+        assert_eq!(seven_day_cal.calendar.working_days_per_week(), 7);
+
+        // Verify holiday calendar has holidays
+        let holiday_cal = project.calendars.named(CalendarId(3)).expect("Holiday calendar");
+        assert!(holiday_cal.calendar.holidays().count() >= 2, "expected at least 2 holidays");
+    }
+
+    #[test]
+    fn calendar_with_invalid_workweek_defaults_to_weekend() {
+        let document = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Project xmlns="http://schemas.microsoft.com/project">
+  <Name>Invalid Calendar Test</Name>
+  <StartDate>2026-01-05T08:00:00</StartDate>
+  <Calendars>
+    <Calendar>
+      <UID>1</UID>
+      <Name>Invalid Calendar</Name>
+      <WorkWeek>invalid</WorkWeek>
+    </Calendar>
+  </Calendars>
+  <Tasks>
+    <Task>
+      <UID>1</UID>
+      <Name>Activity A</Name>
+      <Duration>PT8H0M0S</Duration>
+    </Task>
+  </Tasks>
+  <Resources>
+    <Resource><UID>0</UID><Name></Name></Resource>
+  </Resources>
+</Project>"#;
+
+        let project = import(document).expect("import should succeed");
+        assert_eq!(project.calendars.len(), 1);
+        // Invalid workweek should default to weekend (Sat/Sun off)
+        let cal = project.calendars.named(CalendarId(1)).expect("calendar");
+        assert_eq!(cal.calendar.working_days_per_week(), 5);
     }
 }

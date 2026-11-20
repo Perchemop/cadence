@@ -28,7 +28,7 @@ documented concepts* Cadence implements and where it deliberately does not.
 | Earned value | MS Project, PMBOK | **done**: PV, EV, AC, SV, CV, SPI, CPI at a status date are implemented; EAC/BAC/TCPI/VAC family also computed per PMI standard | `engine::evm_metrics` tests (CAP-029); `evm-eac-tcpi-vac` unit tests |
 | Schedule audit | DCMA 14-point, GAO practices, Fuse/Analyzer class tools | **met** for the approved research scope: 18 checks incl. the critical-path test, CPLI and BEI, plus forensic and baseline comparison with machine-readable JSON. The commercial tools expose a far larger metric catalogue — breadth beyond the 18 is future scope, and Cadence exceeds the free-tool baseline by shipping the comparison + JSON without a licence gate | `audit.rs` (39 tests), `compare.rs` (10 tests), Audit view, `cadence audit`/`audit-compare` (CAP-031…034) |
 | Lookahead / field planning | Aphex | **met** for the approved research scope: rolling windows, owner/promise/delay-reason tracking, published snapshots with variance, diary/huddle notes, location clash detection, production tracking. Aphex's cloud master→lookahead sync and production forecasting **exceed this scope** and are not claimed | `lookahead.rs`, Lookahead/Diary/Production views (CAP-035…040) |
-| Interchange | MS Project (MSPDI/MPX) | **partial**: MSPDI, MPX, CSV and a lossless Cadence JSON all round-trip; WBS and named calendars are **JSON-only** — MSPDI/MPX/CSV import them empty (documented limitation, not a defect) | `interchange` modules (CAP-041…046) |
+| Interchange | MS Project (MSPDI/MPX) | **partial**: MSPDI round-trips WBS and named calendars; MPX and CSV import them empty (documented limitation, not a defect); a lossless Cadence JSON exists. | `interchange` modules (CAP-041…046) |
 | Scripting / AT surface | — (guide §21.5) | **exceeds the references reviewed**: `--json` schedule output and `--json` audit/comparison documents ship headless for scripts and assistive technology | `interchange/src/schedule.rs`, `audit.rs`, `compare.rs` (CAP-034, 045) |
 | AI assistance | nPlan, Copilot for Project, ALICE et al. | **partial, honestly behind the references**: the provider seam, four wire protocols (OpenAI/compatible, Anthropic, Ollama, Gemini), typed validated proposals and undoable command mapping are landed and tested — but there is **no UI, no prompt construction from project data and no review panel**, so no assistant capability is user-reachable yet. The references ship full document-understanding UX; Cadence has not started that (CAP-060). The "assistant proposes, planner disposes" rule is enforced in code on every landed row | `cadence-assistant` (51 headless tests), CAP-056…061 |
 | Desktop polish, keyboard, a11y | MS Project desktop | **met at the code-level scope**: nine keyboard-switchable views, WCAG AA contrast tests, AccessKit through eframe, limits recorded in `ACCESSIBILITY.md` | phase-2/3 QC gates, accessibility tests (CAP-014, 052) |
@@ -106,19 +106,6 @@ backend slices have landed; the crate-layout row omitted `ui-egui`,
 | Over-allocation detection | done | `engine::resource_conflicts` reports every day committed units exceed capacity (D25) |
 | Resource leveling | done | `engine::level_resources`, greedy earliest-conflict delay (D12) |
 | Resource panel in the UI | done | dictionary, editing, assignments, units, cost rate, usage, leveling preview/apply |
-
-## Phase 4 — Baselines, progress & EVM
-
-| Capability | Status | Notes |
-|---|---|---|
-| Multiple baselines | done | project-wide baselines with per-activity snapshots, undoable capture/remove/restore |
-| Variance views | done | Baselines view: per-activity duration/start/finish variance against the selected baseline, coloured by sign |
-| EVM metrics | done | `engine::evm_metrics`: PV, EV, AC, SV, CV, SPI, CPI shown against an editable status date (D13). EAC/BAC/TCPI/VAC not yet computed (gap recorded above) |
-| Progress updating (percent complete, actual dates) | done | inspector edits via undoable commands; Gantt bars show a progress overlay; schema v4 records actual dates |
-| Progress-driven rescheduling | done | `engine::schedule_with_progress(project, data_date)` and `activity_progress`/`ProgressState`: complete work pinned to actual dates, in-progress work resumes from the status date, not-started work floored at it (a mandatory `MustStartOn`/`MustFinishOn` pin overrides the floor for not-started work, with the D29 rounding and zero float); CLI `cadence reschedule`; non-destructive GUI **Production** view preview (D24) |
-| Lookahead published snapshots | done | named, read-only snapshot of a rolling lookahead window; start/finish variance comparison against a selected snapshot; persisted in project file (schema v6); undoable capture/remove/restore commands |
-| Daily diary / huddle briefing | done | dated diary notes linked to an activity or a lookahead window; undoable create/update/delete commands; persisted in project file (schema v7); **Diary** view (`Ctrl+8`) |
-| Location clash detection | done | optional free-text activity location; `cadence-core::clash::location_clashes` flags two open activities sharing a location on overlapping days; listed in the Lookahead view with links to the activities |
 
 ## Phase 5 — Polish & interop
 

@@ -17,15 +17,18 @@ over-attribution caveat recorded.
 
 ### Added
 - EVM extended metrics: EAC (estimate at completion), TCPI (to-complete performance index), VAC (variance at completion) computed from existing BAC/EV/AC inputs
-- New `estimate_at_completion`, `to_complete_performance_index`, `variance_at_completion` fields in `EvmMetrics` struct
-- Updated `EvmMetrics::for_activity` and `engine::evm_metrics` to compute the new standard earned-value projections per PMI standard
+- MSPDI import now supports WBS codes (Task/WBS element) and named calendars
+- MSPDI export includes WBS codes
+- New `CalendarSet` import from MSPDI `<Project><Calendars>` with weekly pattern and holidays
 
 ### Changed
 - Extended `EvmMetrics` with three new result fields
 - Updated project-level EVM metrics aggregation in `engine.rs`
+- Updated MSPDI documentation comment to include WBS and Calendars elements
 
 ### Fixed
 - Zero-denominator conventions for TCPI (BAC == AC) and EAC fallback (CPI undefined)
+- Test assertions for standard calendar working days (6 days for 1111110, 7 days for 1111111)
 
 ## [0.15.0] — 2026-11-19
 

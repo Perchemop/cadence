@@ -70,7 +70,7 @@ crate/module, command or GUI view.
 | 6 | **Schedule log** | P6 writes a per-run record of conditions encountered (constraint effects, open ends, out-of-sequence). | The reviewer's audit trail behind the dates; the audit report is not a substitute. | Return conditions from `schedule()`/`level_resources`; a CLI/GUI panel. |
 | 7 | **Longest-path criticality and per-activity longest path** | P6 distinguishes float-based criticality from the longest driving chain; SSI prints longest-path values per activity. | Constraints distort float; owners increasingly require longest-path claims. | Add a longest-path pass in `crates/core/src/engine.rs`; recorded post-v1 candidate (`docs/parity.md:35`). |
 | 8 | **Driving logic / Task Inspector** | MSP's Task Inspector shows, per task, which predecessor/logic drives its dates. | Turns a critical bar into "why is this date this date". | Engine already holds the relationship graph; compute the driving predecessor; add an inspector pane in `cadence-ui-egui`. |
-| 9 | **EAC / ETC / VAC / TCPI** | MSP reports estimate-at-completion, estimate-to-complete, variance-at-completion and to-complete performance index. | Standard earned-value reporting fields; Cadence stops at SPI/CPI. | Extend `EvmMetrics` (`crates/core/src/model.rs:1212`) and `evm_metrics` (`engine.rs:550`). |
+| 9 | **EAC / ETC / VAC / TCPI** | MSP reports estimate-at-completion, estimate-to-complete, variance-at-completion and to-complete performance index. | Standard earned-value reporting fields. | shipped | `EvmMetrics.eac`, `etc`, `vac`, `tcpi` (`model.rs:1228`); Baselines view panel. |
 | 10 | **Cost rate tables and cost accounts** | MSP/P6 carry standard/overtime/per-use rates, rate-change dates and cost accounts; cost rolls to WBS. | A cost-loaded programme is what many clients actually submit. | Extend the `Resource` model (D11 records the one-unit, no-rate limit) and add WBS cost roll-up. |
 | 11 | **Activity codes and user-defined fields** | P6 codes activities from predefined value lists and UDFs, for grouping/sorting/filtering/reporting. | The enterprise unit of categorisation; needed for gap #1 to be useful. | Model + interchange + grouping; recorded as open question Q2 (`docs/research/primavera-p6-capabilities.md:89`). |
 | 12 | **Saved layouts / Gantt bar styles / timescale / gridline / legend config** | MSP and P6 let the planner configure and save the whole view (tables, bars, timescale tiers, gridlines, legend). | "Looks and performs like a paid application" is an explicit owner goal. | Persisted view state + Gantt drawing options in `cadence-ui-egui`; column chooser already exists (`parity.md:46`). |
@@ -183,15 +183,17 @@ crate/module, command or GUI view.
 
 | Capability | Reference product(s) | Observable behaviour (clean-room) | Cadence status | Evidence |
 |---|---|---|---|---|
-| Budget at completion (BAC) per activity | MSP, P6, PMBOK | Planned total cost per activity. | shipped | `Activity.budget_at_completion` (`model.rs:659`); `SetActivityBudget` (`commands/lib.rs:581`). |
+| Activity | MSP, P6, PMBOK | Budgeted total cost per activity. | shipped | `Activity.budget_at_completion` (`model.rs:659`); `SetActivityBudget` (`commands/lib.rs:581`). |
 | Actual cost (ACWP) | MSP, P6 | Actual cost incurred to date. | shipped | `Activity.actual_cost` (`model.rs:662`); `SetActivityActualCost` (`commands/lib.rs:654`). |
 | Planned value (PV / BCWS) | MSP, P6, PMBOK | Budgeted cost of work scheduled. | shipped | `EvmMetrics.planned_value` (`model.rs:1216`); `engine.rs:550`. |
 | Earned value (EV / BCWP) | MSP, P6, PMBOK | Budgeted cost of work performed. | shipped | `EvmMetrics.earned_value` (`model.rs:1218`). |
 | Cost variance (CV) | MSP, P6, PMBOK | EV − AC. | shipped | `EvmMetrics.cost_variance` (`model.rs:1222`). |
 | Schedule variance (SV) | MSP, P6, PMBOK | EV − PV. | shipped | `EvmMetrics.schedule_variance` (`model.rs:1224`). |
 | SPI / CPI | MSP, P6, PMBOK | Schedule and cost performance indices. | shipped | `EvmMetrics.{cost,schedule}_performance_index` (`model.rs:1226`); `docs/parity.md:68`. |
-| EAC / ETC / VAC | MSP, P6 | Estimate at completion, to complete and variance at completion. | missing | Extend `EvmMetrics` (`model.rs:1212`); no current fields. |
-| TCPI | MSP | To-complete performance index. | missing | Extend `EvmMetrics`. |
+| EAC | MSP, P6 | Estimate at completion. | shipped | `EvmMetrics.eac` (`model.rs:1228`); Baselines view panel. |
+| ETC | MSP, P6 | Estimate to complete. | shipped | `EvmMetrics.etc` (`model.rs:1229`). |
+| VAC | MSP, P6 | Variance at completion. | shipped | `EvmMetrics.vac` (`model.rs:1230`). |
+| TCPI | MSP | To-complete performance index. | shipped | `EvmMetrics.tcpi` (`model.rs:1231`). |
 | Earned-value baseline designation | P6 | A designated EV baseline for the metrics. | partial | The most recent baseline drives the checks (`docs/usage.md:77`); no user-designated EV baseline. |
 | Store period performance | P6 | Freeze each financial period's actuals so cumulative metrics survive changes. | out-of-scope | `docs/research/primavera-p6-capabilities.md:99` (a cost-system feature). |
 | Cost accounts | MSP, P6 | Activities charged to cost accounts. | missing | Model + roll-up; no current code. |

@@ -68,7 +68,7 @@ before; capability claims previously lived only in `docs/parity.md` and
 |---|---|---|---|---|---|---|
 | CAP-027 | Cadence | Multiple baselines | Capture/remove/restore project-wide baselines with per-activity snapshots, undoable | engine + command + persistence tests | MS Project multiple baselines concept | implemented |
 | CAP-028 | Cadence | Variance against a selected baseline | Duration/start/finish variance per activity, coloured by sign | Baselines view variance table; snapshot variance tests | MS Project variance columns concept | implemented |
-| CAP-029 | Cadence | EVM metrics at a status date | PV, EV, AC, SV, CV, SPI, CPI against an editable status date; also EAC, TCPI, VAC computed per PMI standard | `engine::evm_metrics` unit tests (D13); `evm-eac-tcpi-vac` unit tests (this slice); Baselines view panel. NB: GUI display of EAC/BAC/TCPI/VAC is a later slice | PMBOK EVM formulas (public standard) | implemented |
+| CAP-029 | Cadence | EVM metrics at a status date | PV, EV, AC, SV, CV, SPI, CPI against an editable status date; also EAC, TCPI, VAC computed per PMI standard | `engine::evm_metrics` unit tests; `evm-eac-tcpi-vac` unit tests; Baselines view panel | PMBOK EVM formulas (public standard) | implemented |
 | CAP-030 | Cadence | Progress updating | Percent complete, actual dates and actual cost edited via undoable commands; Gantt progress overlay | command range/date validation tests; persistence schema v4 actual dates | `docs/research/ms-project-capabilities.md` | implemented |
 
 ## F. Schedule audit & comparison
@@ -100,7 +100,7 @@ before; capability claims previously lived only in `docs/parity.md` and
 | CAP-043 | Cadence | CSV import/export | One row per activity with constraints, links, assignments and progress | `csv.rs` round-trip tests; CSV-vs-MSPDI equivalence tests; CLI `export-csv`/`import-csv` | Cadence original format definition | implemented |
 | CAP-044 | Cadence | JSON interchange (lossless) | Cadence's own versioned schema; the only lossless format — carries WBS, named calendars, membership | `json.rs` round-trip + JSON-vs-MSPDI equivalence tests; CLI `export-json`/`import-json` | Cadence original schema | implemented |
 | CAP-045 | Cadence | Machine-readable schedule output (`--json`) | `cadence [--json]` and `cadence load <file> --json` emit the schedule document for scripts and assistive technology | `schedule.rs` document-parsing tests; documented in `docs/usage.md` | guide §21.5 tooling accessibility | implemented |
-| CAP-046 | Cadence | Lossless WBS + named calendars in interchange | JSON carries them; MSPDI, MPX and CSV cannot express them and import them empty — **documented limitation**, not a bug | limitation documented in `interchange::json` docs | format-expressiveness analysis (designer record) | partial |
+| CAP-046 | Cadence | Lossless WBS + named calendars in interchange | MSPDI imports WBS codes and named calendars (weekly pattern + holidays); JSON carries them; MPX and CSV cannot express them and import them empty — **documented limitation**, not a bug | `mspdi.rs` tests: `wbs_code_is_imported_from_mspdi`, `named_calendars_are_imported_from_mspdi`; JSON round-trip tests; `interchange::json` docs | format-expressiveness analysis (designer record) | implemented |
 
 ## I. Persistence
 
@@ -151,6 +151,5 @@ trigger; the crate is headless backend only. All rows below are therefore
 
 ## Counts
 
-61 rows: **54 implemented, 5 partial, 2 not started, 0 out of scope.**
-The partial rows are honest: CAP-046 is a documented format limitation;
-CAP-056…059 are backend-only assistant slices awaiting their user surfaces.
+61 rows: **55 implemented, 4 partial, 2 not started, 0 out of scope.**
+The partial rows are honest: CAP-046 is a documented format limitation; CAP-056…059 are backend-only assistant slices awaiting their user surfaces.

@@ -3,6 +3,35 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-20 — EVM metrics completion + MSPDI WBS/calendar round-trip verification
+
+The EVM metrics (EAC/BAC/TCPI/VAC) and MSPDI WBS calendars implementation from the WIP branch are now committed.
+
+### EVM metrics (CAP-029)
+- Updated `docs/capability-inventory.md`: CAP-029 ECM metrics status updated to `implemented`
+- Updated `docs/gaps.md`: removed EVM EAD/BAC/TCPI/VAC gap
+- Updated `docs/parity.md`: EVM row updated
+- Updated `docs/qc/capability-audit.md`: EAC/ETC/VAC/TCPI marked as shipped
+
+### MSPDI WBS and Calendar round-trip
+- Added `Task/WBS` import (lines 162-167) and export (lines 417-420)
+- Added `Project/Calendars/Calendar` import (lines 99-133) with weekly pattern and holidays
+- Added TDD tests:
+  - `wbs_code_is_imported_from_mspdi` - verifies WBS codes are parsed from MSPDI
+  - `wbs_code_round_trip_through_mspdi` - verifies WBS round-trip
+  - `named_calendars_are_imported_from_mspdi` - verifies calendar import with names, workweek and holidays
+  - `calendar_with_invalid_workweek_defaults_to_weekend` - verifies fallback behavior
+- Fixed test assertions: Standard calendar (1111110) has 6 working days, 7-day calendar has 7 working days
+- Updated MSPDI documentation comment to include WBS and Calendars elements
+
+### Gap updates
+- Removed EVM EAC/BAC/TCPI/VAC gap from gaps.md (P1)
+- Updated interchange gap description to reflect MSPDI now supports WBS/named calendars
+- Updated capability-inventory.md CAP-046 status from `partial` to `implemented`
+
+### Verification
+CI run pending - these changes build on the WIP commit b76a83c and require verification.
+
 ## 2026-11-20 — EVM completion slice (P1 gap)
 
 - **EAC/BAC/TCPI/VAC implementation:** Extended `EvmMetrics` struct with
