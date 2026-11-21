@@ -17,6 +17,11 @@ over-attribution caveat recorded.
 
 ## [Unreleased]
 
+## [0.17.1] — 2026-11-21
+
+### Fixed
+- Window now starts at 1200x800 instead of relying on the minimum inner size, preventing Wayland scaling issues where widgets displayed only single letters or incorrect rendering sizes.
+
 ## [0.17.0] — 2026-11-21
 
 ### Changed
