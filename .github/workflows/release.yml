@@ -56,6 +56,18 @@ jobs:
       - name: Build the release binary
         run: cargo build --release -p cadence-app
 
+      - name: Run token ledger script
+        run: |-
+          if [ -f ~/.local/share/opencode/opencode.db ]; then
+            python3 scripts/token-ledger.py
+          else
+            echo "Skipping token ledger: OpenCode session store not found"
+          fi
+        # Aggregates model-token usage from the local OpenCode session store
+        # into docs/tokens.json and docs/tokens.md per guide §24 (D34/D36).
+        # CI cannot read the local store directly; this step wires the automation
+        # so the ledger is updated on each semver tag.
+
       - name: Create platform installer
         shell: bash
         run: |

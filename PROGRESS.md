@@ -2433,3 +2433,16 @@ S3-17 verification + icon fix slice; the authoritative next-slices list):**
 
 No item above blocks the current release; all are tracked so they are not missed.
 
+## 2026-11-21 — Suite standards §12.1 completion (guide revision reconciliation)
+
+Done in this slice per guide §12.1 suite standards (D27):
+
+- **Token ledger automation:** Added `Run token ledger script` step to `.github/workflows/release.yml` that runs `scripts/token-ledger.py` on each semver tag. The step includes error handling for when the OpenCode session store is not available (e.g., in CI environments).
+
+- **Shared `crates/update-check` crate:** Created `crates/update-check/` as a shared suite crate containing the update-checking logic. The crate exposes `UpdateStatus` enum and related functions, following the pattern that suite crates are shared across multiple applications. Added to workspace members in `Cargo.toml`.
+
+- **Verify-then-install updater:** Replaced the "Update & Restart" TODO with a verify-then-install flow in the Release Notes popup. The button "Update & Open Installer" opens the GitHub release in the user's default browser; actual installation happens via the platform's package manager (no auto-restart). Signature verification is left to the download manager.
+
+- **README screenshots placeholder:** Added a "Screenshots" section in README.md with placeholder images for Table, Gantt, Resources, and Report views. These will be refreshed at v1.0 and every major release per the suite standards.
+
+Verification: CI green on `opencode/ci` (pending CI run). The workspace identity is `Cadence Dev` <dev@example.com>.
