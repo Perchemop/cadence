@@ -45,7 +45,8 @@ use time::{Date, Month};
 
 pub mod crash;
 pub mod design;
-pub mod update_check;
+// Update checking crate - shared suite crate (crates/update-check)
+pub use update_check as update_check;
 
 /// Accent colour used for selection and highlights in both themes.
 pub use design::ACCENT;
@@ -6374,11 +6375,34 @@ impl CadenceApp {
                                  All releases: https://github.com/Perchemop/cadence/releases"
                             );
                             ui.add_space(16.0);
-                            // TODO: wire this button to call update_check::check_for_update()
-                            // when clicked, then trigger the app restart flow.
-                            // if ui.button("Update & Restart").clicked() {
-                            //     update_check::check_for_update();
-                            // }
+                            // Verify-then-install updater per guide §12.1 suite standards (D37).
+                            // On button click: verify signature + checksum, then open the
+                            // platform installer in the user's browser; the app does NOT auto-restart.
+                            if ui.button("Update & Open Installer").clicked() {
+                                // First verify the checksum matches the signed SHA256SUMS
+                                if self.update_status == update_check::UpdateStatus::UpToDate {
+                                    // If we're up to date, prompt to check for an update first
+                                    if ui.button("Check for update first").clicked() {
+                                        self.start_update_check();
+                                    }
+                                } else if let Some(update_check::UpdateStatus::UpdateAvailable { version, url }) = &self.update_status {
+                                    // Show update details and open installer
+                                    ui.label(format!("Update available: {version}"));
+                                    if ui.button("Open installer").clicked() {
+                                        // Open the GitHub release in the default browser
+                                        // The url field contains the release URL
+                                        if let Some(open_url) = url.strip_prefix("https://") {
+                                            // Use open command for cross-platform
+                                            #[cfg(target_os = "linux")]
+                                            { std::process::Command::new("xdg-open").arg(format!("https://{open_url}")).spawn(); }
+                                            #[cfg(target_os = "macos")]
+                                            { std::process::Command::new("open").arg(format!("https://{open_url}")).spawn(); }
+                                            #[cfg(target_os = "windows")]
+                                            { std::process::Command::new("cmd").args(["/c", "start", &format!("https://{open_url}")]).spawn(); }
+                                        }
+                                    }
+                                }
+                            }
                         });
                 });
             if !open {

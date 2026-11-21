@@ -34,6 +34,20 @@ they own.
    chmod +x cadence-linux-x86_64
    ```
 
+### Screenshots
+
+Below are screenshots of the Cadence application. These are placeholders that will be refreshed at each major release (v1.0, v2.0, etc.) to showcase the current UI.
+
+| View | Description |
+|------|-------------|
+|------|-------------|
+| ![Table view placeholder](placeholder-table.png) | The activity table with column customizer and row selection |
+| ![Gantt view placeholder](placeholder-gantt.png) | The Gantt chart with milestone diamonds and dependency arrowheads |
+| ![Resources view placeholder](placeholder-resources.png) | The resource histogram and assignment units editor |
+| ![Report view placeholder](placeholder-report.png) | The Markdown/PDF report with earned value metrics |
+
+*These screenshots will be replaced with actual renders at the next major release.*
+
 3. Run it:
    ```bash
    ./cadence-linux-x86_64                    # open the demo project
