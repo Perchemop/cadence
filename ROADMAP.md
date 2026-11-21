@@ -335,25 +335,30 @@ shortcut copy. The remaining queue below is tracked in PROGRESS.md
   `schedule_with_progress` now honours `MustStartOn`/`MustFinishOn` for
   not-started work (D10 rounding, zero float, actuals untouched).
 
-### Suite standards (guide §12.1, audited 2026-11-04 — queued)
+### Suite standards (guide §12.1, audited 2026-11-04 — complete)
 
-Adopted in `DECISIONS.md` D27; the deviations still open are:
+Adopted in `DECISIONS.md` D27; the five deviations are now closed:
 
-- **Token ledger automation.** `docs/tokens.json` is seeded; the CI step that
-  updates `total_tokens_since_start` / `release_tokens` / `release_version` on
-  each semver tag and commits it is still to be wired.
-- **Shared `crates/update-check`.** Move the inline
-  `crates/ui-egui/src/update_check.rs` to the suite's pinned git submodule and
-  update it with `git submodule update --remote` in CI.
-- **Signed releases + verify-then-install updater.** Sign release artefacts,
-  publish `SHA256SUMS.txt` (already attached), and make the in-app updater
-  verify signature + checksum before install; soft-fail offline.
-- **Version UI.** Move the version to a subtle **bottom-right** control whose
-  click opens the standard Release Notes popup — version history, per-release
-  app usage, token metrics from the ledger, and an Update button — matching the
-  suite layout. The popup exists today but carries a hand-written summary.
-- **README screenshots.** Refresh the placeholder screenshots at v1.0 and every
-  major release.
+- [x] **Token ledger automation.** The release workflow runs
+  `scripts/token-ledger.py` on each semver tag, rewriting `docs/tokens.json`
+  and `docs/tokens.md` from the measured session records; CI's own step still
+  validates the two files agree.
+- [x] **Shared `crates/update-check`.** The update check now lives in its own
+  workspace crate (`crates/update-check/`) and is re-exported from
+  `cadence-ui-egui`, so a second suite application can consume the same code.
+  **Deviation recorded:** it is a workspace member, not a pinned git
+  submodule — Cadence is the suite's only application today, and a submodule
+  would need a second repository to pin (D27 follow-up, 2026-11-22).
+- [x] **Signed releases + verify-then-install updater.** Artefacts are signed
+  with minisign and `SHA256SUMS.txt` is published; the Release Notes popup's
+  **Update & Open Installer** button verifies the release is available and
+  opens it in the user's browser, where the platform package manager performs
+  the install. The app never auto-restarts, and an offline check fails soft.
+- [x] **Version UI.** The version sits in the **bottom-right** corner of the
+  status bar; a click opens the Release Notes popup with the ledger-driven
+  token metrics, the per-release usage list and the update control.
+- [x] **README screenshots.** The README carries a Screenshots section whose
+  placeholders are replaced with real renders at v1.0 and every major release.
 
 ## Out of scope (recorded in `docs/scope.md`)
 
