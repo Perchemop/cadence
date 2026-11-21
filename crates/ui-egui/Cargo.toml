@@ -14,13 +14,13 @@ cadence-commands.workspace = true
 cadence-interchange.workspace = true
 cadence-persistence.workspace = true
 cadence-assistant.workspace = true
+cadence-update-check.workspace = true
 eframe.workspace = true
 egui.workspace = true
 rfd = "0.18"
 serde.workspace = true
 serde_json.workspace = true
 time.workspace = true
-ureq.workspace = true
 egui_extras = { version = "0.35.0", features = ["datepicker"] }
 egui-phosphor = "0.13.0"
 # The egui_extras date picker works on jiff calendar dates; Cadence keeps the

@@ -45,8 +45,10 @@ use time::{Date, Month};
 
 pub mod crash;
 pub mod design;
-// Update checking crate - shared suite crate (crates/update-check)
-pub use update_check as update_check;
+// Update checking lives in the shared suite crate (crates/update-check, D27);
+// re-export the module so the public path `cadence_ui_egui::update_check`
+// is unchanged from when the code was an inline module.
+pub use cadence_update_check::update_check;
 
 /// Accent colour used for selection and highlights in both themes.
 pub use design::ACCENT;

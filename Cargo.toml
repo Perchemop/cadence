@@ -41,7 +41,7 @@ proptest = "1"
 eframe = "0.35"
 egui = "0.35"
 ureq = { version = "2.12", default-features = false, features = ["tls"] }
-update-check = { path = "crates/update-check" }
+cadence-update-check = { path = "crates/update-check", version = "0.17.0" }
 
 [profile.release]
 lto = "thin"
