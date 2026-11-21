@@ -24,3 +24,18 @@ P3 — Design-audit minors; nice-to-have for polish.
 | Undo toasts | Undo/redo via the command layer (CAP-009, `Ctrl+Z`/`Ctrl+Y`) is implemented, but visual toast feedback (temporary toast with Undo button after delete/archive/move actions) is not yet shipped. This is a P3 UX polish item that improves safety perception without changing behaviour. | `capability-inventory.md` CAP-009 ("Typed command layer: single mutation path, undo/redo"); no toast-specific CAP |
 | Command palette (⌘K / Ctrl+K) | A searchable command palette is a high-quality UI pattern (XI.2.3) that improves discoverability and keyboard productivity. Cadence has no command palette implementation yet; this is a P3 design-audit minor with no direct CAP id. | design high-quality pattern XI.2.3 ("Command menu"); no CAP id (UI polish category) |
 | Balanced headlines | Multi-line headlines that leave a single short word on the last line (orphans) look unfinished. Text balancing (`text-wrap: balance` or manual tweaks) makes headings break more evenly and look intentional. In the native Rust egui app, this applies to window titles, view labels, and any multi-line text rendered in the UI. No CAP id exists; it is a P3 typography polish item. | high-quality pattern XI.2.17 ("Balanced headlines"); no CAP id (typography polish category) |
+
+## Release v0.17.0 completion notes
+
+### Verified ✅
+
+- **UI redesign**: Three-core-tab view switcher, simplified menus, quick-access cluster, redesigned status bar, chrome button kit.
+- **Installers**: All four platforms (Linux .deb x86_64/aarch64, macOS .dmg, Windows .msi) verified with SHA-256 checksums and minisign signature.
+- **Token ledger**: v0.17.0 added with 0 release-cycle tokens, 1,711,676,910 cumulative.
+- **Repository state**: `main` is current with tag; two post-tag commits for ledger+PROGRESS updates.
+
+### Remaining ⚠️
+
+- **Screenshots**: v0.17.0 release assets do not include PNG screenshots. The rendered-evidence pipeline requires Vulkan (`mesa-vulkan-drivers` / `libvulkan1`) which is unavailable in the current CI environment. A follow-up v0.17.1 release with screenshots is recommended once the environment supports wgpu snapshot rendering.
+  - Alternative: Capture screenshots manually in a local GUI session and attach via GitHub release edit.
+  - Evidence: AccessKit accessibility assertions passed for all interactive controls (see `docs/qc/capability-audit.md`).
