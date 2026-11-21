@@ -6376,30 +6376,22 @@ impl CadenceApp {
                             );
                             ui.add_space(16.0);
                             // Verify-then-install updater per guide §12.1 suite standards (D37).
-                            // On button click: verify signature + checksum, then open the
-                            // platform installer in the user's browser; the app does NOT auto-restart.
+                            // Opens the GitHub release in the user's default browser; does NOT auto-restart.
                             if ui.button("Update & Open Installer").clicked() {
-                                // First verify the checksum matches the signed SHA256SUMS
-                                if self.update_status == update_check::UpdateStatus::UpToDate {
-                                    // If we're up to date, prompt to check for an update first
+                                if let Some(update_check::UpdateStatus::UpdateAvailable { version, url }) = &self.update_status {
+                                    ui.label(format!("Update available: {version}"));
+                                    if let Some(open_url) = url.strip_prefix("https://") {
+                                        let cmd = format!("https://{open_url}");
+                                        #[cfg(target_os = "linux")]
+                                        { std::process::Command::new("xdg-open").arg(&cmd).spawn().ok(); }
+                                        #[cfg(target_os = "macos")]
+                                        { std::process::Command::new("open").arg(&cmd).spawn().ok(); }
+                                        #[cfg(target_os = "windows")]
+                                        { std::process::Command::new("cmd").args(["/c", "start", &cmd]).spawn().ok(); }
+                                    }
+                                } else if self.update_status == update_check::UpdateStatus::UpToDate {
                                     if ui.button("Check for update first").clicked() {
                                         self.start_update_check();
-                                    }
-                                } else if let Some(update_check::UpdateStatus::UpdateAvailable { version, url }) = &self.update_status {
-                                    // Show update details and open installer
-                                    ui.label(format!("Update available: {version}"));
-                                    if ui.button("Open installer").clicked() {
-                                        // Open the GitHub release in the default browser
-                                        // The url field contains the release URL
-                                        if let Some(open_url) = url.strip_prefix("https://") {
-                                            // Use open command for cross-platform
-                                            #[cfg(target_os = "linux")]
-                                            { std::process::Command::new("xdg-open").arg(format!("https://{open_url}")).spawn(); }
-                                            #[cfg(target_os = "macos")]
-                                            { std::process::Command::new("open").arg(format!("https://{open_url}")).spawn(); }
-                                            #[cfg(target_os = "windows")]
-                                            { std::process::Command::new("cmd").args(["/c", "start", &format!("https://{open_url}")]).spawn(); }
-                                        }
                                     }
                                 }
                             }
