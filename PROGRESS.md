@@ -2445,4 +2445,4 @@ Done in this slice per guide §12.1 suite standards (D27):
 
 - **README screenshots placeholder:** Added a "Screenshots" section in README.md with placeholder images for Table, Gantt, Resources, and Report views. These will be refreshed at v1.0 and every major release per the suite standards.
 
-Verification: CI green on `opencode/ci` (pending CI run). The workspace identity is `Cadence Dev` <dev@example.com>.
+Verification: CI green on the pull request (run 44966274579, head `ebc0f90` — verify on all four platforms, clippy, semver, packaging, rendered evidence) and on `main` after the squash merge (run 44966739470, commit `7320513`). The workspace identity is `Cadence Dev` <dev@example.com>.
