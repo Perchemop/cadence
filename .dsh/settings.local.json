@@ -1,0 +1,24 @@
+{
+  "mcpManager": {
+    "servers": {
+      "github": {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+        "env": {
+          "GITHUB_PERSONAL_ACCESS_TOKEN": "${credential:github_token}"
+        },
+        "enabled": true,
+        "startupTimeoutMs": 30000,
+        "toolCallTimeoutMs": 60000
+      },
+      "rust-analyzer": {
+        "transport": "stdio",
+        "command": "rust-analyzer",
+        "args": [],
+        "enabled": true,
+        "startupTimeoutMs": 30000
+      }
+    }
+  }
+}
