@@ -63,12 +63,16 @@ green CI (`main` branch).
   `cargo outdated --format=json` does not emit) while falsely claiming a
   blocking `.ci-required.txt` entry. ATTRIBUTION.md rows and the graveyard
   template kept as maintainer-side skill records.
-- Also swept earlier and repaired here: `.dsh/settings.local.json` (local
-  DSH tooling config with credential placeholders) became tracked in
-  `fa65d0d` — root cause: the `.dsh/` entry appended to
-  `~/.config/opencode/ci-ignore.txt` lacked a trailing newline, and
-  ci.sh's line-read loop silently drops an unterminated final line.
-  Untracked in this commit; ci-ignore entry newline-terminated.
+- Also swept earlier: `.dsh/settings.local.json` (local DSH tooling
+  config with credential placeholders) became tracked in `fa65d0d` — root
+  cause: the `.dsh/` entry appended to `~/.config/opencode/ci-ignore.txt`
+  lacked a trailing newline, and ci.sh's line-read loop silently drops an
+  unterminated final line. Untracking needed a direct git commit in the
+  follow-up slice: ci.sh's ignore logic treats a staged deletion of a
+  tracked file as a modification and restores it, so a deletion cannot
+  ride a ci.sh auto-commit. `.dsh/skills/cadence-domain.md` (tracked in
+  the same `fa65d0d` sweep) untracked in the same commit; ci-ignore entry
+  newline-terminated.
 - Evidence fallback, round 2, same commit: a step `if:` without
   `always()`/`failure()`/`cancelled()` is still gated by GitHub's implicit
   `success()` status check, so attempt 2 stayed skipped even after round 1
