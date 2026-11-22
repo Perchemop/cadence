@@ -99,6 +99,18 @@ this repository. Recorded here so the story is auditable:
 | caveman skill pack (agent style skills) | Apache-2.0 | Maintainer-side agent tooling (guide §19); never shipped in the binary (D31) |
 | pstack skill pack | MIT (© Lauren Tan) | Maintainer-side agent tooling (guide §22); never shipped in the binary (D31) |
 | rtk 1.2.0 (command-output proxy) | Apache-2.0 | Maintainer-side agent tooling (guide §19); prebuilt aarch64-musl binary, never shipped in the app (D31) |
+| first-reader skill | Apache-2.0 | Maintainer-side agent tooling (guide §19); adapted from awesome-llm-apps |
+| scope-creep-detector skill | Apache-2.0 | Maintainer-side agent tooling (guide §19); adapted from awesome-llm-apps |
+| project-graveyard skill | Apache-2.0 | Maintainer-side agent tooling (guide §19); adapted from awesome-llm-apps |
+| commit-archaeologist skill | Apache-2.0 | Maintainer-side agent tooling (guide §19); adapted from awesome-llm-apps |
+| dependency-doctor skill | Apache-2.0 | Maintainer-side agent tooling (guide §19); adapted from awesome-llm-apps |
+| advisor-orchestrator-worker skill | Apache-2.0 | Maintainer-side agent tooling (guide §19); adapted from awesome-llm-apps |
+| wayfinder skill | Apache-2.0 | Maintainer-side agent tooling (guide §19); adapted from guide §5.6.2 |
+| superpowers skill | Apache-2.0 | Maintainer-side agent tooling (guide §19); adapted from obra/superpowers |
+| ponytail skill | Apache-2.0 | Maintainer-side agent tooling (guide §19); adapted from DietrichGebert/ponytail |
+| agent-skills skill | Apache-2.0 | Maintainer-side agent tooling (guide §19); adapted from addyosmani/agent-skills |
+| auto-compaction skill | MIT | Maintainer-side agent tooling (guide §19); documents DSH built-in compaction |
+| mcp-servers skill | MIT | Maintainer-side agent tooling (guide §19); configures DSH dsh-mcp-manager |
 
 Provenance rules followed: original code, public specifications and standards
 (CPM, MSPDI, MPX, SQLite file format, WCAG), and capability-level inspiration
