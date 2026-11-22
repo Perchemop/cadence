@@ -7870,7 +7870,7 @@ pub fn run_with_path(project: Project, path: Option<PathBuf>) -> Result<(), Stri
     options.viewport.min_inner_size = Some(egui::vec2(1000.0, 700.0));
     // Set initial size to avoid Wayland scaling issues where the window
     // starts too small and widgets render at incorrect sizes.
-    options.viewport.initial_size = Some(egui::vec2(1200.0, 800.0));
+    options.viewport.inner_size = Some(egui::vec2(1200.0, 800.0));
     eframe::run_native(
         "Cadence",
         options,
