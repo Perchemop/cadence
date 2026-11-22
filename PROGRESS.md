@@ -2427,6 +2427,20 @@ S3-17 verification + icon fix slice; the authoritative next-slices list):**
   screenshots await phase 2b. The reduced-motion record in
   `ACCESSIBILITY.md` and the II.30.6 raw-colour gate landed in the earlier
   slices. (Phase 2b pixels are needed to evaluate S3-20 safely.)
+- **Phase-2b render defect (new finding, 2026-11-22):** the first successful
+  Evidence job (main run 44967653103, artifact `cadence-ui-evidence`) rendered
+  all ten PNGs, but every text widget truncates to its first glyph — menu
+  buttons show single letters, activity names collapse to `…`, dates clip
+  mid-string (`2026-(`) — while digits, punctuation and the version string
+  render correctly. The shell layout is otherwise intact, which is why the
+  phase-2a AccessKit assertions stayed green. The defect blocks S3-20
+  evaluation and real README screenshots (the placeholder image links the
+  suite-standards slice re-added to `README.md` were dead links and are
+  removed again in the same commit as this note). The harness now pins
+  `pixels_per_point(1.0)` explicitly, renders at the real 1200×800 window
+  start size (v0.17.1 fix), and takes two warm-up steps before saving — if
+  the truncation persists in the next Evidence run, ppp and warm-up are
+  ruled out and the investigation moves to font-atlas state in kittest.
 - **Engine follow-up:** closed in the 2026-11-13 slice above —
   `schedule_with_progress` now honours `MustStartOn`/`MustFinishOn` for
   not-started work (D10 rounding, zero float, actuals untouched).
