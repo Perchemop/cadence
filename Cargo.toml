@@ -38,8 +38,8 @@ serde_json = "1"
 rusqlite = { version = "0.42", features = ["bundled"] }
 thiserror = "2"
 proptest = "1"
-eframe = "0.35"
-egui = "0.35"
+eframe = "0.36"
+egui = "0.36"
 ureq = { version = "2.12", default-features = false, features = ["tls"] }
 cadence-update-check = { path = "crates/update-check", version = "0.17.1" }
 

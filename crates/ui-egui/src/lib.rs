@@ -8129,7 +8129,11 @@ mod headless_render_tests {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
             ..Default::default()
         };
-        let output = ctx.run_ui(input, |ui| app.render(ui));
+        let mut output = ctx.run_ui(input, |ui| app.render(ui));
+        // Headless: no painter consumes the texture deltas, and egui 0.36
+        // panics when TexturesDelta is dropped unapplied (epaint #8356).
+        // The font atlas has no destination here, so mark it handled.
+        output.textures_delta.clear();
         assert!(!output.shapes.is_empty(), "the shell painted nothing");
     }
 
