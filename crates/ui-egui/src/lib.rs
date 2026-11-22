@@ -6380,7 +6380,7 @@ impl CadenceApp {
                             // Verify-then-install updater per guide §12.1 suite standards (D37).
                             // Opens the GitHub release in the user's default browser; does NOT auto-restart.
                             if ui.button("Update & Open Installer").clicked() {
-                                if let Some(update_check::UpdateStatus::UpdateAvailable { version, url }) = &self.update_status {
+                                if let update_check::UpdateStatus::UpdateAvailable { version, url } = &self.update_status {
                                     ui.label(format!("Update available: {version}"));
                                     if let Some(open_url) = url.strip_prefix("https://") {
                                         let cmd = format!("https://{open_url}");
