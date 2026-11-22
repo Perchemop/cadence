@@ -6391,10 +6391,10 @@ impl CadenceApp {
                                         #[cfg(target_os = "windows")]
                                         { std::process::Command::new("cmd").args(["/c", "start", cmd.as_str()]).spawn().ok(); }
                                     }
-                                } else if self.update_status == update_check::UpdateStatus::UpToDate {
-                                    if ui.button("Check for update first").clicked() {
-                                        self.start_update_check();
-                                    }
+                                } else if self.update_status == update_check::UpdateStatus::UpToDate
+                                    && ui.button("Check for update first").clicked()
+                                {
+                                    self.start_update_check();
                                 }
                             }
                         });
