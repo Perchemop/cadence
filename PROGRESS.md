@@ -3,6 +3,83 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-22 — Evidence defect isolated to the toolkit text path; SIGSEGV fallback repaired
+
+### Probe verdict (continues the phase-2b defect finding below)
+
+- `evidence_font_probe` (bare egui labels, no `CadenceApp`) rendered green in
+  PR run `44974858479` on `3a62bbd` and **truncates identically** to the
+  scene renders (`S B F — 0123456789`): the defect is the kittest 0.35.0 /
+  egui 0.35.0 / wgpu text path itself — not app state, not font data.
+  Merged as PR #193 → `32847d9`; `main` green run `44984131871`.
+  Until pixels are faithful, phase 2a's AccessKit evidence remains the
+  published source and S3-20 stays deferred.
+
+### Evidence-job SIGSEGV flake and the unreachable fallback
+
+- Advisory Evidence job crashed on run `44982589517` (a PROGRESS.md-only
+  commit): the test binary died with SIGSEGV on the lavapipe attempt (the
+  known intermittent class), no PNGs were produced, and the documented
+  two-strike gl (llvmpipe) fallback never ran.
+- Root cause: the `sigsegv_check` step had no `if:` guard, so GitHub skipped
+  it after the failed attempt and `crashed` was never set — the second
+  defect in the same mitigation chain (2026-11-21 fixed the
+  `crashed:value` → `key=value` output format, run `44822114868`).
+- Fixed with a one-line `if: always()` guard; merged as PR #194 → `fa65d0d`.
+  PR CI green run `44985823777` verified the happy path (attempt 1
+  succeeded, fallback correctly skipped); the failure path now engages on
+  any future segfault. `main` green run `44986986931`.
+- Fresh vulkan renders from run `44985823777` (14-PNG artifact, both font
+  probes included): truncation signature unchanged.
+
+### Dependency experiment re-scoped (II.30.3)
+
+- The crates.io index has **no** egui/eframe/egui_kittest 0.35.x releases
+  beyond 0.35.0 (the line jumps 0.35.0 → 0.36.0; kittest 0.36 pairs with
+  wgpu 30). The queued "bump to the newest 0.35.x patch" experiment is void.
+- Next diagnostic (its own slice): a `workflow_dispatch` backend input for
+  the evidence job to render on demand with gl/llvmpipe — a whole-letter GL
+  render localises the defect to the wgpu vulkan path; a truncated GL
+  render moves it upstream into the egui 0.35 text stack, where a 0.36
+  migration becomes the candidate for faithful pixels.
+
+### Incident: uncommitted tree changes swept into the docs commit (c7a88f2)
+
+- During a ~3-hour session gap the working tree gained four uncommitted
+  out-of-slice changes, which ci.sh's `git add -A` swept into the docs
+  commit `c7a88f2` (PR #195) alongside the intended PROGRESS record: a
+  Dependency Doctor job in `ci.yml` (adapted from the §19/§25.4
+  awesome-llm-apps skill pattern), a rewritten `.ci-required.txt`, twelve
+  ATTRIBUTION.md skill rows, and `docs/graveyard/README.md` (Project
+  Graveyard template).
+- Resolution in the follow-up commit on the same PR: `.ci-required.txt`
+  restored to the authoritative 14-name list — the rewritten names
+  (`ci`, `pr-author-is-dev`, `secret-scan`, `personal-data-scan`,
+  `cargo-deny`, `dependency-doctor`) can never match GitHub's reported
+  check names, so ci.sh could only ever report TIMEOUT with them. The
+  Dependency Doctor CI job removed: per guide §19/§25.4 the skill lives
+  maintainer-side (`~/.config/dsh/skill/`, D31, never in the app's CI),
+  and as written it failed every PR (its jq assumed an object schema that
+  `cargo outdated --format=json` does not emit) while falsely claiming a
+  blocking `.ci-required.txt` entry. ATTRIBUTION.md rows and the graveyard
+  template kept as maintainer-side skill records.
+- Also swept earlier and repaired here: `.dsh/settings.local.json` (local
+  DSH tooling config with credential placeholders) became tracked in
+  `fa65d0d` — root cause: the `.dsh/` entry appended to
+  `~/.config/opencode/ci-ignore.txt` lacked a trailing newline, and
+  ci.sh's line-read loop silently drops an unterminated final line.
+  Untracked in this commit; ci-ignore entry newline-terminated.
+- Evidence fallback, round 2, same commit: a step `if:` without
+  `always()`/`failure()`/`cancelled()` is still gated by GitHub's implicit
+  `success()` status check, so attempt 2 stayed skipped even after round 1
+  made `sigsegv_check` run. Its condition is now
+  `${{ !cancelled() && steps.sigsegv_check.outputs.crashed == 'true' }}`,
+  the step gains `id: attempt_2`, and the summary reports the fallback's
+  real outcome instead of asserting it executed.
+- Dependency Doctor pattern deferred: if dependency-freshness gating is
+  wanted in CI, it returns as its own recorded slice (jq against the real
+  schema, honest blocking semantics, DECISIONS entry per §19).
+
 ## 2026-11-21 — Chrome redesign from the multi-agent design audit
 
 Owner complaint: does not like how the app looks, where the toolbars are
@@ -2454,11 +2531,12 @@ S3-17 verification + icon fix slice; the authoritative next-slices list):**
   `S B F — 0123456789` (first glyphs only, mid-word words vanishing, digits
   and the em-dash whole) with no `CadenceApp` involvement at all, so the
   defect is in the kittest 0.35.0 / egui 0.35.0 / wgpu text path itself,
-  not in Cadence state. Next experiment, its own dependency slice per
-  guide II.30.3 (a UX slice never bumps the toolkit): move the pinned
-  egui/kittest 0.35.0 entries to the newest 0.35.x patch releases and
-  re-render the probe; until pixels are faithful, phase 2a's AccessKit
-  evidence remains the published source and S3-20 stays deferred.
+  not in Cadence state. The follow-up moved to the 2026-11-22 section at
+  the top: no 0.35.x patch releases exist, so the patch-bump experiment is
+  void and re-scoped to an on-demand gl render, then possibly a 0.36
+  migration (II.30.3, a UX slice never bumps the toolkit); until pixels
+  are faithful, phase 2a's AccessKit evidence remains the published source
+  and S3-20 stays deferred.
 - **Engine follow-up:** closed in the 2026-11-13 slice above —
   `schedule_with_progress` now honours `MustStartOn`/`MustFinishOn` for
   not-started work (D10 rounding, zero float, actuals untouched).

@@ -270,7 +270,8 @@ jobs:
           fi
 
       - name: Render evidence (attempt 2 with gl fallback)
-        if: steps.sigsegv_check.outputs.crashed == 'true'
+        id: attempt_2
+        if: ${{ !cancelled() && steps.sigsegv_check.outputs.crashed == 'true' }}
         env:
           WGPU_BACKEND: gl
         run: |
@@ -292,7 +293,11 @@ jobs:
         run: |
           echo "## Evidence (rendered) job result"
           if [ "${{ steps.sigsegv_check.outputs.crashed }}" = "true" ]; then
-            echo "First attempt (vulkan) crashed with SIGSEGV — gl fallback was executed."
+            if [ "${{ steps.attempt_2.outcome }}" = "success" ]; then
+              echo "First attempt (vulkan) crashed with SIGSEGV — gl fallback rendered the evidence."
+            else
+              echo "First attempt (vulkan) crashed with SIGSEGV — gl fallback did not produce renders (outcome: ${{ steps.attempt_2.outcome }})."
+            fi
           else
             echo "First attempt (vulkan) succeeded — no fallback needed."
           fi
