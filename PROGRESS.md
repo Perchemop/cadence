@@ -2548,6 +2548,35 @@ S3-17 verification + icon fix slice; the authoritative next-slices list):**
   migration (II.30.3, a UX slice never bumps the toolkit); until pixels
   are faithful, phase 2a's AccessKit evidence remains the published source
   and S3-20 stays deferred.
+
+### egui 0.36 migration (II.30.3 dependency slice) — truncation survives
+
+- Migrated the toolkit as its own slice: `eframe`/`egui` 0.35 → 0.36,
+  `egui_extras` 0.36.0, `egui-phosphor` 0.13.0 → 0.14.0 (the egui 0.36
+  pairing), `egui_kittest` 0.35.0 → 0.36.0; resolved egui 0.36.2,
+  egui_kittest 0.36.2, egui-phosphor 0.14.0, wgpu 30.0.2. Merged as PR #198 →
+  `8c65ae4`; PR run `45012358108` green on all 18 checks.
+- One API change was needed: egui 0.36's epaint panics when a `TexturesDelta`
+  is dropped unapplied (epaint #8356), and the headless seam drops deltas by
+  design (no painter consumes them). Fixed with `output.textures_delta.clear()`
+  in the headless render pass.
+- **Verdict: the truncation survives the migration** — the 0.36 font probe is
+  byte-identical to the 0.35 probe (sha256 `250229b8…`), so the fault is not
+  in the egui text-stack version. Together with the byte-identical gl render,
+  the defect is independent of toolkit version and graphics backend.
+- Font-data audit (static inspection of the committed TTFs; no build): all
+  four Inter faces are genuine static `glyf` fonts (no `fvar`), and every face
+  maps lowercase, uppercase, digits, the em-dash and the Phosphor private-use
+  codepoints in its cmap. Variable fonts, subsets and missing glyphs are ruled
+  out.
+- Surviving suspects after version, backend and font audits: the kittest/
+  epaint rendering pipeline, and Cadence's font install — Phosphor-first face
+  order plus the Inter face order (Bold first), which is the deferred S3-20
+  question.
+- Next probe (own slice, added in the same commit): `evidence_font_probe_default`
+  renders the same labels with egui's default fonts and no `install_fonts`.
+  Whole letters put the fault in our font install (S3-20 ordering becomes the
+  fix path); truncated letters put it in the rendering pipeline itself.
 - **Engine follow-up:** closed in the 2026-11-13 slice above —
   `schedule_with_progress` now honours `MustStartOn`/`MustFinishOn` for
   not-started work (D10 rounding, zero float, actuals untouched).
