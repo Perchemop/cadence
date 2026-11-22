@@ -260,6 +260,7 @@ jobs:
           cargo test -p cadence-ui-egui --lib -- --ignored evidence_ 2>&1 | tee /tmp/evidence_run1.log
 
       - name: Check for SIGSEGV in attempt 1 output
+        if: always()
         id: sigsegv_check
         run: |
           if grep -iq 'SIGSEGV' /tmp/evidence_run1.log; then
