@@ -8235,9 +8235,18 @@ mod evidence_render_tests {
     fn harness_for(app: &mut CadenceApp, dark: bool, width: f32, height: f32) -> Harness<'_> {
         let mut harness = Harness::builder()
             .with_size(egui::Vec2::new(width, height))
+            // Pin the scale explicitly: kittest defaults to 1.0, but the first
+            // evidence renders (run 44967653103) truncated nearly all text to
+            // its first glyph, so the previous implicit setting is recorded
+            // rather than assumed.
+            .with_pixels_per_point(1.0)
             .build_ui(|ui| app.render(ui));
         design::install_fonts(&harness.ctx);
         design::apply(&harness.ctx, dark);
+        // Two warm-up steps before saving: egui settles panel default sizes
+        // and font atlases over the first frames, and a cold first-paint
+        // snapshot can half-draw the shell.
+        harness.step();
         harness.step();
         harness
     }
@@ -8250,7 +8259,7 @@ mod evidence_render_tests {
             let mut app = CadenceApp::with_path(fixture_project(), None);
             app.set_update_checks_enabled(false);
             app.dark = dark;
-            let mut harness = harness_for(&mut app, dark, 1024.0, 768.0);
+            let mut harness = harness_for(&mut app, dark, 1200.0, 800.0);
             save_render(&mut harness, &format!("{theme}-table.png"));
         }
     }
@@ -8264,7 +8273,7 @@ mod evidence_render_tests {
             app.set_update_checks_enabled(false);
             app.dark = dark;
             app.view_mode = ViewMode::Gantt;
-            let mut harness = harness_for(&mut app, dark, 1024.0, 768.0);
+            let mut harness = harness_for(&mut app, dark, 1200.0, 800.0);
             save_render(&mut harness, &format!("{theme}-gantt.png"));
         }
     }
@@ -8277,7 +8286,7 @@ mod evidence_render_tests {
             let mut app = CadenceApp::with_path(empty_project(), None);
             app.set_update_checks_enabled(false);
             app.dark = dark;
-            let mut harness = harness_for(&mut app, dark, 1024.0, 768.0);
+            let mut harness = harness_for(&mut app, dark, 1200.0, 800.0);
             save_render(&mut harness, &format!("{theme}-empty.png"));
         }
     }
@@ -8291,7 +8300,7 @@ mod evidence_render_tests {
             app.set_update_checks_enabled(false);
             app.dark = dark;
             assert!(app.schedule.is_err());
-            let mut harness = harness_for(&mut app, dark, 1024.0, 768.0);
+            let mut harness = harness_for(&mut app, dark, 1200.0, 800.0);
             save_render(&mut harness, &format!("{theme}-error.png"));
         }
     }
@@ -8305,7 +8314,7 @@ mod evidence_render_tests {
             app.set_update_checks_enabled(false);
             app.dark = dark;
             app.show_release_notes = true;
-            let mut harness = harness_for(&mut app, dark, 1024.0, 768.0);
+            let mut harness = harness_for(&mut app, dark, 1200.0, 800.0);
             save_render(&mut harness, &format!("{theme}-dialog.png"));
         }
     }
