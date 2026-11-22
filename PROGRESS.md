@@ -3,6 +3,62 @@
 Source of truth for build state. "Done" means implemented **and** verified by
 green CI (`main` branch).
 
+## 2026-11-22 — Font stack repaired: Phosphor's ASCII placeholders neutralised, every weight reachable
+
+### Root cause of the phase-2b evidence defect
+
+The rendered surfaces lost every lowercase letter, hyphen and space, while
+capitals, digits and punctuation survived. `evidence_font_probe_default` — the
+same labels drawn with egui's own faces — rendered **whole**, so the kittest /
+epaint / wgpu text path was sound and the fault was in Cadence's font
+install. The bundled Inter faces were cleared at the same time by static
+audit: all four are real static `glyf` fonts with complete cmap coverage, real
+outlines, normal advance widths and no `fvar`.
+
+The actual cause was the icon face. The Phosphor face leads the proportional
+family so that Inter's own private-use mappings (E036, E038, E150, E220,
+E2CE, E24A) cannot shadow the app's six icons — and upstream Phosphor maps
+**30 ASCII characters** (`a`–`z`, space, hyphen-minus and two controls) to
+*blank* placeholder glyphs kept for legacy icon-font tooling. egui resolves a
+character against the family list in order and keeps the first face whose
+character map contains it, so every lowercase letter resolved to a blank
+Phosphor glyph and drew nothing, while capitals and digits fell through to
+Inter. The same ordering made all Latin text render in Inter-Bold (the first
+Inter face in the list), which is why the defect read as "bold stubs".
+
+The lever for the fix is in epaint: a character mapped to glyph 0 (.notdef)
+counts as absent (`.filter(|id| *id != GlyphId::NOTDEF)?`), so the resolver
+continues down the family list.
+
+### The fix
+
+- **`scripts/patch-phosphor.py` → `crates/ui-egui/assets/fonts/Phosphor.ttf`**
+  — a vendored, patched copy of the egui-phosphor 0.14.0 face (MIT) whose 30
+  ASCII placeholder mappings point at .notdef. Only the `cmap` table changes:
+  `glyf`, `loca`, `hmtx`, `hhea`, `GSUB`, `gasp`, `name`, `post`, `OS/2` and
+  `maxp` are byte-identical, and every other mapping — all 1,513 Private Use
+  Area icons — is verified unchanged. The script re-verifies all of that on
+  every run and is deterministic.
+- **`design::install_fonts`** — the proportional family is ordered by role,
+  never by weight: `phosphor` (icons only) → `Inter-Regular` (Latin) → egui's
+  own fallbacks. Each weight gets its own family (`Inter-Medium`,
+  `Inter-SemiBold`, `Inter-Bold`), because egui keeps the first face that has
+  a character and never reaches a second face of the same family — which is
+  why listing the four weights together rendered every glyph in Inter-Bold.
+- **`design::install_style`** — body and small stay Inter-Regular, buttons
+  use Inter-Medium, headings use Inter-SemiBold. The type scale (11 px body,
+  9.5 px small, 16 px heading) is unchanged.
+
+### Verification
+
+- Verification: CI run for this slice on `opencode/ci` (exact run IDs
+  recorded here and in `CHANGELOG.md` once green, per II.24).
+- `evidence_font_probe` renders the whole sentence in both themes;
+  `evidence_font_probe_default` remains as the control.
+- **S3-20 (Inter Bold-first face ordering) is closed by measurement**: the
+  ordering was a symptom of the same defect, and every weight is now
+  selectable per style.
+
 ## 2026-11-22 — Evidence defect isolated to the toolkit text path; SIGSEGV fallback repaired
 
 ### Probe verdict (continues the phase-2b defect finding below)
@@ -12,6 +68,9 @@ green CI (`main` branch).
   scene renders (`S B F — 0123456789`): the defect is the kittest 0.35.0 /
   egui 0.35.0 / wgpu text path itself — not app state, not font data.
   Merged as PR #193 → `32847d9`; `main` green run `44984131871`.
+  *(Superseded the same day: the default-faces control probe and the static
+  font audit traced the defect to Cadence's font install — Phosphor's ASCII
+  placeholder mappings behind the icon face. See the font-stack entry above.)*
   Until pixels are faithful, phase 2a's AccessKit evidence remains the
   published source and S3-20 stays deferred.
 

@@ -34,5 +34,5 @@ jiff = { version = "0.2", default-features = false, features = ["std"] }
 # enabled (no committed pixel baselines — guide II.30.8); PNGs are saved with
 # `image` directly. Both crates are already in the dependency graph, so this
 # adds no new resolutions.
-egui_kittest = { version = "0.36.0", features = ["wgpu", "eframe", "snapshot"] }
+egui_kittest = { version = "0.36.0", features = ["wgpu", "eframe"] }
 image = { version = "0.25", features = ["png"] }

@@ -1060,6 +1060,46 @@ The one-time signing setup hit two facts worth recording:
   caught a silent no-op at release time (fail loud, never publish unsigned),
   but the fix removes the wasted release round.
 
+## D40 — Font stack: patched Phosphor face, role-ordered family, one family per weight (2026-11-22)
+
+- **Context:** The 2026-11-22 phase-2b evidence defect showed every lowercase
+  letter, hyphen and space missing from every rendered surface, while
+  capitals, digits and punctuation rendered. The control probe drawn with
+  egui's own faces rendered whole, so the fault was in Cadence's font
+  install, not in the rendering pipeline. Two independent causes sat in
+  `design::install_fonts`: the icon face led the proportional family, and
+  upstream Phosphor maps 30 ASCII characters to blank placeholder glyphs; and
+  the four Inter weights shared one family, so egui's "first face that has
+  the character" rule rendered every glyph in whichever weight came first.
+- **Decision:**
+  1. Vendor a patched copy of the Phosphor face
+     (`crates/ui-egui/assets/fonts/Phosphor.ttf`) whose ASCII placeholder
+     mappings point at .notdef, generated and re-verified by
+     `scripts/patch-phosphor.py`. epaint reads a .notdef mapping as "this
+     face has no such glyph", so Latin text falls through to Inter while the
+     icon face keeps every Private Use Area glyph.
+  2. Order the proportional family by role — `phosphor`, `Inter-Regular`,
+     then egui's fallbacks — and give each weight its own family
+     (`Inter-Medium`, `Inter-SemiBold`, `Inter-Bold`).
+  3. Map the type scale to those families: body/small Regular, button Medium,
+     heading SemiBold.
+- **Alternatives considered:**
+  - *Patch Inter instead* (drop its 745 private-use mappings) so the icon face
+    could sit last: rejected — a wider change to our own OFL asset, and it
+    leaves the icon face unable to lead, which is what keeps the six icons
+    correct.
+  - *Give icons a dedicated font family* and route every icon through it:
+    rejected for now — it touches roughly twenty icon call sites, and any
+    future icon added without the family renders as a letterform; the patched
+    face removes the trap for every text surface instead.
+  - *Ship upstream Phosphor unchanged* and accept that lowercase text is
+    drawn by the icon face: rejected — that is the defect.
+- **Consequences:** text renders in Inter Regular with headings and buttons
+  in the heavier faces, the six private-use icons keep Phosphor's real
+  glyphs, and no text surface can be captured by a symbol face again. The
+  vendored font is a derived work of an MIT-licensed font, attributed in
+  `ATTRIBUTION.md`; the patch touches only the character map.
+
 ## D39 — EVM completion slice: EAC/BAC/TCPI/VAC metrics (2026-11-20)
 
 - **Scope:** Extend `EvmMetrics` with three new PMI-standard earned-value

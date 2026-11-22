@@ -185,39 +185,44 @@ pub fn install_fonts(ctx: &Context) {
         fonts
             .font_data
             .insert(name.to_string(), egui::FontData::from_static(data).into());
-        fonts
-            .families
-            .entry(FontFamily::Proportional)
-            .or_default()
-            .push(name.to_string());
-    }
-    // Inter first for Latin; the built-in fallbacks stay for symbols.
-    for family in [FontFamily::Proportional, FontFamily::Monospace] {
-        if let Some(family_fonts) = fonts.families.get_mut(&family) {
-            family_fonts.retain(|name| !name.starts_with("Inter-"));
-        }
-    }
-    for (name, _) in inter {
-        fonts
-            .families
-            .entry(FontFamily::Proportional)
-            .or_default()
-            .insert(0, name.to_string());
     }
     // Phosphor Icons (MIT) supply the Private Use Area glyphs the command bar
-    // and inspector use; registered once here beside Inter so the icon face is
-    // deterministic at startup.
-    egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
-    // The Phosphor face must precede the text faces: Inter maps a handful
-    // of private-use codepoints (E036, E038, E150, E220, E2CE, E24A) to
-    // letterform glyphs, and as the first face it would shadow six of the
-    // app's icons. Phosphor carries no Latin/Greek/Cyrillic, so text is
-    // unaffected by putting it first.
-    if let Some(faces) = fonts.families.get_mut(&FontFamily::Proportional) {
-        if let Some(position) = faces.iter().position(|name| name == "phosphor") {
-            let font = faces.remove(position);
-            faces.insert(0, font);
-        }
+    // and inspector use. We register our own patched copy of the upstream
+    // face (scripts/patch-phosphor.py) instead of the crate's copy: upstream
+    // maps a-z, space and hyphen to blank placeholder glyphs, and with the
+    // icon face first in the family egui resolves every lowercase letter to a
+    // blank icon glyph and renders nothing (the 2026-11-22 evidence defect).
+    // The patch points those characters at .notdef, which egui reads as "this
+    // face has no such glyph", so Latin text falls through to Inter.
+    fonts.font_data.insert(
+        "phosphor".to_string(),
+        egui::FontData::from_static(include_bytes!("../assets/fonts/Phosphor.ttf")).into(),
+    );
+    // The proportional family is ordered by role, never by weight: egui keeps
+    // the first face whose character map contains a character, so listing the
+    // four weights together renders every glyph in whichever one comes first.
+    // The icon face leads because Inter maps a handful of private-use
+    // codepoints (E036, E038, E150, E220, E2CE, E24A) to letterform glyphs and
+    // would otherwise shadow six of the app's icons. The built-in fallbacks
+    // stay last for symbols egui's own faces cover.
+    let fallbacks = fonts
+        .families
+        .remove(&FontFamily::Proportional)
+        .unwrap_or_default();
+    let mut proportional = vec!["phosphor".to_string(), "Inter-Regular".to_string()];
+    proportional.extend(fallbacks.iter().cloned());
+    fonts.families.insert(FontFamily::Proportional, proportional);
+    // One family per weight, so a weight is chosen by naming its family.
+    // Each weight family keeps the icon face first (its private-use glyphs
+    // must beat Inter's private-use mappings in every style) and shares the
+    // same fallback tail as Proportional, so symbols never depend on which
+    // style drew them.
+    for name in ["Inter-Medium", "Inter-SemiBold", "Inter-Bold"] {
+        let mut family = vec!["phosphor".to_string(), name.to_string()];
+        family.extend(fallbacks.iter().cloned());
+        fonts
+            .families
+            .insert(FontFamily::Name(name.to_string()), family);
     }
     ctx.set_fonts(fonts);
 }
@@ -229,8 +234,14 @@ fn install_style(ctx: &Context) {
             let text = &mut style.text_styles;
             text.insert(egui::TextStyle::Body, egui::FontId::proportional(11.0));
             text.insert(egui::TextStyle::Small, egui::FontId::proportional(9.5));
-            text.insert(egui::TextStyle::Button, egui::FontId::proportional(11.0));
-            text.insert(egui::TextStyle::Heading, egui::FontId::proportional(16.0));
+            text.insert(
+                egui::TextStyle::Button,
+                egui::FontId::new(11.0, FontFamily::Name("Inter-Medium".to_string())),
+            );
+            text.insert(
+                egui::TextStyle::Heading,
+                egui::FontId::new(16.0, FontFamily::Name("Inter-SemiBold".to_string())),
+            );
             text.insert(egui::TextStyle::Monospace, egui::FontId::monospace(11.0));
             // An 8 px horizontal / 4 px vertical rhythm, so every surface
             // shares one spacing grid.
