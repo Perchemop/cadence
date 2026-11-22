@@ -2441,6 +2441,15 @@ S3-17 verification + icon fix slice; the authoritative next-slices list):**
   start size (v0.17.1 fix), and takes two warm-up steps before saving — if
   the truncation persists in the next Evidence run, ppp and warm-up are
   ruled out and the investigation moves to font-atlas state in kittest.
+  **Narrowed (run 44973454659 at 1200×800, ppp pinned):** dates, digits,
+  punctuation and Phosphor icons render fully in the same Inter face, while
+  letter runs collapse to the first glyph inside columns wide enough for the
+  whole word — so the defect is egui's text measurement/rasterisation state,
+  not font data and not container squeeze. A `evidence_font_probe` test now
+  renders one plain egui label with no `CadenceApp` involvement: a whole
+  probe indicts app-state init (what `eframe::run_native`'s `new(cc)` does
+  and the harness path skips); a truncated probe indicts the kittest/egui
+  environment.
 - **Engine follow-up:** closed in the 2026-11-13 slice above —
   `schedule_with_progress` now honours `MustStartOn`/`MustFinishOn` for
   not-started work (D10 rounding, zero float, actuals untouched).
