@@ -8396,4 +8396,41 @@ mod evidence_render_tests {
             font_probe_render(dark, "font-probe-default", false);
         }
     }
+
+    /// The same three labels as `evidence_font_probe`, rendered with the
+    /// default egui fonts instead of Cadence's bundled Inter + Phosphor stack.
+    ///
+    /// The truncation survived the egui 0.35 -> 0.36 migration (the 0.36 probe
+    /// is byte-identical to the 0.35 one), the vulkan -> gl backend swap (also
+    /// byte-identical), and a static audit of the bundled TTFs (all four faces
+    /// are real static glyf fonts with full cmap coverage, so variable fonts,
+    /// subsets and missing glyphs are ruled out). That leaves two suspects:
+    /// the kittest/epaint rendering pipeline, and Cadence's font install — the
+    /// Phosphor-first face order plus the Inter face order (Bold first), which
+    /// is the deferred S3-20 question.
+    ///
+    /// If these default-font labels render whole, the fault is in our font
+    /// install and the S3-20 ordering evaluation becomes the fix path; if they
+    /// truncate too, the fault is in the rendering pipeline itself.
+    #[test]
+    #[ignore = "rendered evidence; run by the Evidence CI job (needs software Vulkan)"]
+    fn evidence_font_probe_default() {
+        for dark in [true, false] {
+            let theme = if dark { "dark" } else { "light" };
+            let mut harness = Harness::builder()
+                .with_size(egui::Vec2::new(1200.0, 400.0))
+                .with_pixels_per_point(1.0)
+                .build_ui(|ui| {
+                    ui.label("Survey Build Finish — the quick brown fox 0123456789");
+                    ui.label(egui::RichText::new("Inter 11px body").small());
+                    ui.heading("Heading 16px");
+                });
+            // Style and palette only: no bundled fonts, so egui's own faces
+            // are used and the font install is out of the picture.
+            design::apply(&harness.ctx, dark);
+            harness.step();
+            harness.step();
+            save_render(&mut harness, &format!("{theme}-font-probe-default.png"));
+        }
+    }
 }
