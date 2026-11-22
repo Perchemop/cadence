@@ -270,7 +270,8 @@ jobs:
           fi
 
       - name: Render evidence (attempt 2 with gl fallback)
-        if: steps.sigsegv_check.outputs.crashed == 'true'
+        id: attempt_2
+        if: ${{ !cancelled() && steps.sigsegv_check.outputs.crashed == 'true' }}
         env:
           WGPU_BACKEND: gl
         run: |
@@ -292,7 +293,11 @@ jobs:
         run: |
           echo "## Evidence (rendered) job result"
           if [ "${{ steps.sigsegv_check.outputs.crashed }}" = "true" ]; then
-            echo "First attempt (vulkan) crashed with SIGSEGV — gl fallback was executed."
+            if [ "${{ steps.attempt_2.outcome }}" = "success" ]; then
+              echo "First attempt (vulkan) crashed with SIGSEGV — gl fallback rendered the evidence."
+            else
+              echo "First attempt (vulkan) crashed with SIGSEGV — gl fallback did not produce renders (outcome: ${{ steps.attempt_2.outcome }})."
+            fi
           else
             echo "First attempt (vulkan) succeeded — no fallback needed."
           fi
@@ -368,103 +373,3 @@ jobs:
         with:
           package: cadence-core,cadence-commands,cadence-persistence,cadence-interchange
           baseline-rev: ${{ github.event.pull_request.base.sha }}
-
-  # Dependency Doctor (guide §19, awesome-llm-apps): runs on every PR and push
-  # to main. Checks outdated deps, unused deps, duplicate versions, licences,
-  # and security advisories. Non-blocking on push; blocking on PR via
-  # .ci-required.txt entry "dependency-doctor".
-  dependency-doctor:
-    name: Dependency Doctor
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-
-      - name: Install cargo-machete (unused deps)
-        run: cargo install cargo-machete --locked
-
-      - name: Install cargo-outdated
-        run: cargo install cargo-outdated --locked
-
-      - name: Install cargo-deny
-        run: cargo install cargo-deny --locked
-
-      - name: Check outdated dependencies (compatible updates)
-        id: outdated_compat
-        run: |
-          echo "=== Outdated (compatible) ==="
-          cargo outdated --workspace --compatible --format=json > outdated_compat.json || true
-          cat outdated_compat.json | jq -r '.[] | "\(.name) \(.version) -> \(.latest)"' | head -20
-          COUNT=$(cat outdated_compat.json | jq length)
-          echo "outdated_compat_count=$COUNT" >> $GITHUB_OUTPUT
-
-      - name: Check outdated dependencies (breaking updates)
-        id: outdated_breaking
-        run: |
-          echo "=== Outdated (breaking) ==="
-          cargo outdated --workspace --format=json > outdated_all.json || true
-          cat outdated_all.json | jq -r '.[] | "\(.name) \(.version) -> \(.latest)"' | head -20
-          COUNT=$(cat outdated_all.json | jq length)
-          echo "outdated_breaking_count=$COUNT" >> $GITHUB_OUTPUT
-
-      - name: Check duplicate versions
-        run: |
-          echo "=== Duplicate Versions ==="
-          cargo tree --duplicates --workspace || true
-          DUP_COUNT=$(cargo tree --duplicates --workspace 2>/dev/null | wc -l)
-          echo "duplicate_count=$DUP_COUNT" >> $GITHUB_OUTPUT
-
-      - name: Check unused dependencies (cargo-machete)
-        run: |
-          echo "=== Unused Dependencies ==="
-          cargo machete --workspace || true
-          MACHETE_COUNT=$(cargo machete --workspace 2>/dev/null | grep -c "^-" || true)
-          echo "unused_count=$MACHETE_COUNT" >> $GITHUB_OUTPUT
-
-      - name: License compliance (cargo-deny)
-        run: |
-          echo "=== License Compliance ==="
-          cargo deny check licenses --workspace
-          echo "Licenses OK"
-
-      - name: Security advisories (cargo-deny)
-        run: |
-          echo "=== Security Advisories ==="
-          cargo deny check advisories --workspace
-          echo "Advisories OK"
-
-      - name: Dependency tree depth check
-        run: |
-          echo "=== Dependency Tree Depth ==="
-          cargo tree --workspace --depth 3 | tail -20
-
-      - name: Upload dependency report
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: dependency-report
-          path: |
-            outdated_compat.json
-            outdated_all.json
-          if-no-files-found: ignore
-          retention-days: 30
-
-      - name: Dependency Doctor summary
-        if: always()
-        shell: bash
-        run: |
-          {
-            echo "## Dependency Doctor Report"
-            echo "- Outdated (compatible): \${{ steps.outdated_compat.outputs.outdated_compat_count || 'N/A' }}"
-            echo "- Outdated (breaking): \${{ steps.outdated_breaking.outputs.outdated_breaking_count || 'N/A' }}"
-            echo "- Duplicate versions: \${{ steps.duplicate.outputs.duplicate_count || 'N/A' }}"
-            echo "- Unused dependencies: \${{ steps.machete.outputs.unused_count || 'N/A' }}"
-            echo "- Licenses: PASS"
-            echo "- Advisories: PASS"
-          } >> "$GITHUB_STEP_SUMMARY"

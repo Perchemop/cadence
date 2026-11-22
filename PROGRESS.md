@@ -43,6 +43,43 @@ green CI (`main` branch).
   render moves it upstream into the egui 0.35 text stack, where a 0.36
   migration becomes the candidate for faithful pixels.
 
+### Incident: uncommitted tree changes swept into the docs commit (c7a88f2)
+
+- During a ~3-hour session gap the working tree gained four uncommitted
+  out-of-slice changes, which ci.sh's `git add -A` swept into the docs
+  commit `c7a88f2` (PR #195) alongside the intended PROGRESS record: a
+  Dependency Doctor job in `ci.yml` (adapted from the §19/§25.4
+  awesome-llm-apps skill pattern), a rewritten `.ci-required.txt`, twelve
+  ATTRIBUTION.md skill rows, and `docs/graveyard/README.md` (Project
+  Graveyard template).
+- Resolution in the follow-up commit on the same PR: `.ci-required.txt`
+  restored to the authoritative 14-name list — the rewritten names
+  (`ci`, `pr-author-is-dev`, `secret-scan`, `personal-data-scan`,
+  `cargo-deny`, `dependency-doctor`) can never match GitHub's reported
+  check names, so ci.sh could only ever report TIMEOUT with them. The
+  Dependency Doctor CI job removed: per guide §19/§25.4 the skill lives
+  maintainer-side (`~/.config/dsh/skill/`, D31, never in the app's CI),
+  and as written it failed every PR (its jq assumed an object schema that
+  `cargo outdated --format=json` does not emit) while falsely claiming a
+  blocking `.ci-required.txt` entry. ATTRIBUTION.md rows and the graveyard
+  template kept as maintainer-side skill records.
+- Also swept earlier and repaired here: `.dsh/settings.local.json` (local
+  DSH tooling config with credential placeholders) became tracked in
+  `fa65d0d` — root cause: the `.dsh/` entry appended to
+  `~/.config/opencode/ci-ignore.txt` lacked a trailing newline, and
+  ci.sh's line-read loop silently drops an unterminated final line.
+  Untracked in this commit; ci-ignore entry newline-terminated.
+- Evidence fallback, round 2, same commit: a step `if:` without
+  `always()`/`failure()`/`cancelled()` is still gated by GitHub's implicit
+  `success()` status check, so attempt 2 stayed skipped even after round 1
+  made `sigsegv_check` run. Its condition is now
+  `${{ !cancelled() && steps.sigsegv_check.outputs.crashed == 'true' }}`,
+  the step gains `id: attempt_2`, and the summary reports the fallback's
+  real outcome instead of asserting it executed.
+- Dependency Doctor pattern deferred: if dependency-freshness gating is
+  wanted in CI, it returns as its own recorded slice (jq against the real
+  schema, honest blocking semantics, DECISIONS entry per §19).
+
 ## 2026-11-21 — Chrome redesign from the multi-agent design audit
 
 Owner complaint: does not like how the app looks, where the toolbars are
