@@ -37,11 +37,18 @@ green CI (`main` branch).
 - The crates.io index has **no** egui/eframe/egui_kittest 0.35.x releases
   beyond 0.35.0 (the line jumps 0.35.0 → 0.36.0; kittest 0.36 pairs with
   wgpu 30). The queued "bump to the newest 0.35.x patch" experiment is void.
-- Next diagnostic (its own slice): a `workflow_dispatch` backend input for
-  the evidence job to render on demand with gl/llvmpipe — a whole-letter GL
-  render localises the defect to the wgpu vulkan path; a truncated GL
-  render moves it upstream into the egui 0.35 text stack, where a 0.36
-  migration becomes the candidate for faithful pixels.
+- GL data point (arrived without the planned dispatch input: the repaired
+  two-strike fallback engaged on its own in run `45005300688` — attempt 1
+  segfaulted, attempt 2 (gl/llvmpipe) rendered and uploaded): the GL font
+  probe is **byte-identical** to the vulkan probe (same sha256, same
+  `S B F — 0123456789` truncation), so the defect is backend-independent —
+  it lives in egui 0.35's CPU-side text stack, not the wgpu vulkan path.
+  The fallback buys evidence-job robustness but cannot produce faithful
+  pixels. The egui 0.36 migration (kittest 0.36 + wgpu 30 pairing) is now
+  the decisive phase-2b experiment: whole letters under 0.36 unblock phase
+  2b pixels (S3-20 evaluation, real README screenshots); identical
+  truncation moves the hunt deeper (kittest snapshot path / font texture
+  upload).
 
 ### Incident: uncommitted tree changes swept into the docs commit (c7a88f2)
 
