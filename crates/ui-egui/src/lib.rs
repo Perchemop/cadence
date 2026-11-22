@@ -8331,4 +8331,32 @@ mod evidence_render_tests {
             save_render(&mut harness, &format!("{theme}-narrow.png"));
         }
     }
+
+    /// Font probe: one plain egui label, no `CadenceApp` at all. The app
+    /// renders truncated letter runs (first glyph + ellipsis) while digits,
+    /// dates and punctuation render fully, so this probe splits the two
+    /// candidate causes: if this label renders whole, the harness environment
+    /// is sound and the defect lives in app-state initialisation that
+    /// `eframe::run_native`'s `new(cc)` performs and the harness path skips;
+    /// if it truncates too, the fault is in the kittest/egui environment.
+    #[test]
+    #[ignore = "rendered evidence; run by the Evidence CI job (needs software Vulkan)"]
+    fn evidence_font_probe() {
+        for dark in [true, false] {
+            let theme = if dark { "dark" } else { "light" };
+            let mut harness = Harness::builder()
+                .with_size(egui::Vec2::new(1200.0, 400.0))
+                .with_pixels_per_point(1.0)
+                .build_ui(|ui| {
+                    ui.label("Survey Build Finish — the quick brown fox 0123456789");
+                    ui.label(egui::RichText::new("Inter 11px body").small());
+                    ui.heading("Heading 16px");
+                });
+            design::install_fonts(&harness.ctx);
+            design::apply(&harness.ctx, dark);
+            harness.step();
+            harness.step();
+            save_render(&mut harness, &format!("{theme}-font-probe.png"));
+        }
+    }
 }

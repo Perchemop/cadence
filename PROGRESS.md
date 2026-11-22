@@ -2441,6 +2441,24 @@ S3-17 verification + icon fix slice; the authoritative next-slices list):**
   start size (v0.17.1 fix), and takes two warm-up steps before saving — if
   the truncation persists in the next Evidence run, ppp and warm-up are
   ruled out and the investigation moves to font-atlas state in kittest.
+  **Narrowed (run 44973454659 at 1200×800, ppp pinned):** dates, digits,
+  punctuation and Phosphor icons render fully in the same Inter face, while
+  letter runs collapse to the first glyph inside columns wide enough for the
+  whole word — so the defect is egui's text measurement/rasterisation state,
+  not font data and not container squeeze. A `evidence_font_probe` test now
+  renders one plain egui label with no `CadenceApp` involvement: a whole
+  probe indicts app-state init (what `eframe::run_native`'s `new(cc)` does
+  and the harness path skips); a truncated probe indicts the kittest/egui
+  environment. **Probe verdict (run 44974858479): the bare label truncates
+  too** — `Survey Build Finish — the quick brown fox 0123456789` renders as
+  `S B F — 0123456789` (first glyphs only, mid-word words vanishing, digits
+  and the em-dash whole) with no `CadenceApp` involvement at all, so the
+  defect is in the kittest 0.35.0 / egui 0.35.0 / wgpu text path itself,
+  not in Cadence state. Next experiment, its own dependency slice per
+  guide II.30.3 (a UX slice never bumps the toolkit): move the pinned
+  egui/kittest 0.35.0 entries to the newest 0.35.x patch releases and
+  re-render the probe; until pixels are faithful, phase 2a's AccessKit
+  evidence remains the published source and S3-20 stays deferred.
 - **Engine follow-up:** closed in the 2026-11-13 slice above —
   `schedule_with_progress` now honours `MustStartOn`/`MustFinishOn` for
   not-started work (D10 rounding, zero float, actuals untouched).
