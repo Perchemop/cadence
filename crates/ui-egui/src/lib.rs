@@ -6389,7 +6389,7 @@ impl CadenceApp {
                                         #[cfg(target_os = "macos")]
                                         { std::process::Command::new("open").arg(&cmd).spawn().ok(); }
                                         #[cfg(target_os = "windows")]
-                                        { std::process::Command::new("cmd").args(["/c", "start", &cmd]).spawn().ok(); }
+                                        { std::process::Command::new("cmd").args(["/c", "start", cmd.as_str()]).spawn().ok(); }
                                     }
                                 } else if self.update_status == update_check::UpdateStatus::UpToDate {
                                     if ui.button("Check for update first").clicked() {
