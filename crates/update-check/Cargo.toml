@@ -1,0 +1,15 @@
+[package]
+name = "cadence-update-check"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Opt-in update check against GitHub Releases, fail-soft offline (suite crate, D27)"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+ureq.workspace = true

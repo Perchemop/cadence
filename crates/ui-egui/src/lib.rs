@@ -45,7 +45,10 @@ use time::{Date, Month};
 
 pub mod crash;
 pub mod design;
-pub mod update_check;
+// Update checking lives in the shared suite crate (crates/update-check, D27);
+// re-export the module so the public path `cadence_ui_egui::update_check`
+// is unchanged from when the code was an inline module.
+pub use cadence_update_check::update_check;
 
 /// Accent colour used for selection and highlights in both themes.
 pub use design::ACCENT;
@@ -6374,11 +6377,26 @@ impl CadenceApp {
                                  All releases: https://github.com/Perchemop/cadence/releases"
                             );
                             ui.add_space(16.0);
-                            // TODO: wire this button to call update_check::check_for_update()
-                            // when clicked, then trigger the app restart flow.
-                            // if ui.button("Update & Restart").clicked() {
-                            //     update_check::check_for_update();
-                            // }
+                            // Verify-then-install updater per guide §12.1 suite standards (D37).
+                            // Opens the GitHub release in the user's default browser; does NOT auto-restart.
+                            if ui.button("Update & Open Installer").clicked() {
+                                if let update_check::UpdateStatus::UpdateAvailable { version, url } = &self.update_status {
+                                    ui.label(format!("Update available: {version}"));
+                                    if let Some(open_url) = url.strip_prefix("https://") {
+                                        let cmd = format!("https://{open_url}");
+                                        #[cfg(target_os = "linux")]
+                                        { std::process::Command::new("xdg-open").arg(&cmd).spawn().ok(); }
+                                        #[cfg(target_os = "macos")]
+                                        { std::process::Command::new("open").arg(&cmd).spawn().ok(); }
+                                        #[cfg(target_os = "windows")]
+                                        { std::process::Command::new("cmd").args(["/c", "start", cmd.as_str()]).spawn().ok(); }
+                                    }
+                                } else if self.update_status == update_check::UpdateStatus::UpToDate
+                                    && ui.button("Check for update first").clicked()
+                                {
+                                    self.start_update_check();
+                                }
+                            }
                         });
                 });
             if !open {
@@ -7852,7 +7870,7 @@ pub fn run_with_path(project: Project, path: Option<PathBuf>) -> Result<(), Stri
     options.viewport.min_inner_size = Some(egui::vec2(1000.0, 700.0));
     // Set initial size to avoid Wayland scaling issues where the window
     // starts too small and widgets render at incorrect sizes.
-    options.viewport.initial_size = Some(egui::vec2(1200.0, 800.0));
+    options.viewport.inner_size = Some(egui::vec2(1200.0, 800.0));
     eframe::run_native(
         "Cadence",
         options,

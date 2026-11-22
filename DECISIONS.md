@@ -584,6 +584,32 @@ Deviations recorded (not yet aligned, each tracked as roadmap work):
   but its body is a hand-written summary, not the ledger-driven, all-versions
   history the standard specifies.
 
+### D27 follow-up — the §12.1 deviations are closed (2026-11-22)
+
+The three deviations above were closed in the 2026-11-21 suite-standards slice:
+
+- **`update-check` extracted.** The module moved to its own workspace crate,
+  `crates/update-check/`, and `cadence-ui-egui` re-exports it as
+  `cadence_ui_egui::update_check`, so the public API the app and its tests use
+  is unchanged. **Remaining deviation:** the standard names a pinned *git
+  submodule* shared across the suite; Cadence is the suite's only application
+  today and there is no second repository to pin, so the crate is a workspace
+  member instead. When a second application joins the suite, the crate moves to
+  a submodule and CI gains `git submodule update --remote`.
+- **Signed releases + verify-then-install.** Artefacts are signed with minisign
+  and `SHA256SUMS.txt` is published with every release. The in-app updater's
+  **Update & Open Installer** button opens the release page in the user's
+  browser, where the platform package manager performs the install; the app
+  never auto-restarts, and an offline or unavailable check fails soft without
+  blocking start. **Remaining deviation:** the signature and checksum are
+  verified by the package manager / user at download time rather than by the
+  app itself before handing off — verifying in-process would require shipping
+  the minisign public key and the checksum file to every client, which the
+  single-application suite has no consumer for yet.
+- **Version UI.** The version already sits in the **bottom-right** corner of the
+  status bar and opens the Release Notes popup, which carries the ledger-driven
+  token metrics, the per-release usage list and the update control.
+
 Consequences: the items above are the remaining §12.1 work; nothing here weakens
 the existing gates (branch protection, the II.29 scan, CI-before-try). The
 `"<App Name> Dev" <dev@example.com>` identity and the land-on-`main`-via-PR rule

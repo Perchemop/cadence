@@ -8,6 +8,7 @@ members = [
     "crates/interchange",
     "crates/app",
     "crates/ui-egui",
+    "crates/update-check",
 ]
 
 [workspace.package]
@@ -40,6 +41,7 @@ proptest = "1"
 eframe = "0.35"
 egui = "0.35"
 ureq = { version = "2.12", default-features = false, features = ["tls"] }
+cadence-update-check = { path = "crates/update-check", version = "0.17.1" }
 
 [profile.release]
 lto = "thin"
