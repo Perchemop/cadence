@@ -28,6 +28,11 @@ over-attribution caveat recorded.
   Medium and headings Inter SemiBold, so all four bundled weights are
   reachable.
 
+### Evidence
+- Rendered proof: PR run `45158438899` artifact `cadence-ui-evidence` contains
+  `font-probe` (bundled Inter + patched Phosphor) and `font-probe-default`
+  (egui defaults) — both render the whole sentence in both themes.
+
 ## [0.17.1] — 2026-11-21
 
 ### Fixed
