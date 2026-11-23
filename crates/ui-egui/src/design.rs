@@ -211,7 +211,9 @@ pub fn install_fonts(ctx: &Context) {
         .unwrap_or_default();
     let mut proportional = vec!["phosphor".to_string(), "Inter-Regular".to_string()];
     proportional.extend(fallbacks.iter().cloned());
-    fonts.families.insert(FontFamily::Proportional, proportional);
+    fonts
+        .families
+        .insert(FontFamily::Proportional, proportional);
     // One family per weight, so a weight is chosen by naming its family.
     // Each weight family keeps the icon face first (its private-use glyphs
     // must beat Inter's private-use mappings in every style) and shares the
@@ -222,7 +224,7 @@ pub fn install_fonts(ctx: &Context) {
         family.extend(fallbacks.iter().cloned());
         fonts
             .families
-            .insert(FontFamily::Name(name.to_string()), family);
+            .insert(FontFamily::Name(name.into()), family);
     }
     ctx.set_fonts(fonts);
 }
@@ -236,11 +238,11 @@ fn install_style(ctx: &Context) {
             text.insert(egui::TextStyle::Small, egui::FontId::proportional(9.5));
             text.insert(
                 egui::TextStyle::Button,
-                egui::FontId::new(11.0, FontFamily::Name("Inter-Medium".to_string())),
+                egui::FontId::new(11.0, FontFamily::Name("Inter-Medium".into())),
             );
             text.insert(
                 egui::TextStyle::Heading,
-                egui::FontId::new(16.0, FontFamily::Name("Inter-SemiBold".to_string())),
+                egui::FontId::new(16.0, FontFamily::Name("Inter-SemiBold".into())),
             );
             text.insert(egui::TextStyle::Monospace, egui::FontId::monospace(11.0));
             // An 8 px horizontal / 4 px vertical rhythm, so every surface
