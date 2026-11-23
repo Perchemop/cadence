@@ -34,16 +34,22 @@ Fonts and the icon set are bundled with the application. The UI face is Inter
 (SIL OFL 1.1), shipped as
 `crates/ui-egui/assets/fonts/Inter-{Regular,Medium,SemiBold,Bold}.ttf` and
 registered by `cadence-ui-egui::design::install_fonts`. Command-bar, tab-strip
-and inspector icons are the **Phosphor Icons** glyph font (MIT), embedded by the
-`egui-phosphor` crate and registered beside Inter; every icon sits next to a text
-label so meaning is never icon-only. The GUI toolkit's own
+and inspector icons are the **Phosphor Icons** glyph font (MIT), shipped as
+`crates/ui-egui/assets/fonts/Phosphor.ttf` and registered beside Inter; every
+icon sits next to a text label so meaning is never icon-only. The vendored
+Phosphor file is a patched copy of the face published by the `egui-phosphor`
+crate: `scripts/patch-phosphor.py` points the upstream face's blank legacy
+ASCII placeholder glyphs (a-z, space, hyphen-minus and two control
+characters) at .notdef, so the icon face can lead the proportional font
+family without swallowing Latin text. Only the character map is modified; the
+glyph outlines, metrics and every Private Use Area icon are unchanged. The GUI toolkit's own
 `epaint_default_fonts` crate (embedded by `eframe`) also ships third-party font
 assets used as fallback, and they carry their own licences:
 
 | Asset | Licence | Source |
 |---|---|---|
 | Inter (Regular/Medium/SemiBold/Bold) | SIL Open Font License 1.1 | https://github.com/rsms/inter (v4.1) |
-| Phosphor Icons (icon glyph font) | MIT | https://github.com/phosphor-icons/phosphor-icons, via the `egui-phosphor` crate |
+| Phosphor Icons (icon glyph font, patched copy — see `scripts/patch-phosphor.py`) | MIT | https://github.com/phosphor-icons/phosphor-icons, via the `egui-phosphor` crate |
 | Ubuntu (fallback proportional font) | Ubuntu Font Licence 1.0 | embedded by `epaint_default_fonts` |
 | Noto Emoji | SIL Open Font License 1.1 | embedded by `epaint_default_fonts` |
 

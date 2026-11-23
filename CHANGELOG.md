@@ -17,6 +17,17 @@ over-attribution caveat recorded.
 
 ## [Unreleased]
 
+### Fixed
+- Text renders completely again: lowercase letters, hyphens and spaces no
+  longer disappear from the interface. The bundled Phosphor icon face carried
+  blank placeholder glyphs for those characters and, leading the proportional
+  font family, resolved them ahead of Inter; the face is now vendored in a
+  patched form that no longer claims Latin characters
+  (DECISIONS.md D40, `scripts/patch-phosphor.py`).
+- Text renders in Inter Regular rather than Inter Bold; buttons use Inter
+  Medium and headings Inter SemiBold, so all four bundled weights are
+  reachable.
+
 ## [0.17.1] — 2026-11-21
 
 ### Fixed

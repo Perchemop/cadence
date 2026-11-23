@@ -9,11 +9,11 @@ resolved version — the only one that matters) and the crates' manifests.
 
 | Piece | Declared | Resolved (`Cargo.lock`) | Notes |
 |---|---|---|---|
-| `egui` | `0.35` | **0.35.0** | Immediate-mode GUI |
-| `eframe` | `0.35` | **0.35.0** | Windowing, event loop, AccessKit on by default |
-| `egui_extras` | `0.35.0` + `datepicker` | 0.35.0 | First-party widgets: table (`ScrollArea::show_rows`), `DatePickerButton` |
-| `egui-phosphor` | `0.13.0` | 0.13.0 | Phosphor icon glyph font (MIT) |
-| `jiff` | `0.2` | 0.2.x | Calendar dates for `DatePickerButton`; converted to `time::Date` at the field boundary |
+| `egui` | `0.36` | **0.36.2** | Immediate-mode GUI (harfrust text shaping) |
+| `eframe` | `0.36` | **0.36.2** | Windowing, event loop, AccessKit on by default |
+| `egui_extras` | `0.36.0` + `datepicker` | 0.36.2 | First-party widgets: table (`ScrollArea::show_rows`), `DatePickerButton` |
+| `egui-phosphor` | `0.14.0` | 0.14.0 | Phosphor icon glyph font (MIT); the icon *face* itself is vendored patched at `crates/ui-egui/assets/fonts/Phosphor.ttf` (see `scripts/patch-phosphor.py`) |
+| `jiff` | `0.2` | 0.2.46 | Calendar dates for `DatePickerButton`; converted to `time::Date` at the field boundary |
 
 One design path only: the project's own token module plus first-party
 `egui`/`egui_extras` and the `egui-phosphor` icon font. No shadcn-egui, spaceui,

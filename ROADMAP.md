@@ -309,9 +309,12 @@ shortcut copy. The remaining queue below is tracked in PROGRESS.md
   non-Latin support queued as an enhancement). S3-10 (progress range hint),
   the Gantt and Production empty states, and the stale "Ctrl+1..5" copy in
   `docs/parity.md` closed in the S3 polish slice; historical/dated docs keep
-  their original text as records. New tracked finding: **S3-20 Inter
-  Bold-first face ordering** (deferred — needs the evidence pipeline; phase 3
-  pixels are its evaluation path).
+  their original text as records. Tracked finding **S3-20 Inter Bold-first
+  face ordering — closed** in the 2026-11-22 font-stack slice (D40): the
+  ordering was a symptom of the same Phosphor-placeholder defect that hid
+  lowercase text, and the family is now role-ordered with one family per
+  weight, so every weight is selectable and verified by the rendered
+  evidence.
 - **Icon defect:** S3-19 Phosphor/Inter icon shadowing — **Done** in the
   2026-11-13 slice (six icons previously rendered letterform glyphs;
   Phosphor face now precedes the text faces).
@@ -325,12 +328,11 @@ shortcut copy. The remaining queue below is tracked in PROGRESS.md
   (rendered PNG artefacts via `wgpu` + `snapshot`, needing software
   Vulkan/lavapipe — `mesa-vulkan-drivers` / `libvulkan1` — in CI, with a
   documented fallback to phase 2a's AccessKit evidence) follows; S3-20 (Inter
-  Bold-first ordering) is evaluated once phase 2b pixels exist. The README
-  placeholder image links were removed in the S3 polish slice, so real
-  screenshots await phase 2b. The reduced-motion record in
-  `ACCESSIBILITY.md` (added in the current docs refresh) and the II.30.6
-  raw-colour gate (2026-11-11 slice) are in place. (Phase 2b pixels are
-  needed to evaluate S3-20 safely.)
+  Bold-first ordering) closed in the 2026-11-22 font-stack slice (D40). The
+  README placeholder image links were removed in the S3 polish slice, so real
+  screenshots are unblocked by the 2026-11-22 pixel fix. The reduced-motion
+  record in `ACCESSIBILITY.md` (added in the current docs refresh) and the
+  II.30.6 raw-colour gate (2026-11-11 slice) are in place.
 - **Engine follow-up:** closed in the 2026-11-13 slice —
   `schedule_with_progress` now honours `MustStartOn`/`MustFinishOn` for
   not-started work (D10 rounding, zero float, actuals untouched).
