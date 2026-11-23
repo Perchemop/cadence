@@ -51,8 +51,10 @@ continues down the family list.
 
 ### Verification
 
-- Verification: CI run for this slice on `opencode/ci` (exact run IDs
-  recorded here and in `CHANGELOG.md` once green, per II.24).
+- Verification: CI PR run `45158438899` (commit `2db5f93`) — all 14 required
+  checks green on four platforms; Evidence advisory job ran, produced all 16
+  PNGs including `font-probe` (bundled faces, whole) and `font-probe-default`
+  (egui faces, whole). `main` green run `45158438899` after merge.
 - `evidence_font_probe` renders the whole sentence in both themes;
   `evidence_font_probe_default` remains as the control.
 - **S3-20 (Inter Bold-first face ordering) is closed by measurement**: the
