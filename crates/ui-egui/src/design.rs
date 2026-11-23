@@ -222,9 +222,7 @@ pub fn install_fonts(ctx: &Context) {
     for name in ["Inter-Medium", "Inter-SemiBold", "Inter-Bold"] {
         let mut family = vec!["phosphor".to_string(), name.to_string()];
         family.extend(fallbacks.iter().cloned());
-        fonts
-            .families
-            .insert(FontFamily::Name(name.into()), family);
+        fonts.families.insert(FontFamily::Name(name.into()), family);
     }
     ctx.set_fonts(fonts);
 }
@@ -259,6 +257,14 @@ fn install_style(ctx: &Context) {
 /// widget states, all from the design tokens.
 pub fn apply(ctx: &Context, dark: bool) {
     install_style(ctx);
+    apply_visuals(ctx, dark);
+}
+
+/// Apply only the palette visuals — backgrounds, text colours, widget
+/// states — without the type scale. The rendered-evidence control probe uses
+/// this: it draws with egui's own faces, so it cannot reference the bundled
+/// families the type scale names (epaint panics on an unbound family).
+pub fn apply_visuals(ctx: &Context, dark: bool) {
     let p = palette(dark);
     let mut v = if dark {
         Visuals::dark()

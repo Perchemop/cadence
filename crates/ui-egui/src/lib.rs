@@ -8366,10 +8366,13 @@ mod evidence_render_tests {
             });
         if bundled_fonts {
             design::install_fonts(&harness.ctx);
+            design::apply(&harness.ctx, dark);
+        } else {
+            // Palette visuals only: the type scale names the bundled weight
+            // families, which are not bound here, and epaint panics on an
+            // unbound family. The control keeps egui's own type.
+            design::apply_visuals(&harness.ctx, dark);
         }
-        // Style and palette only; the bundled faces are the only thing the
-        // `bundled_fonts` flag controls.
-        design::apply(&harness.ctx, dark);
         harness.step();
         harness.step();
         save_render(&mut harness, &format!("{theme}-{stem}.png"));
