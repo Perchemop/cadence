@@ -13,7 +13,7 @@ fn evm_metrics_eac_bac_tcpi_vac() {
     let bac = 100;
     let ev = 40;
     let ac = 50;
-    let pv = 50;
+    let _pv = 50;
 
     let cpi = Some(ev as f64 / ac as f64);
     let eac = Some(bac as f64 / cpi.unwrap());
@@ -53,7 +53,8 @@ fn evm_metrics_no_baseline_zero_pv_ev() {
         actual_finish: None,
         owner: None,
         promised: false,
-        promised_reason: None,
+        delay_reason: None,
+        location: None,
     };
     let metrics = EvmMetrics::for_activity(&activity, 0); // planned_fraction = 0
 
@@ -100,14 +101,15 @@ fn evm_metrics_cpi_undefined_ac_zero() {
         actual_finish: None,
         owner: None,
         promised: false,
-        promised_reason: None,
+        delay_reason: None,
+        location: None,
     };
     let metrics = EvmMetrics::for_activity(&activity, 5000);
 
     assert_eq!(metrics.earned_value, 50);
     assert_eq!(metrics.actual_cost, 0);
     assert_eq!(metrics.cost_performance_index, None); // CPI undefined when AC=0
-    // EAC falls back to BAC
+                                                      // EAC falls back to BAC
     assert_eq!(metrics.estimate_at_completion, Some(bac as f64));
     // TCPI = (100-50)/(100-0) = 0.5
     assert!((metrics.to_complete_performance_index.unwrap() - 0.5).abs() < f64::EPSILON);
@@ -137,13 +139,14 @@ fn evm_metrics_tcpi_none_when_bac_equals_ac() {
         free_float: None,
         critical: false,
         budget_at_completion: Some(bac),
-        actual_cost: Some(100), // AC == BAC
+        actual_cost: Some(100),       // AC == BAC
         percent_complete: Some(8000), // 80%
         actual_start: None,
         actual_finish: None,
         owner: None,
         promised: false,
-        promised_reason: None,
+        delay_reason: None,
+        location: None,
     };
     let metrics = EvmMetrics::for_activity(&activity, 8000);
 
@@ -183,7 +186,8 @@ fn evm_metrics_over_budget_positive_vac() {
         actual_finish: None,
         owner: None,
         promised: false,
-        promised_reason: None,
+        delay_reason: None,
+        location: None,
     };
     let metrics = EvmMetrics::for_activity(&activity, 5000);
 
@@ -230,7 +234,8 @@ fn evm_metrics_under_budget_negative_vac() {
         actual_finish: None,
         owner: None,
         promised: false,
-        promised_reason: None,
+        delay_reason: None,
+        location: None,
     };
     let metrics = EvmMetrics::for_activity(&activity, 5000);
 
@@ -273,7 +278,8 @@ fn evm_metrics_serde_roundtrip() {
         actual_finish: None,
         owner: None,
         promised: false,
-        promised_reason: None,
+        delay_reason: None,
+        location: None,
     };
     let metrics = EvmMetrics::for_activity(&activity, 6000);
 
@@ -313,7 +319,8 @@ fn evm_metrics_project_level_aggregation() {
             actual_finish: None,
             owner: None,
             promised: false,
-            promised_reason: None,
+            delay_reason: None,
+            location: None,
         },
         Activity {
             id: ActivityId(2),
@@ -340,17 +347,22 @@ fn evm_metrics_project_level_aggregation() {
             actual_finish: None,
             owner: None,
             promised: false,
-            promised_reason: None,
+            delay_reason: None,
+            location: None,
         },
     ];
     let planned_fraction = 5000; // project at 50% planned
 
     // Sum of BACs
-    let total_bac: i64 = activities.iter().map(|a| a.budget_at_completion.unwrap_or(0)).sum();
+    let total_bac: i64 = activities
+        .iter()
+        .map(|a| a.budget_at_completion.unwrap_or(0))
+        .sum();
     assert_eq!(total_bac, 300);
 
     // Aggregate metrics follow the same formulas
-    let total_ev: i64 = activities.iter()
+    let total_ev: i64 = activities
+        .iter()
         .map(|a| {
             let bac = a.budget_at_completion.unwrap_or(0);
             let pct = a.percent_complete.unwrap_or(0).clamp(0, 10_000);
@@ -358,7 +370,8 @@ fn evm_metrics_project_level_aggregation() {
         })
         .sum();
     let total_ac: i64 = activities.iter().map(|a| a.actual_cost.unwrap_or(0)).sum();
-    let total_pv: i64 = activities.iter()
+    let total_pv: i64 = activities
+        .iter()
         .map(|a| {
             let bac = a.budget_at_completion.unwrap_or(0);
             (i128::from(bac) * i128::from(planned_fraction) / 10_000) as i64

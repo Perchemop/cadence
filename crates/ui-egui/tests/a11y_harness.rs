@@ -375,15 +375,21 @@ fn every_input_widget_has_an_accessible_name() {
 /// the configuration form is detectable via the headless test seams.
 #[test]
 fn assistant_view_enabling_state() {
-    use cadence_assistant::{AssistantConfig, is_assistant_enabled};
+    use cadence_assistant::{is_assistant_enabled, AssistantConfig};
 
     let mut app = build_app();
 
     // Off by default
     let config = AssistantConfig::default();
     assert!(!config.enabled, "assistant should be disabled by default");
-    assert!(!config.is_configured(), "default config should not be configured");
-    assert!(!is_assistant_enabled(&config), "is_assistant_enabled should be false for default config");
+    assert!(
+        !config.is_configured(),
+        "default config should not be configured"
+    );
+    assert!(
+        !is_assistant_enabled(&config),
+        "is_assistant_enabled should be false for default config"
+    );
 
     // Configured state detectable via public seam
     let full = AssistantConfig {
@@ -395,7 +401,10 @@ fn assistant_view_enabling_state() {
     };
     app.set_assistant_config(full.clone());
     assert!(full.is_configured(), "full config should be configured");
-    assert!(is_assistant_enabled(&full), "is_assistant_enabled should be true for configured config");
+    assert!(
+        is_assistant_enabled(&full),
+        "is_assistant_enabled should be true for configured config"
+    );
 
     // Unconfigured returns false even if enabled=true but missing provider/model
     let partial = AssistantConfig {
@@ -406,6 +415,12 @@ fn assistant_view_enabling_state() {
         api_key: None,
     };
     app.set_assistant_config(partial.clone());
-    assert!(!partial.is_configured(), "partial config should not be configured");
-    assert!(!is_assistant_enabled(&partial), "is_assistant_enabled should be false for partial config");
+    assert!(
+        !partial.is_configured(),
+        "partial config should not be configured"
+    );
+    assert!(
+        !is_assistant_enabled(&partial),
+        "is_assistant_enabled should be false for partial config"
+    );
 }
