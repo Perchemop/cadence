@@ -1,7 +1,7 @@
 // EVM metrics tests — verify EAC/BAC/TCPI/VAC per PMI standard
 // (guide §5.6 TDD: test written first, CI verifies)
 
-use cadence_core::model::{Activity, EvmMetrics};
+use cadence_core::model::{Activity, ActivityId, EvmMetrics};
 
 #[test]
 fn evm_metrics_eac_bac_tcpi_vac() {
@@ -29,10 +29,31 @@ fn evm_metrics_eac_bac_tcpi_vac() {
 fn evm_metrics_no_baseline_zero_pv_ev() {
     let bac = 100;
     let activity = Activity {
+        id: ActivityId(1),
+        name: "Test".to_owned(),
+        original_duration: 0,
+        wbs: None,
+        resources: Vec::new(),
+        assignment_units: std::collections::BTreeMap::new(),
+        calendar: None,
+        constraint: cadence_core::model::Constraint::AsSoonAsPossible,
+        early_start: None,
+        early_finish: None,
+        late_start: None,
+        late_finish: None,
+        scheduled_start: None,
+        scheduled_finish: None,
+        total_float: None,
+        free_float: None,
+        critical: false,
         budget_at_completion: Some(bac),
         actual_cost: Some(0),
         percent_complete: Some(0),
-        ..Default::default()
+        actual_start: None,
+        actual_finish: None,
+        owner: None,
+        promised: false,
+        promised_reason: None,
     };
     let metrics = EvmMetrics::for_activity(&activity, 0); // planned_fraction = 0
 
@@ -55,10 +76,31 @@ fn evm_metrics_no_baseline_zero_pv_ev() {
 fn evm_metrics_cpi_undefined_ac_zero() {
     let bac = 100;
     let activity = Activity {
+        id: ActivityId(1),
+        name: "Test".to_owned(),
+        original_duration: 0,
+        wbs: None,
+        resources: Vec::new(),
+        assignment_units: std::collections::BTreeMap::new(),
+        calendar: None,
+        constraint: cadence_core::model::Constraint::AsSoonAsPossible,
+        early_start: None,
+        early_finish: None,
+        late_start: None,
+        late_finish: None,
+        scheduled_start: None,
+        scheduled_finish: None,
+        total_float: None,
+        free_float: None,
+        critical: false,
         budget_at_completion: Some(bac),
         actual_cost: Some(0),
         percent_complete: Some(5000), // 50%
-        ..Default::default()
+        actual_start: None,
+        actual_finish: None,
+        owner: None,
+        promised: false,
+        promised_reason: None,
     };
     let metrics = EvmMetrics::for_activity(&activity, 5000);
 
@@ -77,10 +119,31 @@ fn evm_metrics_cpi_undefined_ac_zero() {
 fn evm_metrics_tcpi_none_when_bac_equals_ac() {
     let bac = 100;
     let activity = Activity {
+        id: ActivityId(1),
+        name: "Test".to_owned(),
+        original_duration: 0,
+        wbs: None,
+        resources: Vec::new(),
+        assignment_units: std::collections::BTreeMap::new(),
+        calendar: None,
+        constraint: cadence_core::model::Constraint::AsSoonAsPossible,
+        early_start: None,
+        early_finish: None,
+        late_start: None,
+        late_finish: None,
+        scheduled_start: None,
+        scheduled_finish: None,
+        total_float: None,
+        free_float: None,
+        critical: false,
         budget_at_completion: Some(bac),
         actual_cost: Some(100), // AC == BAC
         percent_complete: Some(8000), // 80%
-        ..Default::default()
+        actual_start: None,
+        actual_finish: None,
+        owner: None,
+        promised: false,
+        promised_reason: None,
     };
     let metrics = EvmMetrics::for_activity(&activity, 8000);
 
@@ -96,10 +159,31 @@ fn evm_metrics_over_budget_positive_vac() {
     // If EAC=150, BAC=100 → VAC = -50 (negative = over budget)
     let bac = 100;
     let activity = Activity {
+        id: ActivityId(1),
+        name: "Test".to_owned(),
+        original_duration: 0,
+        wbs: None,
+        resources: Vec::new(),
+        assignment_units: std::collections::BTreeMap::new(),
+        calendar: None,
+        constraint: cadence_core::model::Constraint::AsSoonAsPossible,
+        early_start: None,
+        early_finish: None,
+        late_start: None,
+        late_finish: None,
+        scheduled_start: None,
+        scheduled_finish: None,
+        total_float: None,
+        free_float: None,
+        critical: false,
         budget_at_completion: Some(bac),
         actual_cost: Some(80),
         percent_complete: Some(5000), // 50%
-        ..Default::default()
+        actual_start: None,
+        actual_finish: None,
+        owner: None,
+        promised: false,
+        promised_reason: None,
     };
     let metrics = EvmMetrics::for_activity(&activity, 5000);
 
@@ -122,10 +206,31 @@ fn evm_metrics_under_budget_negative_vac() {
     // EAC < BAC → VAC positive (under budget)
     let bac = 100;
     let activity = Activity {
+        id: ActivityId(1),
+        name: "Test".to_owned(),
+        original_duration: 0,
+        wbs: None,
+        resources: Vec::new(),
+        assignment_units: std::collections::BTreeMap::new(),
+        calendar: None,
+        constraint: cadence_core::model::Constraint::AsSoonAsPossible,
+        early_start: None,
+        early_finish: None,
+        late_start: None,
+        late_finish: None,
+        scheduled_start: None,
+        scheduled_finish: None,
+        total_float: None,
+        free_float: None,
+        critical: false,
         budget_at_completion: Some(bac),
         actual_cost: Some(30),
         percent_complete: Some(5000), // 50%
-        ..Default::default()
+        actual_start: None,
+        actual_finish: None,
+        owner: None,
+        promised: false,
+        promised_reason: None,
     };
     let metrics = EvmMetrics::for_activity(&activity, 5000);
 
@@ -144,10 +249,31 @@ fn evm_metrics_under_budget_negative_vac() {
 fn evm_metrics_serde_roundtrip() {
     let bac = 12345;
     let activity = Activity {
+        id: ActivityId(1),
+        name: "Test".to_owned(),
+        original_duration: 0,
+        wbs: None,
+        resources: Vec::new(),
+        assignment_units: std::collections::BTreeMap::new(),
+        calendar: None,
+        constraint: cadence_core::model::Constraint::AsSoonAsPossible,
+        early_start: None,
+        early_finish: None,
+        late_start: None,
+        late_finish: None,
+        scheduled_start: None,
+        scheduled_finish: None,
+        total_float: None,
+        free_float: None,
+        critical: false,
         budget_at_completion: Some(bac),
         actual_cost: Some(6789),
         percent_complete: Some(6000),
-        ..Default::default()
+        actual_start: None,
+        actual_finish: None,
+        owner: None,
+        promised: false,
+        promised_reason: None,
     };
     let metrics = EvmMetrics::for_activity(&activity, 6000);
 
@@ -163,16 +289,58 @@ fn evm_metrics_project_level_aggregation() {
     // This test verifies the aggregation pattern matches the engine
     let activities = vec![
         Activity {
+            id: ActivityId(1),
+            name: "A1".to_owned(),
+            original_duration: 0,
+            wbs: None,
+            resources: Vec::new(),
+            assignment_units: std::collections::BTreeMap::new(),
+            calendar: None,
+            constraint: cadence_core::model::Constraint::AsSoonAsPossible,
+            early_start: None,
+            early_finish: None,
+            late_start: None,
+            late_finish: None,
+            scheduled_start: None,
+            scheduled_finish: None,
+            total_float: None,
+            free_float: None,
+            critical: false,
             budget_at_completion: Some(100),
             actual_cost: Some(50),
             percent_complete: Some(5000),
-            ..Default::default()
+            actual_start: None,
+            actual_finish: None,
+            owner: None,
+            promised: false,
+            promised_reason: None,
         },
         Activity {
+            id: ActivityId(2),
+            name: "A2".to_owned(),
+            original_duration: 0,
+            wbs: None,
+            resources: Vec::new(),
+            assignment_units: std::collections::BTreeMap::new(),
+            calendar: None,
+            constraint: cadence_core::model::Constraint::AsSoonAsPossible,
+            early_start: None,
+            early_finish: None,
+            late_start: None,
+            late_finish: None,
+            scheduled_start: None,
+            scheduled_finish: None,
+            total_float: None,
+            free_float: None,
+            critical: false,
             budget_at_completion: Some(200),
             actual_cost: Some(100),
             percent_complete: Some(2500),
-            ..Default::default()
+            actual_start: None,
+            actual_finish: None,
+            owner: None,
+            promised: false,
+            promised_reason: None,
         },
     ];
     let planned_fraction = 5000; // project at 50% planned
