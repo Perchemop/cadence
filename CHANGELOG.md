@@ -13,7 +13,17 @@ orchestrators and subagents), and the strict path-attributable subset
 the current mapping is the accurate parent-chain figure with its
 over-attribution caveat recorded.
 
-## [0.16.0] — 2026-11-20
+## [Unreleased]
+
+### Added
+- **EVM EAC/BAC/TCPI/VAC metrics** — 8 unit tests verifying existing implementation in `crates/core/tests/evm_tests.rs` (resolves P1 gap from `docs/gaps.md` CAP-029).
+- **Assistant review panel RP-3** — view shell + enabling state with headless test seams (`set_assistant_config`, `set_assistant_proposal`) and AccessKit assertion test in `crates/ui-egui/tests/a11y_harness.rs` (resolves P1 gap from `docs/gaps.md` CAP-056..061 RP-3).
+- **Ubuntu lavapipe CI job** — rendered-evidence pipeline phase 2b with 3-retry loop for SIGSEGV flake handling per guide §M.5 (advances `docs/gaps.md` issue #163).
+
+### Fixed
+- **Clippy warnings in EVM tests** — removed unnecessary `Some(...).unwrap()` patterns and `vec![]` macro for two-element array.
+
+## [0.18.1] — 2026-11-24
 
 ## [0.18.1] — 2026-11-24
 

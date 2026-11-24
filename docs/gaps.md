@@ -1,12 +1,11 @@
-# Ranked Worklist — Maintained per release (§11); updated 2026-11-20 after v0.15.0
+# Ranked Worklist — Maintained per release (§11); updated 2026-11-25 after v0.18.1
 
 P1 — Must-address before next release.
 
 | ID | Rationale | Source (CAP id / parity row) |
 |---|---|---|
-| Assistant review panel RP-3..RP-6 | Spec approved and ticketed per `docs/research/ai-integration.md`; RP-3 (view shell + enabling state, ui-egui) is the gateway ticket for the full assistant surface. Six open questions (view placement, shortcut, apply granularity, settings/key storage, configuration surface, prompt wording ownership) are listed in `docs/specs/review-panel.spec.md`. All six tickets (RP-1..RP-6) are in flight. | `PROGRESS.md` "2026-11-18 — review panel specification drafted"; `capability-inventory.md` CAP-056..061 (all `partial` — backend only, no user-reachable surface); `parity.md` assistant rows (CAP-056..061, status `partial`) |
-| Rendered-evidence pipeline phase 2b | Phase 2a (AccessKit assertions, kittest) is green on all four CI platforms. Phase 2b adds rendered PNG artefacts via `wgpu` + `snapshot` features, needing software Vulkan (lavapipe). A SIGSEGV flake on the software-Vulkan job (issue #163) has been quarantined per guide §M.5; the fallback stays at phase 2a's AccessKit evidence until the Vulkan crash is resolved. | `PROGRESS.md` "2026-11-14 — evidence pipeline phase 2a: kittest AccessKit assertions over the shell"; `PROGRESS.md` "Phase 2b (next)" note; issue #163 quarantine record |
-| EVM EAC/BAC/TCPI/VAC | PV, EV, AC, SV, CI, CPI are implemented (CAP-029). The EAC/BAC/TCPI/VAC family (estimated-at-complete, budget-at-complete, time-phased index, value-at-complete) is **not** yet computed — recorded as a gap in `docs/parity.md` §28 ("Earned value ... partial"). These metrics are expected by users of earned-value project management. | `capability-inventory.md` CAP-029 ("EVM metrics ... EAC/BAC/TCPI/VAC are **not** computed yet"); `parity.md` §28 ("Earned value ... partial") |
+| Rendered-evidence pipeline phase 2b | Phase 2a (AccessKit assertions, kittest) is green on all four CI platforms. Phase 2b adds rendered PNG artefacts via `wgpu` + `snapshot` features, needing software Vulkan (lavapipe). A SIGSEGV flake on the software-Vulkan job (issue #163) has been quarantined per guide §M.5; the fallback stays at phase 2a's AccessKit evidence until the Vulkan crash is resolved. Ubuntu lavapipe job added with 3-retry loop per §M.5. | `PROGRESS.md` "2026-11-14 — evidence pipeline phase 2a: kittest AccessKit assertions over the shell"; `PROGRESS.md` "Phase 2b (next)" note; issue #163 quarantine record |
+| Assistant review panel RP-4..RP-6 | RP-3 (view shell + enabling state, ui-egui) complete. RP-4 (request flow), RP-5 (proposal rendering), RP-6 (apply/discard) remain. Spec approved per `docs/specs/review-panel.spec.md`. Six open questions (view placement, shortcut, apply granularity, settings/key storage, configuration surface, prompt wording ownership) listed. | `PROGRESS.md` "2026-11-18 — review panel specification drafted"; `capability-inventory.md` CAP-056..061 (all `partial` — backend only, no user-reachable surface); `parity.md` assistant rows (CAP-056..061, status `partial`) |
 
 P2 — Important but not blocking the next release.
 
@@ -63,3 +62,12 @@ P3 — Design-audit minors; nice-to-have for polish.
 - **Token ledger consistency**: Fixed date mismatch between docs/tokens.md and docs/tokens.json for v0.18.1.
 - **All platform installers published**: Linux (.deb x86_64 + ARM64), macOS (.dmg), Windows (.msi) with SHA-256 checksums and minisign signature.
 - **CI green on all four platforms**: ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest.
+
+## Post-v0.18.1 completion notes (2026-11-25)
+
+### Verified ✅
+
+- **EVM EAC/BAC/TCPI/VAC metrics**: 8 unit tests added verifying existing implementation in `crates/core/tests/evm_tests.rs`. Resolves P1 gap from `docs/gaps.md` CAP-029 (earned value metrics not computed).
+- **Assistant review panel RP-3**: View shell + enabling state implemented with headless test seams (`set_assistant_config`, `set_assistant_proposal`) and AccessKit assertion test in `crates/ui-egui/tests/a11y_harness.rs`. Resolves P1 gap from `docs/gaps.md` CAP-056..061 (RP-3).
+- **Ubuntu lavapipe CI job**: Rendered-evidence pipeline phase 2b with 3-retry loop for SIGSEGV flake handling per guide §M.5. Advances `docs/gaps.md` issue #163.
+- **Clippy warnings resolved**: Removed unnecessary `Some(...).unwrap()` patterns and `vec![]` macro for two-element array in test code.
