@@ -654,3 +654,39 @@ fn progress_mode_mandatory_constraint_rounding_agrees_between_passes() {
     assert_eq!(item.late_start, item.scheduled_start);
     assert_eq!(item.total_float, 0);
 }
+
+/// Assistant review panel RP-3 — view shell + enabling state.
+/// Verifies the assistant view's enabling state toggles correctly and
+/// the configuration form is detectable.
+#[test]
+fn assistant_view_enabling_state() {
+    use cadence_assistant::{AssistantConfig, is_assistant_enabled};
+
+    // Off by default
+    let config = AssistantConfig::default();
+    assert!(!config.enabled, "assistant should be disabled by default");
+    assert!(!config.is_configured(), "default config should not be configured");
+    assert!(!is_assistant_enabled(&config), "is_assistant_enabled should be false for default config");
+
+    // Configured state detectable
+    let full = AssistantConfig {
+        enabled: true,
+        provider_name: Some("openai".to_owned()),
+        model: Some("gpt-4".to_owned()),
+        base_url: None,
+        api_key: Some(cadence_assistant::SecretKey::new("test-key".to_owned())),
+    };
+    assert!(full.is_configured(), "full config should be configured");
+    assert!(is_assistant_enabled(&full), "is_assistant_enabled should be true for configured config");
+
+    // Unconfigured returns false even if enabled=true but missing provider/model
+    let partial = AssistantConfig {
+        enabled: true,
+        provider_name: None,
+        model: None,
+        base_url: None,
+        api_key: None,
+    };
+    assert!(!partial.is_configured(), "partial config should not be configured");
+    assert!(!is_assistant_enabled(&partial), "is_assistant_enabled should be false for partial config");
+}
