@@ -57,6 +57,7 @@ jobs:
         run: cargo build --release -p cadence-app
 
       - name: Run token ledger script
+        if: runner.os != 'Windows'
         run: |-
           if [ -f ~/.local/share/opencode/opencode.db ]; then
             python3 scripts/token-ledger.py
