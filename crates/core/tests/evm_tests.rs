@@ -15,13 +15,13 @@ fn evm_metrics_eac_bac_tcpi_vac() {
     let ac = 50;
     let _pv = 50;
 
-    let cpi = Some(ev as f64 / ac as f64);
-    let eac = Some(bac as f64 / cpi.unwrap());
-    let tcpi = Some((bac as f64 - ev as f64) / (bac as f64 - ac as f64));
-    let vac = bac as f64 - eac.unwrap();
+    let cpi = ev as f64 / ac as f64;
+    let eac = bac as f64 / cpi;
+    let tcpi = (bac as f64 - ev as f64) / (bac as f64 - ac as f64);
+    let vac = bac as f64 - eac;
 
-    assert!((eac.unwrap() - 125.0).abs() < f64::EPSILON);
-    assert!((tcpi.unwrap() - 1.2).abs() < f64::EPSILON);
+    assert!((eac - 125.0).abs() < f64::EPSILON);
+    assert!((tcpi - 1.2).abs() < f64::EPSILON);
     assert!((vac - (-25.0)).abs() < f64::EPSILON);
 }
 
@@ -293,7 +293,7 @@ fn evm_metrics_serde_roundtrip() {
 fn evm_metrics_project_level_aggregation() {
     // Project-level EVM is a sum of activity-level metrics
     // This test verifies the aggregation pattern matches the engine
-    let activities = vec![
+    let activities = [
         Activity {
             id: ActivityId(1),
             name: "A1".to_owned(),
