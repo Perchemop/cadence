@@ -929,6 +929,20 @@ impl CadenceApp {
         self.update_checks_enabled = enabled;
     }
 
+    /// Install an assistant configuration without the settings file.
+    /// Used by headless tests and a future CLI flag to drive the assistant
+    /// view into a configured state without touching disk.
+    pub fn set_assistant_config(&mut self, config: cadence_assistant::AssistantConfig) {
+        self.assistant_config = config;
+    }
+
+    /// Load a proposal into the review state for headless testing.
+    /// Allows the kittest harness to render the review surface without
+    /// any network call.
+    pub fn set_assistant_proposal(&mut self, proposal: cadence_assistant::Proposal) {
+        self.assistant_proposal = Some(proposal);
+    }
+
     fn start_update_check(&mut self) {
         if self.update_receiver.is_some() {
             return;
