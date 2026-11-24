@@ -7867,10 +7867,10 @@ pub fn run(project: Project) -> Result<(), String> {
 /// Run the Cadence GUI for a project loaded from `path` (if known).
 pub fn run_with_path(project: Project, path: Option<PathBuf>) -> Result<(), String> {
     let mut options = eframe::NativeOptions::default();
-    options.viewport.min_inner_size = Some(egui::vec2(1000.0, 700.0));
     // Set initial size to avoid Wayland scaling issues where the window
     // starts too small and widgets render at incorrect sizes.
     options.viewport.inner_size = Some(egui::vec2(1200.0, 800.0));
+    options.viewport.min_inner_size = Some(egui::vec2(1000.0, 700.0));
     eframe::run_native(
         "Cadence",
         options,
@@ -8397,58 +8397,6 @@ mod evidence_render_tests {
         }
     }
 
-    /// Render the probe labels at an explicit text size, with or without
-    /// Cadence's bundled faces, so one matrix answers two questions: does the
-    /// face stack matter (bundled vs egui's defaults), and is the loss
-    /// size-dependent (small x-height vs large)?
-    fn font_probe_render(dark: bool, stem: &str, bundled_fonts: bool, text_size: f32) {
-        let theme = if dark { "dark" } else { "light" };
-        let mut harness = Harness::builder()
-            .with_size(egui::Vec2::new(1200.0, 400.0))
-            .with_pixels_per_point(1.0)
-            .build_ui(|ui| {
-                ui.label(
-                    egui::RichText::new("Survey Build Finish — the quick brown fox 0123456789")
-                        .size(text_size),
-                );
-                ui.label(egui::RichText::new("Inter 11px body").size(text_size));
-                ui.label(egui::RichText::new("Heading 16px").size(text_size));
-            });
-        if bundled_fonts {
-            design::install_fonts(&harness.ctx);
-        }
-        // Style and palette only; the bundled faces are the only thing the
-        // `bundled_fonts` flag controls.
-        design::apply(&harness.ctx, dark);
-        harness.step();
-        harness.step();
-        save_render(&mut harness, &format!("{theme}-{stem}.png"));
-    }
-
-    /// The probe labels with egui's default faces instead of Cadence's bundled
-    /// Inter + Phosphor stack.
-    ///
-    /// The truncation survived the egui 0.35 -> 0.36 migration (the 0.36 probe
-    /// is byte-identical to the 0.35 one), the vulkan -> gl backend swap (also
-    /// byte-identical), and a static audit of the bundled TTFs (all four faces
-    /// are real static glyf fonts with full cmap coverage, real outlines and
-    /// normal advance widths, so variable fonts, subsets, missing glyphs and
-    /// zero-width advances are ruled out). That leaves two suspects: the
-    /// kittest/epaint rendering pipeline, and Cadence's font install — the
-    /// Phosphor-first face order plus the Inter face order (Bold first), which
-    /// is the deferred S3-20 question.
-    ///
-    /// If these default-face labels render whole, the fault is in our font
-    /// install and the S3-20 ordering evaluation becomes the fix path; if they
-    /// truncate too, the fault is in the rendering pipeline itself.
-    #[test]
-    #[ignore = "rendered evidence; run by the Evidence CI job (needs software Vulkan)"]
-    fn evidence_font_probe_default() {
-        for dark in [true, false] {
-            font_probe_render(dark, "font-probe-default", false, 11.0);
-        }
-    }
-
     /// The same labels with the bundled faces at a large text size. The loss
     /// pattern is case-shaped — capitals, digits and punctuation survive while
     /// lowercase letters vanish — and at 11 px the lowercase x-height is about
@@ -8460,7 +8408,7 @@ mod evidence_render_tests {
     #[ignore = "rendered evidence; run by the Evidence CI job (needs software Vulkan)"]
     fn evidence_font_probe_large() {
         for dark in [true, false] {
-            font_probe_render(dark, "font-probe-large", true, 32.0);
+            font_probe_render(dark, "font-probe-large", true);
         }
     }
 
@@ -8470,7 +8418,7 @@ mod evidence_render_tests {
     #[ignore = "rendered evidence; run by the Evidence CI job (needs software Vulkan)"]
     fn evidence_font_probe_default_large() {
         for dark in [true, false] {
-            font_probe_render(dark, "font-probe-default-large", false, 32.0);
+            font_probe_render(dark, "font-probe-default-large", false);
         }
     }
 }

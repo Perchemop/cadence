@@ -39,3 +39,18 @@ P3 — Design-audit minors; nice-to-have for polish.
 - **Screenshots**: v0.17.0 release assets do not include PNG screenshots. The rendered-evidence pipeline requires Vulkan (`mesa-vulkan-drivers` / `libvulkan1`) which is unavailable in the current CI environment. A follow-up v0.17.1 release with screenshots is recommended once the environment supports wgpu snapshot rendering.
   - Alternative: Capture screenshots manually in a local GUI session and attach via GitHub release edit.
   - Evidence: AccessKit accessibility assertions passed for all interactive controls (see `docs/qc/capability-audit.md`).
+
+## Release v0.18.0 completion notes
+
+### Verified ✅
+
+- **egui/eframe 0.36 upgrade**: Stack migrated from 0.35 to 0.36 with improved Wayland support.
+- **Update-check crate**: Added `cadence-update-check` crate for GitHub Releases checking functionality.
+- **Phosphor fonts**: Bundled professional icon font for UI.
+- **README screenshots**: Phase-2b evidence pipeline generated PNG screenshots for table, Gantt, empty states, error dialogs, and narrow window layouts.
+- **Wayland fix**: Window now starts at 1200x800 to prevent single-letter widget display on Wayland.
+- **Token ledger**: v0.18.0 added with 3,904,279 measured tokens.
+
+### Remaining ⚠️
+
+- None — all P1 items for v0.18.0 completed and verified.

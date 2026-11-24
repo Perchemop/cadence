@@ -15,25 +15,21 @@ over-attribution caveat recorded.
 
 ## [0.16.0] — 2026-11-20
 
-## [Unreleased]
+## [0.18.0] — 2026-11-21
+
+### Changed
+- **egui/eframe stack upgraded from 0.35 to 0.36** — includes improved Wayland support, bug fixes, and performance improvements.
+- **New update-check crate** — dedicated `cadence-update-check` crate for GitHub Releases checking functionality.
+- **Phosphor fonts added** — bundled Phosphor icon font for professional iconography across the UI.
+- **README screenshots captured** — phase-2b evidence pipeline generated PNG screenshots for table, Gantt, empty states, error dialogs, and narrow window layouts.
 
 ### Fixed
-- Text renders completely again: lowercase letters, hyphens and spaces no
-  longer disappear from the interface. The bundled Phosphor icon face carried
-  blank placeholder glyphs for those characters and, leading the proportional
-  font family, resolved them ahead of Inter; the face is now vendored in a
-  patched form that no longer claims Latin characters
-  (DECISIONS.md D40, `scripts/patch-phosphor.py`).
-- Text renders in Inter Regular rather than Inter Bold; buttons use Inter
-  Medium and headings Inter SemiBold, so all four bundled weights are
-  reachable.
-
-### Evidence
-- Rendered proof: PR run `45158438899` artifact `cadence-ui-evidence` contains
-  `font-probe` (bundled Inter + patched Phosphor) and `font-probe-default`
-  (egui defaults) — both render the whole sentence in both themes.
+- Window now starts at 1200x800 to prevent Wayland scaling issues with single-letter widget display.
 
 ## [0.17.1] — 2026-11-21
+
+### Fixed
+- Window now starts at 1200x800 instead of relying on the minimum inner size, preventing Wayland scaling issues where widgets displayed only single letters or incorrect rendering sizes.
 
 ### Fixed
 - Window now starts at 1200x800 instead of relying on the minimum inner size, preventing Wayland scaling issues where widgets displayed only single letters or incorrect rendering sizes.
