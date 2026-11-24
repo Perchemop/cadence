@@ -54,3 +54,12 @@ P3 — Design-audit minors; nice-to-have for polish.
 ### Remaining ⚠️
 
 - None — all P1 items for v0.18.0 completed and verified.
+
+## Release v0.18.1 completion notes
+
+### Verified ✅
+
+- **Windows release build fixed**: Token ledger script skipped on Windows runner (bash script incompatible).
+- **Token ledger consistency**: Fixed date mismatch between docs/tokens.md and docs/tokens.json for v0.18.1.
+- **All platform installers published**: Linux (.deb x86_64 + ARM64), macOS (.dmg), Windows (.msi) with SHA-256 checksums and minisign signature.
+- **CI green on all four platforms**: ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest.

@@ -15,6 +15,12 @@ over-attribution caveat recorded.
 
 ## [0.16.0] — 2026-11-20
 
+## [0.18.1] — 2026-11-24
+
+### Fixed
+- **Windows release build** — skip token ledger script on Windows runner (bash script incompatible).
+- **Token ledger consistency** — fix date mismatch between docs/tokens.md and docs/tokens.json.
+
 ## [0.18.0] — 2026-11-21
 
 ### Changed
