@@ -52,4 +52,4 @@ local OpenCode usage records — never estimated, never invented.
 | v0.16.2 | 2026-11-20 | 0 | 1,711,676,910 | 0 | |
 | v0.17.0 | 2026-11-21 | 0 | 1,711,676,910 | 0 | |
 | v0.17.1 | 2026-11-21 | 0 | 1,711,676,910 | 0 | |
-| v0.18.0 | 2026-11-21 | 3,904,279 | 1,715,581,189 | 3,904,279 | UI redesign v0.17.0 + Wayland fix v0.17.1 + egui 0.36 upgrade |
+| v0.18.0 | 2026-11-24 | 3,904,279 | 1,715,581,189 | 3,904,279 | UI redesign v0.17.0 + Wayland fix v0.17.1 + egui 0.36 upgrade |
