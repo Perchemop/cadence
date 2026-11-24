@@ -8445,7 +8445,7 @@ mod evidence_render_tests {
     #[ignore = "rendered evidence; run by the Evidence CI job (needs software Vulkan)"]
     fn evidence_font_probe_default() {
         for dark in [true, false] {
-            font_probe_render(dark, "font-probe-default", false, 11.0);
+            font_probe_render(dark, "font-probe-default", false);
         }
     }
 
@@ -8460,7 +8460,7 @@ mod evidence_render_tests {
     #[ignore = "rendered evidence; run by the Evidence CI job (needs software Vulkan)"]
     fn evidence_font_probe_large() {
         for dark in [true, false] {
-            font_probe_render(dark, "font-probe-large", true, 32.0);
+            font_probe_render(dark, "font-probe-large", true);
         }
     }
 
@@ -8470,7 +8470,7 @@ mod evidence_render_tests {
     #[ignore = "rendered evidence; run by the Evidence CI job (needs software Vulkan)"]
     fn evidence_font_probe_default_large() {
         for dark in [true, false] {
-            font_probe_render(dark, "font-probe-default-large", false, 32.0);
+            font_probe_render(dark, "font-probe-default-large", false);
         }
     }
 }
