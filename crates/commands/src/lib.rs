@@ -1523,7 +1523,7 @@ impl Command for SetViewSettings {
 }
 
 /// Undo for [`SetViewSettings`]: restore the previous view settings.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SetViewSettingsUndo {
     pub previous: ViewSettings,
 }
@@ -1560,7 +1560,7 @@ impl Command for SetToolSettings {
 }
 
 /// Undo for [`SetToolSettings`]: restore the previous tool settings.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SetToolSettingsUndo {
     pub previous: ToolSettings,
 }
