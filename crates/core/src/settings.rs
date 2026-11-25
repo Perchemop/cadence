@@ -4,7 +4,7 @@
 //! Fallback chain: Tool → View → Project → Global → Built-in defaults.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{self, Map, Value};
+use serde_json::{self, Value};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use time::Date;
