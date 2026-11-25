@@ -9,12 +9,14 @@
 //! - Accessibility compliance
 
 use cadence_ui_egui::design_tokens::{
-    ColorTokens, DesignTokenSet, Density, EasingToken, FontWeight, RadiusSet, RadiusToken, SpacingToken,
-    ThemeMode, TypographyScale, Theme, LightTheme, DarkTheme, ThemeRegistry,
-    ACCENT, FOCUS_RING, ACCENT_ON, LIGHT_COLORS, DARK_COLORS, BASE_UNIT,
-    light_tokens, dark_tokens,
+    dark_tokens, light_tokens, ColorTokens, DarkTheme, Density, DesignTokenSet, EasingToken,
+    FontWeight, LightTheme, RadiusSet, RadiusToken, SpacingToken, Theme, ThemeMode, ThemeRegistry,
+    TypographyScale, ACCENT, ACCENT_ON, BASE_UNIT, DARK_COLORS, FOCUS_RING, LIGHT_COLORS,
 };
-use cadence_ui_egui::theme::{parse_color, StatusSeverity, variance_color, non_working_color, status_date_color, ThemeVariant, chrome};
+use cadence_ui_egui::theme::{
+    chrome, non_working_color, parse_color, status_date_color, variance_color, StatusSeverity,
+    ThemeVariant,
+};
 
 /// Test that all required colour roles exist and are distinct per theme.
 #[test]
@@ -56,7 +58,10 @@ fn color_roles_complete_and_distinct() {
         ];
         for i in 0..status_colors.len() {
             for j in i + 1..status_colors.len() {
-                assert_ne!(status_colors[i], status_colors[j], "Status colors must be distinct");
+                assert_ne!(
+                    status_colors[i], status_colors[j],
+                    "Status colors must be distinct"
+                );
             }
         }
 
@@ -212,20 +217,17 @@ fn spacing_tokens_correct_multipliers() {
     assert_eq!(base, 4.0);
 
     let expected = [
-        (SpacingToken::Xs, 0.5),
-        (SpacingToken::Sm, 1.0),
-        (SpacingToken::Md, 2.0),
-        (SpacingToken::Lg, 3.0),
-        (SpacingToken::Xl, 4.0),
-        (SpacingToken::Xxl, 6.0),
-        (SpacingToken::Xxxl, 8.0),
-        (SpacingToken::Huge, 12.0),
-        (SpacingToken::Massive, 16.0),
+        (SpacingToken::Xs, 0.5), (SpacingToken::Sm, 1.0), (SpacingToken::Md, 2.0), (SpacingToken::Lg, 3.0), (SpacingToken::Xl, 4.0), (SpacingToken::Xxl, 6.0), (SpacingToken::Xxxl, 8.0), (SpacingToken::Huge, 12.0), (SpacingToken::Massive, 16.0),
     ];
 
     for (token, mult) in expected {
         let value = token.value(Density::Standard);
-        assert_eq!(value, base * mult, "Token {:?} should be {mult}× base", token);
+        assert_eq!(
+            value,
+            base * mult,
+            "Token {:?} should be {mult}× base",
+            token
+        );
     }
 }
 
@@ -344,8 +346,7 @@ fn line_heights_reasonable() {
 
     // All line heights should be >= 1.0
     let specs = [
-        &t.display, &t.h1, &t.h2, &t.h3, &t.body,
-        &t.small, &t.caption, &t.mono, &t.button,
+        &t.display, &t.h1, &t.h2, &t.h3, &t.body, &t.small, &t.caption, &t.mono, &t.button,
     ];
 
     for spec in specs {
@@ -389,8 +390,14 @@ fn color_parsing_formats() {
     );
 
     // RGB
-    assert_eq!(parse_color("rgb(244, 245, 247)"), Color32::from_rgb(244, 245, 247));
-    assert_eq!(parse_color("rgb(31, 41, 51)"), Color32::from_rgb(31, 41, 51));
+    assert_eq!(
+        parse_color("rgb(244, 245, 247)"),
+        Color32::from_rgb(244, 245, 247)
+    );
+    assert_eq!(
+        parse_color("rgb(31, 41, 51)"),
+        Color32::from_rgb(31, 41, 51)
+    );
 
     // RGBA with 0-1 alpha
     assert_eq!(
@@ -409,37 +416,88 @@ fn color_parsing_formats() {
 #[test]
 fn variance_color_mapping() {
     // Positive variance = delay/overspend = red family (status_critical)
-    assert_eq!(variance_color(Some(5), ThemeVariant::Light), LIGHT_COLORS.status_critical);
-    assert_eq!(variance_color(Some(5), ThemeVariant::Dark), DARK_COLORS.status_critical);
+    assert_eq!(
+        variance_color(Some(5), ThemeVariant::Light),
+        LIGHT_COLORS.status_critical
+    );
+    assert_eq!(
+        variance_color(Some(5), ThemeVariant::Dark),
+        DARK_COLORS.status_critical
+    );
 
     // Negative variance = improvement = green family (status_ok)
-    assert_eq!(variance_color(Some(-3), ThemeVariant::Light), LIGHT_COLORS.status_ok);
-    assert_eq!(variance_color(Some(-3), ThemeVariant::Dark), DARK_COLORS.status_ok);
+    assert_eq!(
+        variance_color(Some(-3), ThemeVariant::Light),
+        LIGHT_COLORS.status_ok
+    );
+    assert_eq!(
+        variance_color(Some(-3), ThemeVariant::Dark),
+        DARK_COLORS.status_ok
+    );
 
     // Zero/none = grid/subtle
-    assert_eq!(variance_color(None, ThemeVariant::Light), LIGHT_COLORS.border_subtle);
-    assert_eq!(variance_color(Some(0), ThemeVariant::Light), LIGHT_COLORS.border_subtle);
+    assert_eq!(
+        variance_color(None, ThemeVariant::Light),
+        LIGHT_COLORS.border_subtle
+    );
+    assert_eq!(
+        variance_color(Some(0), ThemeVariant::Light),
+        LIGHT_COLORS.border_subtle
+    );
 }
 
 /// Test status severity colors map to correct tokens.
 #[test]
 fn status_severity_colors() {
-    assert_eq!(StatusSeverity::Info.color(ThemeVariant::Light), LIGHT_COLORS.text_muted);
-    assert_eq!(StatusSeverity::Success.color(ThemeVariant::Light), LIGHT_COLORS.status_ok);
-    assert_eq!(StatusSeverity::Warning.color(ThemeVariant::Light), LIGHT_COLORS.status_warn);
-    assert_eq!(StatusSeverity::Error.color(ThemeVariant::Light), LIGHT_COLORS.status_critical);
+    assert_eq!(
+        StatusSeverity::Info.color(ThemeVariant::Light),
+        LIGHT_COLORS.text_muted
+    );
+    assert_eq!(
+        StatusSeverity::Success.color(ThemeVariant::Light),
+        LIGHT_COLORS.status_ok
+    );
+    assert_eq!(
+        StatusSeverity::Warning.color(ThemeVariant::Light),
+        LIGHT_COLORS.status_warn
+    );
+    assert_eq!(
+        StatusSeverity::Error.color(ThemeVariant::Light),
+        LIGHT_COLORS.status_critical
+    );
 }
 
 /// Test status severity classification.
 #[test]
 fn status_severity_classification() {
-    assert_eq!(StatusSeverity::from_message("Cannot delete activity"), StatusSeverity::Error);
-    assert_eq!(StatusSeverity::from_message("Must select an activity"), StatusSeverity::Error);
-    assert_eq!(StatusSeverity::from_message("Invalid date"), StatusSeverity::Error);
-    assert_eq!(StatusSeverity::from_message("Saved project"), StatusSeverity::Success);
-    assert_eq!(StatusSeverity::from_message("Activity created"), StatusSeverity::Success);
-    assert_eq!(StatusSeverity::from_message("Warning: over allocation"), StatusSeverity::Warning);
-    assert_eq!(StatusSeverity::from_message("Info: loaded"), StatusSeverity::Info);
+    assert_eq!(
+        StatusSeverity::from_message("Cannot delete activity"),
+        StatusSeverity::Error
+    );
+    assert_eq!(
+        StatusSeverity::from_message("Must select an activity"),
+        StatusSeverity::Error
+    );
+    assert_eq!(
+        StatusSeverity::from_message("Invalid date"),
+        StatusSeverity::Error
+    );
+    assert_eq!(
+        StatusSeverity::from_message("Saved project"),
+        StatusSeverity::Success
+    );
+    assert_eq!(
+        StatusSeverity::from_message("Activity created"),
+        StatusSeverity::Success
+    );
+    assert_eq!(
+        StatusSeverity::from_message("Warning: over allocation"),
+        StatusSeverity::Warning
+    );
+    assert_eq!(
+        StatusSeverity::from_message("Info: loaded"),
+        StatusSeverity::Info
+    );
 }
 
 /// Test chrome button creation.
@@ -509,10 +567,7 @@ fn special_colors_exist() {
 #[test]
 fn all_colors_valid_css() {
     fn is_valid_color(s: &str) -> bool {
-        s.starts_with('#')
-            || s.starts_with("rgb")
-            || s.starts_with("rgba")
-            || s == "transparent"
+        s.starts_with('#') || s.starts_with("rgb") || s.starts_with("rgba") || s == "transparent"
     }
 
     // Note: current design_tokens.rs stores colors as Color32, not CSS strings

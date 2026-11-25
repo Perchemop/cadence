@@ -18,7 +18,7 @@ use thiserror::Error;
 use time::{Date, Duration};
 
 use crate::calendar_set::{CalendarId, CalendarSet, CalendarSetError};
-use crate::settings::{ProjectSettings, CalendarProjectSettings, EvmDisplayPreference, CostRates};
+use crate::settings::{CalendarProjectSettings, CostRates, EvmDisplayPreference, ProjectSettings};
 use crate::wbs::{WbsId, WbsTree};
 
 /// Which top-level view is shown.
@@ -1087,7 +1087,12 @@ impl Project {
                     nc.name.clone(),
                     CalendarProjectSettings {
                         workweek: nc.calendar.working_weekdays(),
-                        holidays: nc.calendar.holidays().iter().map(|d| d.to_string()).collect(),
+                        holidays: nc
+                            .calendar
+                            .holidays()
+                            .iter()
+                            .map(|d| d.to_string())
+                            .collect(),
                     },
                 )
             })
@@ -1101,7 +1106,10 @@ impl Project {
             column_visibility: Vec::new(),
             cost_rates: CostRates::default(),
             auto_capture_baselines: false,
-            evm_display: self.tool_settings.evm_display.unwrap_or(EvmDisplayPreference::Full),
+            evm_display: self
+                .tool_settings
+                .evm_display
+                .unwrap_or(EvmDisplayPreference::Full),
             calendars_json,
             schema_version: 10,
         }

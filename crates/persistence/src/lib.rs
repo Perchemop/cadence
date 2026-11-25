@@ -16,12 +16,12 @@ use std::path::Path;
 use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
-    DailyNote, DailyNoteId, EvmDisplayPreference, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
-    LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship, RelationshipId,
-    Resource, ResourceId, ResourceKind, FULL_UNITS,
+    DailyNote, DailyNoteId, EvmDisplayPreference, LinkType, LookaheadSnapshot,
+    LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project,
+    Relationship, RelationshipId, Resource, ResourceId, ResourceKind, FULL_UNITS,
 };
-use cadence_core::wbs::{WbsId, WbsTree};
 use cadence_core::settings::{GlobalSettings, ProjectSettings};
+use cadence_core::wbs::{WbsId, WbsTree};
 use rusqlite::{params, Connection};
 use thiserror::Error;
 use time::{Date, Month};
@@ -654,7 +654,7 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
             found,
             supported: SCHEMA_VERSION,
         }),
-    }?;  // propagate any error from the version match
+    }?; // propagate any error from the version match
     ensure_project_settings_table(&connection)?;
     Ok(())
 }
@@ -1126,12 +1126,12 @@ fn read_project_settings(connection: &Connection) -> Result<ProjectSettings> {
     let mut stmt = connection.prepare("SELECT workweek, resource_capacity, resource_cost_per_unit, auto_capture_baselines, evm_display, calendars_json FROM project_settings WHERE project_id = 1")?;
     let row = stmt.query_row([], |row| {
         Ok((
-            row.get::<_, i64>(0)?,                    // workweek bitfield
-            row.get::<_, i64>(1)?,                    // resource capacity
-            row.get::<_, i64>(2)?,                    // resource cost per unit
-            row.get::<_, i64>(3)?,                    // auto capture baselines
-            row.get::<_, i64>(4)?,                    // evm display preference
-            row.get::<_, String>(5)?,                 // calendars JSON
+            row.get::<_, i64>(0)?,    // workweek bitfield
+            row.get::<_, i64>(1)?,    // resource capacity
+            row.get::<_, i64>(2)?,    // resource cost per unit
+            row.get::<_, i64>(3)?,    // auto capture baselines
+            row.get::<_, i64>(4)?,    // evm display preference
+            row.get::<_, String>(5)?, // calendars JSON
         ))
     })?;
 

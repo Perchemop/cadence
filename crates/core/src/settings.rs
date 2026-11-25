@@ -4,55 +4,79 @@
 //! Fallback chain: Tool → View → Project → Global → Built-in defaults.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{self, Value, Map};
+use serde_json::{self, Map, Value};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use time::Date;
 
-use crate::model::{
-    ActivityId, BaselineId, ViewMode, AssistantMessage,
-};
 use crate::calendar_set::CalendarId;
+use crate::model::{ActivityId, AssistantMessage, BaselineId, ViewMode};
 use crate::wbs::WbsId;
 
 /// Default value for histogram scale (1.0 = normal).
-fn default_histogram_scale() -> f32 { 1.0 }
+fn default_histogram_scale() -> f32 {
+    1.0
+}
 
 /// Default weekdays: Monday–Friday working, weekends off.
-fn default_weekdays() -> [bool; 7] { [true, true, true, true, true, false, false] }
+fn default_weekdays() -> [bool; 7] {
+    [true, true, true, true, true, false, false]
+}
 
 /// Default lookahead window: 2 weeks.
-fn default_lookahead_weeks() -> u32 { 2 }
+fn default_lookahead_weeks() -> u32 {
+    2
+}
 
 /// Default cost display mode: Units.
-fn default_cost_display() -> CostDisplay { CostDisplay::Units }
+fn default_cost_display() -> CostDisplay {
+    CostDisplay::Units
+}
 
 /// Default resource grouping: None (flat list).
-fn default_resource_group_by() -> ResourceGroupBy { ResourceGroupBy::None }
+fn default_resource_group_by() -> ResourceGroupBy {
+    ResourceGroupBy::None
+}
 
 /// Default boolean true.
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 /// Default audit severity: Info.
-fn default_audit_severity() -> AuditSeverity { AuditSeverity::Info }
+fn default_audit_severity() -> AuditSeverity {
+    AuditSeverity::Info
+}
 
 /// Default assistant history length: 50.
-fn default_assistant_history_len() -> usize { 50 }
+fn default_assistant_history_len() -> usize {
+    50
+}
 
 /// Default assistant model.
-fn default_assistant_model() -> String { "gpt-4o-mini".into() }
+fn default_assistant_model() -> String {
+    "gpt-4o-mini".into()
+}
 
 /// Default temperature for generation.
-fn default_temperature() -> f32 { 0.2 }
+fn default_temperature() -> f32 {
+    0.2
+}
 
 /// Default max tokens per response.
-fn default_max_tokens() -> u32 { 2000 }
+fn default_max_tokens() -> u32 {
+    2000
+}
 
 /// Default pixels per day for Gantt view.
-fn default_pixels_per_day() -> f32 { 14.0 }
+fn default_pixels_per_day() -> f32 {
+    14.0
+}
 
 /// Default split ratio for Gantt/table split.
-fn default_split_ratio() -> f32 { 0.3 }
+fn default_split_ratio() -> f32 {
+    0.3
+}
 
 /// Audit finding severity levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -235,8 +259,9 @@ impl Default for GlobalSettings {
     }
 }
 
-fn default_update_channel() -> String { "stable".into() }
-
+fn default_update_channel() -> String {
+    "stable".into()
+}
 
 // ========================================================================
 // LEVEL 2: PROJECT SETTINGS (embedded in .cadence SQLite)
@@ -293,9 +318,15 @@ impl Default for ProjectSettings {
     }
 }
 
-fn default_currency() -> String { "USD".to_string() }
-fn default_calendar() -> String { String::new() }
-fn default_workweek() -> [bool; 7] { [true, true, true, true, true, false, false] }
+fn default_currency() -> String {
+    "USD".to_string()
+}
+fn default_calendar() -> String {
+    String::new()
+}
+fn default_workweek() -> [bool; 7] {
+    [true, true, true, true, true, false, false]
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CostRates {
@@ -307,7 +338,9 @@ pub struct CostRates {
     pub overtime_multiplier: f32,
 }
 
-fn default_overtime_multiplier() -> f32 { 1.5 }
+fn default_overtime_multiplier() -> f32 {
+    1.5
+}
 
 impl Default for CostRates {
     fn default() -> Self {
@@ -403,7 +436,9 @@ pub struct ViewSettings {
     pub schema_version: u32,
 }
 
-fn default_zero_u32() -> u32 { 0 }
+fn default_zero_u32() -> u32 {
+    0
+}
 
 /// Table view settings.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -723,9 +758,15 @@ impl Default for ToolSettings {
     }
 }
 
-fn default_inspector_width() -> f32 { 320.0 }
-fn default_histogram_zoom() -> f32 { 1.0 }
-fn default_split_pane_ratio() -> f32 { 0.5 }
+fn default_inspector_width() -> f32 {
+    320.0
+}
+fn default_histogram_zoom() -> f32 {
+    1.0
+}
+fn default_split_pane_ratio() -> f32 {
+    0.5
+}
 
 /// Column resize tool settings.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -818,8 +859,6 @@ impl Default for SortKey {
 // ========================================================================
 // FALLBACK RESOLUTION HELPERS
 // ========================================================================
-
-
 
 // ========================================================================
 // SETTINGS CONTEXT: Aggregates all four levels with fallback logic
@@ -929,7 +968,10 @@ pub fn migrate_global_settings(mut settings: GlobalSettings, from_version: u32) 
 }
 
 /// Migrate ProjectSettings from an older schema version.
-pub fn migrate_project_settings(mut settings: ProjectSettings, from_version: u32) -> ProjectSettings {
+pub fn migrate_project_settings(
+    mut settings: ProjectSettings,
+    from_version: u32,
+) -> ProjectSettings {
     match from_version {
         0 => { /* initial migration if needed */ }
         _ => {}
@@ -1102,9 +1144,10 @@ pub fn load_global_settings() -> Result<GlobalSettings, std::io::Error> {
     }
     let content = std::fs::read_to_string(&path)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-    let value: Value = serde_json::from_str(&content)
-        .unwrap_or_else(|_| Value::Object(Default::default()));
-    migrate_global_settings_to_settings(&value).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    let value: Value =
+        serde_json::from_str(&content).unwrap_or_else(|_| Value::Object(Default::default()));
+    migrate_global_settings_to_settings(&value)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
 }
 
 /// Save global settings to the OS config directory with pretty JSON formatting.
@@ -1113,13 +1156,19 @@ pub fn save_global_settings(settings: &GlobalSettings) -> Result<(), std::io::Er
     // Ensure the config directory exists
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to create config dir: {}", e))
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to create config dir: {}", e),
+            )
         })?;
     }
     let json = serde_json::to_string_pretty(settings)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     std::fs::write(&path, json).map_err(|e| {
-        std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to write settings: {}", e))
+        std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Failed to write settings: {}", e),
+        )
     })
 }
 
@@ -1177,17 +1226,30 @@ pub fn migrate_global_settings_json(json: &mut Value, from_version: u32) -> Resu
             let mut new_obj = serde_json::Map::new();
 
             // Always set schema_version
-            new_obj.insert("schema_version".into(), Value::Number(serde_json::Number::from(GLOBAL_SCHEMA_VERSION)));
+            new_obj.insert(
+                "schema_version".into(),
+                Value::Number(serde_json::Number::from(GLOBAL_SCHEMA_VERSION)),
+            );
 
             // Theme: always include
-            new_obj.insert("theme".into(), serde_json::to_value(&settings.theme).unwrap_or(Value::String("system".into())));
+            new_obj.insert(
+                "theme".into(),
+                serde_json::to_value(&settings.theme).unwrap_or(Value::String("system".into())),
+            );
 
             // Density: always include
-            new_obj.insert("density".into(), serde_json::to_value(&settings.density).unwrap_or(Value::String("standard".into())));
+            new_obj.insert(
+                "density".into(),
+                serde_json::to_value(&settings.density).unwrap_or(Value::String("standard".into())),
+            );
 
             // Shortcuts: only if non-default
             if !settings.shortcuts.0.is_empty() {
-                new_obj.insert("shortcuts".into(), serde_json::to_value(&settings.shortcuts).unwrap_or(Value::Object(Default::default())));
+                new_obj.insert(
+                    "shortcuts".into(),
+                    serde_json::to_value(&settings.shortcuts)
+                        .unwrap_or(Value::Object(Default::default())),
+                );
             }
 
             // Assistant: only if non-default
@@ -1196,12 +1258,19 @@ pub fn migrate_global_settings_json(json: &mut Value, from_version: u32) -> Resu
                 || settings.assistant.temperature != 0.2
                 || settings.assistant.max_tokens != 2000
             {
-                new_obj.insert("assistant".into(), serde_json::to_value(&settings.assistant).unwrap_or(Value::Object(Default::default())));
+                new_obj.insert(
+                    "assistant".into(),
+                    serde_json::to_value(&settings.assistant)
+                        .unwrap_or(Value::Object(Default::default())),
+                );
             }
 
             // Update channel: only if non-default
             if settings.update_channel != "stable" {
-                new_obj.insert("update_channel".into(), Value::String(settings.update_channel.clone()));
+                new_obj.insert(
+                    "update_channel".into(),
+                    Value::String(settings.update_channel.clone()),
+                );
             }
 
             // High contrast: only if true (but it's always true by default)
@@ -1232,8 +1301,10 @@ pub fn migrate_global_settings_json(json: &mut Value, from_version: u32) -> Resu
 /// instance from a raw JSON Value.
 pub fn migrate_global_settings_to_settings(json: &Value) -> Result<GlobalSettings, String> {
     let mut json_clone = json.clone();
-    migrate_global_settings_json(&mut json_clone, 0).map_err(|e| format!("Migration failed: {}", e))?;
-    serde_json::from_value(json_clone).map_err(|e| format!("Failed to deserialize after migration: {}", e))
+    migrate_global_settings_json(&mut json_clone, 0)
+        .map_err(|e| format!("Migration failed: {}", e))?;
+    serde_json::from_value(json_clone)
+        .map_err(|e| format!("Failed to deserialize after migration: {}", e))
 }
 
 // ========================================================================
@@ -1260,7 +1331,14 @@ mod tests {
 
     #[test]
     fn density_level_all() {
-        assert_eq!(DensityLevel::ALL, [DensityLevel::Compact, DensityLevel::Standard, DensityLevel::Comfortable]);
+        assert_eq!(
+            DensityLevel::ALL,
+            [
+                DensityLevel::Compact,
+                DensityLevel::Standard,
+                DensityLevel::Comfortable
+            ]
+        );
     }
 
     #[test]
@@ -1377,7 +1455,10 @@ mod tests {
         let original = ProjectSettings {
             currency: "EUR".into(),
             default_calendar: "cal1".into(),
-            cost_rates: CostRates { default_rate: 100, overtime_multiplier: 2.0 },
+            cost_rates: CostRates {
+                default_rate: 100,
+                overtime_multiplier: 2.0,
+            },
             ..Default::default()
         };
         let json = serde_json::to_string(&original).unwrap();
@@ -1467,7 +1548,10 @@ mod tests {
     fn calendars_view_settings_defaults() {
         let cvs = CalendarsViewSettings::default();
         assert!(cvs.show_holidays);
-        assert!(cvs.editing_weekdays.iter().eq([true, true, true, true, true, false, false].iter()));
+        assert!(cvs
+            .editing_weekdays
+            .iter()
+            .eq([true, true, true, true, true, false, false].iter()));
     }
 
     #[test]
@@ -1601,7 +1685,10 @@ mod tests {
 
     #[test]
     fn cost_rates_serde() {
-        let original = CostRates { default_rate: 200, overtime_multiplier: 3.0 };
+        let original = CostRates {
+            default_rate: 200,
+            overtime_multiplier: 3.0,
+        };
         let json = serde_json::to_string(&original).unwrap();
         let recovered: CostRates = serde_json::from_str(&json).unwrap();
         assert_eq!(recovered.default_rate, 200);

@@ -140,74 +140,214 @@ fn assert_contrast(fg: Color32, bg: Color32, min_ratio: f32, context: &str) {
 fn light_theme_text_contrast() {
     let c = LIGHT_COLORS;
     // Body text (4.5:1 minimum)
-    assert_contrast(c.text_primary, c.surface_raised, 4.5, "light: text_primary on surface_raised");
-    assert_contrast(c.text_secondary, c.surface_raised, 4.5, "light: text_secondary on surface_raised");
+    assert_contrast(
+        c.text_primary,
+        c.surface_raised,
+        4.5,
+        "light: text_primary on surface_raised",
+    );
+    assert_contrast(
+        c.text_secondary,
+        c.surface_raised,
+        4.5,
+        "light: text_secondary on surface_raised",
+    );
     // Muted text (3:1 minimum for secondary)
-    assert_contrast(c.text_muted, c.surface_raised, 3.0, "light: text_muted on surface_raised");
+    assert_contrast(
+        c.text_muted,
+        c.surface_raised,
+        3.0,
+        "light: text_muted on surface_raised",
+    );
     // Text on accent (4.5:1)
-    assert_contrast(c.text_on_accent, c.accent, 4.5, "light: text_on_accent on accent");
+    assert_contrast(
+        c.text_on_accent,
+        c.accent,
+        4.5,
+        "light: text_on_accent on accent",
+    );
 }
 
 #[test]
 fn dark_theme_text_contrast() {
     let c = DARK_COLORS;
     // Body text (4.5:1 minimum)
-    assert_contrast(c.text_primary, c.surface_raised, 4.5, "dark: text_primary on surface_raised");
-    assert_contrast(c.text_secondary, c.surface_raised, 4.5, "dark: text_secondary on surface_raised");
+    assert_contrast(
+        c.text_primary,
+        c.surface_raised,
+        4.5,
+        "dark: text_primary on surface_raised",
+    );
+    assert_contrast(
+        c.text_secondary,
+        c.surface_raised,
+        4.5,
+        "dark: text_secondary on surface_raised",
+    );
     // Muted text (3:1 minimum for secondary)
-    assert_contrast(c.text_muted, c.surface_raised, 3.0, "dark: text_muted on surface_raised");
+    assert_contrast(
+        c.text_muted,
+        c.surface_raised,
+        3.0,
+        "dark: text_muted on surface_raised",
+    );
     // Text on accent (4.5:1)
-    assert_contrast(c.text_on_accent, c.accent, 4.5, "dark: text_on_accent on accent");
+    assert_contrast(
+        c.text_on_accent,
+        c.accent,
+        4.5,
+        "dark: text_on_accent on accent",
+    );
 }
 
 #[test]
 fn light_theme_ui_contrast() {
     let c = LIGHT_COLORS;
     // Focus ring (3:1 non-text minimum)
-    assert_contrast(c.focus_ring, c.surface_raised, 3.0, "light: focus_ring on surface_raised");
+    assert_contrast(
+        c.focus_ring,
+        c.surface_raised,
+        3.0,
+        "light: focus_ring on surface_raised",
+    );
     // Border subtle (3:1)
-    assert_contrast(c.border_subtle, c.surface_raised, 3.0, "light: border_subtle on surface_raised");
+    assert_contrast(
+        c.border_subtle,
+        c.surface_raised,
+        3.0,
+        "light: border_subtle on surface_raised",
+    );
     // Status colors on surface (3:1 for UI components)
-    assert_contrast(c.status_critical, c.surface_raised, 3.0, "light: status_critical on surface_raised");
-    assert_contrast(c.status_normal, c.surface_raised, 3.0, "light: status_normal on surface_raised");
-    assert_contrast(c.status_ok, c.surface_raised, 3.0, "light: status_ok on surface_raised");
-    assert_contrast(c.status_warn, c.surface_raised, 3.0, "light: status_warn on surface_raised");
+    assert_contrast(
+        c.status_critical,
+        c.surface_raised,
+        3.0,
+        "light: status_critical on surface_raised",
+    );
+    assert_contrast(
+        c.status_normal,
+        c.surface_raised,
+        3.0,
+        "light: status_normal on surface_raised",
+    );
+    assert_contrast(
+        c.status_ok,
+        c.surface_raised,
+        3.0,
+        "light: status_ok on surface_raised",
+    );
+    assert_contrast(
+        c.status_warn,
+        c.surface_raised,
+        3.0,
+        "light: status_warn on surface_raised",
+    );
     // Accent as UI component (3:1)
-    assert_contrast(c.accent, c.surface_raised, 3.0, "light: accent on surface_raised");
+    assert_contrast(
+        c.accent,
+        c.surface_raised,
+        3.0,
+        "light: accent on surface_raised",
+    );
 }
 
 #[test]
 fn dark_theme_ui_contrast() {
     let c = DARK_COLORS;
     // Focus ring (3:1 non-text minimum)
-    assert_contrast(c.focus_ring, c.surface_raised, 3.0, "dark: focus_ring on surface_raised");
+    assert_contrast(
+        c.focus_ring,
+        c.surface_raised,
+        3.0,
+        "dark: focus_ring on surface_raised",
+    );
     // Border subtle (3:1)
-    assert_contrast(c.border_subtle, c.surface_raised, 3.0, "dark: border_subtle on surface_raised");
+    assert_contrast(
+        c.border_subtle,
+        c.surface_raised,
+        3.0,
+        "dark: border_subtle on surface_raised",
+    );
     // Status colors on surface (3:1 for UI components)
-    assert_contrast(c.status_critical, c.surface_raised, 3.0, "dark: status_critical on surface_raised");
-    assert_contrast(c.status_normal, c.surface_raised, 3.0, "dark: status_normal on surface_raised");
-    assert_contrast(c.status_ok, c.surface_raised, 3.0, "dark: status_ok on surface_raised");
-    assert_contrast(c.status_warn, c.surface_raised, 3.0, "dark: status_warn on surface_raised");
+    assert_contrast(
+        c.status_critical,
+        c.surface_raised,
+        3.0,
+        "dark: status_critical on surface_raised",
+    );
+    assert_contrast(
+        c.status_normal,
+        c.surface_raised,
+        3.0,
+        "dark: status_normal on surface_raised",
+    );
+    assert_contrast(
+        c.status_ok,
+        c.surface_raised,
+        3.0,
+        "dark: status_ok on surface_raised",
+    );
+    assert_contrast(
+        c.status_warn,
+        c.surface_raised,
+        3.0,
+        "dark: status_warn on surface_raised",
+    );
     // Accent as UI component (3:1)
-    assert_contrast(c.accent, c.surface_raised, 3.0, "dark: accent on surface_raised");
+    assert_contrast(
+        c.accent,
+        c.surface_raised,
+        3.0,
+        "dark: accent on surface_raised",
+    );
 }
 
 #[test]
 fn light_theme_status_text_contrast() {
     let c = LIGHT_COLORS;
     // Status text on status backgrounds (4.5:1 for text)
-    assert_contrast(c.status_critical_on, c.status_critical, 4.5, "light: critical_on on critical");
-    assert_contrast(c.status_ok_on, c.status_ok, 4.5, "light: ok_on on ok");
-    assert_contrast(c.status_warn_on, c.status_warn, 4.5, "light: warn_on on warn");
+    assert_contrast(
+        c.status_critical_on,
+        c.status_critical,
+        4.5,
+        "light: critical_on on critical",
+    );
+    assert_contrast(
+        c.status_ok_on,
+        c.status_ok,
+        4.5,
+        "light: ok_on on ok",
+    );
+    assert_contrast(
+        c.status_warn_on,
+        c.status_warn,
+        4.5,
+        "light: warn_on on warn",
+    );
 }
 
 #[test]
 fn dark_theme_status_text_contrast() {
     let c = DARK_COLORS;
     // Status text on status backgrounds (4.5:1 for text)
-    assert_contrast(c.status_critical_on, c.status_critical, 4.5, "dark: critical_on on critical");
-    assert_contrast(c.status_ok_on, c.status_ok, 4.5, "dark: ok_on on ok");
-    assert_contrast(c.status_warn_on, c.status_warn, 4.5, "dark: warn_on on warn");
+    assert_contrast(
+        c.status_critical_on,
+        c.status_critical,
+        4.5,
+        "dark: critical_on on critical",
+    );
+    assert_contrast(
+        c.status_ok_on,
+        c.status_ok,
+        4.5,
+        "dark: ok_on on ok",
+    );
+    assert_contrast(
+        c.status_warn_on,
+        c.status_warn,
+        4.5,
+        "dark: warn_on on warn",
+    );
 }
 
 #[test]

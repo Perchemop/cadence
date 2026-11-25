@@ -4,7 +4,9 @@
 //! contrast requirements on both Light and Dark themes. Tests are headless —
 //! no display or egui rendering context needed.
 
-use cadence_ui_egui::design_tokens::{LIGHT_COLORS, DARK_COLORS, contrast_ratio, validate_contrast};
+use cadence_ui_egui::design_tokens::{
+    contrast_ratio, validate_contrast, DARK_COLORS, LIGHT_COLORS,
+};
 
 #[test]
 fn semantic_color_pairs_meet_wcag_aa_across_themes() {
@@ -12,12 +14,18 @@ fn semantic_color_pairs_meet_wcag_aa_across_themes() {
     // Light theme
     let light_failures = validate_contrast(&crate::design_tokens::LIGHT_COLORS);
     if !light_failures.is_empty() {
-        panic!("Light theme contrast failures:\n{}", light_failures.join("\n"));
+        panic!(
+            "Light theme contrast failures:\n{}",
+            light_failures.join("\n")
+        );
     }
 
     // Dark theme
     let dark_failures = validate_contrast(&crate::design_tokens::DARK_COLORS);
     if !dark_failures.is_empty() {
-        panic!("Dark theme contrast failures:\n{}", dark_failures.join("\n"));
+        panic!(
+            "Dark theme contrast failures:\n{}",
+            dark_failures.join("\n")
+        );
     }
 }
