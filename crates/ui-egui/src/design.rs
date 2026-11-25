@@ -338,8 +338,8 @@ impl Theme for DarkThemeImpl {
 
 /// Theme registry for dynamic theme switching (compatibility wrapper).
 pub struct ThemeRegistryCompat {
-    light: Box<dyn Theme>,
-    dark: Box<dyn Theme>,
+    light: Box<dyn Theme + Send + Sync>,
+    dark: Box<dyn Theme + Send + Sync>,
     current: ThemeMode,
 }
 
