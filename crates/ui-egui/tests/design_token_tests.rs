@@ -7,7 +7,7 @@
 // - Theme parity (light/dark both valid)
 // - Serialization round-trip
 
-use crate::design_tokens::*;
+use cadence_ui_egui::design_tokens::*;
 
 #[test]
 fn light_colors_complete() {

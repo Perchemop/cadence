@@ -12,9 +12,7 @@ use cadence_ui_egui::design_tokens::{
     dark_tokens, light_tokens, ColorTokens, DarkTheme, Density, DesignTokenSet, EasingToken,
     FontWeight, LightTheme, RadiusSet, RadiusToken, SpacingToken, Theme, ThemeMode, ThemeRegistry,
     TypographyScale, ACCENT, ACCENT_ON, BASE_UNIT, DARK_COLORS, FOCUS_RING, LIGHT_COLORS,
-};
-use cadence_ui_egui::theme::{
-    chrome, non_working_color, parse_color, status_date_color, variance_color, StatusSeverity,
+    non_working_color, parse_color, status_date_color, variance_color, StatusSeverity,
     ThemeVariant,
 };
 
@@ -608,11 +606,11 @@ fn theme_trait_implementations() {
 #[test]
 fn theme_registry() {
     let mut registry = ThemeRegistry::new();
-    assert_eq!(registry.current, ThemeMode::Dark);
+    assert_eq!(registry.mode(), ThemeMode::System);
 
     registry.set_mode(ThemeMode::Light);
-    assert_eq!(registry.current, ThemeMode::Light);
+    assert_eq!(registry.mode(), ThemeMode::Light);
 
     registry.set_mode(ThemeMode::Dark);
-    assert_eq!(registry.current, ThemeMode::Dark);
+    assert_eq!(registry.mode(), ThemeMode::Dark);
 }
