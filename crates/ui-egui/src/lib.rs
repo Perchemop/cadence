@@ -45,6 +45,8 @@ use time::{Date, Month};
 
 pub mod crash;
 pub mod design;
+pub mod design_tokens;
+pub mod theme;
 // Update checking lives in the shared suite crate (crates/update-check, D27);
 // re-export the module so the public path `cadence_ui_egui::update_check`
 // is unchanged from when the code was an inline module.
@@ -74,21 +76,39 @@ impl DesignTokens {
     /// Tokens for the requested theme, sourced from the design palette so
     /// both themes keep their WCAG AA verified contrast.
     pub fn for_dark(dark: bool) -> Self {
-        let palette = design::palette(dark);
+        let colors = design::palette(dark);
         Self {
             accent: ACCENT,
-            critical: palette.critical,
-            normal: palette.normal,
+            critical: colors.critical,
+            normal: colors.normal,
             primary_bg: ACCENT.linear_multiply(0.15),
             accent_bg: ACCENT.linear_multiply(0.2),
-            panel_bg: palette.panel.linear_multiply(0.95),
+            panel_bg: colors.panel.linear_multiply(0.95),
+        }
+    }
+
+    /// Creates DesignTokens from the new comprehensive token system.
+    pub fn from_theme(theme: &dyn design::Theme) -> Self {
+        let colors = theme.colors();
+        Self {
+            accent: colors.accent,
+            critical: colors.status_critical,
+            normal: colors.status_normal,
+            primary_bg: colors.accent.linear_multiply(0.15),
+            accent_bg: colors.accent.linear_multiply(0.2),
+            panel_bg: colors.surface_raised,
         }
     }
 }
 
-/// Apply a theme to an egui context.
+/// Apply a theme to an egui context using the new token system.
 pub fn apply_theme(ctx: &Context, dark: bool) {
     design::apply(ctx, dark);
+}
+
+/// Apply a theme using the new Theme trait.
+pub fn apply_theme_with(ctx: &Context, theme: &dyn design::Theme) {
+    theme.apply(ctx);
 }
 
 /// Sort key for the activity table.
@@ -726,7 +746,10 @@ enum ExportFormat {
 impl CadenceApp {
     /// Return the design tokens for the current theme.
     fn design_tokens(&self) -> DesignTokens {
-        DesignTokens::for_dark(self.dark)
+        // Use the new theme registry system
+        let registry = design::theme_registry();
+        let theme = registry.active_theme(self.dark);
+        DesignTokens::from_theme(theme)
     }
 
     /// Select the top-level view to show (used by embedding hosts and tests).

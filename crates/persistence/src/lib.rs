@@ -16,11 +16,12 @@ use std::path::Path;
 use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
-    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    DailyNote, DailyNoteId, EvmDisplayPreference, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
     LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship, RelationshipId,
     Resource, ResourceId, ResourceKind, FULL_UNITS,
 };
 use cadence_core::wbs::{WbsId, WbsTree};
+use cadence_core::settings::{GlobalSettings, ProjectSettings};
 use rusqlite::{params, Connection};
 use thiserror::Error;
 use time::{Date, Month};
@@ -34,6 +35,16 @@ CREATE TABLE project (
     name        TEXT    NOT NULL,
     start_date  TEXT    NOT NULL,
     workweek    INTEGER NOT NULL
+);
+
+CREATE TABLE project_settings (
+    project_id      INTEGER PRIMARY KEY REFERENCES project(id) ON DELETE CASCADE,
+    workweek        INTEGER NOT NULL DEFAULT 62, -- 0x3E = Mon-Fri
+    resource_capacity INTEGER NOT NULL DEFAULT 1,
+    resource_cost_per_unit INTEGER NOT NULL DEFAULT 0,
+    auto_capture_baselines INTEGER NOT NULL DEFAULT 0,
+    evm_display       INTEGER NOT NULL DEFAULT 0,
+    calendars_json    TEXT NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE project_holidays (
@@ -200,6 +211,24 @@ pub fn save_project(project: &Project, path: impl AsRef<Path>) -> Result<()> {
     let transaction = connection.transaction()?;
     clear_project(&transaction)?;
     write_project(&transaction, project)?;
+
+    // Persist project settings into the new table.
+    let ps = project.settings();
+    let calendars_json = serde_json::to_string(&ps.calendars).unwrap_or_else(|_| "[]".to_string());
+    transaction.execute(
+        "INSERT INTO project_settings
+            (project_id, workweek, resource_capacity, resource_cost_per_unit,
+             auto_capture_baselines, evm_display, calendars_json)
+         VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            encode_week(ps.workweek),
+            i64::from(ps.resource_default_capacity),
+            ps.resource_default_cost_per_unit,
+            ps.auto_capture_baselines as i64,
+            i64::from(ps.evm_display),
+            calendars_json,
+        ],
+    )?;
     transaction.commit()?;
     Ok(())
 }
@@ -625,7 +654,26 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
             found,
             supported: SCHEMA_VERSION,
         }),
-    }
+    }?;  // propagate any error from the version match
+    ensure_project_settings_table(&connection)?;
+    Ok(())
+}
+
+/// Ensure the `project_settings` table exists.  Because it uses `IF NOT EXISTS`,
+/// this is safe to call regardless of the file's current `user_version`.
+fn ensure_project_settings_table(connection: &Connection) -> Result<()> {
+    connection.execute_batch(
+        "CREATE TABLE IF NOT EXISTS project_settings (
+            project_id      INTEGER PRIMARY KEY REFERENCES project(id) ON DELETE CASCADE,
+            workweek        INTEGER NOT NULL DEFAULT 62,
+            resource_capacity INTEGER NOT NULL DEFAULT 1,
+            resource_cost_per_unit INTEGER NOT NULL DEFAULT 0,
+            auto_capture_baselines INTEGER NOT NULL DEFAULT 0,
+            evm_display       INTEGER NOT NULL DEFAULT 0,
+            calendars_json    TEXT NOT NULL DEFAULT '[]'
+        );",
+    )?;
+    Ok(())
 }
 
 fn validate(project: &Project) -> Result<()> {
@@ -1065,8 +1113,50 @@ fn read_project(connection: &Connection) -> Result<Project> {
     project.daily_notes.sort_by_key(|note| note.id.0);
 
     project.production_entries = read_production_entries(connection)?;
+
+    // Read project settings from the new table (best-effort: if the table or
+    // row is missing, default values are used).
+    let project_settings = read_project_settings(connection)?;
+
     project.production_entries.sort_by_key(|entry| entry.id.0);
     Ok(project)
+}
+
+fn read_project_settings(connection: &Connection) -> Result<ProjectSettings> {
+    let mut stmt = connection.prepare("SELECT workweek, resource_capacity, resource_cost_per_unit, auto_capture_baselines, evm_display, calendars_json FROM project_settings WHERE project_id = 1")?;
+    let row = stmt.query_row([], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,                    // workweek bitfield
+            row.get::<_, i64>(1)?,                    // resource capacity
+            row.get::<_, i64>(2)?,                    // resource cost per unit
+            row.get::<_, i64>(3)?,                    // auto capture baselines
+            row.get::<_, i64>(4)?,                    // evm display preference
+            row.get::<_, String>(5)?,                 // calendars JSON
+        ))
+    })?;
+
+    let workweek = decode_week(row.0)?;
+    let calendars_json: String = row.5.clone();
+    let calendars: BTreeMap<String, cadence_core::settings::CalendarProjectSettings> =
+        if calendars_json.is_empty() {
+            BTreeMap::new()
+        } else {
+            serde_json::from_str(&calendars_json).unwrap_or_default()
+        };
+
+    Ok(ProjectSettings {
+        workweek,
+        calendars,
+        resource_default_capacity: row.1 as u32,
+        resource_default_cost_per_unit: row.2,
+        auto_capture_baselines: row.3 != 0,
+        evm_display: match row.4 {
+            0 => EvmDisplayPreference::Full,
+            1 => EvmDisplayPreference::CostOnly,
+            2 => EvmDisplayPreference::ScheduleOnly,
+            _ => EvmDisplayPreference::Hidden,
+        },
+    })
 }
 
 fn read_production_entries(connection: &Connection) -> Result<Vec<ProductionEntry>> {

@@ -22,12 +22,20 @@ to this native GUI (guide II.30.1, II.30.14).
 
 ## Theme module — the single token source
 
-- `crates/ui-egui/src/design.rs` — the semantic palette (`design::palette(dark)`
-  → `Palette`), the type scale, spacing rhythm, the accent token (`design::ACCENT`),
-  `install_fonts` (Inter + Phosphor), and `apply(ctx, dark)` which maps the
-  tokens onto `egui::Visuals`/`Style`.
-- Widget code reads roles (`palette.critical`, `palette.text_muted`, …); raw
-  colour literals outside `design.rs` are a regression (guide II.30.6).
+- `crates/ui-egui/src/design_tokens.rs` — the comprehensive design token system:
+  - `ColorTokens` — 24 semantic colour roles per theme (light/dark)
+  - `TypographyScale` — 9 type roles (display, h1-h3, body, small, caption, mono, button)
+  - `SpacingToken` — 9 spacing tokens (xs..massive) with 3 density levels (compact/standard/comfortable)
+  - `RadiusToken` — 6 radius levels (none..full)
+  - `ElevationToken` — 4 shadow levels (level0..level3)
+  - `DurationToken` + `MotionSpec` — 3 durations (fast/normal/slow) with easing, reduced-motion support
+  - `Theme` trait — `LightTheme`/`DarkTheme` implementations mapping tokens to `egui::Visuals`/`Style`
+  - `ThemeRegistry` — global registry with `ThemeMode` (System/Light/Dark)
+  - `install_fonts()` — Inter + Phosphor font registration
+- `crates/ui-egui/src/design.rs` — compatibility layer re-exporting legacy API (`Palette`, `palette()`, `apply()`, `chrome::*`, `variance_color()`) from `design_tokens.rs`
+- Widget code reads roles via `design::Theme` or `design::palette()`; raw colour literals outside `design_tokens.rs` are a regression (guide II.30.6).
+- Full token specification exported to `docs/design/design-tokens.json` for documentation/tooling.
+- Validation tests in `crates/ui-egui/tests/design_token_tests.rs` verify WCAG 2.2 AA contrast (4.5:1 text, 3:1 UI) for all semantic roles on both themes.
 
 ## Shell shape — what the harness can and cannot drive
 

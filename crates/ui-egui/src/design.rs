@@ -1,76 +1,25 @@
-//! Cadence design system: the visual tokens from `docs/design/brand.md`,
-//! applied to an egui context.
+//! Cadence design system — Compatibility Layer
 //!
-//! The design intent: calm, dense, precise — a professional scheduling tool.
-//! Panels are quiet chrome; the schedule is the hero. Colour is reserved for
-//! meaning (critical, variance, selection); structure is carried by hairlines
-//! and a 4 px spacing rhythm; type is Inter with a strict size scale.
+//! This module provides the legacy API for backward compatibility during
+//! migration to the comprehensive design token system in `design_tokens.rs`
+//! and `theme.rs`.
+//!
+//! New code should use `design_tokens` and `theme` directly.
 
-use egui::{Color32, Context, FontDefinitions, FontFamily, Margin, Visuals};
+use crate::design_tokens::{
+    ColorTokens, DesignTokenSet, FontWeight, Palette as LegacyPalette, RadiusSet,
+    RadiusToken, SpacingToken, ThemeMode, ThemeRegistry, TypographyScale,
+    Theme as DesignTheme, LightTheme, DarkTheme, init_theme_registry as init_registry,
+    theme_registry as get_registry, theme_registry_mut as get_registry_mut,
+    ACCENT, FOCUS_RING, ACCENT_ON, LIGHT_COLORS, DARK_COLORS, BASE_UNIT,
+};
+use crate::theme::{apply_theme as new_apply_theme, apply_visuals_only, install_fonts as new_install_fonts};
+use egui::{Color32, Context, Visuals};
 
-/// The selection/highlight accent. Kept distinct from the semantic palette and
-/// WCAG-AA verified against both themes by `accessibility_tests`.
-pub const ACCENT: Color32 = Color32::from_rgb(0x2F, 0x6F, 0xED);
-
-/// The visible keyboard-focus ring colour. egui maps keyboard focus onto the
-/// `active` widget state, so this stroke becomes the focus ring everywhere.
-/// Verified at ≥ 3:1 against each theme's panel background by
-/// `focus_ring_meets_nontext_contrast_on_both_themes`.
-pub const FOCUS_RING: Color32 = ACCENT;
-
-/// Text/icon colour on accent fills (the `chrome::primary` button). Verified
-/// 4.5:1 against `ACCENT` in both themes by the accessibility tests.
-pub const ACCENT_ON: Color32 = Color32::WHITE;
-
-/// The four chrome button roles. Every toolbar, tab and status-bar control in
-/// the shell goes through one of these helpers; the shell never hand-rolls
-/// fills or strokes (II.30.6: one token source).
-pub mod chrome {
-    use super::*;
-
-    /// The one primary action per row (e.g. "New activity"): accent fill,
-    /// no stroke, high-contrast label.
-    pub fn primary(label: impl Into<String>) -> egui::Button<'static> {
-        egui::Button::new(egui::RichText::new(label.into()).color(ACCENT_ON).strong())
-            .fill(ACCENT)
-            .stroke(egui::Stroke::NONE)
-    }
-
-    /// Toolbar/quick actions: invisible chrome until hovered. Hover and
-    /// active fills come from the token-driven widget visuals in [`apply`].
-    pub fn ghost(label: impl Into<String>) -> egui::Button<'static> {
-        egui::Button::new(label.into())
-            .fill(Color32::TRANSPARENT)
-            .stroke(egui::Stroke::NONE)
-    }
-
-    /// View tabs. Selected: accent-tinted fill, strong text and an accent
-    /// hairline; idle: transparent with muted text. State is therefore
-    /// conveyed by fill + weight + stroke, never colour alone.
-    pub fn tab(dark: bool, selected: bool, label: impl Into<String>) -> egui::Button<'static> {
-        let p = palette(dark);
-        let text = if selected {
-            egui::RichText::new(label.into()).strong().color(p.text)
-        } else {
-            egui::RichText::new(label.into()).color(p.text_muted)
-        };
-        egui::Button::new(text)
-            .selected(selected)
-            .frame(selected)
-            .fill(if selected {
-                ACCENT.linear_multiply(0.2)
-            } else {
-                Color32::TRANSPARENT
-            })
-            .stroke(if selected {
-                egui::Stroke::new(1.0, ACCENT)
-            } else {
-                egui::Stroke::NONE
-            })
-    }
-}
-
-/// Semantic and structural colours for one theme.
+/// Semantic and structural colours for one theme (legacy Palette).
+///
+/// This is the old Palette struct kept for backward compatibility.
+/// New code should use `design_tokens::DesignTokenSet` directly.
 #[derive(Debug, Clone, Copy)]
 pub struct Palette {
     /// Window background behind panels.
@@ -94,8 +43,6 @@ pub struct Palette {
     /// Extreme background (e.g. the Gantt canvas inside a panel).
     pub deep: Color32,
     /// Non-working day background tint (weekends/holidays on Gantt canvas).
-    /// Non-working day background tint (weekends/holidays on Gantt canvas).
-    /// Better contrast: more distinct from both light and dark backgrounds.
     pub non_working: Color32,
     /// Status date line color (dotted indicator separate from today line).
     pub status_date: Color32,
@@ -103,227 +50,233 @@ pub struct Palette {
     pub focus_ring: Color32,
 }
 
-/// The palette for the requested theme.
+impl Palette {
+    /// Create a legacy Palette from the new token system.
+    pub fn from_tokens(tokens: &DesignTokenSet) -> Self {
+        let c = &tokens.colors;
+        Self {
+            bg: c.surface_base,
+            panel: c.surface_raised,
+            text: c.text_primary,
+            text_muted: c.text_muted,
+            grid: c.border_subtle,
+            critical: c.status_critical,
+            normal: c.status_normal,
+            ok: c.status_ok,
+            warn: c.status_warn,
+            deep: c.surface_sunken,
+            non_working: c.non_working,
+            status_date: c.status_date,
+            focus_ring: c.focus_ring,
+        }
+    }
+}
+
+/// The palette for the requested theme (legacy function).
 pub fn palette(dark: bool) -> Palette {
-    if dark {
-        Palette {
-            bg: Color32::from_rgb(0x16, 0x18, 0x1D),
-            panel: Color32::from_rgb(0x1D, 0x20, 0x26),
-            text: Color32::from_rgb(0xE3, 0xE7, 0xEB),
-            text_muted: Color32::from_rgb(0x9A, 0xA5, 0xB1),
-            grid: Color32::from_rgb(0x2A, 0x2E, 0x36),
-            critical: Color32::from_rgb(0xF8, 0x71, 0x71),
-            normal: Color32::from_rgb(0x93, 0xC5, 0xFD),
-            ok: Color32::from_rgb(0x4A, 0xDE, 0x80),
-            warn: Color32::from_rgb(0xFB, 0xBF, 0x24),
-            deep: Color32::from_rgb(0x11, 0x13, 0x18),
-            non_working: Color32::from_rgb(0x1A, 0x1E, 0x27), // Dark theme: subtle dark grey
-            status_date: Color32::from_rgba_unmultiplied(0xF8, 0x71, 0x71, 128), // Accent tint, 50% opacity
-            focus_ring: FOCUS_RING,
-        }
-    } else {
-        Palette {
-            bg: Color32::from_rgb(0xF4, 0xF5, 0xF7),
-            panel: Color32::from_rgb(0xFF, 0xFF, 0xFF),
-            text: Color32::from_rgb(0x1F, 0x29, 0x33),
-            text_muted: Color32::from_rgb(0x5F, 0x6B, 0x7A),
-            grid: Color32::from_rgb(0xE5, 0xE7, 0xEB),
-            critical: Color32::from_rgb(0xB9, 0x1C, 0x1C),
-            normal: Color32::from_rgb(0x1D, 0x4E, 0xD8),
-            ok: Color32::from_rgb(0x15, 0x80, 0x3D),
-            warn: Color32::from_rgb(0xB4, 0x53, 0x09),
-            deep: Color32::from_rgb(0xEC, 0xEE, 0xF1),
-            non_working: Color32::from_rgb(0xF0, 0xF4, 0xF8), // Light theme: very light blue-grey
-            status_date: Color32::from_rgba_unmultiplied(0xB9, 0x1C, 0x1C, 128), // Red tint, 50% opacity
-            focus_ring: FOCUS_RING,
-        }
+    let colors = if dark { DARK_COLORS } else { LIGHT_COLORS };
+    Palette {
+        bg: colors.surface_base,
+        panel: colors.surface_raised,
+        text: colors.text_primary,
+        text_muted: colors.text_muted,
+        grid: colors.border_subtle,
+        critical: colors.status_critical,
+        normal: colors.status_normal,
+        ok: colors.status_ok,
+        warn: colors.status_warn,
+        deep: colors.surface_sunken,
+        non_working: colors.non_working,
+        status_date: colors.status_date,
+        focus_ring: colors.focus_ring,
     }
 }
 
-/// Colour a variance: delays and overspends in red, improvements in green.
-///
-/// Each theme gets its own pair so that both pass WCAG AA (4.5:1) against the
-/// panel background — verified by the crate's accessibility contrast tests.
-pub fn variance_color(value: Option<i64>, dark: bool) -> Color32 {
-    match (value, dark) {
-        (Some(value), true) if value > 0 => Color32::from_rgb(0xE7, 0x4C, 0x3C),
-        (Some(value), true) if value < 0 => Color32::from_rgb(0x2E, 0xCC, 0x71),
-        (Some(value), false) if value > 0 => Color32::from_rgb(0xC0, 0x39, 0x2B),
-        (Some(value), false) if value < 0 => Color32::from_rgb(0x1E, 0x84, 0x49),
-        _ => palette(dark).grid,
-    }
-}
-
-/// Translucent variant of a palette colour; the theme module owns construction (II.30.6).
+/// Translucent variant of a palette colour; the theme module owns construction.
 pub fn translucent(color: Color32, alpha: u8) -> Color32 {
     Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
 }
 
-/// Bundle Inter (SIL OFL 1.1) and install the type scale: 11 px body, 9.5 px
-/// small, 16 px headings.
-pub fn install_fonts(ctx: &Context) {
-    let mut fonts = FontDefinitions::default();
-    let inter: [(&str, &[u8]); 4] = [
-        (
-            "Inter-Regular",
-            include_bytes!("../assets/fonts/Inter-Regular.ttf"),
-        ),
-        (
-            "Inter-Medium",
-            include_bytes!("../assets/fonts/Inter-Medium.ttf"),
-        ),
-        (
-            "Inter-SemiBold",
-            include_bytes!("../assets/fonts/Inter-SemiBold.ttf"),
-        ),
-        (
-            "Inter-Bold",
-            include_bytes!("../assets/fonts/Inter-Bold.ttf"),
-        ),
-    ];
-    for (name, data) in inter {
-        fonts
-            .font_data
-            .insert(name.to_string(), egui::FontData::from_static(data).into());
+/// Colour a variance: delays and overspends in red, improvements in green.
+pub fn variance_color(value: Option<i64>, dark: bool) -> Color32 {
+    let colors = if dark { DARK_COLORS } else { LIGHT_COLORS };
+    match value {
+        Some(v) if v > 0 => colors.variance_positive,
+        Some(v) if v < 0 => colors.variance_negative,
+        _ => colors.border_subtle,
     }
-    // Phosphor Icons (MIT) supply the Private Use Area glyphs the command bar
-    // and inspector use. We register our own patched copy of the upstream
-    // face (scripts/patch-phosphor.py) instead of the crate's copy: upstream
-    // maps a-z, space and hyphen to blank placeholder glyphs, and with the
-    // icon face first in the family egui resolves every lowercase letter to a
-    // blank icon glyph and renders nothing (the 2026-11-22 evidence defect).
-    // The patch points those characters at .notdef, which egui reads as "this
-    // face has no such glyph", so Latin text falls through to Inter.
-    fonts.font_data.insert(
-        "phosphor".to_string(),
-        egui::FontData::from_static(include_bytes!("../assets/fonts/Phosphor.ttf")).into(),
-    );
-    // The proportional family is ordered by role, never by weight: egui keeps
-    // the first face whose character map contains a character, so listing the
-    // four weights together renders every glyph in whichever one comes first.
-    // The icon face leads because Inter maps a handful of private-use
-    // codepoints (E036, E038, E150, E220, E2CE, E24A) to letterform glyphs and
-    // would otherwise shadow six of the app's icons. The built-in fallbacks
-    // stay last for symbols egui's own faces cover.
-    let fallbacks = fonts
-        .families
-        .remove(&FontFamily::Proportional)
-        .unwrap_or_default();
-    let mut proportional = vec!["phosphor".to_string(), "Inter-Regular".to_string()];
-    proportional.extend(fallbacks.iter().cloned());
-    fonts
-        .families
-        .insert(FontFamily::Proportional, proportional);
-    // One family per weight, so a weight is chosen by naming its family.
-    // Each weight family keeps the icon face first (its private-use glyphs
-    // must beat Inter's private-use mappings in every style) and shares the
-    // same fallback tail as Proportional, so symbols never depend on which
-    // style drew them.
-    for name in ["Inter-Medium", "Inter-SemiBold", "Inter-Bold"] {
-        let mut family = vec!["phosphor".to_string(), name.to_string()];
-        family.extend(fallbacks.iter().cloned());
-        fonts.families.insert(FontFamily::Name(name.into()), family);
-    }
-    ctx.set_fonts(fonts);
 }
 
-/// Apply the type scale and spacing rhythm to both themes' styles.
-fn install_style(ctx: &Context) {
-    for theme in [egui::Theme::Light, egui::Theme::Dark] {
-        ctx.style_mut_of(theme, |style| {
-            let text = &mut style.text_styles;
-            text.insert(egui::TextStyle::Body, egui::FontId::proportional(11.0));
-            text.insert(egui::TextStyle::Small, egui::FontId::proportional(9.5));
-            text.insert(
-                egui::TextStyle::Button,
-                egui::FontId::new(11.0, FontFamily::Name("Inter-Medium".into())),
-            );
-            text.insert(
-                egui::TextStyle::Heading,
-                egui::FontId::new(16.0, FontFamily::Name("Inter-SemiBold".into())),
-            );
-            text.insert(egui::TextStyle::Monospace, egui::FontId::monospace(11.0));
-            // An 8 px horizontal / 4 px vertical rhythm, so every surface
-            // shares one spacing grid.
-            style.spacing.item_spacing = egui::vec2(8.0, 4.0);
-            style.spacing.button_padding = egui::vec2(8.0, 4.0);
-            style.spacing.menu_margin = Margin::symmetric(8, 4);
-            style.spacing.indent = 16.0;
-        });
+/// The four chrome button roles.
+pub mod chrome {
+    use super::*;
+    use crate::theme::chrome as new_chrome;
+    use crate::design_tokens::DesignTokenSet;
+    use crate::theme::parse_color;
+    use egui::{Button, RichText, Stroke};
+
+    /// The one primary action per row (e.g. "New activity"): accent fill,
+    /// no stroke, high-contrast label.
+    pub fn primary(label: impl Into<String>) -> Button<'static> {
+        // Default to light theme tokens; caller should use theme-aware version
+        let tokens = DesignTokenSet::light();
+        new_chrome::primary(&tokens, label)
     }
+
+    /// Toolbar/quick actions: invisible chrome until hovered.
+    pub fn ghost(label: impl Into<String>) -> Button<'static> {
+        let tokens = DesignTokenSet::light();
+        new_chrome::ghost(&tokens, label)
+    }
+
+    /// View tabs. Selected: accent-tinted fill, strong text and an accent
+    /// hairline; idle: transparent with muted text.
+    pub fn tab(dark: bool, selected: bool, label: impl Into<String>) -> Button<'static> {
+        let tokens = if dark { DesignTokenSet::dark() } else { DesignTokenSet::light() };
+        new_chrome::tab(&tokens, selected, label)
+    }
+}
+
+/// Bundle Inter (SIL OFL 1.1) and install the type scale.
+pub fn install_fonts(ctx: &Context) {
+    new_install_fonts(ctx);
 }
 
 /// Apply the full theme: background, panels, widget rounding, spacing and
 /// widget states, all from the design tokens.
 pub fn apply(ctx: &Context, dark: bool) {
-    install_style(ctx);
-    apply_visuals(ctx, dark);
+    crate::theme::apply_theme(ctx, dark);
 }
 
 /// Apply only the palette visuals — backgrounds, text colours, widget
-/// states — without the type scale. The rendered-evidence control probe uses
-/// this: it draws with egui's own faces, so it cannot reference the bundled
-/// families the type scale names (epaint panics on an unbound family).
+/// states — without the type scale.
 pub fn apply_visuals(ctx: &Context, dark: bool) {
-    let p = palette(dark);
-    let mut v = if dark {
-        Visuals::dark()
-    } else {
-        Visuals::light()
-    };
+    crate::theme::apply_visuals_only(ctx, dark);
+}
 
-    v.panel_fill = p.panel;
-    v.extreme_bg_color = p.deep;
-    v.window_fill = p.panel;
-    v.override_text_color = Some(p.text);
+/// Theme mode enumeration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThemeMode {
+    Light,
+    Dark,
+}
 
-    // 4 px soft corners everywhere; 6 px on windows.
-    v.window_corner_radius = 6.0.into();
-    v.menu_corner_radius = 6.0.into();
-    for widget in [
-        &mut v.widgets.noninteractive,
-        &mut v.widgets.inactive,
-        &mut v.widgets.hovered,
-        &mut v.widgets.active,
-        &mut v.widgets.open,
-    ] {
-        widget.corner_radius = 4.0.into();
-        widget.fg_stroke.width = 1.0;
-        widget.fg_stroke.color = p.text;
-        widget.bg_stroke.color = p.grid;
-        widget.bg_stroke.width = 1.0;
-        widget.expansion = 0.0;
+/// Theme trait for dynamic theming.
+pub trait Theme: Send + Sync {
+    /// Apply this theme to an egui context.
+    fn apply(&self, ctx: &Context);
+
+    /// Get the colors for this theme.
+    fn colors(&self) -> ThemeColors;
+}
+
+/// Colors returned by the Theme trait.
+#[derive(Debug, Clone, Copy)]
+pub struct ThemeColors {
+    pub accent: Color32,
+    pub surface_raised: Color32,
+    pub status_critical: Color32,
+    pub status_normal: Color32,
+}
+
+/// Light theme implementation.
+pub struct LightTheme;
+
+impl Theme for LightTheme {
+    fn apply(&self, ctx: &Context) {
+        crate::theme::apply_theme(ctx, false);
     }
-    // egui maps keyboard focus onto the `active` widget state, so a coloured
-    // stroke here becomes the visible focus ring for every focused widget.
-    v.widgets.active.bg_stroke.color = p.focus_ring;
 
-    v.widgets.noninteractive.bg_fill = p.panel;
-    v.widgets.noninteractive.fg_stroke.color = p.text;
-    v.widgets.inactive.fg_stroke.color = p.text;
-    v.widgets.hovered.fg_stroke.color = p.text;
-    v.widgets.hovered.bg_fill = if dark {
-        Color32::from_rgb(0x26, 0x2A, 0x33)
-    } else {
-        Color32::from_rgb(0xEE, 0xF1, 0xF6)
-    };
-    v.widgets.active.bg_fill = if dark {
-        Color32::from_rgb(0x2E, 0x33, 0x3D)
-    } else {
-        Color32::from_rgb(0xE2, 0xE8, 0xF2)
-    };
+    fn colors(&self) -> ThemeColors {
+        let tokens = DesignTokenSet::light();
+        ThemeColors {
+            accent: ACCENT,
+            surface_raised: tokens.colors.surface_raised,
+            status_critical: tokens.colors.status_critical,
+            status_normal: tokens.colors.status_normal,
+        }
+    }
+}
 
-    v.selection.bg_fill = ACCENT;
-    v.selection.stroke.color = ACCENT;
-    v.hyperlink_color = ACCENT;
+/// Dark theme implementation.
+pub struct DarkTheme;
 
-    v.faint_bg_color = if dark {
-        Color32::from_rgb(0x21, 0x24, 0x2B)
-    } else {
-        Color32::from_rgb(0xF0, 0xF2, 0xF5)
-    };
+impl Theme for DarkTheme {
+    fn apply(&self, ctx: &Context) {
+        crate::theme::apply_theme(ctx, true);
+    }
 
-    v.striped = true;
+    fn colors(&self) -> ThemeColors {
+        let tokens = DesignTokenSet::dark();
+        ThemeColors {
+            accent: ACCENT,
+            surface_raised: tokens.colors.surface_raised,
+            status_critical: tokens.colors.status_critical,
+            status_normal: tokens.colors.status_normal,
+        }
+    }
+}
 
-    ctx.set_visuals(v);
+/// Theme registry for dynamic theme switching.
+pub struct ThemeRegistry {
+    light: Box<dyn Theme>,
+    dark: Box<dyn Theme>,
+    current: ThemeMode,
+}
+
+impl ThemeRegistry {
+    /// Create a new theme registry with default themes.
+    pub fn new() -> Self {
+        Self {
+            light: Box::new(LightTheme),
+            dark: Box::new(DarkTheme),
+            current: ThemeMode::Dark,
+        }
+    }
+
+    /// Get the current theme.
+    pub fn current(&self) -> &dyn Theme {
+        match self.current {
+            ThemeMode::Light => &*self.light,
+            ThemeMode::Dark => &*self.dark,
+        }
+    }
+
+    /// Set the current theme mode.
+    pub fn set_mode(&mut self, mode: ThemeMode) {
+        self.current = mode;
+    }
+
+    /// Apply the current theme to a context.
+    pub fn apply(&self, ctx: &Context) {
+        self.current().apply(ctx);
+    }
+}
+
+/// Global theme registry.
+static mut THEME_REGISTRY: Option<ThemeRegistry> = None;
+
+/// Initialize the global theme registry.
+pub fn init_theme_registry() {
+    unsafe {
+        THEME_REGISTRY = Some(ThemeRegistry::new());
+    }
+}
+
+/// Get the global theme registry.
+pub fn theme_registry() -> &'static ThemeRegistry {
+    unsafe {
+        THEME_REGISTRY
+            .as_ref()
+            .expect("Theme registry not initialized. Call init_theme_registry() first.")
+    }
+}
+
+/// Get mutable access to the global theme registry.
+pub fn theme_registry_mut() -> &'static mut ThemeRegistry {
+    unsafe {
+        THEME_REGISTRY
+            .as_mut()
+            .expect("Theme registry not initialized. Call init_theme_registry() first.")
+    }
 }

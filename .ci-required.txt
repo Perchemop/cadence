@@ -23,3 +23,9 @@ Bill of materials
 Lockfile freshness
 # Personal data scan (pii.yml)
 Personal data scan
+# Accessibility (a11y.yml)
+a11y-contrast-tests
+a11y-harness-tests
+a11y-target-size-tests
+a11y-focus-ring-tests
+a11y-density-tests

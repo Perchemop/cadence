@@ -373,3 +373,64 @@ jobs:
         with:
           package: cadence-core,cadence-commands,cadence-persistence,cadence-interchange
           baseline-rev: ${{ github.event.pull_request.base.sha }}
+
+  # Accessibility gates (guide II.21): WCAG 2.2 AA contrast, keyboard, focus, target size
+  a11y-contrast-tests:
+    name: a11y-contrast-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Run contrast tests
+        run: cargo test -p cadence-ui-egui --test contrast_tests -- --nocapture
+
+  a11y-harness-tests:
+    name: a11y-harness-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Run a11y harness tests
+        run: cargo test -p cadence-ui-egui --test a11y_harness -- --nocapture
+
+  a11y-target-size-tests:
+    name: a11y-target-size-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Run target size tests
+        run: cargo test -p cadence-ui-egui --lib -- target_size --nocapture
+
+  a11y-focus-ring-tests:
+    name: a11y-focus-ring-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Run focus ring tests
+        run: cargo test -p cadence-ui-egui --lib -- focus_ring --nocapture
+
+  a11y-density-tests:
+    name: a11y-density-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Run density tests
+        run: cargo test -p cadence-ui-egui --lib -- density --nocapture

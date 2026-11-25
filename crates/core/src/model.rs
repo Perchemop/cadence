@@ -906,6 +906,15 @@ pub struct Project {
     /// Production entries: dated actual progress recorded against activities.
     #[serde(default)]
     pub production_entries: Vec<ProductionEntry>,
+    /// Global settings — app-wide preferences, shared across all projects.
+    #[serde(default)]
+    pub global_settings: cadence_core::settings::GlobalSettings,
+    /// View-level settings — specific to the currently active view/window.
+    #[serde(default)]
+    pub view_settings: cadence_core::settings::ViewSettings,
+    /// Tool-level settings — per‑(project, view, tool) transient preferences.
+    #[serde(default)]
+    pub tool_settings: cadence_core::settings::ToolSettings,
 }
 
 impl Project {
@@ -924,6 +933,10 @@ impl Project {
             lookahead_snapshots: Vec::new(),
             daily_notes: Vec::new(),
             production_entries: Vec::new(),
+            // Settings default to their own defaults (via #[serde(default)]).
+            global_settings: Default::default(),
+            view_settings: Default::default(),
+            tool_settings: Default::default(),
         }
     }
 
@@ -1011,6 +1024,66 @@ impl Project {
                 .unwrap_or_default()
                 .saturating_add(1),
         )
+    }
+
+    /// Global settings — app-wide preferences.
+    pub fn global_settings(&self) -> &cadence_core::settings::GlobalSettings {
+        &self.global_settings
+    }
+
+    /// View-level settings — specific to the currently active view/window.
+    pub fn view_settings(&self) -> &cadence_core::settings::ViewSettings {
+        &self.view_settings
+    }
+
+    /// Tool-level settings — per‑(project, view, tool) transient preferences.
+    pub fn tool_settings(&self) -> &cadence_core::settings::ToolSettings {
+        &self.tool_settings
+    }
+
+    /// Mutably borrow global settings.
+    pub fn global_settings_mut(&mut self) -> &mut cadence_core::settings::GlobalSettings {
+        &mut self.global_settings
+    }
+
+    /// Mutably borrow view settings.
+    pub fn view_settings_mut(&mut self) -> &mut cadence_core::settings::ViewSettings {
+        &mut self.view_settings
+    }
+
+    /// Mutably borrow tool settings.
+    pub fn tool_settings_mut(&mut self) -> &mut cadence_core::settings::ToolSettings {
+        &mut self.tool_settings
+    }
+
+    /// Return a copy of all project settings (global + view + tool).
+    pub fn settings(&self) -> ProjectSettings {
+        let workweek = self.calendar.working_weekdays();
+        // Convert the named calendars to a BTreeMap keyed by name.
+        let calendars: BTreeMap<String, cadence_core::settings::CalendarProjectSettings> = self
+            .calendars
+            .calendars()
+            .iter()
+            .map(|nc| {
+                (
+                    nc.name.clone(),
+                    cadence_core::settings::CalendarProjectSettings {
+                        workweek: nc.calendar.working_weekdays(),
+                        holidays: nc.calendar.holidays().iter().map(|d| d.to_string()).collect(),
+                    },
+                )
+            })
+            .collect();
+        ProjectSettings {
+            workweek,
+            resource_default_capacity: self.tool_settings.assignment_default_units,
+            resource_default_cost_per_unit: self.resources
+                .first()
+                .map_or(0, |r| r.cost_per_unit),
+            auto_capture_baselines: false, // not yet implemented at project level
+            evm_display: self.tool_settings.evm_display.unwrap_or(cadence_core::settings::EvmDisplayPreference::Full),
+            calendars,
+        }
     }
 
     /// Next unused resource identifier.

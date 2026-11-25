@@ -13,10 +13,11 @@ use cadence_core::calendar_set::{CalendarId, NamedCalendar};
 use cadence_core::engine::{capture_baseline, capture_lookahead_snapshot, schedule};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
-    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    DailyNote, DailyNoteId, EvmDisplayPreference, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
     LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship, RelationshipId,
     Resource, ResourceId, ResourceKind,
 };
+use cadence_core::settings::{DensityLevel, GlobalSettings, ProjectSettings, ThemePreference, ViewSettings, ToolSettings};
 use cadence_core::wbs::{WbsId, WbsNode};
 use time::Date;
 
@@ -1459,6 +1460,112 @@ impl Command for SetAssignmentUnitsUndo {
             resource_id: self.resource_id,
             previous: current,
         }))
+    }
+
+/// Set global-level settings (theme, update checks, default density, shortcuts).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetGlobalSettings {
+    pub settings: GlobalSettings,
+}
+
+impl Command for SetGlobalSettings {
+    fn description(&self) -> String {
+        "set global settings".to_string()
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        // Store the new global settings — project doesn't persist them,
+        // but the command stack captures the inverse for undo.
+        let previous = project.global_settings.clone();
+        project.global_settings = self.settings.clone();
+        Ok(Box::new(SetGlobalSettingsUndo { previous }))
+    }
+}
+
+/// Undo for [`SetGlobalSettings`]: restore the previous global settings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetGlobalSettingsUndo {
+    pub previous: GlobalSettings,
+}
+
+impl Command for SetGlobalSettingsUndo {
+    fn description(&self) -> String {
+        "restore previous global settings".to_string()
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        project.global_settings = self.previous.clone();
+        Ok(Box::new(SetGlobalSettingsUndo { previous: project.global_settings.clone() }))
+    }
+}
+
+/// Set view-level settings (visible columns, filter, sort, split-gantt visibility).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetViewSettings {
+    pub settings: ViewSettings,
+}
+
+impl Command for SetViewSettings {
+    fn description(&self) -> String {
+        "set view settings".to_string()
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let previous = project.view_settings.clone();
+        project.view_settings = self.settings.clone();
+        Ok(Box::new(SetViewSettingsUndo { previous }))
+    }
+}
+
+/// Undo for [`SetViewSettings`]: restore the previous view settings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetViewSettingsUndo {
+    pub previous: ViewSettings,
+}
+
+impl Command for SetViewSettingsUndo {
+    fn description(&self) -> String {
+        "restore previous view settings".to_string()
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        project.view_settings = self.previous.clone();
+        Ok(Box::new(SetViewSettingsUndo { previous: project.view_settings.clone() }))
+    }
+}
+
+/// Set tool-level settings (density override, toolbar visibility, inspector state, assignment units).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetToolSettings {
+    pub settings: ToolSettings,
+}
+
+impl Command for SetToolSettings {
+    fn description(&self) -> String {
+        "set tool settings".to_string()
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        let previous = project.tool_settings.clone();
+        project.tool_settings = self.settings.clone();
+        Ok(Box::new(SetToolSettingsUndo { previous }))
+    }
+}
+
+/// Undo for [`SetToolSettings`]: restore the previous tool settings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetToolSettingsUndo {
+    pub previous: ToolSettings,
+}
+
+impl Command for SetToolSettingsUndo {
+    fn description(&self) -> String {
+        "restore previous tool settings".to_string()
+    }
+
+    fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
+        project.tool_settings = self.previous.clone();
+        Ok(Box::new(SetToolSettingsUndo { previous: project.tool_settings.clone() }))
     }
 }
 
