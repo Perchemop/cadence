@@ -5,7 +5,7 @@
 //! no display or egui rendering context needed.
 
 use cadence_ui_egui::design_tokens::{
-    contrast_ratio, validate_contrast, DARK_COLORS, LIGHT_COLORS,
+    validate_contrast, DARK_COLORS, LIGHT_COLORS,
 };
 
 #[test]
