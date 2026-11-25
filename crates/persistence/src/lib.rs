@@ -13,8 +13,6 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use serde_json;
-
 use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
@@ -22,7 +20,7 @@ use cadence_core::model::{
     LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project,
     Relationship, RelationshipId, Resource, ResourceId, ResourceKind, FULL_UNITS,
 };
-use cadence_core::settings::{CostRates, EvmDisplayPreference, GlobalSettings, ProjectSettings};
+use cadence_core::settings::{CostRates, EvmDisplayPreference, ProjectSettings};
 use cadence_core::wbs::{WbsId, WbsTree};
 use rusqlite::{params, Connection};
 use thiserror::Error;
@@ -226,7 +224,7 @@ pub fn save_project(project: &Project, path: impl AsRef<Path>) -> Result<()> {
             1, // resource_capacity (default)
             ps.cost_rates.default_rate,
             ps.auto_capture_baselines as i64,
-            i64::from(ps.evm_display),
+            ps.evm_display as i64,
             ps.calendars_json,
         ],
     )?;
@@ -1117,7 +1115,7 @@ fn read_project(connection: &Connection) -> Result<Project> {
 
     // Read project settings from the new table (best-effort: if the table or
     // row is missing, default values are used).
-    let project_settings = read_project_settings(connection)?;
+    let _project_settings = read_project_settings(connection)?;
 
     project.production_entries.sort_by_key(|entry| entry.id.0);
     Ok(project)
