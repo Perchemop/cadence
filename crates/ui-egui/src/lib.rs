@@ -748,7 +748,7 @@ impl CadenceApp {
     fn design_tokens(&self) -> DesignTokens {
         // Use the new theme registry system
         let registry = design::theme_registry();
-        let theme = registry.active_theme(self.dark);
+        let theme = registry.lock().unwrap().active_theme(self.dark);
         DesignTokens::from_theme(theme)
     }
 

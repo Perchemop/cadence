@@ -66,7 +66,7 @@ use std::sync::{Mutex, OnceLock};
 ///
 /// All colours are stored as sRGB `Color32`. Contrast is verified in
 /// `tests/design_token_tests.rs` against WCAG 2.2 AA.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
 pub struct ColorTokens {
     /// Window background behind panels.
     pub surface_base: Color32,
@@ -127,7 +127,7 @@ pub struct ColorTokens {
 }
 
 /// Light theme colour tokens (from brand.md).
-pub const LIGHT_COLORS: ColorTokens = ColorTokens {
+pub static LIGHT_COLORS: ColorTokens = ColorTokens {
     surface_base: Color32::from_rgb(0xF4, 0xF5, 0xF7),   // #F4F5F7
     surface_raised: Color32::from_rgb(0xFF, 0xFF, 0xFF), // #FFFFFF
     surface_sunken: Color32::from_rgb(0xE2, 0xE8, 0xF2), // #E2E8F2
@@ -152,14 +152,14 @@ pub const LIGHT_COLORS: ColorTokens = ColorTokens {
     selection_text: Color32::WHITE,
     surface_deep: Color32::from_rgb(0xEC, 0xEE, 0xF1),   // #ECEEF1
     non_working_day: Color32::from_rgb(0xF0, 0xF4, 0xF8), // #F0F4F8
-    status_date: Color32::from_rgba_unmultiplied(0xB9, 0x1C, 0x1C, 128), // 50% critical
-    overlay_scrim: Color32::from_rgba_unmultiplied(0x00, 0x00, 0x00, 0x80), // 50% black
+    status_date: Color32::from_rgba_premultiplied(0xB9, 0x1C, 0x1C, 128), // 50% critical
+    overlay_scrim: Color32::from_rgba_premultiplied(0x00, 0x00, 0x00, 0x80), // 50% black
     disabled_bg: Color32::from_rgb(0xF0, 0xF2, 0xF5),     // #F0F2F5
     disabled_text: Color32::from_rgb(0x9C, 0xA5, 0xB1),   // #9CA5B1
 };
 
 /// Dark theme colour tokens (from brand.md).
-pub const DARK_COLORS: ColorTokens = ColorTokens {
+pub static DARK_COLORS: ColorTokens = ColorTokens {
     surface_base: Color32::from_rgb(0x16, 0x18, 0x1D),   // #16181D
     surface_raised: Color32::from_rgb(0x1D, 0x20, 0x26), // #1D2026
     surface_sunken: Color32::from_rgb(0x2E, 0x33, 0x3D), // #2E333D
@@ -184,8 +184,8 @@ pub const DARK_COLORS: ColorTokens = ColorTokens {
     selection_text: Color32::WHITE,
     surface_deep: Color32::from_rgb(0x11, 0x13, 0x18),   // #111318
     non_working_day: Color32::from_rgb(0x1A, 0x1E, 0x27), // #1A1E27
-    status_date: Color32::from_rgba_unmultiplied(0xF8, 0x71, 0x71, 128), // 50% critical
-    overlay_scrim: Color32::from_rgba_unmultiplied(0x00, 0x00, 0x00, 0xA0), // 62.5% black
+    status_date: Color32::from_rgba_premultiplied(0xF8, 0x71, 0x71, 128), // 50% critical
+    overlay_scrim: Color32::from_rgba_premultiplied(0x00, 0x00, 0x00, 0xA0), // 62.5% black
     disabled_bg: Color32::from_rgb(0x21, 0x24, 0x2B),     // #21242B
     disabled_text: Color32::from_rgb(0x5A, 0x62, 0x6E),   // #5A626E
 };
@@ -584,7 +584,7 @@ impl Default for RadiusSet {
 }
 
 /// Elevation shadows for all levels.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ElevationSet {
     pub level0: (f32, f32, f32, Color32),
     pub level1: (f32, f32, f32, Color32),
