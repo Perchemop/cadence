@@ -11,36 +11,6 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-  format:
-    name: Format (fix)
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-      - name: Run cargo fmt (fix)
-        run: cargo fmt --all
-      - name: Commit formatting changes
-        run: |
-          git config user.name "Cadence Dev"
-          git config user.email "dev@example.com"
-          if ! git diff --quiet; then
-            git add -A
-            git commit -m "chore: apply cargo fmt formatting"
-            git push
-          else
-            echo "No formatting changes needed"
-          fi
-
   verify:
     name: Verify (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
