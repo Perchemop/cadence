@@ -554,6 +554,7 @@ pub struct DesignTokenSet {
     pub typography: TypographyScale,
     pub density: Density,
     pub radius: RadiusSet,
+    #[serde(skip)]
     pub elevation: ElevationSet,
     pub motion: MotionSet,
 }
@@ -583,7 +584,7 @@ impl Default for RadiusSet {
 }
 
 /// Elevation shadows for all levels.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ElevationSet {
     pub level0: (f32, f32, f32, Color32),
     pub level1: (f32, f32, f32, Color32),
@@ -742,7 +743,7 @@ pub trait Theme {
         v.window_shadow = egui::Shadow {
             offset: [0, offset_y as i8],
             blur: blur as u8,
-            spread: spread as i8,
+            spread: spread as u8,
             color,
         };
         v.popup_shadow = v.window_shadow;
@@ -1006,12 +1007,12 @@ static THEME_REGISTRY: OnceLock<Mutex<ThemeRegistry>> = OnceLock::new();
 
 /// Initializes the global theme registry.
 pub fn init_theme_registry() -> &'static Mutex<ThemeRegistry> {
-    THEME_REGISTRY.get_or_init(|| Mutex::new(ThemeRegistry::new))
+    THEME_REGISTRY.get_or_init(|| Mutex::new(ThemeRegistry::new()))
 }
 
 /// Returns the global theme registry.
 pub fn theme_registry() -> &'static Mutex<ThemeRegistry> {
-    THEME_REGISTRY.get_or_init(|| Mutex::new(ThemeRegistry::new))
+    THEME_REGISTRY.get_or_init(|| Mutex::new(ThemeRegistry::new()))
 }
 
 // ============================================================================
@@ -1504,10 +1505,6 @@ pub fn validate_contrast(color_tokens: &ColorTokens) -> Vec<String> {
             "border_strong" => Some(color_tokens.border_strong),
             "focus_ring" => Some(color_tokens.focus_ring),
             "grid_border" => Some(color_tokens.border_subtle), // alias
-            "status_critical" => Some(color_tokens.status_critical),
-            "status_normal" => Some(color_tokens.status_normal),
-            "status_ok" => Some(color_tokens.status_ok),
-            "status_warn" => Some(color_tokens.status_warn),
             "non_working_day" => Some(color_tokens.non_working_day),
             _ => None,
         }

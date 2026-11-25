@@ -11,7 +11,7 @@ use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use cadence_assistant::{
-    map_proposal_to_commands, AssistantConfig, AssistantError, HttpProvider, Proposal,
+    map_proposal_to_commands, AssistantConfig, AssistantError, AssistantProvider, HttpProvider, Proposal,
     ProposalError, ProposedChange, SecretKey, parse_proposal_response,
 };
 use cadence_commands::{
@@ -1005,7 +1005,12 @@ impl CadenceApp {
 
     /// Show the proposal review panel.
     fn show_proposal_review_panel(&mut self, ui: &mut Ui) {
-        if let Some(proposal) = &self.review_proposal {
+        // Take the proposal out to avoid borrowing issues with the closure
+        let proposal = self.review_proposal.take();
+        if let Some(proposal) = proposal {
+            let mut apply = false;
+            let mut reject = false;
+            
             ui.group(|ui| {
                 ui.heading("Proposal Review");
                 ui.add_space(4.0);
@@ -1027,14 +1032,25 @@ impl CadenceApp {
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button("Accept and Apply").clicked() {
-                        self.apply_reviewed_proposal();
+                        apply = true;
                     }
                     if ui.button("Reject").clicked() {
-                        self.show_proposal_review = false;
-                        self.review_proposal = None;
+                        reject = true;
                     }
                 });
             });
+
+            // Handle actions after the UI closure to avoid borrowing issues
+            if apply {
+                self.review_proposal = Some(proposal);
+                self.apply_reviewed_proposal();
+            } else if reject {
+                self.show_proposal_review = false;
+                // proposal is dropped here
+            } else {
+                // Put the proposal back if neither action taken
+                self.review_proposal = Some(proposal);
+            }
         }
     }
 
@@ -1059,7 +1075,7 @@ impl CadenceApp {
     /// Apply the reviewed proposal by converting to commands.
     fn apply_reviewed_proposal(&mut self) {
         if let Some(proposal) = self.review_proposal.take() {
-            match map_proposal_to_commands(&proposal, &self.project) {
+            match map_proposal_to_commands(&self.project, &proposal) {
                 Ok(commands) => {
                     let mut success = true;
                     for cmd in commands {
@@ -5824,7 +5840,7 @@ impl CadenceApp {
                         }
                     );
 
-                    if request_button.clicked() {
+                    if request_button.inner.clicked() {
                         self.request_proposal();
                     }
 
