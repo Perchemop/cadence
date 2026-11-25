@@ -169,19 +169,7 @@ impl SortKey {
 
 /// Which top-level view is shown. Public so an embedding host (and the
 /// AccessKit harness) can select the initial view.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ViewMode {
-    Table,
-    Gantt,
-    Resources,
-    Baselines,
-    Calendars,
-    Audit,
-    Lookahead,
-    Diary,
-    Production,
-    Assistant,
-}
+pub use cadence_core::model::ViewMode;
 
 /// Which chrome group a view belongs to in the two-tier view switcher: the
 /// three core tabs stay always visible; the seven specialist views live in

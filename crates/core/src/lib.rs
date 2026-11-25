@@ -18,7 +18,7 @@ pub mod settings;
 pub mod wbs;
 
 pub use calendar_set::{CalendarId, CalendarSet, CalendarSetError, NamedCalendar};
-pub use model::{Activity, ActivityId, Calendar, CalendarError, LinkType, Project, Relationship};
+pub use model::{Activity, ActivityId, AssistantMessage, Calendar, CalendarError, LinkType, Project, Relationship};
 pub use settings::{
     AssistantConfig, AuditViewSettings, BaselinesViewSettings, CalendarsViewSettings,
     CalendarProjectSettings, ColumnVisibility, CostDisplay, CostRates, DensityLevel,

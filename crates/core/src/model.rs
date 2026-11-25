@@ -13,11 +13,29 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
+use serde_json;
 use thiserror::Error;
 use time::{Date, Duration};
 
 use crate::calendar_set::{CalendarId, CalendarSet, CalendarSetError};
+use crate::settings::{ProjectSettings, CalendarProjectSettings, EvmDisplayPreference, CostRates};
 use crate::wbs::{WbsId, WbsTree};
+
+/// Which top-level view is shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ViewMode {
+    #[default]
+    Table,
+    Gantt,
+    Resources,
+    Baselines,
+    Calendars,
+    Audit,
+    Lookahead,
+    Diary,
+    Production,
+    Assistant,
+}
 
 /// Stable identifier for an [`Activity`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -869,7 +887,7 @@ impl Relationship {
 }
 
 /// Root aggregate for a scheduling project.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Project {
     /// Project name.
     pub name: String,
@@ -908,13 +926,13 @@ pub struct Project {
     pub production_entries: Vec<ProductionEntry>,
     /// Global settings — app-wide preferences, shared across all projects.
     #[serde(default)]
-    pub global_settings: cadence_core::settings::GlobalSettings,
+    pub global_settings: crate::settings::GlobalSettings,
     /// View-level settings — specific to the currently active view/window.
     #[serde(default)]
-    pub view_settings: cadence_core::settings::ViewSettings,
+    pub view_settings: crate::settings::ViewSettings,
     /// Tool-level settings — per‑(project, view, tool) transient preferences.
     #[serde(default)]
-    pub tool_settings: cadence_core::settings::ToolSettings,
+    pub tool_settings: crate::settings::ToolSettings,
 }
 
 impl Project {
@@ -1027,32 +1045,32 @@ impl Project {
     }
 
     /// Global settings — app-wide preferences.
-    pub fn global_settings(&self) -> &cadence_core::settings::GlobalSettings {
+    pub fn global_settings(&self) -> &crate::settings::GlobalSettings {
         &self.global_settings
     }
 
     /// View-level settings — specific to the currently active view/window.
-    pub fn view_settings(&self) -> &cadence_core::settings::ViewSettings {
+    pub fn view_settings(&self) -> &crate::settings::ViewSettings {
         &self.view_settings
     }
 
     /// Tool-level settings — per‑(project, view, tool) transient preferences.
-    pub fn tool_settings(&self) -> &cadence_core::settings::ToolSettings {
+    pub fn tool_settings(&self) -> &crate::settings::ToolSettings {
         &self.tool_settings
     }
 
     /// Mutably borrow global settings.
-    pub fn global_settings_mut(&mut self) -> &mut cadence_core::settings::GlobalSettings {
+    pub fn global_settings_mut(&mut self) -> &mut crate::settings::GlobalSettings {
         &mut self.global_settings
     }
 
     /// Mutably borrow view settings.
-    pub fn view_settings_mut(&mut self) -> &mut cadence_core::settings::ViewSettings {
+    pub fn view_settings_mut(&mut self) -> &mut crate::settings::ViewSettings {
         &mut self.view_settings
     }
 
     /// Mutably borrow tool settings.
-    pub fn tool_settings_mut(&mut self) -> &mut cadence_core::settings::ToolSettings {
+    pub fn tool_settings_mut(&mut self) -> &mut crate::settings::ToolSettings {
         &mut self.tool_settings
     }
 
@@ -1060,29 +1078,32 @@ impl Project {
     pub fn settings(&self) -> ProjectSettings {
         let workweek = self.calendar.working_weekdays();
         // Convert the named calendars to a BTreeMap keyed by name.
-        let calendars: BTreeMap<String, cadence_core::settings::CalendarProjectSettings> = self
+        let calendars: BTreeMap<String, CalendarProjectSettings> = self
             .calendars
             .calendars()
             .iter()
             .map(|nc| {
                 (
                     nc.name.clone(),
-                    cadence_core::settings::CalendarProjectSettings {
+                    CalendarProjectSettings {
                         workweek: nc.calendar.working_weekdays(),
                         holidays: nc.calendar.holidays().iter().map(|d| d.to_string()).collect(),
                     },
                 )
             })
             .collect();
+        // Serialize calendars to JSON for storage
+        let calendars_json = serde_json::to_string(&calendars).unwrap_or_default();
         ProjectSettings {
             workweek,
-            resource_default_capacity: self.tool_settings.assignment_default_units,
-            resource_default_cost_per_unit: self.resources
-                .first()
-                .map_or(0, |r| r.cost_per_unit),
-            auto_capture_baselines: false, // not yet implemented at project level
-            evm_display: self.tool_settings.evm_display.unwrap_or(cadence_core::settings::EvmDisplayPreference::Full),
-            calendars,
+            currency: "USD".to_string(),
+            default_calendar: "standard".to_string(),
+            column_visibility: Vec::new(),
+            cost_rates: CostRates::default(),
+            auto_capture_baselines: false,
+            evm_display: self.tool_settings.evm_display.unwrap_or(EvmDisplayPreference::Full),
+            calendars_json,
+            schema_version: 10,
         }
     }
 
@@ -2131,4 +2152,15 @@ mod tests {
         // A resource that is no longer in the dictionary is skipped.
         assert_eq!(activity.resource_cost(&[]), 0);
     }
+}
+
+/// A single message in the assistant conversation history.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct AssistantMessage {
+    /// The role of the message sender (user or assistant).
+    pub role: String,
+    /// The message content.
+    pub content: String,
+    /// Optional timestamp.
+    pub timestamp: Option<String>,
 }

@@ -4,13 +4,16 @@
 //! Fallback chain: Tool → View → Project → Global → Built-in defaults.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{self, Value, Map};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use time::Date;
 
 use crate::model::{
-    ActivityField, Constraint, ResourceKind, ViewMode as ModelViewMode,
+    ActivityId, BaselineId, ViewMode, AssistantMessage,
 };
+use crate::calendar_set::CalendarId;
+use crate::wbs::WbsId;
 
 /// Default value for histogram scale (1.0 = normal).
 fn default_histogram_scale() -> f32 { 1.0 }
@@ -35,6 +38,21 @@ fn default_audit_severity() -> AuditSeverity { AuditSeverity::Info }
 
 /// Default assistant history length: 50.
 fn default_assistant_history_len() -> usize { 50 }
+
+/// Default assistant model.
+fn default_assistant_model() -> String { "gpt-4o-mini".into() }
+
+/// Default temperature for generation.
+fn default_temperature() -> f32 { 0.2 }
+
+/// Default max tokens per response.
+fn default_max_tokens() -> u32 { 2000 }
+
+/// Default pixels per day for Gantt view.
+fn default_pixels_per_day() -> f32 { 14.0 }
+
+/// Default split ratio for Gantt/table split.
+fn default_split_ratio() -> f32 { 0.3 }
 
 /// Audit finding severity levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -137,26 +155,30 @@ impl ShortcutConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssistantConfig {
     /// Model identifier (e.g., "gpt-4", "claude-3-sonnet").
+    #[serde(default = "default_assistant_model")]
     pub model: String,
     /// Base URL for API (empty = default provider).
+    #[serde(default)]
     pub base_url: String,
     /// API key (stored in OS keyring, not in settings file).
     #[serde(skip)]
     pub api_key: Option<String>,
     /// Temperature for generation.
+    #[serde(default = "default_temperature")]
     pub temperature: f32,
     /// Maximum tokens per response.
+    #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
 }
 
 impl Default for AssistantConfig {
     fn default() -> Self {
         Self {
-            model: "gpt-4o-mini".into(),
+            model: default_assistant_model(),
             base_url: String::new(),
             api_key: None,
-            temperature: 0.2,
-            max_tokens: 2000,
+            temperature: default_temperature(),
+            max_tokens: default_max_tokens(),
         }
     }
 }
@@ -172,7 +194,7 @@ pub const SCHEMA_VERSION: u32 = 10;
 ///
 /// Fields (in order of persistence priority, also matching JSON order):
 /// - theme, density, shortcuts, assistant_config, update_channel, high_contrast, reduced_motion
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GlobalSettings {
     /// UI theme: System / Light / Dark.
     pub theme: ThemePreference,
@@ -193,9 +215,10 @@ pub struct GlobalSettings {
     /// Reduced motion preference to minimize animations.
     #[serde(default = "default_true")]
     pub reduced_motion: bool,
+    /// Schema version for migration.
+    #[serde(default = "default_zero_u32")]
+    pub schema_version: u32,
 }
-
-fn default_update_channel() -> String { "stable".into() }
 
 impl Default for GlobalSettings {
     fn default() -> Self {
@@ -205,11 +228,15 @@ impl Default for GlobalSettings {
             shortcuts: ShortcutConfig::default(),
             assistant: AssistantConfig::default(),
             update_channel: default_update_channel(),
-            high_contrast: default_true(),
-            reduced_motion: default_true(),
+            high_contrast: true,
+            reduced_motion: true,
+            schema_version: 10,
         }
     }
 }
+
+fn default_update_channel() -> String { "stable".into() }
+
 
 // ========================================================================
 // LEVEL 2: PROJECT SETTINGS (embedded in .cadence SQLite)
@@ -217,44 +244,98 @@ impl Default for GlobalSettings {
 
 /// Per‑project settings, stored in the SQLite project file.
 ///
-/// Fields: currency, default_calendar, column_visibility, cost_rates,
+/// Fields: currency, default_calendar, workweek, column_visibility, cost_rates,
 ///         auto_capture_baselines, evm_display, calendars_json
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProjectSettings {
     /// Project currency (ISO 4217).
+    #[serde(default = "default_currency")]
     pub currency: String,
     /// Default calendar for new activities.
+    #[serde(default = "default_calendar")]
     pub default_calendar: String,
+    /// Workweek pattern (Monday=bit0..Sunday=bit6).
+    #[serde(default = "default_workweek")]
+    pub workweek: [bool; 7],
     /// Column visibility state (which columns are visible/ordered).
     #[serde(default)]
     pub column_visibility: Vec<ColumnVisibility>,
     /// Cost rates for earned-value calculations.
+    #[serde(default)]
     pub cost_rates: CostRates,
     /// Auto‑capture a baseline whenever the schedule is recomputed.
+    #[serde(default)]
     pub auto_capture_baselines: bool,
     /// Earned‑value metrics display preference.
+    #[serde(default)]
     pub evm_display: EvmDisplayPreference,
     /// Calendars JSON (serialised calendar definitions).
     #[serde(default)]
     pub calendars_json: String,
+    /// Schema version for migration.
+    #[serde(default = "default_zero_u32")]
+    pub schema_version: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+impl Default for ProjectSettings {
+    fn default() -> Self {
+        Self {
+            currency: default_currency(),
+            default_calendar: default_calendar(),
+            workweek: default_workweek(),
+            column_visibility: Vec::new(),
+            cost_rates: CostRates::default(),
+            auto_capture_baselines: false,
+            evm_display: EvmDisplayPreference::default(),
+            calendars_json: String::new(),
+            schema_version: 10,
+        }
+    }
+}
+
+fn default_currency() -> String { "USD".to_string() }
+fn default_calendar() -> String { String::new() }
+fn default_workweek() -> [bool; 7] { [true, true, true, true, true, false, false] }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CostRates {
     /// Default cost rate per whole unit per working day (minor currency units).
+    #[serde(default)]
     pub default_rate: i64,
     /// Overtime multiplier for cost calculations.
+    #[serde(default = "default_overtime_multiplier")]
     pub overtime_multiplier: f32,
 }
 
+fn default_overtime_multiplier() -> f32 { 1.5 }
+
+impl Default for CostRates {
+    fn default() -> Self {
+        Self {
+            default_rate: 0,
+            overtime_multiplier: 1.5,
+        }
+    }
+}
+
 /// Calendar project settings for a named calendar.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CalendarProjectSettings {
     /// Workweek override for this named calendar (Monday=bit0..Sunday=bit6).
+    #[serde(default = "default_workweek")]
     pub workweek: [bool; 7],
     /// Holiday dates for this named calendar.
     #[serde(default)]
     pub holidays: Vec<String>,
+}
+
+impl Default for CalendarProjectSettings {
+    fn default() -> Self {
+        Self {
+            workweek: default_workweek(),
+            holidays: Vec::new(),
+        }
+    }
 }
 
 // ========================================================================
@@ -262,9 +343,11 @@ pub struct CalendarProjectSettings {
 // ========================================================================
 
 /// Earned-value metrics display preference.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
 pub enum EvmDisplayPreference {
     /// Show BAC, EV, AC, CV, SV and CPI/SPI together.
+    #[default]
     Full,
     /// Show only cost‑related metrics (BAC, EV, AC, CV).
     CostOnly,
@@ -272,10 +355,6 @@ pub enum EvmDisplayPreference {
     ScheduleOnly,
     /// Hide all earned-value metrics.
     Hidden,
-}
-
-impl Default for EvmDisplayPreference {
-    fn default() -> Self { Self::Full }
 }
 
 // ========================================================================
@@ -287,6 +366,7 @@ impl Default for EvmDisplayPreference {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ViewSettings {
     /// Currently active view mode (Table, Gantt, Resources, etc.).
+    #[serde(default)]
     pub view_mode: ViewMode,
     /// Table view settings.
     #[serde(default)]
@@ -318,10 +398,15 @@ pub struct ViewSettings {
     /// Assistant view settings.
     #[serde(default)]
     pub assistant: AssistantViewSettings,
+    /// Schema version for migration.
+    #[serde(default = "default_zero_u32")]
+    pub schema_version: u32,
 }
 
+fn default_zero_u32() -> u32 { 0 }
+
 /// Table view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TableViewSettings {
     /// Current sort key.
     #[serde(default)]
@@ -337,11 +422,23 @@ pub struct TableViewSettings {
     pub critical_only: bool,
     /// Collapsed WBS node IDs.
     #[serde(default)]
-    pub collapsed_wbs: Vec<crate::model::WbsId>,
+    pub collapsed_wbs: Vec<WbsId>,
+}
+
+impl Default for TableViewSettings {
+    fn default() -> Self {
+        Self {
+            sort_key: SortKey::default(),
+            sort_ascending: true,
+            filter_text: String::new(),
+            critical_only: false,
+            collapsed_wbs: Vec::new(),
+        }
+    }
 }
 
 /// Gantt view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GanttViewSettings {
     /// Horizontal zoom: pixels per working day.
     #[serde(default = "default_pixels_per_day")]
@@ -363,8 +460,21 @@ pub struct GanttViewSettings {
     pub show_today_line: bool,
 }
 
+impl Default for GanttViewSettings {
+    fn default() -> Self {
+        Self {
+            pixels_per_day: default_pixels_per_day(),
+            split_ratio: default_split_ratio(),
+            show_critical_path: true,
+            show_slack: true,
+            time_scale: TimeScale::default(),
+            show_today_line: true,
+        }
+    }
+}
+
 /// Resources view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResourcesViewSettings {
     /// Histogram vertical scale factor.
     #[serde(default = "default_histogram_scale")]
@@ -377,8 +487,18 @@ pub struct ResourcesViewSettings {
     pub cost_display: CostDisplay,
 }
 
+impl Default for ResourcesViewSettings {
+    fn default() -> Self {
+        Self {
+            histogram_scale: default_histogram_scale(),
+            grouping: ResourceGroupBy::default(),
+            cost_display: CostDisplay::default(),
+        }
+    }
+}
+
 /// Baselines view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BaselinesViewSettings {
     /// Show variance columns.
     #[serde(default = "default_true")]
@@ -388,29 +508,49 @@ pub struct BaselinesViewSettings {
     pub show_cost_variance: bool,
     /// Baseline to compare against (None = latest).
     #[serde(default)]
-    pub compare_baseline: Option<crate::model::BaselineId>,
+    pub compare_baseline: Option<BaselineId>,
+}
+
+impl Default for BaselinesViewSettings {
+    fn default() -> Self {
+        Self {
+            show_variance: true,
+            show_cost_variance: true,
+            compare_baseline: None,
+        }
+    }
 }
 
 /// Calendars view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CalendarsViewSettings {
     /// Show holiday exceptions.
     #[serde(default = "default_true")]
     pub show_holidays: bool,
     /// Selected calendar for editing.
     #[serde(default)]
-    pub selected_calendar: Option<crate::model::CalendarId>,
+    pub selected_calendar: Option<CalendarId>,
     /// Weekday pattern editor: which weekdays are working.
     #[serde(default = "default_weekdays")]
     pub editing_weekdays: [bool; 7],
 }
 
+impl Default for CalendarsViewSettings {
+    fn default() -> Self {
+        Self {
+            show_holidays: true,
+            selected_calendar: None,
+            editing_weekdays: default_weekdays(),
+        }
+    }
+}
+
 /// Lookahead view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LookaheadViewSettings {
     /// Window start date.
     #[serde(default)]
-    pub window_start: Option<crate::model::Date>,
+    pub window_start: Option<Date>,
     /// Window length in weeks.
     #[serde(default = "default_lookahead_weeks")]
     pub weeks: u32,
@@ -419,40 +559,70 @@ pub struct LookaheadViewSettings {
     pub promised_only: bool,
 }
 
+impl Default for LookaheadViewSettings {
+    fn default() -> Self {
+        Self {
+            window_start: None,
+            weeks: default_lookahead_weeks(),
+            promised_only: false,
+        }
+    }
+}
+
 /// Diary view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DiaryViewSettings {
     /// Filter by activity.
     #[serde(default)]
-    pub filter_activity: Option<crate::model::ActivityId>,
+    pub filter_activity: Option<ActivityId>,
     /// Filter by lookahead window start.
     #[serde(default)]
-    pub filter_window: Option<crate::model::Date>,
+    pub filter_window: Option<Date>,
     /// Sort by date descending (newest first).
     #[serde(default = "default_true")]
     pub sort_descending: bool,
 }
 
+impl Default for DiaryViewSettings {
+    fn default() -> Self {
+        Self {
+            filter_activity: None,
+            filter_window: None,
+            sort_descending: true,
+        }
+    }
+}
+
 /// Production view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProductionViewSettings {
     /// Filter by activity.
     #[serde(default)]
-    pub filter_activity: Option<crate::model::ActivityId>,
+    pub filter_activity: Option<ActivityId>,
     /// Filter by date range.
     #[serde(default)]
-    pub filter_date_range: Option<(crate::model::Date, crate::model::Date)>,
+    pub filter_date_range: Option<(Date, Date)>,
     /// Show variance from plan.
     #[serde(default = "default_true")]
     pub show_variance: bool,
 }
 
+impl Default for ProductionViewSettings {
+    fn default() -> Self {
+        Self {
+            filter_activity: None,
+            filter_date_range: None,
+            show_variance: true,
+        }
+    }
+}
+
 /// Audit view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AuditViewSettings {
     /// Status date for audit (None = today).
     #[serde(default)]
-    pub status_date: Option<crate::model::Date>,
+    pub status_date: Option<Date>,
     /// Show only findings with severity >= this.
     #[serde(default = "default_audit_severity")]
     pub min_severity: AuditSeverity,
@@ -461,8 +631,18 @@ pub struct AuditViewSettings {
     pub group_by_category: bool,
 }
 
+impl Default for AuditViewSettings {
+    fn default() -> Self {
+        Self {
+            status_date: None,
+            min_severity: AuditSeverity::default(),
+            group_by_category: true,
+        }
+    }
+}
+
 /// Assistant view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssistantViewSettings {
     /// Last used model (overrides global).
     #[serde(default)]
@@ -475,8 +655,18 @@ pub struct AssistantViewSettings {
     pub max_history: usize,
 }
 
+impl Default for AssistantViewSettings {
+    fn default() -> Self {
+        Self {
+            last_model: None,
+            history: Vec::new(),
+            max_history: default_assistant_history_len(),
+        }
+    }
+}
+
 /// Cost display mode for resources view.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CostDisplay {
     /// Show cost in whole units.
@@ -487,27 +677,58 @@ pub enum CostDisplay {
     Percentage,
 }
 
+impl Default for CostDisplay {
+    fn default() -> Self {
+        Self::Units
+    }
+}
+
 // ========================================================================
 // TOOL SETTINGS (ephemeral, in-memory only)
 // ========================================================================
 
 /// Tool‑specific settings — never persisted, reset on view change.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolSettings {
     /// Inspector panel width in pixels.
+    #[serde(default = "default_inspector_width")]
     pub inspector_width: f32,
     /// Gantt drag snap-to-grid setting.
+    #[serde(default)]
     pub gantt_drag_snap: bool,
     /// Resource histogram zoom level.
+    #[serde(default = "default_histogram_zoom")]
     pub histogram_zoom: f32,
     /// Column resize state.
+    #[serde(default)]
     pub column_resize: ColumnResizeSettings,
     /// Split pane ratio (table : gantt).
+    #[serde(default = "default_split_pane_ratio")]
     pub split_pane_ratio: f32,
+    /// EVM display preference override for this tool session.
+    #[serde(default)]
+    pub evm_display: Option<EvmDisplayPreference>,
 }
 
+impl Default for ToolSettings {
+    fn default() -> Self {
+        Self {
+            inspector_width: default_inspector_width(),
+            gantt_drag_snap: true,
+            histogram_zoom: default_histogram_zoom(),
+            column_resize: ColumnResizeSettings::default(),
+            split_pane_ratio: default_split_pane_ratio(),
+            evm_display: None,
+        }
+    }
+}
+
+fn default_inspector_width() -> f32 { 320.0 }
+fn default_histogram_zoom() -> f32 { 1.0 }
+fn default_split_pane_ratio() -> f32 { 0.5 }
+
 /// Column resize tool settings.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ColumnResizeSettings {
     /// Column being resized (None when idle).
     pub resizing_column: Option<SortKey>,
@@ -533,13 +754,12 @@ pub struct ColumnVisibility {
 }
 
 /// Time scale for Gantt view.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TimeScale {
     /// Day-level granularity.
     Day,
     /// Week-level granularity.
-    #[default]
     Week,
     /// Month-level granularity.
     Month,
@@ -547,12 +767,17 @@ pub enum TimeScale {
     Quarter,
 }
 
+impl Default for TimeScale {
+    fn default() -> Self {
+        Self::Week
+    }
+}
+
 /// Resource grouping mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResourceGroupBy {
     /// No grouping, flat list.
-    #[default]
     None,
     /// Group by resource kind (Labour/Equipment/Material).
     Kind,
@@ -560,8 +785,14 @@ pub enum ResourceGroupBy {
     Calendar,
 }
 
+impl Default for ResourceGroupBy {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
 /// Sort key for activity table column ordering.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SortKey {
     /// Sort by name.
@@ -576,6 +807,12 @@ pub enum SortKey {
     Float,
     /// Sort by constraint.
     Constraint,
+}
+
+impl Default for SortKey {
+    fn default() -> Self {
+        Self::Name
+    }
 }
 
 // ========================================================================
@@ -678,18 +915,6 @@ impl SettingsContext {
 }
 
 // ========================================================================
-// DEFAULT HELPERS
-// ========================================================================
-
-fn default_pixels_per_day() -> f32 { 14.0 }
-fn default_split_ratio() -> f32 { 0.3 }
-fn default_resource_group_by() -> ResourceGroupBy { ResourceGroupBy::None }
-fn default_cost_display() -> CostDisplay { CostDisplay::Units }
-fn default_lookahead_weeks() -> u32 { 2 }
-fn default_audit_severity() -> AuditSeverity { AuditSeverity::Info }
-fn default_assistant_history_len() -> usize { 50 }
-
-// ========================================================================
 // MIGRATION HELPERS (stub — extend when schema changes)
 // ========================================================================
 
@@ -745,22 +970,22 @@ pub enum SettingsEvent {
 }
 
 /// Simple event bus for settings changes.
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct SettingsEventBus {
-    subscribers: std::collections::Vec<Box<dyn Fn(String) + Send + Sync>>,
+    subscribers: Vec<Box<dyn FnMut(String) + Send + Sync>>,
 }
 
 impl SettingsEventBus {
     /// Subscribe to settings events.
-    pub fn subscribe(&mut self, event: &str, handler: impl Fn(String) + 'static) {
+    pub fn subscribe(&mut self, _event: &str, handler: impl FnMut(String) + 'static + Send + Sync) {
         // For simplicity, store all handlers; the event name is part of the payload
         self.subscribers.push(Box::new(handler));
     }
 
     /// Notify all observers of an event. The payload is a JSON‑serialised
     /// string of the new settings value so handlers can deserialise what they need.
-    pub fn notify(&self, event: &str, payload: &str) {
-        for handler in &self.subscribers {
+    pub fn notify(&mut self, _event: &str, payload: &str) {
+        for handler in &mut self.subscribers {
             handler(payload.to_string());
         }
     }
@@ -785,15 +1010,20 @@ pub fn config_dir() -> PathBuf {
     {
         std::env::var("XDG_CONFIG_HOME")
             .map(|p| {
-                let mut path = PathBuf::from(p);
-                path.push("cadence");
+                let path = PathBuf::from(p).join("cadence");
                 path
             })
-            .unwrap_or_else(|| {
-                // Fallback to ~/.config/cadence
-                let mut path = PathBuf::from("~/.config/cadence");
-                path = path.canonicalize().unwrap_or(path);
-                path
+            .unwrap_or_else(|_| {
+                // Fallback to ~/.config/cadence using HOME env var
+                std::env::var("HOME")
+                    .map(|home| {
+                        let path = PathBuf::from(home).join(".config").join("cadence");
+                        path
+                    })
+                    .unwrap_or_else(|_| {
+                        // Last resort fallback
+                        PathBuf::from("~/.config/cadence")
+                    })
             })
     }
 
@@ -819,14 +1049,12 @@ pub fn config_dir() -> PathBuf {
     {
         std::env::var("APPDATA")
             .map(|p| {
-                let mut path = PathBuf::from(p);
-                path.push("Cadence");
+                let path = PathBuf::from(p).join("Cadence");
                 path
             })
-            .unwrap_or_else(|| {
+            .unwrap_or_else(|_| {
                 // Fallback
-                let mut path = PathBuf::from("~\\AppData\\Roaming\\Cadence");
-                path
+                PathBuf::from("~\\AppData\\Roaming\\Cadence")
             })
     }
 
@@ -835,13 +1063,20 @@ pub fn config_dir() -> PathBuf {
         // Fallback for other OSes: use XDG_CONFIG_HOME or ~//.config
         std::env::var("XDG_CONFIG_HOME")
             .map(|p| {
-                let mut path = PathBuf::from(p);
-                path.push("cadence");
+                let path = PathBuf::from(p).join("cadence");
                 path
             })
-            .unwrap_or_else(|| {
-                let mut path = PathBuf::from("~/.config/cadence");
-                path
+            .unwrap_or_else(|_| {
+                // Use HOME env var for fallback
+                std::env::var("HOME")
+                    .map(|home| {
+                        let path = PathBuf::from(home).join(".config").join("cadence");
+                        path
+                    })
+                    .unwrap_or_else(|_| {
+                        // Absolute last resort
+                        PathBuf::from("~/.config/cadence")
+                    })
             })
     }
 }
@@ -869,7 +1104,7 @@ pub fn load_global_settings() -> Result<GlobalSettings, std::io::Error> {
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     let value: Value = serde_json::from_str(&content)
         .unwrap_or_else(|_| Value::Object(Default::default()));
-    migrate_global_settings_from_value(&value)
+    migrate_global_settings_to_settings(&value).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
 }
 
 /// Save global settings to the OS config directory with pretty JSON formatting.
@@ -908,7 +1143,7 @@ pub const GLOBAL_SCHEMA_VERSION: u32 = 10;
 ///
 /// Returns `Ok(())` on success. The `Value` is modified to have the
 /// correct `schema_version` and any missing new fields set to defaults.
-pub fn migrate_global_settings(json: &mut Value, from_version: u32) -> Result<(), String> {
+pub fn migrate_global_settings_json(json: &mut Value, from_version: u32) -> Result<(), String> {
     // Deserialize the current state to know what fields exist
     let settings: GlobalSettings = match serde_json::from_value(json.clone()) {
         Ok(s) => s,
@@ -979,31 +1214,6 @@ pub fn migrate_global_settings(json: &mut Value, from_version: u32) -> Result<()
                 new_obj.insert("reduced_motion".into(), Value::Bool(true));
             }
 
-            // Recent projects: only if non-empty
-            if !settings.recent_projects.is_empty() {
-                new_obj.insert("recent_projects".into(), serde_json::to_value(&settings.recent_projects).unwrap_or(Value::Array(Default::default())));
-            }
-
-            // Show splash: only if true (but it's always true by default)
-            if settings.show_splash {
-                new_obj.insert("show_splash".into(), Value::Bool(true));
-            }
-
-            // Restore session: only if true (but it's always true by default)
-            if settings.restore_session {
-                new_obj.insert("restore_session".into(), Value::Bool(true));
-            }
-
-            // Autosave interval: only if non-default
-            if settings.autosave_interval_secs != 300 {
-                new_obj.insert("autosave_interval_secs".into(), serde_json::to_value(&settings.autosave_interval_secs).unwrap_or(Value::Number(serde_json::Number::from(300))));
-            }
-
-            // Locale: only if non-empty
-            if !settings.locale.is_empty() {
-                new_obj.insert("locale".into(), Value::String(settings.locale.clone()));
-            }
-
             // Replace the object content
             *obj = new_obj;
         }
@@ -1017,15 +1227,13 @@ pub fn migrate_global_settings(json: &mut Value, from_version: u32) -> Result<()
 
 /// Deserialize `GlobalSettings` from a JSON `Value` after migration.
 ///
-/// This is a helper that calls `migrate_global_settings` first, then
+/// This is a helper that calls `migrate_global_settings_json` first, then
 /// deserializes the result. Use this when you need a `GlobalSettings`
 /// instance from a raw JSON Value.
 pub fn migrate_global_settings_to_settings(json: &Value) -> Result<GlobalSettings, String> {
     let mut json_clone = json.clone();
-    let mut settings_json = json_clone;
-    migrate_global_settings(&mut settings_json, 0 /* from_version will be detected from the data */)
-        .map_err(|e| format!("Migration failed: {}", e))?;
-    serde_json::from_value(settings_json).map_err(|e| format!("Failed to deserialize after migration: {}", e))
+    migrate_global_settings_json(&mut json_clone, 0).map_err(|e| format!("Migration failed: {}", e))?;
+    serde_json::from_value(json_clone).map_err(|e| format!("Failed to deserialize after migration: {}", e))
 }
 
 // ========================================================================
@@ -1073,7 +1281,7 @@ mod tests {
     fn density_level_serde() {
         let original = DensityLevel::Compact;
         let json = serde_json::to_string(&original).unwrap();
-        assert_eq!(json, "Compact");
+        assert_eq!(json, "\"compact\"");
         let recovered: DensityLevel = serde_json::from_str(&json).unwrap();
         assert_eq!(recovered, DensityLevel::Compact);
     }
@@ -1089,7 +1297,7 @@ mod tests {
     fn theme_preference_serde() {
         let original = ThemePreference::Dark;
         let json = serde_json::to_string(&original).unwrap();
-        assert_eq!(json, "dark");
+        assert_eq!(json, "\"dark\"");
         let recovered: ThemePreference = serde_json::from_str(&json).unwrap();
         assert_eq!(recovered, ThemePreference::Dark);
     }
@@ -1200,7 +1408,7 @@ mod tests {
     fn evm_display_preference_serde() {
         let original = EvmDisplayPreference::CostOnly;
         let json = serde_json::to_string(&original).unwrap();
-        assert_eq!(json, "costonly");
+        assert_eq!(json, "\"costonly\"");
         let recovered: EvmDisplayPreference = serde_json::from_str(&json).unwrap();
         assert_eq!(recovered, EvmDisplayPreference::CostOnly);
     }
@@ -1211,7 +1419,7 @@ mod tests {
     fn view_settings_defaults() {
         let vs = ViewSettings::default();
         assert_eq!(vs.view_mode, ViewMode::Table);
-        assert!(vs.table.sort_key.is_some()); // will use SortKey default
+        assert_eq!(vs.table.sort_key, SortKey::Name); // SortKey default is Name
         assert_eq!(vs.table.sort_ascending, true);
         assert_eq!(vs.table.filter_text, "");
         assert!(!vs.table.critical_only);
@@ -1370,13 +1578,16 @@ mod tests {
     #[test]
     fn settings_event_bus_subscribe_and_notify() {
         let mut bus = SettingsEventBus::default();
-        let mut received = String::new();
-        bus.subscribe("test_event", |payload| {
-            received = payload;
+        let received = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let received_clone = received.clone();
+        bus.subscribe("test_event", move |payload| {
+            let mut guard = received_clone.lock().unwrap();
+            *guard = payload;
         });
         bus.notify("test_event", r#"{"theme":"dark"}"#);
-        assert!(!received.is_empty());
-        assert_eq!(received, r#"{"theme":"dark"}"#);
+        let received_guard = received.lock().unwrap();
+        assert!(!received_guard.is_empty());
+        assert_eq!(*received_guard, r#"{"theme":"dark"}"#);
     }
 
     // --- CostRates ---
