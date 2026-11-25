@@ -16,10 +16,12 @@ pub use crate::design_tokens::{
     wcag_min_ratio, contrast_ratio, relative_luminance, meets_wcag,
     SEMANTIC_CONTRAST_PAIRS,
     validate_contrast,
+    apply as tokens_apply, apply_visuals as tokens_apply_visuals,
+    light_tokens, dark_tokens,
 };
 
-use crate::theme::{apply_theme as new_apply_theme, apply_visuals_only, install_fonts as new_install_fonts};
-use egui::{Color32, Context, Visuals};
+use crate::theme::{apply_theme as new_apply_theme, apply_visuals_only, install_fonts as new_install_fonts, chrome as new_chrome, parse_color};
+use egui::{Button, Color32, Context, RichText, Stroke, Visuals};
 
 /// Semantic and structural colours for one theme (legacy Palette).
 ///
@@ -112,41 +114,6 @@ pub fn variance_color(value: Option<i64>, dark: bool) -> Color32 {
     }
 }
 
-/// The four chrome button roles.
-pub mod chrome {
-    use super::*;
-    use crate::theme::chrome as new_chrome;
-    use crate::design_tokens::DesignTokenSet;
-    use crate::theme::parse_color;
-    use egui::{Button, RichText, Stroke};
-
-    /// The one primary action per row (e.g. "New activity"): accent fill,
-    /// no stroke, high-contrast label.
-    pub fn primary(label: impl Into<String>) -> Button<'static> {
-        // Default to light theme tokens; caller should use theme-aware version
-        let tokens = DesignTokenSet::light();
-        new_chrome::primary(&tokens, label)
-    }
-
-    /// Toolbar/quick actions: invisible chrome until hovered.
-    pub fn ghost(label: impl Into<String>) -> Button<'static> {
-        let tokens = DesignTokenSet::light();
-        new_chrome::ghost(&tokens, label)
-    }
-
-    /// Secondary actions in toolbars: subtle outline.
-    pub fn secondary(label: impl Into<String>) -> Button<'static> {
-        let tokens = DesignTokenSet::light();
-        new_chrome::secondary(&tokens, label)
-    }
-
-    /// Destructive actions: red fill, high-contrast label.
-    pub fn danger(label: impl Into<String>) -> Button<'static> {
-        let tokens = DesignTokenSet::light();
-        new_chrome::danger(&tokens, label)
-    }
-}
-
 /// Apply a palette as the global egui theme (legacy entry point).
 pub fn apply_palette(ctx: &Context, p: &Palette) {
     let visuals = Visuals {
@@ -228,3 +195,256 @@ pub fn theme_registry_legacy() -> &'static ThemeRegistry {
 pub fn theme_registry_mut_legacy() -> &'static mut ThemeRegistry {
     get_registry_mut()
 }
+
+/// Theme trait for dynamic theming (legacy compatibility).
+pub trait Theme {
+    fn apply(&self, ctx: &Context);
+    fn colors(&self) -> ThemeColors;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ThemeColors {
+    pub accent: Color32,
+    pub surface_raised: Color32,
+    pub status_critical: Color32,
+    pub status_normal: Color32,
+}
+
+/// Light theme implementation.
+pub struct LightThemeImpl;
+
+impl Theme for LightThemeImpl {
+    fn apply(&self, ctx: &Context) {
+        crate::theme::apply_theme(ctx, false);
+    }
+
+    fn colors(&self) -> ThemeColors {
+        let tokens = DesignTokenSet::light();
+        ThemeColors {
+            accent: ACCENT,
+            surface_raised: tokens.colors.surface_raised,
+            status_critical: tokens.colors.status_critical,
+            status_normal: tokens.colors.status_normal,
+        }
+    }
+}
+
+/// Dark theme implementation.
+pub struct DarkThemeImpl;
+
+impl Theme for DarkThemeImpl {
+    fn apply(&self, ctx: &Context) {
+        crate::theme::apply_theme(ctx, true);
+    }
+
+    fn colors(&self) -> ThemeColors {
+        let tokens = DesignTokenSet::dark();
+        ThemeColors {
+            accent: ACCENT,
+            surface_raised: tokens.colors.surface_raised,
+            status_critical: tokens.colors.status_critical,
+            status_normal: tokens.colors.status_normal,
+        }
+    }
+}
+
+/// Theme registry for dynamic theme switching.
+pub struct ThemeRegistryCompat {
+    light: Box<dyn Theme>,
+    dark: Box<dyn Theme>,
+    current: ThemeMode,
+}
+
+impl ThemeRegistryCompat {
+    /// Create a new theme registry with default themes.
+    pub fn new() -> Self {
+        Self {
+            light: Box::new(LightThemeImpl),
+            dark: Box::new(DarkThemeImpl),
+            current: ThemeMode::Dark,
+        }
+    }
+
+    /// Get the current theme.
+    pub fn current(&self) -> &dyn Theme {
+        match self.current {
+            ThemeMode::Light => &*self.light,
+            ThemeMode::Dark => &*self.dark,
+        }
+    }
+
+    /// Set the current theme mode.
+    pub fn set_mode(&mut self, mode: ThemeMode) {
+        self.current = mode;
+    }
+
+    /// Apply the current theme to a context.
+    pub fn apply(&self, ctx: &Context) {
+        self.current().apply(ctx);
+    }
+}
+
+/// Global theme registry.
+static mut THEME_REGISTRY_COMPAT: Option<ThemeRegistryCompat> = None;
+
+/// Initialize the global theme registry (legacy entry point).
+pub fn init_theme_registry_compat() {
+    unsafe {
+        THEME_REGISTRY_COMPAT = Some(ThemeRegistryCompat::new());
+    }
+}
+
+/// Get the global theme registry (legacy entry point).
+pub fn theme_registry_compat() -> &'static ThemeRegistryCompat {
+    unsafe {
+        THEME_REGISTRY_COMPAT
+            .as_ref()
+            .expect("Theme registry not initialized. Call init_theme_registry_compat() first.")
+    }
+}
+
+/// Get mutable access to the global theme registry (legacy entry point).
+pub fn theme_registry_mut_compat() -> &'static mut ThemeRegistryCompat {
+    unsafe {
+        THEME_REGISTRY_COMPAT
+            .as_mut()
+            .expect("Theme registry not initialized. Call init_theme_registry_compat() first.")
+    }
+}
+
+/// Apply a theme using the new Theme trait (legacy entry point).
+pub fn apply_theme_with_compat(ctx: &Context, theme: &dyn Theme) {
+    theme.apply(ctx);
+}
+
+/// Apply a theme to an egui context using the new token system (legacy entry point).
+pub fn apply_compat(ctx: &Context, dark: bool) {
+    new_apply_theme(ctx, dark);
+}
+
+/// Apply a palette as the global egui theme (legacy entry point).
+pub fn apply_palette(ctx: &Context, p: &Palette) {
+    let visuals = Visuals {
+        window_fill: p.bg,
+        panel_fill: p.panel,
+        override_text_color: Some(p.text),
+        warn_fg_color: p.warn,
+        error_fg_color: p.critical,
+        hyperlink_color: p.ok,
+        selection: egui::style::Selection {
+            bg_fill: p.focus_ring,
+            stroke: Stroke::NONE,
+        },
+        ..Visuals::light()
+    };
+    ctx.set_visuals(visuals);
+}
+
+/// The four chrome button roles.
+pub mod chrome {
+    use crate::design_tokens::DesignTokenSet;
+    use crate::theme::chrome as new_chrome;
+    use egui::{Button, RichText, Stroke};
+
+    /// Tab button for view switching.
+    pub fn tab(label: impl Into<String>, active: bool) -> Button<'static> {
+        let tokens = DesignTokenSet::light();
+        new_chrome::tab(&tokens, label, active)
+    }
+
+    /// The one primary action per row (e.g. "New activity"): accent fill,
+    /// no stroke, high-contrast label.
+    pub fn primary(label: impl Into<String>) -> Button<'static> {
+        // Default to light theme tokens; caller should use theme-aware version
+        let tokens = DesignTokenSet::light();
+        new_chrome::primary(&tokens, label)
+    }
+
+    /// Toolbar/quick actions: invisible chrome until hovered.
+    pub fn ghost(label: impl Into<String>) -> Button<'static> {
+        let tokens = DesignTokenSet::light();
+        new_chrome::ghost(&tokens, label)
+    }
+
+    /// Secondary actions in toolbars: subtle outline.
+    pub fn secondary(label: impl Into<String>) -> Button<'static> {
+        let tokens = DesignTokenSet::light();
+        new_chrome::secondary(&tokens, label)
+    }
+
+    /// Destructive actions: red fill, high-contrast label.
+    pub fn danger(label: impl Into<String>) -> Button<'static> {
+        let tokens = DesignTokenSet::light();
+        new_chrome::danger(&tokens, label)
+    }
+}
+
+/// Apply the light theme to the context (legacy entry point).
+pub fn apply_light_theme(ctx: &Context) {
+    new_apply_theme(ctx, false);
+}
+
+/// Apply the dark theme to the context (legacy entry point).
+pub fn apply_dark_theme(ctx: &Context) {
+    new_apply_theme(ctx, true);
+}
+
+/// Apply the theme for the given mode (legacy entry point).
+pub fn apply(ctx: &Context, dark: bool) {
+    new_apply_theme(ctx, dark);
+}
+
+/// Apply only visuals without changing fonts (legacy entry point).
+pub fn apply_visuals(ctx: &Context, dark: bool) {
+    new_apply_theme(ctx, dark);
+}
+
+/// Apply the theme and install fonts (legacy entry point).
+pub fn apply_theme_and_fonts(ctx: &Context, dark: bool) {
+    new_apply_theme(ctx, dark);
+    crate::theme::install_fonts(ctx);
+}
+
+/// Apply a theme by name (legacy entry point).
+pub fn apply_theme_by_name(ctx: &Context, name: &str) {
+    match name.to_lowercase().as_str() {
+        "dark" => new_apply_theme(ctx, true),
+        _ => new_apply_theme(ctx, false),
+    }
+}
+
+/// Get the current theme mode from the global registry.
+pub fn current_theme_mode() -> ThemeMode {
+    get_registry().current()
+}
+
+/// Set the current theme mode in the global registry.
+pub fn set_theme_mode(mode: ThemeMode) {
+    get_registry_mut().set_mode(mode);
+}
+
+/// Initialize the global theme registry (legacy entry point).
+pub fn init_theme_registry() {
+    init_registry();
+}
+
+/// Get the global theme registry (legacy entry point).
+pub fn theme_registry() -> &'static ThemeRegistry {
+    get_registry()
+}
+
+/// Get mutable access to the global theme registry (legacy entry point).
+pub fn theme_registry_mut() -> &'static mut ThemeRegistry {
+    get_registry_mut()
+}
+
+/// Apply a theme using the new Theme trait (legacy entry point).
+pub fn apply_theme_with(ctx: &Context, theme: &dyn Theme) {
+    theme.apply(ctx);
+}
+
+/// Alias for Theme trait.
+pub use crate::design_tokens::Theme;
+
+/// Alias for ThemeRegistry type.
+pub use crate::design_tokens::ThemeRegistry;

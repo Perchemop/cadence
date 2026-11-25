@@ -6,11 +6,8 @@
 //! Following guide II.30.6: one token source, no raw colour literals in widget code.
 
 use crate::design_tokens::{
-    ColorTokens, DesignTokenSet, Density, FontWeight, Palette as LegacyPalette,
-    RadiusSet, RadiusToken, SpacingToken, ThemeMode, ThemeRegistry, TypographyScale,
-    Theme as DesignTheme, LightTheme, DarkTheme, init_theme_registry as init_registry,
-    theme_registry as get_registry, theme_registry as get_registry_mut,
-    ACCENT, FOCUS_RING, ACCENT_ON, LIGHT_COLORS, DARK_COLORS, BASE_UNIT,
+    ColorTokens, DesignTokenSet,
+    ACCENT, ACCENT_ON, LIGHT_COLORS, DARK_COLORS,
     apply as tokens_apply, apply_visuals as tokens_apply_visuals,
     light_tokens, dark_tokens,
 };
