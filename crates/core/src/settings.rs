@@ -218,7 +218,7 @@ pub const SCHEMA_VERSION: u32 = 10;
 ///
 /// Fields (in order of persistence priority, also matching JSON order):
 /// - theme, density, shortcuts, assistant_config, update_channel, high_contrast, reduced_motion
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GlobalSettings {
     /// UI theme: System / Light / Dark.
     pub theme: ThemePreference,
@@ -396,7 +396,7 @@ pub enum EvmDisplayPreference {
 
 /// View‑level settings, specific to a single window/view and re‑loaded when
 /// the user switches views or restarts the app.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ViewSettings {
     /// Currently active view mode (Table, Gantt, Resources, etc.).
     #[serde(default)]
@@ -723,7 +723,7 @@ impl Default for CostDisplay {
 // ========================================================================
 
 /// Tool‑specific settings — never persisted, reset on view change.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolSettings {
     /// Inspector panel width in pixels.
     #[serde(default = "default_inspector_width")]
@@ -1082,8 +1082,7 @@ pub fn config_dir() -> PathBuf {
             })
             .unwrap_or_else(|_| {
                 // Fallback
-                let mut path = PathBuf::from("~/Library/Application Support/Cadence");
-                path
+                PathBuf::from("~/Library/Application Support/Cadence")
             })
     }
 

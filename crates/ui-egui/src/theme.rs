@@ -386,13 +386,34 @@ mod tests {
 
     #[test]
     fn status_severity_classification() {
-        assert_eq!(StatusSeverity::from_message("Cannot delete activity"), StatusSeverity::Error);
-        assert_eq!(StatusSeverity::from_message("Must select an activity"), StatusSeverity::Error);
-        assert_eq!(StatusSeverity::from_message("Invalid date"), StatusSeverity::Error);
-        assert_eq!(StatusSeverity::from_message("Saved project"), StatusSeverity::Success);
-        assert_eq!(StatusSeverity::from_message("Activity created"), StatusSeverity::Success);
-        assert_eq!(StatusSeverity::from_message("Warning: over allocation"), StatusSeverity::Warning);
-        assert_eq!(StatusSeverity::from_message("Info: loaded"), StatusSeverity::Info);
+        assert_eq!(
+            StatusSeverity::from_message("Cannot delete activity"),
+            StatusSeverity::Error
+        );
+        assert_eq!(
+            StatusSeverity::from_message("Must select an activity"),
+            StatusSeverity::Error
+        );
+        assert_eq!(
+            StatusSeverity::from_message("Invalid date"),
+            StatusSeverity::Error
+        );
+        assert_eq!(
+            StatusSeverity::from_message("Saved project"),
+            StatusSeverity::Success
+        );
+        assert_eq!(
+            StatusSeverity::from_message("Activity created"),
+            StatusSeverity::Success
+        );
+        assert_eq!(
+            StatusSeverity::from_message("Warning: over allocation"),
+            StatusSeverity::Warning
+        );
+        assert_eq!(
+            StatusSeverity::from_message("Info: loaded"),
+            StatusSeverity::Info
+        );
     }
 
     #[test]

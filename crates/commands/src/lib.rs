@@ -13,11 +13,13 @@ use cadence_core::calendar_set::{CalendarId, NamedCalendar};
 use cadence_core::engine::{capture_baseline, capture_lookahead_snapshot, schedule};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
-    DailyNote, DailyNoteId, EvmDisplayPreference, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
-    LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship, RelationshipId,
-    Resource, ResourceId, ResourceKind,
+    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot,
+    LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project,
+    Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
 };
-use cadence_core::settings::{DensityLevel, GlobalSettings, ProjectSettings, ThemePreference, ViewSettings, ToolSettings};
+use cadence_core::settings::{
+    DensityLevel, EvmDisplayPreference, GlobalSettings, ThemePreference, ToolSettings, ViewSettings,
+};
 use cadence_core::wbs::{WbsId, WbsNode};
 use time::Date;
 
@@ -1464,7 +1466,7 @@ impl Command for SetAssignmentUnitsUndo {
 }
 
 /// Set global-level settings (theme, update checks, default density, shortcuts).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SetGlobalSettings {
     pub settings: GlobalSettings,
 }
@@ -1484,7 +1486,7 @@ impl Command for SetGlobalSettings {
 }
 
 /// Undo for [`SetGlobalSettings`]: restore the previous global settings.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SetGlobalSettingsUndo {
     pub previous: GlobalSettings,
 }
@@ -1496,12 +1498,14 @@ impl Command for SetGlobalSettingsUndo {
 
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
         project.global_settings = self.previous.clone();
-        Ok(Box::new(SetGlobalSettingsUndo { previous: project.global_settings.clone() }))
+        Ok(Box::new(SetGlobalSettingsUndo {
+            previous: project.global_settings.clone(),
+        }))
     }
 }
 
 /// Set view-level settings (visible columns, filter, sort, split-gantt visibility).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SetViewSettings {
     pub settings: ViewSettings,
 }
@@ -1531,12 +1535,14 @@ impl Command for SetViewSettingsUndo {
 
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
         project.view_settings = self.previous.clone();
-        Ok(Box::new(SetViewSettingsUndo { previous: project.view_settings.clone() }))
+        Ok(Box::new(SetViewSettingsUndo {
+            previous: project.view_settings.clone(),
+        }))
     }
 }
 
 /// Set tool-level settings (density override, toolbar visibility, inspector state, assignment units).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SetToolSettings {
     pub settings: ToolSettings,
 }
@@ -1566,7 +1572,9 @@ impl Command for SetToolSettingsUndo {
 
     fn apply(&mut self, project: &mut Project) -> Result<Box<dyn Command>, String> {
         project.tool_settings = self.previous.clone();
-        Ok(Box::new(SetToolSettingsUndo { previous: project.tool_settings.clone() }))
+        Ok(Box::new(SetToolSettingsUndo {
+            previous: project.tool_settings.clone(),
+        }))
     }
 }
 
