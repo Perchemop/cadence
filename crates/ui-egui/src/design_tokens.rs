@@ -56,7 +56,7 @@ use egui::{
     TextStyle, Visuals,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 // ============================================================================
 // COLOUR TOKENS
@@ -583,7 +583,7 @@ impl Default for RadiusSet {
 }
 
 /// Elevation shadows for all levels.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct ElevationSet {
     pub level0: (f32, f32, f32, Color32),
     pub level1: (f32, f32, f32, Color32),
@@ -740,9 +740,9 @@ pub trait Theme {
         // Window shadow (level2 elevation)
         let (offset_y, blur, spread, color) = elevation.level2;
         v.window_shadow = egui::Shadow {
-            offset: egui::Vec2::new(0.0, offset_y),
-            blur,
-            spread,
+            offset: [0, offset_y as i8],
+            blur: blur as u8,
+            spread: spread as i8,
             color,
         };
         v.popup_shadow = v.window_shadow;
@@ -788,9 +788,9 @@ pub trait Theme {
                 // Spacing rhythm
                 style.spacing.item_spacing = egui::vec2(spacing_md * 2.0, spacing_sm); // 8×4 base
                 style.spacing.button_padding = egui::vec2(spacing_md, spacing_sm); // 8×4
-                style.spacing.menu_margin = Margin::symmetric(spacing_md as i32, spacing_sm as i32);
+                style.spacing.menu_margin = Margin::symmetric(spacing_md as i8, spacing_sm as i8);
                 style.spacing.indent = spacing_xl; // 16
-                style.spacing.window_margin = Margin::same(spacing_lg); // 12
+                style.spacing.window_margin = Margin::same(spacing_lg as i8); // 12
                 style.spacing.combo_width = 160.0;
                 style.spacing.slider_width = 100.0;
                 style.spacing.text_edit_width = 200.0;
@@ -1002,16 +1002,16 @@ impl ThemeRegistry {
 }
 
 // Global registry instance (initialized once).
-static THEME_REGISTRY: OnceLock<ThemeRegistry> = OnceLock::new();
+static THEME_REGISTRY: OnceLock<Mutex<ThemeRegistry>> = OnceLock::new();
 
 /// Initializes the global theme registry.
-pub fn init_theme_registry() -> &'static ThemeRegistry {
-    THEME_REGISTRY.get_or_init(ThemeRegistry::new)
+pub fn init_theme_registry() -> &'static Mutex<ThemeRegistry> {
+    THEME_REGISTRY.get_or_init(|| Mutex::new(ThemeRegistry::new))
 }
 
 /// Returns the global theme registry.
-pub fn theme_registry() -> &'static ThemeRegistry {
-    THEME_REGISTRY.get_or_init(ThemeRegistry::new)
+pub fn theme_registry() -> &'static Mutex<ThemeRegistry> {
+    THEME_REGISTRY.get_or_init(|| Mutex::new(ThemeRegistry::new))
 }
 
 // ============================================================================
@@ -1174,6 +1174,7 @@ pub fn translucent(color: Color32, alpha: u8) -> Color32 {
 /// Legacy apply function (calls through to new system).
 pub fn apply(ctx: &Context, dark: bool) {
     let registry = theme_registry();
+    let mut registry = registry.lock().unwrap();
     let mode = if dark {
         ThemeMode::Dark
     } else {
@@ -1186,6 +1187,7 @@ pub fn apply(ctx: &Context, dark: bool) {
 /// Legacy apply_visuals function.
 pub fn apply_visuals(ctx: &Context, dark: bool) {
     let registry = theme_registry();
+    let mut registry = registry.lock().unwrap();
     let mode = if dark {
         ThemeMode::Dark
     } else {

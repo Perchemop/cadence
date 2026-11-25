@@ -307,6 +307,7 @@ impl ThemeRegistryCompat {
         match self.current {
             ThemeMode::Light => &*self.light,
             ThemeMode::Dark => &*self.dark,
+            ThemeMode::System => &*self.dark, // Default to dark for system
         }
     }
 
