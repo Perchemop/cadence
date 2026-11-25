@@ -1461,6 +1461,7 @@ impl Command for SetAssignmentUnitsUndo {
             previous: current,
         }))
     }
+}
 
 /// Set global-level settings (theme, update checks, default density, shortcuts).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4785,4 +4786,5 @@ mod tests {
         stack.undo(&mut project).expect("undo clear");
         stack.redo(&mut project).expect("redo clear");
     }
+}
 }

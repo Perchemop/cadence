@@ -217,7 +217,15 @@ fn spacing_tokens_correct_multipliers() {
     assert_eq!(base, 4.0);
 
     let expected = [
-        (SpacingToken::Xs, 0.5), (SpacingToken::Sm, 1.0), (SpacingToken::Md, 2.0), (SpacingToken::Lg, 3.0), (SpacingToken::Xl, 4.0), (SpacingToken::Xxl, 6.0), (SpacingToken::Xxxl, 8.0), (SpacingToken::Huge, 12.0), (SpacingToken::Massive, 16.0),
+        (SpacingToken::Xs, 0.5),
+        (SpacingToken::Sm, 1.0),
+        (SpacingToken::Md, 2.0),
+        (SpacingToken::Lg, 3.0),
+        (SpacingToken::Xl, 4.0),
+        (SpacingToken::Xxl, 6.0),
+        (SpacingToken::Xxxl, 8.0),
+        (SpacingToken::Huge, 12.0),
+        (SpacingToken::Massive, 16.0),
     ];
 
     for (token, mult) in expected {

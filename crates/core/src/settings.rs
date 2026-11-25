@@ -1080,7 +1080,7 @@ pub fn config_dir() -> PathBuf {
                 path.push("Cadence");
                 path
             })
-            .unwrap_or_else(|| {
+            .unwrap_or_else(|_| {
                 // Fallback
                 let mut path = PathBuf::from("~/Library/Application Support/Cadence");
                 path
