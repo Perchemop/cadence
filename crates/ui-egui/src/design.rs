@@ -256,7 +256,6 @@ pub fn apply_palette(ctx: &Context, p: &Palette) {
 
 /// Theme trait for dynamic theming (legacy compatibility).
 /// This is an alias for the design_tokens::Theme trait.
-pub use crate::design_tokens::Theme;
 
 /// Theme colors returned by the Theme trait.
 #[derive(Debug, Clone, Copy)]
