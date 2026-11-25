@@ -8,7 +8,7 @@
 
 // Re-export all public types from design_tokens
 pub use crate::design_tokens::{
-    ColorTokens, DesignTokenSet, FontWeight, Palette as LegacyPalette, RadiusSet,
+    ColorTokens, FontWeight, Palette as LegacyPalette, RadiusSet,
     RadiusToken, SpacingToken, ThemeMode, ThemeRegistry, TypographyScale,
     Theme as DesignTheme, Theme, LightTheme, DarkTheme, init_theme_registry as init_registry,
     theme_registry as tokens_theme_registry,
@@ -135,7 +135,6 @@ pub fn apply_palette(ctx: &Context, p: &Palette) {
 
 /// The four chrome button roles.
 pub mod chrome {
-    use crate::design_tokens::DesignTokenSet;
     use crate::theme::chrome as new_chrome;
     use crate::theme::ThemeVariant;
     use egui::Button;
@@ -149,27 +148,22 @@ pub mod chrome {
     /// The one primary action per row (e.g. "New activity"): accent fill,
     /// no stroke, high-contrast label.
     pub fn primary(label: impl Into<String>) -> Button<'static> {
-        // Default to light theme tokens; caller should use theme-aware version
-        let tokens = DesignTokenSet::light();
-        new_chrome::primary(&tokens, label)
+        new_chrome::primary(ThemeVariant::Light, label)
     }
 
     /// Toolbar/quick actions: invisible chrome until hovered.
     pub fn ghost(label: impl Into<String>) -> Button<'static> {
-        let tokens = DesignTokenSet::light();
-        new_chrome::ghost(&tokens, label)
+        new_chrome::ghost(ThemeVariant::Light, label)
     }
 
     /// Secondary actions in toolbars: subtle outline.
     pub fn secondary(label: impl Into<String>) -> Button<'static> {
-        let tokens = DesignTokenSet::light();
-        new_chrome::secondary(&tokens, label)
+        new_chrome::secondary(ThemeVariant::Light, label)
     }
 
     /// Destructive actions: red fill, high-contrast label.
     pub fn danger(label: impl Into<String>) -> Button<'static> {
-        let tokens = DesignTokenSet::light();
-        new_chrome::danger(&tokens, label)
+        new_chrome::danger(ThemeVariant::Light, label)
     }
 }
 
