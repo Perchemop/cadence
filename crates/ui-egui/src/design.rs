@@ -255,11 +255,10 @@ pub fn apply_palette(ctx: &Context, p: &Palette) {
 }
 
 /// Theme trait for dynamic theming (legacy compatibility).
-pub trait Theme {
-    fn apply(&self, ctx: &Context);
-    fn colors(&self) -> ThemeColors;
-}
+/// This is an alias for the design_tokens::Theme trait.
+pub use crate::design_tokens::Theme;
 
+/// Theme colors returned by the Theme trait.
 #[derive(Debug, Clone, Copy)]
 pub struct ThemeColors {
     pub accent: Color32,
@@ -306,7 +305,7 @@ impl Theme for DarkThemeImpl {
     }
 }
 
-/// Theme registry for dynamic theme switching.
+/// Theme registry for dynamic theme switching (compatibility wrapper).
 pub struct ThemeRegistryCompat {
     light: Box<dyn Theme>,
     dark: Box<dyn Theme>,
@@ -342,7 +341,7 @@ impl ThemeRegistryCompat {
     }
 }
 
-/// Global theme registry.
+/// Global theme registry (compatibility wrapper).
 static mut THEME_REGISTRY_COMPAT: Option<ThemeRegistryCompat> = None;
 
 /// Initialize the global theme registry (legacy entry point).
