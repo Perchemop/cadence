@@ -152,7 +152,7 @@ pub enum ThemePreference {
 /// Keyboard shortcut configuration.
 ///
 /// Serialises as `{ "key": "action", ... }` where key is the egui key name.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ShortcutConfig(
     /// Inner map of egui key → action description string.
     pub BTreeMap<String, String>,
