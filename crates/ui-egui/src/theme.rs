@@ -27,16 +27,14 @@ pub enum ThemeVariant {
 /// This is the main entry point. Call once at startup and whenever the theme
 /// changes (light ↔ dark). The tokens drive everything: colours, spacing,
 /// typography, radius, elevation.
-pub fn apply_theme(ctx: &Context, variant: ThemeVariant) {
-    let dark = matches!(variant, ThemeVariant::Dark);
+pub fn apply_theme(ctx: &Context, dark: bool) {
     tokens_apply(ctx, dark);
 }
 
 /// Apply only the visual palette (colours, radius, elevation) without typography.
 ///
 /// Used by headless render tests that cannot load bundled fonts (guide II.30.12).
-pub fn apply_visuals_only(ctx: &Context, variant: ThemeVariant) {
-    let dark = matches!(variant, ThemeVariant::Dark);
+pub fn apply_visuals_only(ctx: &Context, dark: bool) {
     tokens_apply_visuals(ctx, dark);
 }
 

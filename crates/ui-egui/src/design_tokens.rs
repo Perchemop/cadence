@@ -66,7 +66,7 @@ use std::sync::{Mutex, OnceLock};
 ///
 /// All colours are stored as sRGB `Color32`. Contrast is verified in
 /// `tests/design_token_tests.rs` against WCAG 2.2 AA.
-#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ColorTokens {
     /// Window background behind panels.
     pub surface_base: Color32,
