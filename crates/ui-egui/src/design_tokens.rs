@@ -1305,15 +1305,6 @@ pub fn meets_wcag(fg: Color32, bg: Color32, level: WcagLevel) -> bool {
     contrast_ratio(fg, bg) >= wcag_min_ratio(level)
 }
 
-/// Returns the minimum contrast ratio for the given WCAG level.
-pub fn wcag_min_ratio(level: WcagLevel) -> f32 {
-    match level {
-        WcagLevel::AaNormal => 4.5,
-        WcagLevel::AaLarge => 3.0,
-        WcagLevel::AaaNormal => 7.0,
-    }
-}
-
 /// Semantic color role pairs to validate for WCAG 2.2 AA compliance.
 ///
 /// Each entry: (fg_role, bg_role, min_level, description)
