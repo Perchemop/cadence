@@ -18,7 +18,7 @@ use cadence_core::model::{
     Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
 };
 use cadence_core::settings::{
-    DensityLevel, EvmDisplayPreference, GlobalSettings, ThemePreference, ToolSettings, ViewSettings,
+    GlobalSettings, ToolSettings, ViewSettings,
 };
 use cadence_core::wbs::{WbsId, WbsNode};
 use time::Date;
