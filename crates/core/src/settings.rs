@@ -1208,7 +1208,6 @@ pub fn migrate_global_settings_json(json: &mut Value, from_version: u32) -> Resu
     // Ensure schema_version is set to current, applying additive migrations
     if from_version < GLOBAL_SCHEMA_VERSION {
         // Start from defaults and additively apply new fields
-        let mut new_settings = GlobalSettings::default();
 
         // Migration from v0 to v1: initial fields (all core fields)
         // These are already in Default, but we need to ensure they're in the JSON
