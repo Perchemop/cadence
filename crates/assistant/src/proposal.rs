@@ -181,6 +181,18 @@ impl ProposedChange {
     }
 }
 
+/// Returns the rationale for this change.
+impl ProposedChange {
+    pub fn rationale(&self) -> &str {
+        match self {
+            Self::CreateActivity { rationale, .. }
+            | Self::CreateRelationship { rationale, .. }
+            | Self::SetActivityDuration { rationale, .. }
+            | Self::SetActivityProgress { rationale, .. } => rationale.as_str(),
+        }
+    }
+}
+
 /// A model response prepared for review: prose plus typed changes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Proposal {

@@ -10,15 +10,19 @@ use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
+use cadence_assistant::{
+    map_proposal_to_commands, AssistantConfig, AssistantError, HttpProvider, Proposal,
+    ProposalError, ProposedChange, SecretKey,
+};
 use cadence_commands::{
     AddResourceToActivity, AssignActivityWbs, CaptureBaseline, CommandStack, CreateCalendar,
     CreateRelationship, CreateResource, DeleteCalendar, DeleteDailyNote, DeleteProduction,
     DeleteRelationship, DeleteResource, RemoveBaseline, RemoveLookaheadSnapshot,
     RemoveResourceFromActivity, RenameActivity, RenameCalendar, RenameResource,
-    SetActivityActualCost, SetActivityActualDates, SetActivityBudget, SetActivityCalendar,
-    SetActivityConstraint, SetActivityDuration, SetActivityLocation, SetActivityOwner,
-    SetActivityProgress, SetActivityPromise, SetCalendarDefinition, SetRelationshipLag,
-    SetRelationshipType, SetResourceCapacity, SetResourceKind,
+    SetActivityActualCost, SetActivityActualDates, SetActivityActualDates, SetActivityBudget,
+    SetActivityCalendar, SetActivityConstraint, SetActivityDuration, SetActivityLocation,
+    SetActivityOwner, SetActivityProgress, SetActivityPromise, SetCalendarDefinition,
+    SetRelationshipLag, SetRelationshipType, SetResourceCapacity, SetResourceKind,
 };
 use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
@@ -627,6 +631,12 @@ pub struct CadenceApp {
     assistant_receiver: Option<mpsc::Receiver<Result<String, cadence_assistant::AssistantError>>>,
     assistant_proposal: Option<cadence_assistant::Proposal>,
     assistant_validation_errors: Vec<cadence_assistant::ProposalError>,
+    /// Whether a proposal request is in progress.
+    assistant_request_in_progress: bool,
+    /// Whether the proposal review panel is open.
+    show_proposal_review: bool,
+    /// The proposal being reviewed (separate from assistant_proposal to allow review without auto-applying).
+    review_proposal: Option<cadence_assistant::Proposal>,
     link_predecessor: Option<ActivityId>,
     link_successor: Option<ActivityId>,
     link_type_index: usize,
@@ -881,6 +891,9 @@ impl CadenceApp {
             assistant_receiver: None,
             assistant_proposal: None,
             assistant_validation_errors: Vec::new(),
+            assistant_request_in_progress: false,
+            show_proposal_review: false,
+            review_proposal: None,
             assistant_model_edit: String::new(),
             assistant_base_url_edit: String::new(),
             assistant_api_key_edit: String::new(),
@@ -962,6 +975,112 @@ impl CadenceApp {
     /// any network call.
     pub fn set_assistant_proposal(&mut self, proposal: cadence_assistant::Proposal) {
         self.assistant_proposal = Some(proposal);
+    }
+
+    /// Start a proposal request in the background.
+    fn request_proposal(&mut self) {
+        if self.assistant_request_in_progress {
+            return;
+        }
+        if self.assistant_request_buffer.trim().is_empty() {
+            self.set_status("Please enter a request first.");
+            return;
+        }
+        let provider = HttpProvider::from_config(&self.assistant_config);
+        if let Err(e) = &provider {
+            self.set_status(format!("Configuration error: {e}"));
+            return;
+        }
+        let provider = provider.unwrap();
+        let prompt = self.assistant_request_buffer.clone();
+
+        self.assistant_request_in_progress = true;
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let result = provider.complete(&prompt);
+            let _ = sender.send(result);
+        });
+        self.assistant_receiver = Some(receiver);
+    }
+
+    /// Show the proposal review panel.
+    fn show_proposal_review_panel(&mut self, ui: &mut Ui) {
+        if let Some(proposal) = &self.review_proposal {
+            ui.group(|ui| {
+                ui.heading("Proposal Review");
+                ui.add_space(4.0);
+                ui.label(&proposal.prose);
+                ui.separator();
+
+                for (idx, change) in proposal.changes.iter().enumerate() {
+                    ui.group(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.strong(format!("{}.", idx + 1));
+                            ui.label(Self::describe_change(change));
+                        });
+                        ui.add_space(4.0);
+                        ui.label(change.rationale().to_string());
+                    });
+                    ui.add_space(8.0);
+                }
+
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui.button("Accept and Apply").clicked() {
+                        self.apply_reviewed_proposal();
+                    }
+                    if ui.button("Reject").clicked() {
+                        self.show_proposal_review = false;
+                        self.review_proposal = None;
+                    }
+                });
+            });
+        }
+    }
+
+    /// Describe a proposed change for display in the review panel.
+    fn describe_change(change: &ProposedChange) -> String {
+        match change {
+            ProposedChange::CreateActivity { name, duration_days, .. } => {
+                format!("Create activity '{}' ({} days)", name, duration_days)
+            }
+            ProposedChange::CreateRelationship { predecessor, successor, .. } => {
+                format!("Link {} → {}", predecessor, successor)
+            }
+            ProposedChange::SetActivityDuration { activity, duration_days, .. } => {
+                format!("Set activity {} duration to {} days", activity, duration_days)
+            }
+            ProposedChange::SetActivityProgress { activity, percent, .. } => {
+                format!("Set activity {} progress to {}%", activity, percent)
+            }
+        }
+    }
+
+    /// Apply the reviewed proposal by converting to commands.
+    fn apply_reviewed_proposal(&mut self) {
+        if let Some(proposal) = self.review_proposal.take() {
+            match map_proposal_to_commands(&proposal, &self.project) {
+                Ok(commands) => {
+                    let mut success = true;
+                    for cmd in commands {
+                        if self.stack.execute(&mut self.project, cmd).is_err() {
+                            success = false;
+                            break;
+                        }
+                    }
+                    if success {
+                        self.recompute();
+                        self.set_status("Proposal applied successfully.");
+                    } else {
+                        self.set_status("Failed to apply proposal.");
+                    }
+                }
+                Err(e) => {
+                    self.set_status(format!("Failed to map proposal to commands: {e}"));
+                }
+            }
+            self.show_proposal_review = false;
+        }
     }
 
     fn start_update_check(&mut self) {
@@ -2505,6 +2624,47 @@ impl CadenceApp {
                     self.update_status = update_check::UpdateStatus::Unavailable(
                         "the update checker stopped unexpectedly".to_string(),
                     );
+                }
+            }
+        }
+
+        // Poll the assistant proposal request.
+        if let Some(receiver) = self.assistant_receiver.take() {
+            match receiver.try_recv() {
+                Ok(result) => {
+                    self.assistant_request_in_progress = false;
+                    match result {
+                        Ok(completion) => {
+                            // Parse the proposal from the completion
+                            match parse_proposal_response(&completion) {
+                                Ok(proposal) => {
+                                    // Validate against the project
+                                    let errors = proposal.validate(&self.project);
+                                    if errors.is_empty() {
+                                        self.review_proposal = Some(proposal);
+                                        self.show_proposal_review = true;
+                                    } else {
+                                        self.assistant_validation_errors = errors;
+                                        self.set_status("Proposal validation failed. See console for details.");
+                                    }
+                                }
+                                Err(e) => {
+                                    self.set_status(format!("Failed to parse proposal: {e}"));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            self.set_status(format!("Proposal request failed: {e}"));
+                        }
+                    }
+                }
+                Err(mpsc::TryRecvError::Empty) => {
+                    self.assistant_receiver = Some(receiver);
+                    ctx.request_repaint_after(Duration::from_millis(250));
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.assistant_request_in_progress = false;
+                    self.set_status("Proposal request stopped unexpectedly.");
                 }
             }
         }
@@ -5626,13 +5786,52 @@ impl CadenceApp {
                         return;
                     }
 
-                    // Configured state: request text field + disabled request button
+                    // Configured state
                     ui.heading("Assistant");
                     ui.label("The assistant is configured and ready.");
                     ui.separator();
+
+                    // If a proposal is being reviewed, show the review panel
+                    if self.show_proposal_review {
+                        self.show_proposal_review_panel(ui);
+                        return;
+                    }
+
+                    // Show in-progress indicator
+                    if self.assistant_request_in_progress {
+                        ui.group(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label("Requesting proposal…");
+                            });
+                        });
+                        ui.separator();
+                    }
+
+                    // Request text field + request button
                     let request_label = ui.label("Request");
                     ui.text_edit_singleline(&mut self.assistant_request_buffer)
                         .labelled_by(request_label.id);
+                    ui.separator();
+
+                    let provider = HttpProvider::from_config(&self.assistant_config);
+                    let request_button = ui.add_enabled_ui(
+                        !self.assistant_request_buffer.trim().is_empty() &&
+                            !self.assistant_request_in_progress &&
+                            provider.is_ok(),
+                        |ui| {
+                            ui.button("Request proposal")
+                        }
+                    );
+
+                    if request_button.clicked() {
+                        self.request_proposal();
+                    }
+
+                    if let Err(e) = &provider {
+                        ui.colored_label(ui.visuals().error_fg_color, format!("Configuration error: {e}"));
+                    }
+
                     ui.separator();
                     ui.group(|ui| {
                         ui.label("Configuration:");
@@ -5645,10 +5844,6 @@ impl CadenceApp {
                             self.assistant_config.base_url = None;
                             self.assistant_config.api_key = None;
                         }
-                        ui.button("Request proposal").on_disabled_hover_text(
-                            "The proposal request is not wired up yet; \
-                             it will arrive in a future release.",
-                        );
                     });
                     ui.separator();
                     if ui.button("Return to unconfigured").clicked() {
