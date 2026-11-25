@@ -441,7 +441,7 @@ fn default_zero_u32() -> u32 {
 }
 
 /// Table view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TableViewSettings {
     /// Current sort key.
     #[serde(default)]
@@ -533,7 +533,7 @@ impl Default for ResourcesViewSettings {
 }
 
 /// Baselines view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BaselinesViewSettings {
     /// Show variance columns.
     #[serde(default = "default_true")]
@@ -557,7 +557,7 @@ impl Default for BaselinesViewSettings {
 }
 
 /// Calendars view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CalendarsViewSettings {
     /// Show holiday exceptions.
     #[serde(default = "default_true")]
@@ -581,7 +581,7 @@ impl Default for CalendarsViewSettings {
 }
 
 /// Lookahead view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LookaheadViewSettings {
     /// Window start date.
     #[serde(default)]
@@ -605,7 +605,7 @@ impl Default for LookaheadViewSettings {
 }
 
 /// Diary view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiaryViewSettings {
     /// Filter by activity.
     #[serde(default)]
@@ -653,7 +653,7 @@ impl Default for ProductionViewSettings {
 }
 
 /// Audit view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuditViewSettings {
     /// Status date for audit (None = today).
     #[serde(default)]
@@ -677,7 +677,7 @@ impl Default for AuditViewSettings {
 }
 
 /// Assistant view settings.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssistantViewSettings {
     /// Last used model (overrides global).
     #[serde(default)]
@@ -769,7 +769,7 @@ fn default_split_pane_ratio() -> f32 {
 }
 
 /// Column resize tool settings.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ColumnResizeSettings {
     /// Column being resized (None when idle).
     pub resizing_column: Option<SortKey>,

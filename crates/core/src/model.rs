@@ -2163,7 +2163,7 @@ mod tests {
 }
 
 /// A single message in the assistant conversation history.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AssistantMessage {
     /// The role of the message sender (user or assistant).
     pub role: String,
