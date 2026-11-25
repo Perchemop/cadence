@@ -12,7 +12,7 @@ use cadence_ui_egui::design_tokens::{
 fn semantic_color_pairs_meet_wcag_aa_across_themes() {
     // Test all semantic color pairs against WCAG 2.2 AA
     // Light theme
-    let light_failures = validate_contrast(&crate::design_tokens::LIGHT_COLORS);
+    let light_failures = validate_contrast(&LIGHT_COLORS);
     if !light_failures.is_empty() {
         panic!(
             "Light theme contrast failures:\n{}",
@@ -21,7 +21,7 @@ fn semantic_color_pairs_meet_wcag_aa_across_themes() {
     }
 
     // Dark theme
-    let dark_failures = validate_contrast(&crate::design_tokens::DARK_COLORS);
+    let dark_failures = validate_contrast(&DARK_COLORS);
     if !dark_failures.is_empty() {
         panic!(
             "Dark theme contrast failures:\n{}",
