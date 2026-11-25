@@ -12,8 +12,7 @@ use crate::design_tokens::{
     light_tokens, dark_tokens,
 };
 use egui::{
-    Color32, Context, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Margin, Stroke,
-    Style, TextStyle, Visuals,
+    Color32, Context, FontData, FontDefinitions, FontFamily, Stroke,
 };
 
 /// Theme variant for apply functions.

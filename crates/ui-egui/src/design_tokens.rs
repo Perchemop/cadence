@@ -53,7 +53,7 @@
 
 use egui::{
     Color32, Context, FontData, FontDefinitions, FontFamily, FontId, Margin, Stroke,
-    Style, TextStyle, Visuals,
+    TextStyle, Visuals,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
