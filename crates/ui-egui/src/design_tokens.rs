@@ -1385,7 +1385,7 @@ pub fn validate_contrast(color_tokens: &ColorTokens) -> Vec<String> {
             "non_working_day" => Some(color_tokens.non_working_day),
             _ => None,
         };
-    }
+    };
 
     for (fg_role, bg_role, level, description) in SEMANTIC_CONTRAST_PAIRS {
         let fg = get_color(fg_role);

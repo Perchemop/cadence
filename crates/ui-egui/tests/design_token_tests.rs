@@ -313,7 +313,12 @@ fn light_theme_status_text_contrast() {
         "light: critical_on on critical",
     );
     assert_contrast(c.status_ok_on, c.status_ok, 4.5, "light: ok_on on ok");
-    assert_contrast(c.status_warn_on, c.status_warn, 4.5, "light: warn_on on warn");
+    assert_contrast(
+        c.status_warn_on,
+        c.status_warn,
+        4.5,
+        "light: warn_on on warn",
+    );
 }
 
 #[test]
@@ -327,7 +332,12 @@ fn dark_theme_status_text_contrast() {
         "dark: critical_on on critical",
     );
     assert_contrast(c.status_ok_on, c.status_ok, 4.5, "dark: ok_on on ok");
-    assert_contrast(c.status_warn_on, c.status_warn, 4.5, "dark: warn_on on warn");
+    assert_contrast(
+        c.status_warn_on,
+        c.status_warn,
+        4.5,
+        "dark: warn_on on warn",
+    );
 }
 
 #[test]
