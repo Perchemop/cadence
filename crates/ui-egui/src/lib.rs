@@ -11,8 +11,7 @@ use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use cadence_assistant::{
-    map_proposal_to_commands, AssistantConfig, AssistantError, AssistantProvider, HttpProvider, Proposal,
-    ProposalError, ProposedChange, SecretKey, parse_proposal_response,
+    map_proposal_to_commands, AssistantProvider, HttpProvider, ProposedChange, parse_proposal_response,
 };
 use cadence_commands::{
     AddResourceToActivity, AssignActivityWbs, CaptureBaseline, CommandStack, CreateCalendar,
@@ -748,7 +747,8 @@ impl CadenceApp {
     fn design_tokens(&self) -> DesignTokens {
         // Use the new theme registry system
         let registry = design::theme_registry();
-        let theme = registry.lock().unwrap().active_theme(self.dark);
+        let guard = registry.lock().unwrap();
+        let theme = guard.active_theme(self.dark);
         DesignTokens::from_theme(theme)
     }
 

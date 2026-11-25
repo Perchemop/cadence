@@ -8,7 +8,7 @@
 
 // Re-export all public types from design_tokens
 pub use crate::design_tokens::{
-    ColorTokens, FontWeight, Palette as LegacyPalette, RadiusSet,
+    ColorTokens, DesignTokenSet, FontWeight, Palette as LegacyPalette, RadiusSet,
     RadiusToken, SpacingToken, ThemeMode, ThemeRegistry, TypographyScale,
     Theme as DesignTheme, Theme, LightTheme, DarkTheme, init_theme_registry as init_registry,
     theme_registry as tokens_theme_registry,
@@ -20,7 +20,7 @@ pub use crate::design_tokens::{
     light_tokens, dark_tokens,
 };
 
-use crate::theme::{apply_theme as new_apply_theme, apply_visuals_only, install_fonts as new_install_fonts, chrome as new_chrome};
+use crate::theme::{apply_theme as new_apply_theme, apply_visuals_only, install_fonts as new_install_fonts};
 use egui::{Color32, Context, Stroke, Visuals};
 use std::sync::Mutex;
 
@@ -238,41 +238,101 @@ pub struct ThemeColors {
     pub status_normal: Color32,
 }
 
-/// Light theme implementation.
-pub struct LightThemeImpl;
+/// Light theme implementation (wraps design_tokens::LightTheme).
+pub struct LightThemeImpl {
+    inner: LightTheme,
+}
 
-impl Theme for LightThemeImpl {
-    fn apply(&self, ctx: &Context) {
-        crate::theme::apply_theme(ctx, false);
-    }
-
-    fn colors(&self) -> ThemeColors {
-        let tokens = DesignTokenSet::light();
-        ThemeColors {
-            accent: ACCENT,
-            surface_raised: tokens.colors.surface_raised,
-            status_critical: tokens.colors.status_critical,
-            status_normal: tokens.colors.status_normal,
-        }
+impl Default for LightThemeImpl {
+    fn default() -> Self {
+        Self { inner: LightTheme::default() }
     }
 }
 
-/// Dark theme implementation.
-pub struct DarkThemeImpl;
-
-impl Theme for DarkThemeImpl {
-    fn apply(&self, ctx: &Context) {
-        crate::theme::apply_theme(ctx, true);
+impl Theme for LightThemeImpl {
+    fn colors(&self) -> &ColorTokens {
+        self.inner.colors()
     }
 
-    fn colors(&self) -> ThemeColors {
-        let tokens = DesignTokenSet::dark();
-        ThemeColors {
-            accent: ACCENT,
-            surface_raised: tokens.colors.surface_raised,
-            status_critical: tokens.colors.status_critical,
-            status_normal: tokens.colors.status_normal,
-        }
+    fn typography(&self) -> &TypographyScale {
+        self.inner.typography()
+    }
+
+    fn density(&self) -> Density {
+        self.inner.density()
+    }
+
+    fn radius(&self) -> &RadiusSet {
+        self.inner.radius()
+    }
+
+    fn elevation(&self) -> &ElevationSet {
+        self.inner.elevation()
+    }
+
+    fn motion(&self) -> &MotionSet {
+        self.inner.motion()
+    }
+
+    fn reduced_motion(&self) -> bool {
+        self.inner.reduced_motion()
+    }
+
+    fn is_dark(&self) -> bool {
+        self.inner.is_dark()
+    }
+
+    fn apply(&self, ctx: &Context) {
+        self.inner.apply(ctx);
+    }
+}
+
+/// Dark theme implementation (wraps design_tokens::DarkTheme).
+pub struct DarkThemeImpl {
+    inner: DarkTheme,
+}
+
+impl Default for DarkThemeImpl {
+    fn default() -> Self {
+        Self { inner: DarkTheme::default() }
+    }
+}
+
+impl Theme for DarkThemeImpl {
+    fn colors(&self) -> &ColorTokens {
+        self.inner.colors()
+    }
+
+    fn typography(&self) -> &TypographyScale {
+        self.inner.typography()
+    }
+
+    fn density(&self) -> Density {
+        self.inner.density()
+    }
+
+    fn radius(&self) -> &RadiusSet {
+        self.inner.radius()
+    }
+
+    fn elevation(&self) -> &ElevationSet {
+        self.inner.elevation()
+    }
+
+    fn motion(&self) -> &MotionSet {
+        self.inner.motion()
+    }
+
+    fn reduced_motion(&self) -> bool {
+        self.inner.reduced_motion()
+    }
+
+    fn is_dark(&self) -> bool {
+        self.inner.is_dark()
+    }
+
+    fn apply(&self, ctx: &Context) {
+        self.inner.apply(ctx);
     }
 }
 

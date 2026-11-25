@@ -55,8 +55,54 @@ use egui::{
     Color32, Context, FontData, FontDefinitions, FontFamily, FontId, Margin, Stroke,
     TextStyle, Visuals,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::Visitor, ser::Serializer};
+use std::fmt;
 use std::sync::{Mutex, OnceLock};
+
+// Custom serde for Color32 (serializes as hex string "#RRGGBB")
+mod color32_serde {
+    use super::*;
+    use serde::{Deserializer, Serializer};
+
+    pub fn serialize<S>(color: &Color32, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let hex = format!("#{:02X}{:02X}{:02X}", color.r(), color.g(), color.b());
+        serializer.serialize_str(&hex)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Color32, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct Color32Visitor;
+
+        impl<'de> Visitor<'de> for Color32Visitor {
+            type Value = Color32;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a hex color string like #RRGGBB")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Color32, E>
+            where
+                E: serde::de::Error,
+            {
+                let v = v.trim_start_matches('#');
+                if v.len() != 6 {
+                    return Err(E::custom("expected 6 hex digits"));
+                }
+                let r = u8::from_str_radix(&v[0..2], 16).map_err(E::custom)?;
+                let g = u8::from_str_radix(&v[2..4], 16).map_err(E::custom)?;
+                let b = u8::from_str_radix(&v[4..6], 16).map_err(E::custom)?;
+                Ok(Color32::from_rgb(r, g, b))
+            }
+        }
+
+        deserializer.deserialize_str(Color32Visitor)
+    }
+}
 
 // ============================================================================
 // COLOUR TOKENS
@@ -66,64 +112,101 @@ use std::sync::{Mutex, OnceLock};
 ///
 /// All colours are stored as sRGB `Color32`. Contrast is verified in
 /// `tests/design_token_tests.rs` against WCAG 2.2 AA.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ColorTokens {
     /// Window background behind panels.
+    #[serde(with = "color32_serde")]
     pub surface_base: Color32,
     /// Panel, grid, popup surface.
+    #[serde(with = "color32_serde")]
     pub surface_raised: Color32,
     /// Sunken/pressed surface (active widget background).
+    #[serde(with = "color32_serde")]
     pub surface_sunken: Color32,
     /// Body text.
+    #[serde(with = "color32_serde")]
     pub text_primary: Color32,
     /// Secondary text: units, hints, dimmed numerics.
+    #[serde(with = "color32_serde")]
     pub text_secondary: Color32,
     /// Disabled/muted text.
+    #[serde(with = "color32_serde")]
     pub text_muted: Color32,
     /// Text on accent fills (primary button, selection).
+    #[serde(with = "color32_serde")]
     pub text_on_accent: Color32,
     /// Primary brand accent: selection, links, focus ring.
+    #[serde(with = "color32_serde")]
     pub accent: Color32,
     /// Accent hover state.
+    #[serde(with = "color32_serde")]
     pub accent_hover: Color32,
     /// Accent active/pressed state.
+    #[serde(with = "color32_serde")]
     pub accent_active: Color32,
     /// Critical: delays, overspends, failures.
+    #[serde(with = "color32_serde")]
     pub status_critical: Color32,
     /// Critical on surface (for text on critical backgrounds).
+    #[serde(with = "color32_serde")]
     pub status_critical_on: Color32,
     /// Normal: non-critical bars, info.
+    #[serde(with = "color32_serde")]
     pub status_normal: Color32,
     /// OK: passes, on-track.
+    #[serde(with = "color32_serde")]
     pub status_ok: Color32,
     /// OK on surface.
+    #[serde(with = "color32_serde")]
     pub status_ok_on: Color32,
     /// Warning.
+    #[serde(with = "color32_serde")]
     pub status_warn: Color32,
     /// Warning on surface.
+    #[serde(with = "color32_serde")]
     pub status_warn_on: Color32,
     /// Hairlines, table grid lines, Gantt grid.
+    #[serde(with = "color32_serde")]
     pub border_subtle: Color32,
     /// Strong borders: input outlines, selected tab underline.
+    #[serde(with = "color32_serde")]
     pub border_strong: Color32,
     /// Keyboard focus ring (maps to active widget stroke in egui).
+    #[serde(with = "color32_serde")]
     pub focus_ring: Color32,
     /// Selection background (table row, text selection).
+    #[serde(with = "color32_serde")]
     pub selection_bg: Color32,
     /// Selection text colour.
+    #[serde(with = "color32_serde")]
     pub selection_text: Color32,
     /// Extreme background (e.g., Gantt canvas inside a panel).
+    #[serde(with = "color32_serde")]
     pub surface_deep: Color32,
     /// Non-working day background tint (weekends/holidays on Gantt).
+    #[serde(with = "color32_serde")]
     pub non_working_day: Color32,
     /// Status date line (dotted indicator).
+    #[serde(with = "color32_serde")]
     pub status_date: Color32,
     /// Overlay scrim for modals.
+    #[serde(with = "color32_serde")]
     pub overlay_scrim: Color32,
     /// Disabled widget background.
+    #[serde(with = "color32_serde")]
     pub disabled_bg: Color32,
     /// Disabled widget text.
+    #[serde(with = "color32_serde")]
     pub disabled_text: Color32,
+    /// Legacy: non-working time background (alias for non_working_day).
+    #[serde(with = "color32_serde")]
+    pub non_working: Color32,
+    /// Legacy: positive variance (improvements, green).
+    #[serde(with = "color32_serde")]
+    pub variance_positive: Color32,
+    /// Legacy: negative variance (delays/overspends, red).
+    #[serde(with = "color32_serde")]
+    pub variance_negative: Color32,
 }
 
 /// Light theme colour tokens (from brand.md).
@@ -156,6 +239,10 @@ pub static LIGHT_COLORS: ColorTokens = ColorTokens {
     overlay_scrim: Color32::from_rgba_premultiplied(0x00, 0x00, 0x00, 0x80), // 50% black
     disabled_bg: Color32::from_rgb(0xF0, 0xF2, 0xF5),     // #F0F2F5
     disabled_text: Color32::from_rgb(0x9C, 0xA5, 0xB1),   // #9CA5B1
+    // Legacy fields
+    non_working: Color32::from_rgb(0xF0, 0xF4, 0xF8),      // same as non_working_day
+    variance_positive: Color32::from_rgb(0x15, 0x80, 0x3D), // same as status_ok (green)
+    variance_negative: Color32::from_rgb(0xB9, 0x1C, 0x1C), // same as status_critical (red)
 };
 
 /// Dark theme colour tokens (from brand.md).
@@ -188,6 +275,10 @@ pub static DARK_COLORS: ColorTokens = ColorTokens {
     overlay_scrim: Color32::from_rgba_premultiplied(0x00, 0x00, 0x00, 0xA0), // 62.5% black
     disabled_bg: Color32::from_rgb(0x21, 0x24, 0x2B),     // #21242B
     disabled_text: Color32::from_rgb(0x5A, 0x62, 0x6E),   // #5A626E
+    // Legacy fields
+    non_working: Color32::from_rgb(0x1A, 0x1E, 0x27),      // same as non_working_day
+    variance_positive: Color32::from_rgb(0x4A, 0xDE, 0x80), // same as status_ok (green)
+    variance_negative: Color32::from_rgb(0xF8, 0x71, 0x71), // same as status_critical (red)
 };
 
 // ============================================================================
@@ -548,7 +639,7 @@ impl MotionSpec {
 // ============================================================================
 
 /// Complete design token set for one theme + density.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DesignTokenSet {
     pub colors: ColorTokens,
     pub typography: TypographyScale,
