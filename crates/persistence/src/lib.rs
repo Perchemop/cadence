@@ -13,6 +13,8 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
+use serde_json;
+
 use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
@@ -20,7 +22,7 @@ use cadence_core::model::{
     LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project,
     Relationship, RelationshipId, Resource, ResourceId, ResourceKind, FULL_UNITS,
 };
-use cadence_core::settings::{EvmDisplayPreference, GlobalSettings, ProjectSettings};
+use cadence_core::settings::{CostRates, EvmDisplayPreference, GlobalSettings, ProjectSettings};
 use cadence_core::wbs::{WbsId, WbsTree};
 use rusqlite::{params, Connection};
 use thiserror::Error;
@@ -214,7 +216,6 @@ pub fn save_project(project: &Project, path: impl AsRef<Path>) -> Result<()> {
 
     // Persist project settings into the new table.
     let ps = project.settings();
-    let calendars_json = serde_json::to_string(&ps.calendars).unwrap_or_else(|_| "[]".to_string());
     transaction.execute(
         "INSERT INTO project_settings
             (project_id, workweek, resource_capacity, resource_cost_per_unit,
@@ -222,11 +223,11 @@ pub fn save_project(project: &Project, path: impl AsRef<Path>) -> Result<()> {
          VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             encode_week(ps.workweek),
-            i64::from(ps.resource_default_capacity),
-            ps.resource_default_cost_per_unit,
+            1, // resource_capacity (default)
+            ps.cost_rates.default_rate,
             ps.auto_capture_baselines as i64,
             i64::from(ps.evm_display),
-            calendars_json,
+            ps.calendars_json,
         ],
     )?;
     transaction.commit()?;
@@ -1137,18 +1138,16 @@ fn read_project_settings(connection: &Connection) -> Result<ProjectSettings> {
 
     let workweek = decode_week(row.0)?;
     let calendars_json: String = row.5.clone();
-    let calendars: BTreeMap<String, cadence_core::settings::CalendarProjectSettings> =
-        if calendars_json.is_empty() {
-            BTreeMap::new()
-        } else {
-            serde_json::from_str(&calendars_json).unwrap_or_default()
-        };
 
     Ok(ProjectSettings {
+        currency: "USD".to_string(),
+        default_calendar: "standard".to_string(),
         workweek,
-        calendars,
-        resource_default_capacity: row.1 as u32,
-        resource_default_cost_per_unit: row.2,
+        column_visibility: Vec::new(),
+        cost_rates: CostRates {
+            default_rate: row.2,
+            overtime_multiplier: 1.5,
+        },
         auto_capture_baselines: row.3 != 0,
         evm_display: match row.4 {
             0 => EvmDisplayPreference::Full,
@@ -1156,6 +1155,8 @@ fn read_project_settings(connection: &Connection) -> Result<ProjectSettings> {
             2 => EvmDisplayPreference::ScheduleOnly,
             _ => EvmDisplayPreference::Hidden,
         },
+        calendars_json,
+        schema_version: 10,
     })
 }
 
