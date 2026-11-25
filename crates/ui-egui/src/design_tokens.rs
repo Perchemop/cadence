@@ -1319,34 +1319,154 @@ pub fn wcag_min_ratio(level: WcagLevel) -> f32 {
 /// Each entry: (fg_role, bg_role, min_level, description)
 pub const SEMANTIC_CONTRAST_PAIRS: &[(&str, &str, WcagLevel, &str)] = &[
     // Body text — 4.5:1
-    ("text_primary", "surface_base", WcagLevel::AaNormal, "Body text on main surface"),
-    ("text_primary", "surface_raised", WcagLevel::AaNormal, "Body text on raised surface"),
-    ("text_primary", "surface_sunken", WcagLevel::AaNormal, "Body text on sunken surface"),
-    ("text_secondary", "surface_base", WcagLevel::AaNormal, "Secondary text on main surface"),
-    ("text_secondary", "surface_raised", WcagLevel::AaNormal, "Secondary text on raised surface"),
-    ("text_muted", "surface_base", WcagLevel::AaNormal, "Muted text on main surface"),
-    ("text_muted", "surface_raised", WcagLevel::AaNormal, "Muted text on raised surface"),
-    ("text_disabled", "surface_base", WcagLevel::AaLarge, "Disabled text on main surface"),
+    (
+        "text_primary",
+        "surface_base",
+        WcagLevel::AaNormal,
+        "Body text on main surface",
+    ),
+    (
+        "text_primary",
+        "surface_raised",
+        WcagLevel::AaNormal,
+        "Body text on raised surface",
+    ),
+    (
+        "text_primary",
+        "surface_sunken",
+        WcagLevel::AaNormal,
+        "Body text on sunken surface",
+    ),
+    (
+        "text_secondary",
+        "surface_base",
+        WcagLevel::AaNormal,
+        "Secondary text on main surface",
+    ),
+    (
+        "text_secondary",
+        "surface_raised",
+        WcagLevel::AaNormal,
+        "Secondary text on raised surface",
+    ),
+    (
+        "text_muted",
+        "surface_base",
+        WcagLevel::AaNormal,
+        "Muted text on main surface",
+    ),
+    (
+        "text_muted",
+        "surface_raised",
+        WcagLevel::AaNormal,
+        "Muted text on raised surface",
+    ),
+    (
+        "text_disabled",
+        "surface_base",
+        WcagLevel::AaLarge,
+        "Disabled text on main surface",
+    ),
 
     // UI components — 3:1
-    ("accent", "surface_base", WcagLevel::AaLarge, "Accent on main surface"),
-    ("text_on_accent", "accent", WcagLevel::AaNormal, "Accent on-text on accent"),
-    ("accent_hover", "surface_base", WcagLevel::AaLarge, "Accent hover on main surface"),
-    ("accent_active", "surface_base", WcagLevel::AaLarge, "Accent active on main surface"),
-    ("border_subtle", "surface_base", WcagLevel::AaLarge, "Subtle border on main surface"),
-    ("border_strong", "surface_base", WcagLevel::AaLarge, "Strong border on main surface"),
-    ("focus_ring", "surface_base", WcagLevel::AaLarge, "Focus ring on main surface"),
-    ("focus_ring", "surface_raised", WcagLevel::AaLarge, "Focus ring on raised surface"),
-    ("border_subtle", "surface_raised", WcagLevel::AaLarge, "Subtle border on raised surface"),
-    ("border_strong", "surface_raised", WcagLevel::AaLarge, "Strong border on raised surface"),
-    ("grid_border", "surface_base", WcagLevel::AaLarge, "Grid border on main surface"),
+    (
+        "accent",
+        "surface_base",
+        WcagLevel::AaLarge,
+        "Accent on main surface",
+    ),
+    (
+        "text_on_accent",
+        "accent",
+        WcagLevel::AaNormal,
+        "Accent on-text on accent",
+    ),
+    (
+        "accent_hover",
+        "surface_base",
+        WcagLevel::AaLarge,
+        "Accent hover on main surface",
+    ),
+    (
+        "accent_active",
+        "surface_base",
+        WcagLevel::AaLarge,
+        "Accent active on main surface",
+    ),
+    (
+        "border_subtle",
+        "surface_base",
+        WcagLevel::AaLarge,
+        "Subtle border on main surface",
+    ),
+    (
+        "border_strong",
+        "surface_base",
+        WcagLevel::AaLarge,
+        "Strong border on main surface",
+    ),
+    (
+        "focus_ring",
+        "surface_base",
+        WcagLevel::AaLarge,
+        "Focus ring on main surface",
+    ),
+    (
+        "focus_ring",
+        "surface_raised",
+        WcagLevel::AaLarge,
+        "Focus ring on raised surface",
+    ),
+    (
+        "border_subtle",
+        "surface_raised",
+        WcagLevel::AaLarge,
+        "Subtle border on raised surface",
+    ),
+    (
+        "border_strong",
+        "surface_raised",
+        WcagLevel::AaLarge,
+        "Strong border on raised surface",
+    ),
+    (
+        "grid_border",
+        "surface_base",
+        WcagLevel::AaLarge,
+        "Grid border on main surface",
+    ),
 
     // Status colors on surfaces
-    ("status_critical", "surface_base", WcagLevel::AaLarge, "Critical on main surface"),
-    ("status_normal", "surface_base", WcagLevel::AaLarge, "Normal on main surface"),
-    ("status_ok", "surface_base", WcagLevel::AaLarge, "Success on main surface"),
-    ("status_warn", "surface_base", WcagLevel::AaLarge, "Warning on main surface"),
-    ("non_working_day", "surface_base", WcagLevel::AaLarge, "Non-working day on main surface"),
+    (
+        "status_critical",
+        "surface_base",
+        WcagLevel::AaLarge,
+        "Critical on main surface",
+    ),
+    (
+        "status_normal",
+        "surface_base",
+        WcagLevel::AaLarge,
+        "Normal on main surface",
+    ),
+    (
+        "status_ok",
+        "surface_base",
+        WcagLevel::AaLarge,
+        "Success on main surface",
+    ),
+    (
+        "status_warn",
+        "surface_base",
+        WcagLevel::AaLarge,
+        "Warning on main surface",
+    ),
+    (
+        "non_working_day",
+        "surface_base",
+        WcagLevel::AaLarge,
+        "Non-working day on main surface",
+    ),
 ];
 
 /// Validates all semantic color pairs against WCAG 2.2 AA.
