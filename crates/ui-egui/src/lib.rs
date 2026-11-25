@@ -12,14 +12,14 @@ use std::time::{Duration, Instant};
 
 use cadence_assistant::{
     map_proposal_to_commands, AssistantConfig, AssistantError, HttpProvider, Proposal,
-    ProposalError, ProposedChange, SecretKey,
+    ProposalError, ProposedChange, SecretKey, parse_proposal_response,
 };
 use cadence_commands::{
     AddResourceToActivity, AssignActivityWbs, CaptureBaseline, CommandStack, CreateCalendar,
     CreateRelationship, CreateResource, DeleteCalendar, DeleteDailyNote, DeleteProduction,
     DeleteRelationship, DeleteResource, RemoveBaseline, RemoveLookaheadSnapshot,
     RemoveResourceFromActivity, RenameActivity, RenameCalendar, RenameResource,
-    SetActivityActualCost, SetActivityActualDates, SetActivityActualDates, SetActivityBudget,
+    SetActivityActualCost, SetActivityActualDates, SetActivityBudget,
     SetActivityCalendar, SetActivityConstraint, SetActivityDuration, SetActivityLocation,
     SetActivityOwner, SetActivityProgress, SetActivityPromise, SetCalendarDefinition,
     SetRelationshipLag, SetRelationshipType, SetResourceCapacity, SetResourceKind,

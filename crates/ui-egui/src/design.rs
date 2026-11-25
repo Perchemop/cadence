@@ -11,7 +11,7 @@ pub use crate::design_tokens::{
     ColorTokens, DesignTokenSet, FontWeight, Palette as LegacyPalette, RadiusSet,
     RadiusToken, SpacingToken, ThemeMode, ThemeRegistry, TypographyScale,
     Theme as DesignTheme, Theme, LightTheme, DarkTheme, init_theme_registry as init_registry,
-    theme_registry,
+    theme_registry as tokens_theme_registry,
     ACCENT, FOCUS_RING, ACCENT_ON, LIGHT_COLORS, DARK_COLORS, BASE_UNIT,
     wcag_min_ratio, contrast_ratio, relative_luminance, meets_wcag,
     SEMANTIC_CONTRAST_PAIRS,
@@ -21,7 +21,7 @@ pub use crate::design_tokens::{
 };
 
 use crate::theme::{apply_theme as new_apply_theme, apply_visuals_only, install_fonts as new_install_fonts, chrome as new_chrome};
-use egui::{Color32, Context, Visuals};
+use egui::{Color32, Context, Stroke, Visuals};
 use std::sync::Mutex;
 
 /// Semantic and structural colours for one theme (legacy Palette).
@@ -219,7 +219,7 @@ pub fn current_theme_mode() -> ThemeMode {
 
 /// Set the current theme mode in the global registry.
 pub fn set_theme_mode(mode: ThemeMode) {
-    theme_registry().lock().unwrap().set_mode(mode)
+    tokens_theme_registry().lock().unwrap().set_mode(mode)
 }
 
 /// Initialize the global theme registry (legacy entry point).
@@ -229,7 +229,7 @@ pub fn init_theme_registry() {
 
 /// Get the global theme registry (legacy entry point).
 pub fn theme_registry() -> &'static Mutex<ThemeRegistry> {
-    theme_registry()
+    tokens_theme_registry()
 }
 
 /// Theme trait for dynamic theming (legacy compatibility).
