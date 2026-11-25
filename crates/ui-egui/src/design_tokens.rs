@@ -55,7 +55,7 @@ use egui::{
     Color32, Context, FontData, FontDefinitions, FontFamily, FontId, Margin, Stroke,
     TextStyle, Visuals,
 };
-use serde::{Deserialize, Serialize, de::Visitor, ser::Serializer};
+use serde::{Deserialize, Serialize, de::Visitor};
 use std::fmt;
 use std::sync::{Mutex, OnceLock};
 

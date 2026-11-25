@@ -8,7 +8,7 @@
 
 // Re-export all public types from design_tokens
 pub use crate::design_tokens::{
-    ColorTokens, DesignTokenSet, FontWeight, Palette as LegacyPalette, RadiusSet,
+    ColorTokens, DesignTokenSet, Density, ElevationSet, FontWeight, MotionSet, Palette as LegacyPalette, RadiusSet,
     RadiusToken, SpacingToken, ThemeMode, ThemeRegistry, TypographyScale,
     Theme as DesignTheme, Theme, LightTheme, DarkTheme, init_theme_registry as init_registry,
     theme_registry as tokens_theme_registry,
@@ -347,8 +347,8 @@ impl ThemeRegistryCompat {
     /// Create a new theme registry with default themes.
     pub fn new() -> Self {
         Self {
-            light: Box::new(LightThemeImpl),
-            dark: Box::new(DarkThemeImpl),
+            light: Box::new(LightThemeImpl::default()),
+            dark: Box::new(DarkThemeImpl::default()),
             current: ThemeMode::Dark,
         }
     }
