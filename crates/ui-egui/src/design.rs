@@ -11,7 +11,7 @@ pub use crate::design_tokens::{
     ColorTokens, DesignTokenSet, FontWeight, Palette as LegacyPalette, RadiusSet,
     RadiusToken, SpacingToken, ThemeMode, ThemeRegistry, TypographyScale,
     Theme as DesignTheme, Theme, LightTheme, DarkTheme, init_theme_registry as init_registry,
-    theme_registry as get_registry, theme_registry as get_registry_mut,
+    theme_registry,
     ACCENT, FOCUS_RING, ACCENT_ON, LIGHT_COLORS, DARK_COLORS, BASE_UNIT,
     wcag_min_ratio, contrast_ratio, relative_luminance, meets_wcag,
     SEMANTIC_CONTRAST_PAIRS,
@@ -22,6 +22,7 @@ pub use crate::design_tokens::{
 
 use crate::theme::{apply_theme as new_apply_theme, apply_visuals_only, install_fonts as new_install_fonts, chrome as new_chrome};
 use egui::{Color32, Context, Visuals};
+use std::sync::Mutex;
 
 /// Semantic and structural colours for one theme (legacy Palette).
 ///
@@ -136,12 +137,13 @@ pub fn apply_palette(ctx: &Context, p: &Palette) {
 pub mod chrome {
     use crate::design_tokens::DesignTokenSet;
     use crate::theme::chrome as new_chrome;
+    use crate::theme::ThemeVariant;
     use egui::Button;
 
     /// Tab button for view switching.
-    pub fn tab(label: impl Into<String>, active: bool) -> Button<'static> {
-        let tokens = DesignTokenSet::light();
-        new_chrome::tab(&tokens, label, active)
+    pub fn tab(dark: bool, active: bool, label: impl Into<String>) -> Button<'static> {
+        let variant = if dark { ThemeVariant::Dark } else { ThemeVariant::Light };
+        new_chrome::tab(variant, active, label)
     }
 
     /// The one primary action per row (e.g. "New activity"): accent fill,
@@ -212,12 +214,12 @@ pub fn apply_theme_by_name(ctx: &Context, name: &str) {
 
 /// Get the current theme mode from the global registry.
 pub fn current_theme_mode() -> ThemeMode {
-    get_registry().current()
+    theme_registry().lock().unwrap().mode()
 }
 
 /// Set the current theme mode in the global registry.
 pub fn set_theme_mode(mode: ThemeMode) {
-    get_registry_mut().set_mode(mode)
+    theme_registry().lock().unwrap().set_mode(mode)
 }
 
 /// Initialize the global theme registry (legacy entry point).
@@ -226,13 +228,8 @@ pub fn init_theme_registry() {
 }
 
 /// Get the global theme registry (legacy entry point).
-pub fn theme_registry() -> &'static ThemeRegistry {
-    get_registry()
-}
-
-/// Get mutable access to the global theme registry (legacy entry point).
-pub fn theme_registry_mut() -> &'static mut ThemeRegistry {
-    get_registry_mut()
+pub fn theme_registry() -> &'static Mutex<ThemeRegistry> {
+    theme_registry()
 }
 
 /// Theme trait for dynamic theming (legacy compatibility).

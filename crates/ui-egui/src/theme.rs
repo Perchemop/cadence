@@ -48,10 +48,10 @@ pub fn install_fonts(ctx: &Context) {
 
     // Inter weights (SIL OFL 1.1)
     let inter = [
-        ("Inter-Regular", include_bytes!("../assets/fonts/Inter-Regular.ttf")),
-        ("Inter-Medium", include_bytes!("../assets/fonts/Inter-Medium.ttf")),
-        ("Inter-SemiBold", include_bytes!("../assets/fonts/Inter-SemiBold.ttf")),
-        ("Inter-Bold", include_bytes!("../assets/fonts/Inter-Bold.ttf")),
+        ("Inter-Regular", include_bytes!("../assets/fonts/Inter-Regular.ttf") as &[u8]),
+        ("Inter-Medium", include_bytes!("../assets/fonts/Inter-Medium.ttf") as &[u8]),
+        ("Inter-SemiBold", include_bytes!("../assets/fonts/Inter-SemiBold.ttf") as &[u8]),
+        ("Inter-Bold", include_bytes!("../assets/fonts/Inter-Bold.ttf") as &[u8]),
     ];
     for (name, data) in inter {
         fonts.font_data.insert(
@@ -63,7 +63,7 @@ pub fn install_fonts(ctx: &Context) {
     // Phosphor Icons (MIT) — patched copy from scripts/patch-phosphor.py
     fonts.font_data.insert(
         "phosphor".to_string(),
-        FontData::from_static(include_bytes!("../assets/fonts/Phosphor.ttf")).into(),
+        FontData::from_static(include_bytes!("../assets/fonts/Phosphor.ttf") as &[u8]).into(),
     );
 
     // Proportional family: icon face first, then Inter weights, then fallbacks
@@ -258,8 +258,7 @@ pub mod chrome {
 
     /// The one primary action per row (e.g., "New activity"): accent fill,
     /// no stroke, high-contrast label.
-    pub fn primary(variant: ThemeVariant, label: impl Into<String>) -> Button<'static> {
-        let colors = color_tokens(variant);
+    pub fn primary(_variant: ThemeVariant, label: impl Into<String>) -> Button<'static> {
         let accent = ACCENT;
         let on_accent = ACCENT_ON;
         Button::new(RichText::new(label.into()).color(on_accent).strong())
@@ -268,7 +267,7 @@ pub mod chrome {
     }
 
     /// Toolbar/quick actions: invisible chrome until hovered.
-    pub fn ghost(variant: ThemeVariant, label: impl Into<String>) -> Button<'static> {
+    pub fn ghost(_variant: ThemeVariant, label: impl Into<String>) -> Button<'static> {
         Button::new(label.into())
             .fill(Color32::TRANSPARENT)
             .stroke(Stroke::NONE)

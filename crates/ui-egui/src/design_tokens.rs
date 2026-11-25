@@ -1023,11 +1023,11 @@ pub fn install_fonts(ctx: &Context) {
     let mut fonts = FontDefinitions::default();
 
     // Inter font family (4 weights)
-    let inter_fonts: [(&str, &[u8]); 4] = [
-        ("Inter-Regular", include_bytes!("../assets/fonts/Inter-Regular.ttf")),
-        ("Inter-Medium", include_bytes!("../assets/fonts/Inter-Medium.ttf")),
-        ("Inter-SemiBold", include_bytes!("../assets/fonts/Inter-SemiBold.ttf")),
-        ("Inter-Bold", include_bytes!("../assets/fonts/Inter-Bold.ttf")),
+    let inter_fonts = [
+        ("Inter-Regular", include_bytes!("../assets/fonts/Inter-Regular.ttf") as &[u8]),
+        ("Inter-Medium", include_bytes!("../assets/fonts/Inter-Medium.ttf") as &[u8]),
+        ("Inter-SemiBold", include_bytes!("../assets/fonts/Inter-SemiBold.ttf") as &[u8]),
+        ("Inter-Bold", include_bytes!("../assets/fonts/Inter-Bold.ttf") as &[u8]),
     ];
 
     for (name, data) in inter_fonts {
@@ -1039,7 +1039,7 @@ pub fn install_fonts(ctx: &Context) {
     // Phosphor Icons (MIT) - patched version
     fonts.font_data.insert(
         "phosphor".to_string(),
-        FontData::from_static(include_bytes!("../assets/fonts/Phosphor.ttf")).into(),
+        FontData::from_static(include_bytes!("../assets/fonts/Phosphor.ttf") as &[u8]).into(),
     );
 
     // Build proportional family with icon font first
@@ -1510,7 +1510,7 @@ pub fn validate_contrast(color_tokens: &ColorTokens) -> Vec<String> {
             "status_warn" => Some(color_tokens.status_warn),
             "non_working_day" => Some(color_tokens.non_working_day),
             _ => None,
-        };
+        }
     };
 
     for (fg_role, bg_role, level, description) in SEMANTIC_CONTRAST_PAIRS {
