@@ -10,7 +10,7 @@
 pub use crate::design_tokens::{
     ColorTokens, DesignTokenSet, FontWeight, Palette as LegacyPalette, RadiusSet,
     RadiusToken, SpacingToken, ThemeMode, ThemeRegistry, TypographyScale,
-    Theme as DesignTheme, LightTheme, DarkTheme, init_theme_registry as init_registry,
+    Theme as DesignTheme, Theme, LightTheme, DarkTheme, init_theme_registry as init_registry,
     theme_registry as get_registry, theme_registry as get_registry_mut,
     ACCENT, FOCUS_RING, ACCENT_ON, LIGHT_COLORS, DARK_COLORS, BASE_UNIT,
     wcag_min_ratio, contrast_ratio, relative_luminance, meets_wcag,
@@ -20,8 +20,8 @@ pub use crate::design_tokens::{
     light_tokens, dark_tokens,
 };
 
-use crate::theme::{apply_theme as new_apply_theme, apply_visuals_only, install_fonts as new_install_fonts, chrome as new_chrome, parse_color};
-use egui::{Button, Color32, Context, RichText, Stroke, Visuals};
+use crate::theme::{apply_theme as new_apply_theme, apply_visuals_only, install_fonts as new_install_fonts, chrome as new_chrome};
+use egui::{Color32, Context, Visuals};
 
 /// Semantic and structural colours for one theme (legacy Palette).
 ///
@@ -136,7 +136,7 @@ pub fn apply_palette(ctx: &Context, p: &Palette) {
 pub mod chrome {
     use crate::design_tokens::DesignTokenSet;
     use crate::theme::chrome as new_chrome;
-    use egui::{Button, RichText, Stroke};
+    use egui::Button;
 
     /// Tab button for view switching.
     pub fn tab(label: impl Into<String>, active: bool) -> Button<'static> {
