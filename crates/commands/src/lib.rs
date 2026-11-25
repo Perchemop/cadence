@@ -4787,4 +4787,3 @@ mod tests {
         stack.redo(&mut project).expect("redo clear");
     }
 }
-}

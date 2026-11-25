@@ -1511,4 +1511,3 @@ mod tests {
         assert!(theme.is_dark());
     }
 }
-}
