@@ -23,6 +23,6 @@ pub use settings::{
     AssistantConfig, AuditViewSettings, BaselinesViewSettings, CalendarsViewSettings,
     CalendarProjectSettings, ColumnVisibility, CostDisplay, CostRates, DensityLevel,
     EvmDisplayPreference, GanttViewSettings, GlobalSettings, ProjectSettings, ResourcesViewSettings,
-    SortKey, TableViewSettings, ThemePreference, TimeScale, ToolSettings, ViewSettings,
+    SortKey, SettingsContext, TableViewSettings, ThemePreference, TimeScale, ToolSettings, ViewSettings,
 };
 pub use wbs::{WbsError, WbsId, WbsNode, WbsTree};

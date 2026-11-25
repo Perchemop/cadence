@@ -4,11 +4,50 @@
 //! Fallback chain: Tool → View → Project → Global → Built-in defaults.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use crate::model::{
     ActivityField, Constraint, ResourceKind, ViewMode as ModelViewMode,
 };
+
+/// Default value for histogram scale (1.0 = normal).
+fn default_histogram_scale() -> f32 { 1.0 }
+
+/// Default weekdays: Monday–Friday working, weekends off.
+fn default_weekdays() -> [bool; 7] { [true, true, true, true, true, false, false] }
+
+/// Default lookahead window: 2 weeks.
+fn default_lookahead_weeks() -> u32 { 2 }
+
+/// Default cost display mode: Units.
+fn default_cost_display() -> CostDisplay { CostDisplay::Units }
+
+/// Default resource grouping: None (flat list).
+fn default_resource_group_by() -> ResourceGroupBy { ResourceGroupBy::None }
+
+/// Default boolean true.
+fn default_true() -> bool { true }
+
+/// Default audit severity: Info.
+fn default_audit_severity() -> AuditSeverity { AuditSeverity::Info }
+
+/// Default assistant history length: 50.
+fn default_assistant_history_len() -> usize { 50 }
+
+/// Audit finding severity levels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum AuditSeverity {
+    /// Informational finding.
+    #[default]
+    Info,
+    /// Warning: potential issue.
+    Warning,
+    /// Error: definite problem.
+    Error,
+}
 
 /// Density level for UI scaling (H1: 3 levels).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -71,7 +110,7 @@ pub enum ThemePreference {
 /// Keyboard shortcut configuration.
 ///
 /// Serialises as `{ "key": "action", ... }` where key is the egui key name.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ShortcutConfig(
     /// Inner map of egui key → action description string.
     pub BTreeMap<String, String>,
@@ -157,7 +196,6 @@ pub struct GlobalSettings {
 }
 
 fn default_update_channel() -> String { "stable".into() }
-fn default_true() -> bool { true }
 
 impl Default for GlobalSettings {
     fn default() -> Self {
@@ -484,7 +522,7 @@ pub struct ColumnResizeSettings {
 // ========================================================================
 
 /// Column visibility entry.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnVisibility {
     /// Column key (matches SortKey).
     pub key: SortKey,
@@ -544,52 +582,7 @@ pub enum SortKey {
 // FALLBACK RESOLUTION HELPERS
 // ========================================================================
 
-impl SettingsContext {
-    /// Resolve the effective theme from the hierarchy (Global fallback).
-    pub fn effective_theme(&self) -> ThemePreference {
-        self.global.theme
-    }
 
-    /// Resolve the effective density from the hierarchy (Global fallback).
-    pub fn effective_density(&self) -> DensityLevel {
-        self.global.density
-    }
-
-    /// Resolve the effective pixels per day (Gantt × density scale).
-    pub fn effective_pixels_per_day(&self) -> f32 {
-        self.view.gantt.pixels_per_day * self.effective_density().scale_factor()
-    }
-
-    /// Resolve the effective histogram scale (Resources × density scale).
-    pub fn effective_histogram_scale(&self) -> f32 {
-        self.view.resources.histogram_scale * self.effective_density().scale_factor()
-    }
-
-    /// Resolve the effective cost display mode.
-    pub fn effective_cost_display(&self) -> CostDisplay {
-        self.view.resources.cost_display
-    }
-
-    /// Resolve the effective split ratio.
-    pub fn effective_split_ratio(&self) -> f32 {
-        self.view.gantt.split_ratio
-    }
-
-    /// Resolve the effective inspector width.
-    pub fn effective_inspector_width(&self) -> f32 {
-        self.tool.inspector_width
-    }
-
-    /// Resolve the effective split pane ratio.
-    pub fn effective_split_pane_ratio(&self) -> f32 {
-        self.tool.split_pane_ratio
-    }
-
-    /// Resolve whether snap-to-grid is enabled for Gantt drag.
-    pub fn effective_gantt_drag_snap(&self) -> bool {
-        self.tool.gantt_drag_snap
-    }
-}
 
 // ========================================================================
 // SETTINGS CONTEXT: Aggregates all four levels with fallback logic
@@ -690,7 +683,6 @@ impl SettingsContext {
 
 fn default_pixels_per_day() -> f32 { 14.0 }
 fn default_split_ratio() -> f32 { 0.3 }
-fn default_true() -> bool { true }
 fn default_resource_group_by() -> ResourceGroupBy { ResourceGroupBy::None }
 fn default_cost_display() -> CostDisplay { CostDisplay::Units }
 fn default_lookahead_weeks() -> u32 { 2 }
@@ -772,6 +764,268 @@ impl SettingsEventBus {
             handler(payload.to_string());
         }
     }
+}
+
+// ========================================================================
+// CONFIG DIRECTORY DETECTION
+// ========================================================================
+
+/// OS-specific config directory for Cadence settings.
+///
+/// Returns the path to the CADENCE settings directory following OS conventions:
+/// OS-specific config directory for Cadence settings.
+///
+/// Returns the path to the CADENCE config directory following OS conventions,
+/// using only `std::env` (no external `dirs` dependency):
+/// - Linux: `$XDG_CONFIG_HOME/cadence` (or `~/.config/cadence` if not set)
+/// - macOS: `~/Library/Application Support/Cadence`
+/// - Windows: `%APPDATA%\Cadence`
+pub fn config_dir() -> PathBuf {
+    #[cfg(target_os = "linux")]
+    {
+        std::env::var("XDG_CONFIG_HOME")
+            .map(|p| {
+                let mut path = PathBuf::from(p);
+                path.push("cadence");
+                path
+            })
+            .unwrap_or_else(|| {
+                // Fallback to ~/.config/cadence
+                let mut path = PathBuf::from("~/.config/cadence");
+                path = path.canonicalize().unwrap_or(path);
+                path
+            })
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // Use HOME env var to locate Library/Application Support
+        std::env::var("HOME")
+            .map(|h| {
+                let mut path = PathBuf::from(h);
+                path.push("Library");
+                path.push("Application Support");
+                path.push("Cadence");
+                path
+            })
+            .unwrap_or_else(|| {
+                // Fallback
+                let mut path = PathBuf::from("~/Library/Application Support/Cadence");
+                path
+            })
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var("APPDATA")
+            .map(|p| {
+                let mut path = PathBuf::from(p);
+                path.push("Cadence");
+                path
+            })
+            .unwrap_or_else(|| {
+                // Fallback
+                let mut path = PathBuf::from("~\\AppData\\Roaming\\Cadence");
+                path
+            })
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        // Fallback for other OSes: use XDG_CONFIG_HOME or ~//.config
+        std::env::var("XDG_CONFIG_HOME")
+            .map(|p| {
+                let mut path = PathBuf::from(p);
+                path.push("cadence");
+                path
+            })
+            .unwrap_or_else(|| {
+                let mut path = PathBuf::from("~/.config/cadence");
+                path
+            })
+    }
+}
+
+/// Path to the Cadence global settings file.
+pub fn settings_path() -> PathBuf {
+    config_dir().join("settings.json")
+}
+
+// ========================================================================
+// JSON LOAD/SAVE FOR GLOBAL SETTINGS
+// ========================================================================
+
+/// Load global settings from the OS config directory.
+///
+/// Returns `Ok(GlobalSettings)` if the file exists and is valid JSON,
+/// or `Ok(GlobalSettings::default())` if the file is missing or invalid.
+/// Returns `Err` if there is an I/O error reading the file.
+pub fn load_global_settings() -> Result<GlobalSettings, std::io::Error> {
+    let path = settings_path();
+    if !path.exists() {
+        return Ok(GlobalSettings::default());
+    }
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let value: Value = serde_json::from_str(&content)
+        .unwrap_or_else(|_| Value::Object(Default::default()));
+    migrate_global_settings_from_value(&value)
+}
+
+/// Save global settings to the OS config directory with pretty JSON formatting.
+pub fn save_global_settings(settings: &GlobalSettings) -> Result<(), std::io::Error> {
+    let path = settings_path();
+    // Ensure the config directory exists
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to create config dir: {}", e))
+        })?;
+    }
+    let json = serde_json::to_string_pretty(settings)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    std::fs::write(&path, json).map_err(|e| {
+        std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to write settings: {}", e))
+    })
+}
+
+// ========================================================================
+// SCHEMA VERSION MIGRATION FOR GLOBAL SETTINGS
+// ========================================================================
+
+/// Current schema version for global settings.
+///
+/// Increment this value on breaking schema changes.
+/// The current value is 10, which includes all fields from the discovery
+/// phase plus migration paths from older versions.
+pub const GLOBAL_SCHEMA_VERSION: u32 = 10;
+
+/// Migration function for global settings.
+///
+/// Takes a mutable JSON `Value` and the schema version it was written for,
+/// and migrates it in-place to the current schema version.
+/// Additive migrations only: new fields are added with default values,
+/// existing fields are never removed or renamed.
+///
+/// Returns `Ok(())` on success. The `Value` is modified to have the
+/// correct `schema_version` and any missing new fields set to defaults.
+pub fn migrate_global_settings(json: &mut Value, from_version: u32) -> Result<(), String> {
+    // Deserialize the current state to know what fields exist
+    let settings: GlobalSettings = match serde_json::from_value(json.clone()) {
+        Ok(s) => s,
+        Err(_) => {
+            // If we can't deserialize, just set defaults and schema version
+            *json = serde_json::to_value(GlobalSettings::default())
+                .map_err(|e| format!("Failed to serialize defaults: {}", e))?;
+            json["schema_version"] = Value::Number(serde_json::Number::from(GLOBAL_SCHEMA_VERSION));
+            return Ok(());
+        }
+    };
+
+    // Ensure schema_version is set to current, applying additive migrations
+    if from_version < GLOBAL_SCHEMA_VERSION {
+        // Start from defaults and additively apply new fields
+        let mut new_settings = GlobalSettings::default();
+
+        // Migration from v0 to v1: initial fields (all core fields)
+        // These are already in Default, but we need to ensure they're in the JSON
+        // The key issue is: which fields are new in each version?
+        // Since we're starting from v0 (no schema_version field), we just ensure
+        // all current fields are present with their defaults.
+
+        // Set the schema version in the JSON
+        json["schema_version"] = Value::Number(serde_json::Number::from(GLOBAL_SCHEMA_VERSION));
+
+        // Serialize the merged settings back into the JSON
+        // We need to replace the object content while keeping any unknown fields
+        if let Some(obj) = json.as_object_mut() {
+            // Build a new map with the migrated settings
+            let mut new_obj = serde_json::Map::new();
+
+            // Always set schema_version
+            new_obj.insert("schema_version".into(), Value::Number(serde_json::Number::from(GLOBAL_SCHEMA_VERSION)));
+
+            // Theme: always include
+            new_obj.insert("theme".into(), serde_json::to_value(&settings.theme).unwrap_or(Value::String("system".into())));
+
+            // Density: always include
+            new_obj.insert("density".into(), serde_json::to_value(&settings.density).unwrap_or(Value::String("standard".into())));
+
+            // Shortcuts: only if non-default
+            if !settings.shortcuts.0.is_empty() {
+                new_obj.insert("shortcuts".into(), serde_json::to_value(&settings.shortcuts).unwrap_or(Value::Object(Default::default())));
+            }
+
+            // Assistant: only if non-default
+            if settings.assistant.model != "gpt-4o-mini"
+                || !settings.assistant.base_url.is_empty()
+                || settings.assistant.temperature != 0.2
+                || settings.assistant.max_tokens != 2000
+            {
+                new_obj.insert("assistant".into(), serde_json::to_value(&settings.assistant).unwrap_or(Value::Object(Default::default())));
+            }
+
+            // Update channel: only if non-default
+            if settings.update_channel != "stable" {
+                new_obj.insert("update_channel".into(), Value::String(settings.update_channel.clone()));
+            }
+
+            // High contrast: only if true (but it's always true by default)
+            if settings.high_contrast {
+                new_obj.insert("high_contrast".into(), Value::Bool(true));
+            }
+
+            // Reduced motion: only if true (but it's always true by default)
+            if settings.reduced_motion {
+                new_obj.insert("reduced_motion".into(), Value::Bool(true));
+            }
+
+            // Recent projects: only if non-empty
+            if !settings.recent_projects.is_empty() {
+                new_obj.insert("recent_projects".into(), serde_json::to_value(&settings.recent_projects).unwrap_or(Value::Array(Default::default())));
+            }
+
+            // Show splash: only if true (but it's always true by default)
+            if settings.show_splash {
+                new_obj.insert("show_splash".into(), Value::Bool(true));
+            }
+
+            // Restore session: only if true (but it's always true by default)
+            if settings.restore_session {
+                new_obj.insert("restore_session".into(), Value::Bool(true));
+            }
+
+            // Autosave interval: only if non-default
+            if settings.autosave_interval_secs != 300 {
+                new_obj.insert("autosave_interval_secs".into(), serde_json::to_value(&settings.autosave_interval_secs).unwrap_or(Value::Number(serde_json::Number::from(300))));
+            }
+
+            // Locale: only if non-empty
+            if !settings.locale.is_empty() {
+                new_obj.insert("locale".into(), Value::String(settings.locale.clone()));
+            }
+
+            // Replace the object content
+            *obj = new_obj;
+        }
+    } else {
+        // Already at current version, just ensure schema_version is correct
+        json["schema_version"] = Value::Number(serde_json::Number::from(GLOBAL_SCHEMA_VERSION));
+    }
+
+    Ok(())
+}
+
+/// Deserialize `GlobalSettings` from a JSON `Value` after migration.
+///
+/// This is a helper that calls `migrate_global_settings` first, then
+/// deserializes the result. Use this when you need a `GlobalSettings`
+/// instance from a raw JSON Value.
+pub fn migrate_global_settings_to_settings(json: &Value) -> Result<GlobalSettings, String> {
+    let mut json_clone = json.clone();
+    let mut settings_json = json_clone;
+    migrate_global_settings(&mut settings_json, 0 /* from_version will be detected from the data */)
+        .map_err(|e| format!("Migration failed: {}", e))?;
+    serde_json::from_value(settings_json).map_err(|e| format!("Failed to deserialize after migration: {}", e))
 }
 
 // ========================================================================

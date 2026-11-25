@@ -22,6 +22,7 @@ use cadence_commands::{
 };
 use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
+use cadence_core::settings::SettingsContext;
 
 use cadence_core::calendar_set::CalendarId;
 use cadence_core::clash::location_clashes;
@@ -632,6 +633,7 @@ pub struct CadenceApp {
     /// Whether the periodic auto-update check may run. Only the headless
     /// render tests turn it off: `cargo test` must not touch the network.
     update_checks_enabled: bool,
+    settings: SettingsContext,
     assistant_config: cadence_assistant::AssistantConfig,
     assistant_request_buffer: String,
     assistant_receiver: Option<mpsc::Receiver<Result<String, cadence_assistant::AssistantError>>>,
@@ -790,6 +792,12 @@ impl CadenceApp {
 
     /// Build the application from a loaded project and the file it came from.
     pub fn with_path(project: Project, path: Option<PathBuf>) -> Self {
+        // Load global settings from config directory for persistence across sessions
+        let global_settings = cadence_core::settings::load_global_settings()
+            .unwrap_or_else(|_| cadence_core::settings::GlobalSettings::default());
+        let project_settings = cadence_core::settings::ProjectSettings::default();
+        let settings_context = cadence_core::settings::SettingsContext::new(global_settings, project_settings);
+
         let schedule = schedule(&project).map_err(|error| error.to_string());
         let crash_log = crash::read_log().unwrap_or_default();
         let show_crash_dialog = !crash_log.is_empty();
@@ -878,6 +886,7 @@ impl CadenceApp {
             show_release_notes: false,
             last_update_check: None,
             update_checks_enabled: true,
+            settings: settings_context,
             assistant_config: cadence_assistant::AssistantConfig::default(),
             assistant_request_buffer: String::new(),
             assistant_receiver: None,

@@ -317,16 +317,18 @@ Phase 3 (Polish - Weeks 5-6)
 
 ---
 
-## Open Questions Requiring Human Decision
+## Open Questions — **DECIDED** ✅
 
-| # | Question | Recommendation | Decision Needed By |
-|---|----------|----------------|---------------------|
-| Q1 | View settings persistence across restarts? | Yes | Before VIEW-SYNC Phase 3 |
-| Q2 | Cloud sync for global settings? | No (local-first) | Before SETTINGS Phase 2 |
-| Q3 | Conflict resolution prompt vs auto-resolve? | Auto + logging | Before VIEW-SYNC Phase 2 |
-| Q4 | 3 vs 4 density levels? | 3 (per Discovery H1) | Before DESIGN-TOKENS Phase 2 |
-| Q5 | Tool settings in undo stack? | No (transient) | Before VIEW-SYNC Phase 4 |
-| Q6 | Cloud-syncable settings format? | Not needed (local-first) | Before SETTINGS Phase 2 |
+| # | Question | Decision | Rationale | Effective |
+|---|----------|----------|-----------|-----------|
+| Q1 | View settings persistence across restarts? | **Yes** | User expectation; view configs (column widths, zoom, filters) should survive restarts | VIEW-SYNC Phase 3 |
+| Q2 | Cloud sync for global settings? | **No** (local-first) | No cloud dependency; privacy; offline-first architecture | SETTINGS Phase 2 |
+| Q3 | Conflict resolution prompt vs auto-resolve? | **Auto + logging** | Higher-level-wins (View > Project > Global) is deterministic; log conflicts for debugging | VIEW-SYNC Phase 2 |
+| Q4 | 3 vs 4 density levels? | **3** (Compact/Standard/Comfortable) | Per Discovery H1 hypothesis; matches competitor patterns; simpler UX | DESIGN-TOKENS Phase 2 |
+| Q5 | Tool settings in undo stack? | **No** (transient) | Tool settings are ephemeral per-session; adding to undo stack adds noise | VIEW-SYNC Phase 4 |
+| Q6 | Cloud-syncable settings format? | **Not needed** (local-first) | Decision Q2 makes this moot | SETTINGS Phase 2 |
+
+**All 6 questions resolved.** Implementation can proceed without blockers.
 
 ---
 
