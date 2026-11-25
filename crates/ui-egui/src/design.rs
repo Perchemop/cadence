@@ -10,7 +10,11 @@ use crate::design_tokens::{
     ColorTokens, DesignTokenSet, FontWeight, Palette as LegacyPalette, RadiusSet,
     RadiusToken, SpacingToken, ThemeMode, ThemeRegistry, TypographyScale,
     Theme as DesignTheme, LightTheme, DarkTheme, init_theme_registry as init_registry,
-    theme_registry as get_registry, theme_registry_mut as get_registry_mut,
+    theme_registry as get_registry,
+    ACCENT, FOCUS_RING, ACCENT_ON, LIGHT_COLORS, DARK_COLORS, BASE_UNIT,
+};
+
+pub use crate::design_tokens::{
     ACCENT, FOCUS_RING, ACCENT_ON, LIGHT_COLORS, DARK_COLORS, BASE_UNIT,
 };
 use crate::theme::{apply_theme as new_apply_theme, apply_visuals_only, install_fonts as new_install_fonts};
