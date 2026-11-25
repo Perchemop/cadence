@@ -13,13 +13,11 @@ use cadence_core::calendar_set::{CalendarId, NamedCalendar};
 use cadence_core::engine::{capture_baseline, capture_lookahead_snapshot, schedule};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
-    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot,
-    LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project,
-    Relationship, RelationshipId, Resource, ResourceId, ResourceKind,
+    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship, RelationshipId,
+    Resource, ResourceId, ResourceKind,
 };
-use cadence_core::settings::{
-    GlobalSettings, ToolSettings, ViewSettings,
-};
+use cadence_core::settings::{GlobalSettings, ToolSettings, ViewSettings};
 use cadence_core::wbs::{WbsId, WbsNode};
 use time::Date;
 

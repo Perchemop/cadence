@@ -11,17 +11,18 @@ use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use cadence_assistant::{
-    map_proposal_to_commands, AssistantProvider, HttpProvider, ProposedChange, parse_proposal_response,
+    map_proposal_to_commands, parse_proposal_response, AssistantProvider, HttpProvider,
+    ProposedChange,
 };
 use cadence_commands::{
     AddResourceToActivity, AssignActivityWbs, CaptureBaseline, CommandStack, CreateCalendar,
     CreateRelationship, CreateResource, DeleteCalendar, DeleteDailyNote, DeleteProduction,
     DeleteRelationship, DeleteResource, RemoveBaseline, RemoveLookaheadSnapshot,
     RemoveResourceFromActivity, RenameActivity, RenameCalendar, RenameResource,
-    SetActivityActualCost, SetActivityActualDates, SetActivityBudget,
-    SetActivityCalendar, SetActivityConstraint, SetActivityDuration, SetActivityLocation,
-    SetActivityOwner, SetActivityProgress, SetActivityPromise, SetCalendarDefinition,
-    SetRelationshipLag, SetRelationshipType, SetResourceCapacity, SetResourceKind,
+    SetActivityActualCost, SetActivityActualDates, SetActivityBudget, SetActivityCalendar,
+    SetActivityConstraint, SetActivityDuration, SetActivityLocation, SetActivityOwner,
+    SetActivityProgress, SetActivityPromise, SetCalendarDefinition, SetRelationshipLag,
+    SetRelationshipType, SetResourceCapacity, SetResourceKind,
 };
 use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
@@ -1010,7 +1011,7 @@ impl CadenceApp {
         if let Some(proposal) = proposal {
             let mut apply = false;
             let mut reject = false;
-            
+
             ui.group(|ui| {
                 ui.heading("Proposal Review");
                 ui.add_space(4.0);
@@ -1057,16 +1058,33 @@ impl CadenceApp {
     /// Describe a proposed change for display in the review panel.
     fn describe_change(change: &ProposedChange) -> String {
         match change {
-            ProposedChange::CreateActivity { name, duration_days, .. } => {
+            ProposedChange::CreateActivity {
+                name,
+                duration_days,
+                ..
+            } => {
                 format!("Create activity '{}' ({} days)", name, duration_days)
             }
-            ProposedChange::CreateRelationship { predecessor, successor, .. } => {
+            ProposedChange::CreateRelationship {
+                predecessor,
+                successor,
+                ..
+            } => {
                 format!("Link {} → {}", predecessor, successor)
             }
-            ProposedChange::SetActivityDuration { activity, duration_days, .. } => {
-                format!("Set activity {} duration to {} days", activity, duration_days)
+            ProposedChange::SetActivityDuration {
+                activity,
+                duration_days,
+                ..
+            } => {
+                format!(
+                    "Set activity {} duration to {} days",
+                    activity, duration_days
+                )
             }
-            ProposedChange::SetActivityProgress { activity, percent, .. } => {
+            ProposedChange::SetActivityProgress {
+                activity, percent, ..
+            } => {
                 format!("Set activity {} progress to {}%", activity, percent)
             }
         }
@@ -2661,7 +2679,9 @@ impl CadenceApp {
                                         self.show_proposal_review = true;
                                     } else {
                                         self.assistant_validation_errors = errors;
-                                        self.set_status("Proposal validation failed. See console for details.");
+                                        self.set_status(
+                                            "Proposal validation failed. See console for details.",
+                                        );
                                     }
                                 }
                                 Err(e) => {
@@ -5832,12 +5852,10 @@ impl CadenceApp {
 
                     let provider = HttpProvider::from_config(&self.assistant_config);
                     let request_button = ui.add_enabled_ui(
-                        !self.assistant_request_buffer.trim().is_empty() &&
-                            !self.assistant_request_in_progress &&
-                            provider.is_ok(),
-                        |ui| {
-                            ui.button("Request proposal")
-                        }
+                        !self.assistant_request_buffer.trim().is_empty()
+                            && !self.assistant_request_in_progress
+                            && provider.is_ok(),
+                        |ui| ui.button("Request proposal"),
                     );
 
                     if request_button.inner.clicked() {
@@ -5845,7 +5863,10 @@ impl CadenceApp {
                     }
 
                     if let Err(e) = &provider {
-                        ui.colored_label(ui.visuals().error_fg_color, format!("Configuration error: {e}"));
+                        ui.colored_label(
+                            ui.visuals().error_fg_color,
+                            format!("Configuration error: {e}"),
+                        );
                     }
 
                     ui.separator();

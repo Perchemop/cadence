@@ -16,9 +16,9 @@ use std::path::Path;
 use cadence_core::calendar_set::{CalendarId, CalendarSet};
 use cadence_core::model::{
     Activity, ActivityBaselineSnapshot, ActivityId, Baseline, BaselineId, Calendar, Constraint,
-    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot,
-    LookaheadSnapshotEntry, LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project,
-    Relationship, RelationshipId, Resource, ResourceId, ResourceKind, FULL_UNITS,
+    DailyNote, DailyNoteId, LinkType, LookaheadSnapshot, LookaheadSnapshotEntry,
+    LookaheadSnapshotId, ProductionEntry, ProductionEntryId, Project, Relationship, RelationshipId,
+    Resource, ResourceId, ResourceKind, FULL_UNITS,
 };
 use cadence_core::settings::{CostRates, EvmDisplayPreference, ProjectSettings};
 use cadence_core::wbs::{WbsId, WbsTree};

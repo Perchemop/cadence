@@ -6,14 +6,10 @@
 //! Following guide II.30.6: one token source, no raw colour literals in widget code.
 
 use crate::design_tokens::{
-    ColorTokens, DesignTokenSet,
-    ACCENT, ACCENT_ON, LIGHT_COLORS, DARK_COLORS,
-    apply as tokens_apply, apply_visuals as tokens_apply_visuals,
-    light_tokens, dark_tokens,
+    apply as tokens_apply, apply_visuals as tokens_apply_visuals, dark_tokens, light_tokens,
+    ColorTokens, DesignTokenSet, ACCENT, ACCENT_ON, DARK_COLORS, LIGHT_COLORS,
 };
-use egui::{
-    Color32, Context, FontData, FontDefinitions, FontFamily,
-};
+use egui::{Color32, Context, FontData, FontDefinitions, FontFamily};
 
 /// Theme variant for apply functions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,16 +42,27 @@ pub fn install_fonts(ctx: &Context) {
 
     // Inter weights (SIL OFL 1.1)
     let inter = [
-        ("Inter-Regular", include_bytes!("../assets/fonts/Inter-Regular.ttf") as &[u8]),
-        ("Inter-Medium", include_bytes!("../assets/fonts/Inter-Medium.ttf") as &[u8]),
-        ("Inter-SemiBold", include_bytes!("../assets/fonts/Inter-SemiBold.ttf") as &[u8]),
-        ("Inter-Bold", include_bytes!("../assets/fonts/Inter-Bold.ttf") as &[u8]),
+        (
+            "Inter-Regular",
+            include_bytes!("../assets/fonts/Inter-Regular.ttf") as &[u8],
+        ),
+        (
+            "Inter-Medium",
+            include_bytes!("../assets/fonts/Inter-Medium.ttf") as &[u8],
+        ),
+        (
+            "Inter-SemiBold",
+            include_bytes!("../assets/fonts/Inter-SemiBold.ttf") as &[u8],
+        ),
+        (
+            "Inter-Bold",
+            include_bytes!("../assets/fonts/Inter-Bold.ttf") as &[u8],
+        ),
     ];
     for (name, data) in inter {
-        fonts.font_data.insert(
-            name.to_string(),
-            FontData::from_static(data).into(),
-        );
+        fonts
+            .font_data
+            .insert(name.to_string(), FontData::from_static(data).into());
     }
 
     // Phosphor Icons (MIT) — patched copy from scripts/patch-phosphor.py
@@ -71,7 +78,9 @@ pub fn install_fonts(ctx: &Context) {
         .unwrap_or_default();
     let mut proportional = vec!["phosphor".to_string(), "Inter-Regular".to_string()];
     proportional.extend(fallbacks.iter().cloned());
-    fonts.families.insert(FontFamily::Proportional, proportional);
+    fonts
+        .families
+        .insert(FontFamily::Proportional, proportional);
 
     // Per-weight families for explicit weight selection
     for name in ["Inter-Medium", "Inter-SemiBold", "Inter-Bold"] {

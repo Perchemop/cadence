@@ -8,8 +8,7 @@
 //! - Serialization round-trip
 
 use cadence_ui_egui::design_tokens::{
-    LIGHT_COLORS, DARK_COLORS, validate_contrast, variance_color,
-    ContrastRatio, ColorTokens,
+    validate_contrast, variance_color, ColorTokens, ContrastRatio, DARK_COLORS, LIGHT_COLORS,
 };
 use egui::Color32;
 
@@ -141,7 +140,7 @@ fn contrast_ratio_calculation() {
 fn variance_color_mapping() {
     // Positive variance = delay/overspend = red family (status_critical)
     assert_eq!(
-        variance_color(Some(5), true),  // dark theme
+        variance_color(Some(5), true), // dark theme
         DARK_COLORS.status_critical
     );
     assert_eq!(
@@ -151,7 +150,7 @@ fn variance_color_mapping() {
 
     // Negative variance = improvement = green family (status_ok)
     assert_eq!(
-        variance_color(Some(-3), true),  // dark theme
+        variance_color(Some(-3), true), // dark theme
         DARK_COLORS.status_ok
     );
     assert_eq!(
@@ -161,7 +160,7 @@ fn variance_color_mapping() {
 
     // Zero/none = grid/subtle
     assert_eq!(
-        variance_color(None, true),   // dark theme
+        variance_color(None, true), // dark theme
         DARK_COLORS.border_subtle
     );
     assert_eq!(

@@ -52,10 +52,10 @@
 //! `Theme::apply` maps all tokens onto `egui::Visuals` and `egui::Style`.
 
 use egui::{
-    Color32, Context, FontData, FontDefinitions, FontFamily, FontId, Margin, Stroke,
-    TextStyle, Visuals,
+    Color32, Context, FontData, FontDefinitions, FontFamily, FontId, Margin, Stroke, TextStyle,
+    Visuals,
 };
-use serde::{Deserialize, Serialize, de::Visitor};
+use serde::{de::Visitor, Deserialize, Serialize};
 use std::fmt;
 use std::sync::{Mutex, OnceLock};
 
@@ -211,72 +211,72 @@ pub struct ColorTokens {
 
 /// Light theme colour tokens (from brand.md).
 pub static LIGHT_COLORS: ColorTokens = ColorTokens {
-    surface_base: Color32::from_rgb(0xF4, 0xF5, 0xF7),   // #F4F5F7
+    surface_base: Color32::from_rgb(0xF4, 0xF5, 0xF7), // #F4F5F7
     surface_raised: Color32::from_rgb(0xFF, 0xFF, 0xFF), // #FFFFFF
     surface_sunken: Color32::from_rgb(0xE2, 0xE8, 0xF2), // #E2E8F2
-    text_primary: Color32::from_rgb(0x1F, 0x29, 0x33),   // #1F2933
+    text_primary: Color32::from_rgb(0x1F, 0x29, 0x33), // #1F2933
     text_secondary: Color32::from_rgb(0x5F, 0x6B, 0x7A), // #5F6B7A
-    text_muted: Color32::from_rgb(0x9C, 0xA5, 0xB1),     // #9CA5B1 (slightly lighter than brand.md for contrast)
+    text_muted: Color32::from_rgb(0x9C, 0xA5, 0xB1), // #9CA5B1 (slightly lighter than brand.md for contrast)
     text_on_accent: Color32::WHITE,
-    accent: Color32::from_rgb(0x2F, 0x6F, 0xED),         // #2F6FED
-    accent_hover: Color32::from_rgb(0x1E, 0x5F, 0xD6),   // #1E5FD6 (darker)
-    accent_active: Color32::from_rgb(0x1A, 0x52, 0xBB),  // #1A52BB (darker still)
+    accent: Color32::from_rgb(0x2F, 0x6F, 0xED), // #2F6FED
+    accent_hover: Color32::from_rgb(0x1E, 0x5F, 0xD6), // #1E5FD6 (darker)
+    accent_active: Color32::from_rgb(0x1A, 0x52, 0xBB), // #1A52BB (darker still)
     status_critical: Color32::from_rgb(0xB9, 0x1C, 0x1C), // #B91C1C
     status_critical_on: Color32::WHITE,
-    status_normal: Color32::from_rgb(0x1D, 0x4E, 0xD8),   // #1D4ED8
-    status_ok: Color32::from_rgb(0x15, 0x80, 0x3D),       // #15803D
+    status_normal: Color32::from_rgb(0x1D, 0x4E, 0xD8), // #1D4ED8
+    status_ok: Color32::from_rgb(0x15, 0x80, 0x3D),     // #15803D
     status_ok_on: Color32::WHITE,
-    status_warn: Color32::from_rgb(0xB4, 0x53, 0x09),     // #B45309
+    status_warn: Color32::from_rgb(0xB4, 0x53, 0x09), // #B45309
     status_warn_on: Color32::WHITE,
-    border_subtle: Color32::from_rgb(0xE5, 0xE7, 0xEB),   // #E5E7EB
-    border_strong: Color32::from_rgb(0xD0, 0xD5, 0xDD),   // #D0D5DD
-    focus_ring: Color32::from_rgb(0x2F, 0x6F, 0xED),      // same as accent
-    selection_bg: Color32::from_rgb(0x2F, 0x6F, 0xED),    // accent
+    border_subtle: Color32::from_rgb(0xE5, 0xE7, 0xEB), // #E5E7EB
+    border_strong: Color32::from_rgb(0xD0, 0xD5, 0xDD), // #D0D5DD
+    focus_ring: Color32::from_rgb(0x2F, 0x6F, 0xED),    // same as accent
+    selection_bg: Color32::from_rgb(0x2F, 0x6F, 0xED),  // accent
     selection_text: Color32::WHITE,
-    surface_deep: Color32::from_rgb(0xEC, 0xEE, 0xF1),   // #ECEEF1
+    surface_deep: Color32::from_rgb(0xEC, 0xEE, 0xF1), // #ECEEF1
     non_working_day: Color32::from_rgb(0xF0, 0xF4, 0xF8), // #F0F4F8
     status_date: Color32::from_rgba_premultiplied(0xB9, 0x1C, 0x1C, 128), // 50% critical
     overlay_scrim: Color32::from_rgba_premultiplied(0x00, 0x00, 0x00, 0x80), // 50% black
-    disabled_bg: Color32::from_rgb(0xF0, 0xF2, 0xF5),     // #F0F2F5
-    disabled_text: Color32::from_rgb(0x9C, 0xA5, 0xB1),   // #9CA5B1
+    disabled_bg: Color32::from_rgb(0xF0, 0xF2, 0xF5),  // #F0F2F5
+    disabled_text: Color32::from_rgb(0x9C, 0xA5, 0xB1), // #9CA5B1
     // Legacy fields
-    non_working: Color32::from_rgb(0xF0, 0xF4, 0xF8),      // same as non_working_day
+    non_working: Color32::from_rgb(0xF0, 0xF4, 0xF8), // same as non_working_day
     variance_positive: Color32::from_rgb(0x15, 0x80, 0x3D), // same as status_ok (green)
     variance_negative: Color32::from_rgb(0xB9, 0x1C, 0x1C), // same as status_critical (red)
 };
 
 /// Dark theme colour tokens (from brand.md).
 pub static DARK_COLORS: ColorTokens = ColorTokens {
-    surface_base: Color32::from_rgb(0x16, 0x18, 0x1D),   // #16181D
+    surface_base: Color32::from_rgb(0x16, 0x18, 0x1D), // #16181D
     surface_raised: Color32::from_rgb(0x1D, 0x20, 0x26), // #1D2026
     surface_sunken: Color32::from_rgb(0x2E, 0x33, 0x3D), // #2E333D
-    text_primary: Color32::from_rgb(0xE3, 0xE7, 0xEB),   // #E3E7EB
+    text_primary: Color32::from_rgb(0xE3, 0xE7, 0xEB), // #E3E7EB
     text_secondary: Color32::from_rgb(0x9A, 0xA5, 0xB1), // #9AA5B1
-    text_muted: Color32::from_rgb(0x6E, 0x78, 0x86),     // #6E7886 (darker for contrast)
+    text_muted: Color32::from_rgb(0x6E, 0x78, 0x86),   // #6E7886 (darker for contrast)
     text_on_accent: Color32::WHITE,
-    accent: Color32::from_rgb(0x2F, 0x6F, 0xED),         // #2F6FED
-    accent_hover: Color32::from_rgb(0x4A, 0x82, 0xF0),   // #4A82F0 (lighter)
-    accent_active: Color32::from_rgb(0x6A, 0x93, 0xF2),  // #6A93F2 (lighter still)
+    accent: Color32::from_rgb(0x2F, 0x6F, 0xED), // #2F6FED
+    accent_hover: Color32::from_rgb(0x4A, 0x82, 0xF0), // #4A82F0 (lighter)
+    accent_active: Color32::from_rgb(0x6A, 0x93, 0xF2), // #6A93F2 (lighter still)
     status_critical: Color32::from_rgb(0xF8, 0x71, 0x71), // #F87171
     status_critical_on: Color32::from_rgb(0x16, 0x18, 0x1D), // dark surface
-    status_normal: Color32::from_rgb(0x93, 0xC5, 0xFD),   // #93C5FD
-    status_ok: Color32::from_rgb(0x4A, 0xDE, 0x80),       // #4ADE80
-    status_ok_on: Color32::from_rgb(0x16, 0x18, 0x1D),    // dark surface
-    status_warn: Color32::from_rgb(0xFB, 0xBF, 0x24),     // #FBBF24
-    status_warn_on: Color32::from_rgb(0x16, 0x18, 0x1D),  // dark surface
-    border_subtle: Color32::from_rgb(0x2A, 0x2E, 0x36),   // #2A2E36
-    border_strong: Color32::from_rgb(0x3A, 0x3F, 0x4A),   // #3A3F4A
-    focus_ring: Color32::from_rgb(0x2F, 0x6F, 0xED),      // same as accent
-    selection_bg: Color32::from_rgb(0x2F, 0x6F, 0xED),    // accent
+    status_normal: Color32::from_rgb(0x93, 0xC5, 0xFD), // #93C5FD
+    status_ok: Color32::from_rgb(0x4A, 0xDE, 0x80), // #4ADE80
+    status_ok_on: Color32::from_rgb(0x16, 0x18, 0x1D), // dark surface
+    status_warn: Color32::from_rgb(0xFB, 0xBF, 0x24), // #FBBF24
+    status_warn_on: Color32::from_rgb(0x16, 0x18, 0x1D), // dark surface
+    border_subtle: Color32::from_rgb(0x2A, 0x2E, 0x36), // #2A2E36
+    border_strong: Color32::from_rgb(0x3A, 0x3F, 0x4A), // #3A3F4A
+    focus_ring: Color32::from_rgb(0x2F, 0x6F, 0xED), // same as accent
+    selection_bg: Color32::from_rgb(0x2F, 0x6F, 0xED), // accent
     selection_text: Color32::WHITE,
-    surface_deep: Color32::from_rgb(0x11, 0x13, 0x18),   // #111318
+    surface_deep: Color32::from_rgb(0x11, 0x13, 0x18), // #111318
     non_working_day: Color32::from_rgb(0x1A, 0x1E, 0x27), // #1A1E27
     status_date: Color32::from_rgba_premultiplied(0xF8, 0x71, 0x71, 128), // 50% critical
     overlay_scrim: Color32::from_rgba_premultiplied(0x00, 0x00, 0x00, 0xA0), // 62.5% black
-    disabled_bg: Color32::from_rgb(0x21, 0x24, 0x2B),     // #21242B
-    disabled_text: Color32::from_rgb(0x5A, 0x62, 0x6E),   // #5A626E
+    disabled_bg: Color32::from_rgb(0x21, 0x24, 0x2B),  // #21242B
+    disabled_text: Color32::from_rgb(0x5A, 0x62, 0x6E), // #5A626E
     // Legacy fields
-    non_working: Color32::from_rgb(0x1A, 0x1E, 0x27),      // same as non_working_day
+    non_working: Color32::from_rgb(0x1A, 0x1E, 0x27), // same as non_working_day
     variance_positive: Color32::from_rgb(0x4A, 0xDE, 0x80), // same as status_ok (green)
     variance_negative: Color32::from_rgb(0xF8, 0x71, 0x71), // same as status_critical (red)
 };
@@ -543,9 +543,24 @@ impl ElevationToken {
     pub fn light_shadow(self) -> (f32, f32, f32, Color32) {
         match self {
             ElevationToken::Level0 => (0.0, 0.0, 0.0, Color32::TRANSPARENT),
-            ElevationToken::Level1 => (1.0, 2.0, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 0x14)),
-            ElevationToken::Level2 => (4.0, 8.0, -2.0, Color32::from_rgba_unmultiplied(0, 0, 0, 0x1A)),
-            ElevationToken::Level3 => (8.0, 16.0, -4.0, Color32::from_rgba_unmultiplied(0, 0, 0, 0x26)),
+            ElevationToken::Level1 => (
+                1.0,
+                2.0,
+                0.0,
+                Color32::from_rgba_unmultiplied(0, 0, 0, 0x14),
+            ),
+            ElevationToken::Level2 => (
+                4.0,
+                8.0,
+                -2.0,
+                Color32::from_rgba_unmultiplied(0, 0, 0, 0x1A),
+            ),
+            ElevationToken::Level3 => (
+                8.0,
+                16.0,
+                -4.0,
+                Color32::from_rgba_unmultiplied(0, 0, 0, 0x26),
+            ),
         }
     }
 
@@ -553,9 +568,24 @@ impl ElevationToken {
     pub fn dark_shadow(self) -> (f32, f32, f32, Color32) {
         match self {
             ElevationToken::Level0 => (0.0, 0.0, 0.0, Color32::TRANSPARENT),
-            ElevationToken::Level1 => (1.0, 2.0, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 0x33)),
-            ElevationToken::Level2 => (4.0, 8.0, -2.0, Color32::from_rgba_unmultiplied(0, 0, 0, 0x4D)),
-            ElevationToken::Level3 => (8.0, 16.0, -4.0, Color32::from_rgba_unmultiplied(0, 0, 0, 0x66)),
+            ElevationToken::Level1 => (
+                1.0,
+                2.0,
+                0.0,
+                Color32::from_rgba_unmultiplied(0, 0, 0, 0x33),
+            ),
+            ElevationToken::Level2 => (
+                4.0,
+                8.0,
+                -2.0,
+                Color32::from_rgba_unmultiplied(0, 0, 0, 0x4D),
+            ),
+            ElevationToken::Level3 => (
+                8.0,
+                16.0,
+                -4.0,
+                Color32::from_rgba_unmultiplied(0, 0, 0, 0x66),
+            ),
         }
     }
 }
@@ -858,7 +888,10 @@ pub trait Theme {
                 // Map typography tokens to egui TextStyle
                 text.insert(
                     TextStyle::Heading,
-                    FontId::new(typography.h2.size, FontFamily::Name(typography.h2.weight.family_name().into())),
+                    FontId::new(
+                        typography.h2.size,
+                        FontFamily::Name(typography.h2.weight.family_name().into()),
+                    ),
                 );
                 text.insert(
                     TextStyle::Body,
@@ -870,7 +903,10 @@ pub trait Theme {
                 );
                 text.insert(
                     TextStyle::Button,
-                    FontId::new(typography.button.size, FontFamily::Name(typography.button.weight.family_name().into())),
+                    FontId::new(
+                        typography.button.size,
+                        FontFamily::Name(typography.button.weight.family_name().into()),
+                    ),
                 );
                 text.insert(
                     TextStyle::Monospace,
@@ -1116,10 +1152,22 @@ pub fn install_fonts(ctx: &Context) {
 
     // Inter font family (4 weights)
     let inter_fonts = [
-        ("Inter-Regular", include_bytes!("../assets/fonts/Inter-Regular.ttf") as &[u8]),
-        ("Inter-Medium", include_bytes!("../assets/fonts/Inter-Medium.ttf") as &[u8]),
-        ("Inter-SemiBold", include_bytes!("../assets/fonts/Inter-SemiBold.ttf") as &[u8]),
-        ("Inter-Bold", include_bytes!("../assets/fonts/Inter-Bold.ttf") as &[u8]),
+        (
+            "Inter-Regular",
+            include_bytes!("../assets/fonts/Inter-Regular.ttf") as &[u8],
+        ),
+        (
+            "Inter-Medium",
+            include_bytes!("../assets/fonts/Inter-Medium.ttf") as &[u8],
+        ),
+        (
+            "Inter-SemiBold",
+            include_bytes!("../assets/fonts/Inter-SemiBold.ttf") as &[u8],
+        ),
+        (
+            "Inter-Bold",
+            include_bytes!("../assets/fonts/Inter-Bold.ttf") as &[u8],
+        ),
     ];
 
     for (name, data) in inter_fonts {
@@ -1150,9 +1198,7 @@ pub fn install_fonts(ctx: &Context) {
     for name in ["Inter-Medium", "Inter-SemiBold", "Inter-Bold"] {
         let mut family = vec!["phosphor".to_string(), name.to_string()];
         family.extend(fallbacks.iter().cloned());
-        fonts
-            .families
-            .insert(FontFamily::Name(name.into()), family);
+        fonts.families.insert(FontFamily::Name(name.into()), family);
     }
 
     ctx.set_fonts(fonts);
@@ -1465,7 +1511,6 @@ pub const SEMANTIC_CONTRAST_PAIRS: &[(&str, &str, WcagLevel, &str)] = &[
         WcagLevel::AaLarge,
         "Disabled text on main surface",
     ),
-
     // UI components — 3:1
     (
         "accent",
@@ -1533,7 +1578,6 @@ pub const SEMANTIC_CONTRAST_PAIRS: &[(&str, &str, WcagLevel, &str)] = &[
         WcagLevel::AaLarge,
         "Grid border on main surface",
     ),
-
     // Status colors on surfaces
     (
         "status_critical",

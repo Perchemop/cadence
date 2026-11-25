@@ -4,9 +4,7 @@
 //! contrast requirements on both Light and Dark themes. Tests are headless —
 //! no display or egui rendering context needed.
 
-use cadence_ui_egui::design_tokens::{
-    validate_contrast, DARK_COLORS, LIGHT_COLORS,
-};
+use cadence_ui_egui::design_tokens::{validate_contrast, DARK_COLORS, LIGHT_COLORS};
 
 #[test]
 fn semantic_color_pairs_meet_wcag_aa_across_themes() {

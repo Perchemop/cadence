@@ -8,19 +8,18 @@
 
 // Re-export all public types from design_tokens
 pub use crate::design_tokens::{
-    ColorTokens, DesignTokenSet, Density, ElevationSet, FontWeight, MotionSet, Palette as LegacyPalette, RadiusSet,
-    RadiusToken, SpacingToken, ThemeMode, ThemeRegistry, TypographyScale,
-    Theme as DesignTheme, Theme, LightTheme, DarkTheme, init_theme_registry as init_registry,
-    theme_registry as tokens_theme_registry,
-    ACCENT, FOCUS_RING, ACCENT_ON, LIGHT_COLORS, DARK_COLORS, BASE_UNIT,
-    wcag_min_ratio, contrast_ratio, relative_luminance, meets_wcag,
-    SEMANTIC_CONTRAST_PAIRS,
-    validate_contrast,
-    apply as tokens_apply, apply_visuals as tokens_apply_visuals,
-    light_tokens, dark_tokens,
+    apply as tokens_apply, apply_visuals as tokens_apply_visuals, contrast_ratio, dark_tokens,
+    init_theme_registry as init_registry, light_tokens, meets_wcag, relative_luminance,
+    theme_registry as tokens_theme_registry, validate_contrast, wcag_min_ratio, ColorTokens,
+    DarkTheme, Density, DesignTokenSet, ElevationSet, FontWeight, LightTheme, MotionSet,
+    Palette as LegacyPalette, RadiusSet, RadiusToken, SpacingToken, Theme as DesignTheme, Theme,
+    ThemeMode, ThemeRegistry, TypographyScale, ACCENT, ACCENT_ON, BASE_UNIT, DARK_COLORS,
+    FOCUS_RING, LIGHT_COLORS, SEMANTIC_CONTRAST_PAIRS,
 };
 
-use crate::theme::{apply_theme as new_apply_theme, apply_visuals_only, install_fonts as new_install_fonts};
+use crate::theme::{
+    apply_theme as new_apply_theme, apply_visuals_only, install_fonts as new_install_fonts,
+};
 use egui::{Color32, Context, Stroke, Visuals};
 use std::sync::{Mutex, OnceLock};
 
@@ -141,7 +140,11 @@ pub mod chrome {
 
     /// Tab button for view switching.
     pub fn tab(dark: bool, active: bool, label: impl Into<String>) -> Button<'static> {
-        let variant = if dark { ThemeVariant::Dark } else { ThemeVariant::Light };
+        let variant = if dark {
+            ThemeVariant::Dark
+        } else {
+            ThemeVariant::Light
+        };
         new_chrome::tab(variant, active, label)
     }
 
@@ -245,7 +248,9 @@ pub struct LightThemeImpl {
 
 impl Default for LightThemeImpl {
     fn default() -> Self {
-        Self { inner: LightTheme::default() }
+        Self {
+            inner: LightTheme::default(),
+        }
     }
 }
 
@@ -294,7 +299,9 @@ pub struct DarkThemeImpl {
 
 impl Default for DarkThemeImpl {
     fn default() -> Self {
-        Self { inner: DarkTheme::default() }
+        Self {
+            inner: DarkTheme::default(),
+        }
     }
 }
 
