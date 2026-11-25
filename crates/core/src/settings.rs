@@ -152,7 +152,7 @@ pub enum ThemePreference {
 /// Keyboard shortcut configuration.
 ///
 /// Serialises as `{ "key": "action", ... }` where key is the egui key name.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ShortcutConfig(
     /// Inner map of egui key → action description string.
     pub BTreeMap<String, String>,
@@ -218,7 +218,7 @@ pub const SCHEMA_VERSION: u32 = 10;
 ///
 /// Fields (in order of persistence priority, also matching JSON order):
 /// - theme, density, shortcuts, assistant_config, update_channel, high_contrast, reduced_motion
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GlobalSettings {
     /// UI theme: System / Light / Dark.
     pub theme: ThemePreference,
@@ -396,7 +396,7 @@ pub enum EvmDisplayPreference {
 
 /// View‑level settings, specific to a single window/view and re‑loaded when
 /// the user switches views or restarts the app.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ViewSettings {
     /// Currently active view mode (Table, Gantt, Resources, etc.).
     #[serde(default)]
@@ -629,7 +629,7 @@ impl Default for DiaryViewSettings {
 }
 
 /// Production view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProductionViewSettings {
     /// Filter by activity.
     #[serde(default)]
@@ -677,7 +677,7 @@ impl Default for AuditViewSettings {
 }
 
 /// Assistant view settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssistantViewSettings {
     /// Last used model (overrides global).
     #[serde(default)]
@@ -723,7 +723,7 @@ impl Default for CostDisplay {
 // ========================================================================
 
 /// Tool‑specific settings — never persisted, reset on view change.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolSettings {
     /// Inspector panel width in pixels.
     #[serde(default = "default_inspector_width")]
@@ -769,7 +769,7 @@ fn default_split_pane_ratio() -> f32 {
 }
 
 /// Column resize tool settings.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ColumnResizeSettings {
     /// Column being resized (None when idle).
     pub resizing_column: Option<SortKey>,
