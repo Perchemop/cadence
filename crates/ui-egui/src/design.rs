@@ -18,7 +18,6 @@ pub use crate::design_tokens::{
     validate_contrast,
     apply as tokens_apply, apply_visuals as tokens_apply_visuals,
     light_tokens, dark_tokens,
-    Theme, ThemeRegistry,
 };
 
 use crate::theme::{apply_theme as new_apply_theme, apply_visuals_only, install_fonts as new_install_fonts, chrome as new_chrome, parse_color};
@@ -234,24 +233,6 @@ pub fn theme_registry() -> &'static ThemeRegistry {
 /// Get mutable access to the global theme registry (legacy entry point).
 pub fn theme_registry_mut() -> &'static mut ThemeRegistry {
     get_registry_mut()
-}
-
-/// Apply a palette as the global egui theme (legacy entry point).
-pub fn apply_palette(ctx: &Context, p: &Palette) {
-    let visuals = Visuals {
-        window_fill: p.bg,
-        panel_fill: p.panel,
-        override_text_color: Some(p.text),
-        warn_fg_color: p.warn,
-        error_fg_color: p.critical,
-        hyperlink_color: p.ok,
-        selection: egui::style::Selection {
-            bg_fill: p.focus_ring,
-            stroke: Stroke::NONE,
-        },
-        ..Visuals::light()
-    };
-    ctx.set_visuals(visuals);
 }
 
 /// Theme trait for dynamic theming (legacy compatibility).
