@@ -784,7 +784,8 @@ impl CadenceApp {
         let global_settings = cadence_core::settings::load_global_settings()
             .unwrap_or_else(|_| cadence_core::settings::GlobalSettings::default());
         let project_settings = cadence_core::settings::ProjectSettings::default();
-        let settings_context = cadence_core::settings::SettingsContext::new(global_settings, project_settings);
+        let settings_context =
+            cadence_core::settings::SettingsContext::new(global_settings, project_settings);
 
         let schedule = schedule(&project).map_err(|error| error.to_string());
         let crash_log = crash::read_log().unwrap_or_default();

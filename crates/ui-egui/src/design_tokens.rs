@@ -1050,13 +1050,17 @@ pub fn install_fonts(ctx: &Context) {
 
     let mut proportional = vec!["phosphor".to_string(), "Inter-Regular".to_string()];
     proportional.extend(fallbacks.iter().cloned());
-    fonts.families.insert(FontFamily::Proportional, proportional);
+    fonts
+        .families
+        .insert(FontFamily::Proportional, proportional);
 
     // Weight-specific families (each with icon font first)
     for name in ["Inter-Medium", "Inter-SemiBold", "Inter-Bold"] {
         let mut family = vec!["phosphor".to_string(), name.to_string()];
         family.extend(fallbacks.iter().cloned());
-        fonts.families.insert(FontFamily::Name(name.into()), family);
+        fonts
+            .families
+            .insert(FontFamily::Name(name.into()), family);
     }
 
     ctx.set_fonts(fonts);
@@ -1170,7 +1174,11 @@ pub fn translucent(color: Color32, alpha: u8) -> Color32 {
 /// Legacy apply function (calls through to new system).
 pub fn apply(ctx: &Context, dark: bool) {
     let registry = theme_registry();
-    let mode = if dark { ThemeMode::Dark } else { ThemeMode::Light };
+    let mode = if dark {
+        ThemeMode::Dark
+    } else {
+        ThemeMode::Light
+    };
     registry.set_mode(mode);
     registry.apply(ctx, dark);
 }
@@ -1178,7 +1186,11 @@ pub fn apply(ctx: &Context, dark: bool) {
 /// Legacy apply_visuals function.
 pub fn apply_visuals(ctx: &Context, dark: bool) {
     let registry = theme_registry();
-    let mode = if dark { ThemeMode::Dark } else { ThemeMode::Light };
+    let mode = if dark {
+        ThemeMode::Dark
+    } else {
+        ThemeMode::Light
+    };
     registry.set_mode(mode);
     registry.active_theme(dark).apply_visuals(ctx);
 }
@@ -1201,7 +1213,8 @@ pub fn export_tokens_json() -> String {
             "fontFamily": "Inter",
             "iconFont": "Phosphor",
         }
-    }).to_string()
+    })
+    .to_string()
 }
 
 /// Create a DesignTokenSet for the light theme.

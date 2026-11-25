@@ -287,14 +287,10 @@ pub mod chrome {
         } else {
             colors.text_muted
         };
-        let text = RichText::new(label.into())
-            .color(text_color)
-            .strong();
+        let text = RichText::new(label.into()).color(text_color).strong();
 
         // Accent with 15% opacity for selected tab background
-        let accent_bg = Color32::from_rgba_unmultiplied(
-            ACCENT.r(), ACCENT.g(), ACCENT.b(), 38
-        );
+        let accent_bg = Color32::from_rgba_unmultiplied(ACCENT.r(), ACCENT.g(), ACCENT.b(), 38);
 
         Button::new(text)
             .selected(selected)
@@ -339,14 +335,26 @@ mod tests {
         assert_eq!(parse_color("#F4F5F7"), Color32::from_rgb(0xF4, 0xF5, 0xF7));
         assert_eq!(parse_color("#1F2933"), Color32::from_rgb(0x1F, 0x29, 0x33));
         assert_eq!(parse_color("#2F6FED"), Color32::from_rgb(0x2F, 0x6F, 0xED));
-        assert_eq!(parse_color("#2F6FEDFF"), Color32::from_rgba_unmultiplied(0x2F, 0x6F, 0xED, 0xFF));
-        assert_eq!(parse_color("#2F6FED80"), Color32::from_rgba_unmultiplied(0x2F, 0x6F, 0xED, 0x80));
+        assert_eq!(
+            parse_color("#2F6FEDFF"),
+            Color32::from_rgba_unmultiplied(0x2F, 0x6F, 0xED, 0xFF)
+        );
+        assert_eq!(
+            parse_color("#2F6FED80"),
+            Color32::from_rgba_unmultiplied(0x2F, 0x6F, 0xED, 0x80)
+        );
     }
 
     #[test]
     fn parse_rgb_colors() {
-        assert_eq!(parse_color("rgb(244, 245, 247)"), Color32::from_rgb(244, 245, 247));
-        assert_eq!(parse_color("rgb(31, 41, 51)"), Color32::from_rgb(31, 41, 51));
+        assert_eq!(
+            parse_color("rgb(244, 245, 247)"),
+            Color32::from_rgb(244, 245, 247)
+        );
+        assert_eq!(
+            parse_color("rgb(31, 41, 51)"),
+            Color32::from_rgb(31, 41, 51)
+        );
     }
 
     #[test]
@@ -364,24 +372,54 @@ mod tests {
     #[test]
     fn variance_colors() {
         // Positive variance = delay/overspend = red family (status_critical)
-        assert_eq!(variance_color(Some(5), ThemeVariant::Light), LIGHT_COLORS.status_critical);
-        assert_eq!(variance_color(Some(5), ThemeVariant::Dark), DARK_COLORS.status_critical);
+        assert_eq!(
+            variance_color(Some(5), ThemeVariant::Light),
+            LIGHT_COLORS.status_critical
+        );
+        assert_eq!(
+            variance_color(Some(5), ThemeVariant::Dark),
+            DARK_COLORS.status_critical
+        );
 
         // Negative variance = improvement = green family (status_ok)
-        assert_eq!(variance_color(Some(-3), ThemeVariant::Light), LIGHT_COLORS.status_ok);
-        assert_eq!(variance_color(Some(-3), ThemeVariant::Dark), DARK_COLORS.status_ok);
+        assert_eq!(
+            variance_color(Some(-3), ThemeVariant::Light),
+            LIGHT_COLORS.status_ok
+        );
+        assert_eq!(
+            variance_color(Some(-3), ThemeVariant::Dark),
+            DARK_COLORS.status_ok
+        );
 
         // Zero/none = grid/subtle
-        assert_eq!(variance_color(None, ThemeVariant::Light), LIGHT_COLORS.border_subtle);
-        assert_eq!(variance_color(Some(0), ThemeVariant::Light), LIGHT_COLORS.border_subtle);
+        assert_eq!(
+            variance_color(None, ThemeVariant::Light),
+            LIGHT_COLORS.border_subtle
+        );
+        assert_eq!(
+            variance_color(Some(0), ThemeVariant::Light),
+            LIGHT_COLORS.border_subtle
+        );
     }
 
     #[test]
     fn status_severity_colors() {
-        assert_eq!(StatusSeverity::Info.color(ThemeVariant::Light), LIGHT_COLORS.text_muted);
-        assert_eq!(StatusSeverity::Success.color(ThemeVariant::Light), LIGHT_COLORS.status_ok);
-        assert_eq!(StatusSeverity::Warning.color(ThemeVariant::Light), LIGHT_COLORS.status_warn);
-        assert_eq!(StatusSeverity::Error.color(ThemeVariant::Light), LIGHT_COLORS.status_critical);
+        assert_eq!(
+            StatusSeverity::Info.color(ThemeVariant::Light),
+            LIGHT_COLORS.text_muted
+        );
+        assert_eq!(
+            StatusSeverity::Success.color(ThemeVariant::Light),
+            LIGHT_COLORS.status_ok
+        );
+        assert_eq!(
+            StatusSeverity::Warning.color(ThemeVariant::Light),
+            LIGHT_COLORS.status_warn
+        );
+        assert_eq!(
+            StatusSeverity::Error.color(ThemeVariant::Light),
+            LIGHT_COLORS.status_critical
+        );
     }
 
     #[test]
