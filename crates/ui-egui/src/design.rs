@@ -22,7 +22,7 @@ pub use crate::design_tokens::{
 
 use crate::theme::{apply_theme as new_apply_theme, apply_visuals_only, install_fonts as new_install_fonts};
 use egui::{Color32, Context, Stroke, Visuals};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 /// Semantic and structural colours for one theme (legacy Palette).
 ///
@@ -374,31 +374,22 @@ impl ThemeRegistryCompat {
 }
 
 /// Global theme registry (compatibility wrapper).
-static mut THEME_REGISTRY_COMPAT: Option<ThemeRegistryCompat> = None;
+static THEME_REGISTRY_COMPAT: OnceLock<ThemeRegistryCompat> = OnceLock::new();
 
 /// Initialize the global theme registry (legacy entry point).
 pub fn init_theme_registry_compat() {
-    unsafe {
-        THEME_REGISTRY_COMPAT = Some(ThemeRegistryCompat::new());
-    }
+    THEME_REGISTRY_COMPAT.set(ThemeRegistryCompat::new()).ok();
 }
 
 /// Get the global theme registry (legacy entry point).
 pub fn theme_registry_compat() -> &'static ThemeRegistryCompat {
-    unsafe {
-        THEME_REGISTRY_COMPAT
-            .as_ref()
-            .expect("Theme registry not initialized. Call init_theme_registry_compat() first.")
-    }
+    THEME_REGISTRY_COMPAT.get_or_init(ThemeRegistryCompat::new)
 }
 
 /// Get mutable access to the global theme registry (legacy entry point).
-pub fn theme_registry_mut_compat() -> &'static mut ThemeRegistryCompat {
-    unsafe {
-        THEME_REGISTRY_COMPAT
-            .as_mut()
-            .expect("Theme registry not initialized. Call init_theme_registry_compat() first.")
-    }
+/// Note: Returns immutable reference due to OnceLock; use theme_registry_compat() instead.
+pub fn theme_registry_mut_compat() -> &'static ThemeRegistryCompat {
+    THEME_REGISTRY_COMPAT.get_or_init(ThemeRegistryCompat::new)
 }
 
 /// Apply a theme using the new Theme trait (legacy entry point).

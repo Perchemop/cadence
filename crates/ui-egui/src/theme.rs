@@ -92,6 +92,7 @@ fn color_tokens(variant: ThemeVariant) -> &'static ColorTokens {
 }
 
 /// Get a DesignTokenSet for a theme variant.
+#[allow(dead_code)]
 fn token_set(variant: ThemeVariant) -> DesignTokenSet {
     match variant {
         ThemeVariant::Light => light_tokens(),
