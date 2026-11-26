@@ -10,10 +10,9 @@
 
 use cadence_ui_egui::design_tokens::{
     chrome, dark_tokens, light_tokens, non_working_color, parse_color, status_date_color, variance_color,
-    ColorTokens, DarkTheme, Density, DesignTokenSet, EasingToken, FontWeight, LightTheme,
+    DarkTheme, Density, DesignTokenSet, EasingToken, FontWeight, LightTheme,
     RadiusSet, RadiusToken, SpacingToken, StatusSeverity, Theme, ThemeMode, ThemeRegistry,
-    ThemeVariant, TypographyScale, ACCENT, ACCENT_ON, BASE_UNIT, DARK_COLORS, FOCUS_RING,
-    LIGHT_COLORS, ContrastRatio,
+    ThemeVariant, ACCENT, BASE_UNIT, DARK_COLORS, LIGHT_COLORS,
 };
 
 /// Test that all required colour roles exist and are distinct per theme.
@@ -591,8 +590,8 @@ fn all_colors_valid_css() {
 /// Test Theme trait implementations.
 #[test]
 fn theme_trait_implementations() {
-    let light_theme = LightTheme;
-    let dark_theme = DarkTheme;
+    let light_theme = LightTheme::default();
+    let dark_theme = DarkTheme::default();
 
     let light_colors = light_theme.colors();
     let dark_colors = dark_theme.colors();
