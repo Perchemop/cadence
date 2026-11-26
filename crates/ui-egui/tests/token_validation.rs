@@ -9,7 +9,7 @@
 //! - Accessibility compliance
 
 use cadence_ui_egui::design_tokens::{
-    dark_tokens, light_tokens, non_working_color, parse_color, status_date_color, variance_color,
+    chrome, dark_tokens, light_tokens, non_working_color, parse_color, status_date_color, variance_color,
     ColorTokens, DarkTheme, Density, DesignTokenSet, EasingToken, FontWeight, LightTheme,
     RadiusSet, RadiusToken, SpacingToken, StatusSeverity, Theme, ThemeMode, ThemeRegistry,
     ThemeVariant, TypographyScale, ACCENT, ACCENT_ON, BASE_UNIT, DARK_COLORS, FOCUS_RING,
@@ -458,19 +458,19 @@ fn variance_color_mapping() {
 #[test]
 fn status_severity_colors() {
     assert_eq!(
-        StatusSeverity::Info.color(ThemeVariant::Light),
+        StatusSeverity::Info.color(false),
         LIGHT_COLORS.text_muted
     );
     assert_eq!(
-        StatusSeverity::Success.color(ThemeVariant::Light),
+        StatusSeverity::Success.color(false),
         LIGHT_COLORS.status_ok
     );
     assert_eq!(
-        StatusSeverity::Warning.color(ThemeVariant::Light),
+        StatusSeverity::Warning.color(false),
         LIGHT_COLORS.status_warn
     );
     assert_eq!(
-        StatusSeverity::Error.color(ThemeVariant::Light),
+        StatusSeverity::Error.color(false),
         LIGHT_COLORS.status_critical
     );
 }
