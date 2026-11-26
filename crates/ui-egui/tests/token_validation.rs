@@ -425,31 +425,31 @@ fn color_parsing_formats() {
 fn variance_color_mapping() {
     // Positive variance = delay/overspend = red family (status_critical)
     assert_eq!(
-        variance_color(Some(5), ThemeVariant::Light),
+        variance_color(Some(5), false),
         LIGHT_COLORS.status_critical
     );
     assert_eq!(
-        variance_color(Some(5), ThemeVariant::Dark),
+        variance_color(Some(5), true),
         DARK_COLORS.status_critical
     );
 
     // Negative variance = improvement = green family (status_ok)
     assert_eq!(
-        variance_color(Some(-3), ThemeVariant::Light),
+        variance_color(Some(-3), false),
         LIGHT_COLORS.status_ok
     );
     assert_eq!(
-        variance_color(Some(-3), ThemeVariant::Dark),
+        variance_color(Some(-3), true),
         DARK_COLORS.status_ok
     );
 
     // Zero/none = grid/subtle
     assert_eq!(
-        variance_color(None, ThemeVariant::Light),
+        variance_color(None, false),
         LIGHT_COLORS.border_subtle
     );
     assert_eq!(
-        variance_color(Some(0), ThemeVariant::Light),
+        variance_color(Some(0), false),
         LIGHT_COLORS.border_subtle
     );
 }
