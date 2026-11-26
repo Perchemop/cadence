@@ -90,9 +90,9 @@ fn contrast_wcag_aa() {
                     ((c + 0.055) / 1.055).powf(2.4)
                 }
             };
-            let r = srgb_to_linear(c.r() as f32 / 255.0);
-            let g = srgb_to_linear(g.g() as f32 / 255.0);
-            let b = srgb_to_linear(b.b() as f32 / 255.0);
+            let r = srgb_to_linear(color.r() as f32 / 255.0);
+            let g = srgb_to_linear(color.g() as f32 / 255.0);
+            let b = srgb_to_linear(color.b() as f32 / 255.0);
             0.2126 * r + 0.7152 * g + 0.0722 * b
         }
 
