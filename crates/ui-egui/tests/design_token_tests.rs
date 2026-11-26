@@ -8,7 +8,7 @@
 //! - Serialization round-trip
 
 use cadence_ui_egui::design_tokens::{
-    validate_contrast, variance_color, ColorTokens, ContrastRatio, DARK_COLORS, LIGHT_COLORS,
+    validate_contrast, variance_color, ContrastRatio, DARK_COLORS, LIGHT_COLORS,
 };
 use egui::Color32;
 
