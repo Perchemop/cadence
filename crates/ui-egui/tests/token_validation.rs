@@ -105,7 +105,7 @@ fn contrast_wcag_aa() {
         }
 
         let bg_raised = c.surface_raised;
-        let bg_base = c.surface_base;
+        let _bg_base = c.surface_base;
 
         // Body text on raised surface ≥ 4.5:1
         let text_primary = c.text_primary;
@@ -511,11 +511,11 @@ fn status_severity_classification() {
 /// Test chrome button creation.
 #[test]
 fn chrome_buttons_create() {
-    let _primary = chrome::primary(ThemeVariant::Light, "New");
-    let _ghost = chrome::ghost(ThemeVariant::Light, "Action");
-    let _tab = chrome::tab(ThemeVariant::Light, true, "Table");
-    let _secondary = chrome::secondary(ThemeVariant::Light, "Cancel");
-    let _danger = chrome::danger(ThemeVariant::Light, "Delete");
+    let _primary = chrome::primary("New");
+    let _ghost = chrome::ghost("Action");
+    let _tab = chrome::tab(false, true, "Table");
+    let _secondary = chrome::secondary("Cancel");
+    let _danger = chrome::danger("Delete");
 }
 
 /// Test light and dark themes have same structure, different values.
