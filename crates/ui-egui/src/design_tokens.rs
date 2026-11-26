@@ -1286,7 +1286,7 @@ impl ContrastRatio {
 
 /// Re-export items from sibling modules for test convenience.
 pub use crate::StatusSeverity;
-pub use crate::ThemeVariant;
+pub use crate::theme::ThemeVariant;
 
 pub mod chrome {
     use super::*;
