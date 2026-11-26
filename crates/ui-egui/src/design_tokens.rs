@@ -1256,6 +1256,38 @@ pub const FOCUS_RING: Color32 = ACCENT;
 pub const ACCENT_ON: Color32 = Color32::WHITE;
 
 /// Legacy chrome button helpers.
+/// Compute the contrast ratio between two colors.
+/// 
+/// Returns the contrast ratio as a floating-point number, where 21.0 is the
+/// maximum (white on black) and 1.0 is the minimum (same color on same color).
+#[derive(Debug, Clone, Copy)]
+pub struct ContrastRatio;
+impl ContrastRatio {
+    /// Compute the contrast ratio between two colors.
+    pub fn compute(fg: Color32, bg: Color32) -> f32 {
+        let srgb_to_linear = |c: f32| {
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let r1 = srgb_to_linear(fg.r() as f32 / 255.0);
+        let g1 = srgb_to_linear(fg.g() as f32 / 255.0);
+        let b1 = srgb_to_linear(fg.b() as f32 / 255.0);
+        let r2 = srgb_to_linear(bg.r() as f32 / 255.0);
+        let g2 = srgb_to_linear(bg.g() as f32 / 255.0);
+        let b2 = srgb_to_linear(bg.b() as f32 / 255.0);
+        let l1 = 0.2126 * r1 + 0.7152 * g1 + 0.0722 * b1;
+        let l2 = 0.2126 * r2 + 0.7152 * g2 + 0.0722 * b2;
+        (l1 + 0.05) / (l2 + 0.05).max(1.0 / 21.0 / (l1 + 0.05) * (l2 + 0.05))
+    }
+}
+
+/// Re-export items from sibling modules for test convenience.
+pub use crate::StatusSeverity;
+pub use crate::ThemeVariant;
+
 pub mod chrome {
     use super::*;
 

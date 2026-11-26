@@ -13,16 +13,17 @@ use cadence_ui_egui::design_tokens::{
     ColorTokens, DarkTheme, Density, DesignTokenSet, EasingToken, FontWeight, LightTheme,
     RadiusSet, RadiusToken, SpacingToken, StatusSeverity, Theme, ThemeMode, ThemeRegistry,
     ThemeVariant, TypographyScale, ACCENT, ACCENT_ON, BASE_UNIT, DARK_COLORS, FOCUS_RING,
-    LIGHT_COLORS,
+    LIGHT_COLORS, ContrastRatio,
 };
 
 /// Test that all required colour roles exist and are distinct per theme.
 #[test]
 fn color_roles_complete_and_distinct() {
-    for variant in [ThemeMode::Light, ThemeMode::Dark] {
+    for variant in [ThemeMode::Light, ThemeMode::Dark, ThemeMode::System] {
         let tokens = match variant {
             ThemeMode::Light => light_tokens(),
             ThemeMode::Dark => dark_tokens(),
+            ThemeMode::System => light_tokens(),
         };
         let c = &tokens.colors;
 
@@ -73,10 +74,11 @@ use egui::Color32;
 /// Test WCAG AA contrast for critical colour pairs.
 #[test]
 fn contrast_wcag_aa() {
-    for variant in [ThemeMode::Light, ThemeMode::Dark] {
+    for variant in [ThemeMode::Light, ThemeMode::Dark, ThemeMode::System] {
         let tokens = match variant {
             ThemeMode::Light => light_tokens(),
             ThemeMode::Dark => dark_tokens(),
+            ThemeMode::System => light_tokens(),
         };
         let c = &tokens.colors;
 
