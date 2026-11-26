@@ -2145,7 +2145,11 @@ mod tests {
                     [],
                 )
                 .expect("insert activity");
+            // Ensure all changes are flushed to disk before the connection is dropped
+            connection.execute_batch("PRAGMA wal_checkpoint(FULL)").ok();
         }
+        // Small delay to ensure filesystem has flushed the database file
+        std::thread::sleep(std::time::Duration::from_millis(50));
 
         let project = load_project(&path).expect("load and migrate");
         assert_eq!(project.name, "Legacy");
@@ -2213,7 +2217,11 @@ mod tests {
                     [],
                 )
                 .expect("insert activity");
+            // Ensure all changes are flushed to disk before the connection is dropped
+            connection.execute_batch("PRAGMA wal_checkpoint(FULL)").ok();
         }
+        // Small delay to ensure filesystem has flushed the database file
+        std::thread::sleep(std::time::Duration::from_millis(50));
 
         let project = load_project(&path).expect("load and migrate");
         assert_eq!(project.name, "Legacy");
@@ -2486,7 +2494,11 @@ mod tests {
                     [],
                 )
                 .expect("insert assignment");
+            // Ensure all changes are flushed to disk before the connection is dropped
+            connection.execute_batch("PRAGMA wal_checkpoint(FULL)").ok();
         }
+        // Small delay to ensure filesystem has flushed the database file
+        std::thread::sleep(std::time::Duration::from_millis(50));
 
         let project = load_project(&path).expect("load and migrate");
         assert_eq!(project.resources.len(), 1);
