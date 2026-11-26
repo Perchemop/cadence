@@ -270,13 +270,13 @@ pub static DARK_COLORS: ColorTokens = ColorTokens {
     selection_bg: Color32::from_rgb(0x2F, 0x6F, 0xED), // accent
     selection_text: Color32::WHITE,
     surface_deep: Color32::from_rgb(0x11, 0x13, 0x18), // #111318
-    non_working_day: Color32::from_rgb(0x4C, 0x54, 0x68), // #4C5468 (3:1 on surface_base)
+    non_working_day: Color32::from_rgb(0x58, 0x62, 0x7A), // #58627A (3:1 on surface_base)
     status_date: Color32::from_rgba_premultiplied(0xF8, 0x71, 0x71, 128), // 50% critical
     overlay_scrim: Color32::from_rgba_premultiplied(0x00, 0x00, 0x00, 0xA0), // 62.5% black
     disabled_bg: Color32::from_rgb(0x21, 0x24, 0x2B),  // #21242B
     disabled_text: Color32::from_rgb(0x8A, 0x92, 0xA8), // #8A92A8 (3:1 on disabled_bg)
     // Legacy fields
-    non_working: Color32::from_rgb(0x4C, 0x54, 0x68), // same as non_working_day
+    non_working: Color32::from_rgb(0x58, 0x62, 0x7A), // same as non_working_day
     variance_positive: Color32::from_rgb(0x4A, 0xDE, 0x80), // same as status_ok (green)
     variance_negative: Color32::from_rgb(0xF8, 0x71, 0x71), // same as status_critical (red)
 };
