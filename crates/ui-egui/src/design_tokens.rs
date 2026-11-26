@@ -228,19 +228,19 @@ pub static LIGHT_COLORS: ColorTokens = ColorTokens {
     status_ok_on: Color32::WHITE,
     status_warn: Color32::from_rgb(0xB4, 0x53, 0x09), // #B45309
     status_warn_on: Color32::WHITE,
-    border_subtle: Color32::from_rgb(0x94, 0x9C, 0xB0), // #949CB0 (3:1 on surface_base/raised)
-    border_strong: Color32::from_rgb(0x7A, 0x84, 0x98), // #7A8498 (3:1 on surface_base/raised)
+    border_subtle: Color32::from_rgb(0x78, 0x80, 0x98), // #788098 (3:1 on surface_base/raised)
+    border_strong: Color32::from_rgb(0x60, 0x6C, 0x84), // #606C84 (3:1 on surface_base/raised)
     focus_ring: Color32::from_rgb(0x2F, 0x6F, 0xED),    // same as accent
     selection_bg: Color32::from_rgb(0x2F, 0x6F, 0xED),  // accent
     selection_text: Color32::WHITE,
     surface_deep: Color32::from_rgb(0xEC, 0xEE, 0xF1), // #ECEEF1
-    non_working_day: Color32::from_rgb(0xA0, 0xAC, 0xC0), // #A0ACC0 (3:1 on surface_base)
+    non_working_day: Color32::from_rgb(0x80, 0x8C, 0xA8), // #808CA8 (3:1 on surface_base)
     status_date: Color32::from_rgba_premultiplied(0xB9, 0x1C, 0x1C, 128), // 50% critical
     overlay_scrim: Color32::from_rgba_premultiplied(0x00, 0x00, 0x00, 0x80), // 50% black
     disabled_bg: Color32::from_rgb(0xE8, 0xEB, 0xF0),  // #E8EBF0
     disabled_text: Color32::from_rgb(0x5F, 0x6B, 0x7A), // #5F6B7A (3:1 on disabled_bg)
     // Legacy fields
-    non_working: Color32::from_rgb(0xB0, 0xB8, 0xCC), // #B0BCC0 (3:1 on surface_base)
+    non_working: Color32::from_rgb(0x90, 0x9C, 0xB8), // #909CB8 (3:1 on surface_base)
     variance_positive: Color32::from_rgb(0x15, 0x80, 0x3D), // same as status_ok (green)
     variance_negative: Color32::from_rgb(0xB9, 0x1C, 0x1C), // same as status_critical (red)
 };
