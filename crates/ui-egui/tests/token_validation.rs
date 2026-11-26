@@ -212,7 +212,7 @@ fn serialization_roundtrip() {
 /// Test spacing tokens match 4px base with correct multipliers.
 #[test]
 fn spacing_tokens_correct_multipliers() {
-    let tokens = light_tokens();
+    let _tokens = light_tokens();
     let base = BASE_UNIT;
     assert_eq!(base, 4.0);
 
