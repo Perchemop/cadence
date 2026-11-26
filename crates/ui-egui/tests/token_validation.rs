@@ -11,7 +11,7 @@
 use cadence_ui_egui::design_tokens::{
     chrome, dark_tokens, light_tokens, non_working_color, parse_color, status_date_color, variance_color,
     DarkTheme, Density, DesignTokenSet, EasingToken, FontWeight, LightTheme,
-    RadiusSet, RadiusToken, SpacingToken, StatusSeverity, Theme, ThemeMode, ThemeRegistry,
+    SpacingToken, StatusSeverity, Theme, ThemeMode, ThemeRegistry,
     ThemeVariant, ACCENT, BASE_UNIT, DARK_COLORS, LIGHT_COLORS,
 };
 
@@ -571,10 +571,6 @@ fn special_colors_exist() {
 /// Test that all token values are valid CSS colors.
 #[test]
 fn all_colors_valid_css() {
-    fn is_valid_color(s: &str) -> bool {
-        s.starts_with('#') || s.starts_with("rgb") || s.starts_with("rgba") || s == "transparent"
-    }
-
     // Note: current design_tokens.rs stores colors as Color32, not CSS strings
     // This test is adapted for the current implementation
     let light = light_tokens();
