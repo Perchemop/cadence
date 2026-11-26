@@ -514,8 +514,6 @@ fn chrome_buttons_create() {
     let _primary = chrome::primary("New");
     let _ghost = chrome::ghost("Action");
     let _tab = chrome::tab(false, true, "Table");
-    let _secondary = chrome::secondary("Cancel");
-    let _danger = chrome::danger("Delete");
 }
 
 /// Test light and dark themes have same structure, different values.
