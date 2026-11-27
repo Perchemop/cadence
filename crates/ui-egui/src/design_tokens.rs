@@ -252,7 +252,7 @@ pub static DARK_COLORS: ColorTokens = ColorTokens {
     surface_sunken: Color32::from_rgb(0x2E, 0x33, 0x3D), // #2E333D
     text_primary: Color32::from_rgb(0xE3, 0xE7, 0xEB), // #E3E7EB
     text_secondary: Color32::from_rgb(0xB0, 0xB8, 0xC8), // #B0B8C8 (lighter for 4.5:1)
-    text_muted: Color32::from_rgb(0x8A, 0x92, 0xA8),   // #8A92A8 (4.5:1 on surface_base/raised)
+    text_muted: Color32::from_rgb(0x8A, 0x92, 0xA8), // #8A92A8 (4.5:1 on surface_base/raised)
     text_on_accent: Color32::WHITE,
     accent: Color32::from_rgb(0x2F, 0x6F, 0xED), // #2F6FED
     accent_hover: Color32::from_rgb(0x4A, 0x82, 0xF0), // #4A82F0 (lighter)
@@ -1257,7 +1257,7 @@ pub const ACCENT_ON: Color32 = Color32::WHITE;
 
 /// Legacy chrome button helpers.
 /// Compute the contrast ratio between two colors.
-/// 
+///
 /// Returns the contrast ratio as a floating-point number, where 21.0 is the
 /// maximum (white on black) and 1.0 is the minimum (same color on same color).
 #[derive(Debug, Clone, Copy)]
@@ -1286,8 +1286,7 @@ impl ContrastRatio {
 
 /// Re-export items from sibling modules for test convenience.
 pub use crate::StatusSeverity;
-pub use crate::theme::ThemeVariant;
-pub use crate::theme::{parse_color, non_working_color, status_date_color};
+pub use crate::theme::{non_working_color, parse_color, status_date_color, ThemeVariant};
 
 pub mod chrome {
     use super::*;

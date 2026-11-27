@@ -9,10 +9,10 @@
 //! - Accessibility compliance
 
 use cadence_ui_egui::design_tokens::{
-    chrome, dark_tokens, light_tokens, non_working_color, parse_color, status_date_color, variance_color,
-    DarkTheme, Density, DesignTokenSet, EasingToken, FontWeight, LightTheme,
-    SpacingToken, StatusSeverity, Theme, ThemeMode, ThemeRegistry,
-    ThemeVariant, ACCENT, BASE_UNIT, DARK_COLORS, LIGHT_COLORS,
+    chrome, dark_tokens, light_tokens, non_working_color, parse_color, status_date_color,
+    variance_color, DarkTheme, Density, DesignTokenSet, EasingToken, FontWeight, LightTheme,
+    SpacingToken, StatusSeverity, Theme, ThemeMode, ThemeRegistry, ThemeVariant, ACCENT, BASE_UNIT,
+    DARK_COLORS, LIGHT_COLORS,
 };
 
 /// Test that all required colour roles exist and are distinct per theme.
@@ -229,12 +229,7 @@ fn spacing_tokens_correct_multipliers() {
 
     for (token, mult) in expected {
         let value = token.value(Density::Standard);
-        assert_eq!(
-            value,
-            base * mult,
-            "Token {:?} should be {mult}× base",
-            token
-        );
+        assert_eq!(value, base * mult, "Token {:?} should be {mult}× base", token);
     }
 }
 
@@ -397,14 +392,8 @@ fn color_parsing_formats() {
     );
 
     // RGB
-    assert_eq!(
-        parse_color("rgb(244, 245, 247)"),
-        Color32::from_rgb(244, 245, 247)
-    );
-    assert_eq!(
-        parse_color("rgb(31, 41, 51)"),
-        Color32::from_rgb(31, 41, 51)
-    );
+    assert_eq!(parse_color("rgb(244, 245, 247)"), Color32::from_rgb(244, 245, 247));
+    assert_eq!(parse_color("rgb(31, 41, 51)"), Color32::from_rgb(31, 41, 51));
 
     // RGBA with 0-1 alpha
     assert_eq!(
@@ -423,55 +412,25 @@ fn color_parsing_formats() {
 #[test]
 fn variance_color_mapping() {
     // Positive variance = delay/overspend = red family (status_critical)
-    assert_eq!(
-        variance_color(Some(5), false),
-        LIGHT_COLORS.status_critical
-    );
-    assert_eq!(
-        variance_color(Some(5), true),
-        DARK_COLORS.status_critical
-    );
+    assert_eq!(variance_color(Some(5), false), LIGHT_COLORS.status_critical);
+    assert_eq!(variance_color(Some(5), true), DARK_COLORS.status_critical);
 
     // Negative variance = improvement = green family (status_ok)
-    assert_eq!(
-        variance_color(Some(-3), false),
-        LIGHT_COLORS.status_ok
-    );
-    assert_eq!(
-        variance_color(Some(-3), true),
-        DARK_COLORS.status_ok
-    );
+    assert_eq!(variance_color(Some(-3), false), LIGHT_COLORS.status_ok);
+    assert_eq!(variance_color(Some(-3), true), DARK_COLORS.status_ok);
 
     // Zero/none = grid/subtle
-    assert_eq!(
-        variance_color(None, false),
-        LIGHT_COLORS.border_subtle
-    );
-    assert_eq!(
-        variance_color(Some(0), false),
-        LIGHT_COLORS.border_subtle
-    );
+    assert_eq!(variance_color(None, false), LIGHT_COLORS.border_subtle);
+    assert_eq!(variance_color(Some(0), false), LIGHT_COLORS.border_subtle);
 }
 
 /// Test status severity colors map to correct tokens.
 #[test]
 fn status_severity_colors() {
-    assert_eq!(
-        StatusSeverity::Info.color(false),
-        LIGHT_COLORS.text_muted
-    );
-    assert_eq!(
-        StatusSeverity::Success.color(false),
-        LIGHT_COLORS.status_ok
-    );
-    assert_eq!(
-        StatusSeverity::Warning.color(false),
-        LIGHT_COLORS.status_warn
-    );
-    assert_eq!(
-        StatusSeverity::Error.color(false),
-        LIGHT_COLORS.status_critical
-    );
+    assert_eq!(StatusSeverity::Info.color(false), LIGHT_COLORS.text_muted);
+    assert_eq!(StatusSeverity::Success.color(false), LIGHT_COLORS.status_ok);
+    assert_eq!(StatusSeverity::Warning.color(false), LIGHT_COLORS.status_warn);
+    assert_eq!(StatusSeverity::Error.color(false), LIGHT_COLORS.status_critical);
 }
 
 /// Test status severity classification.
