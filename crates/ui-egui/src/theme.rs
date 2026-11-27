@@ -116,10 +116,10 @@ pub fn parse_color(s: &str) -> Color32 {
     let s = s.trim();
     if s.starts_with('#') {
         parse_hex(s)
-    } else if s.starts_with("rgb") {
-        parse_rgb(s)
     } else if s.starts_with("rgba") {
         parse_rgba(s)
+    } else if s.starts_with("rgb") {
+        parse_rgb(s)
     } else {
         // Fallback: transparent
         Color32::TRANSPARENT
