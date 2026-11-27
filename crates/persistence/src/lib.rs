@@ -1123,7 +1123,7 @@ fn read_project(connection: &Connection) -> Result<Project> {
 
 fn read_project_settings(connection: &Connection) -> Result<ProjectSettings> {
     let mut stmt = connection.prepare("SELECT workweek, resource_capacity, resource_cost_per_unit, auto_capture_baselines, evm_display, calendars_json FROM project_settings WHERE project_id = 1")?;
-    let row = stmt.query_row([], |row| {
+    match stmt.query_row([], |row| {
         Ok((
             row.get::<_, i64>(0)?,    // workweek bitfield
             row.get::<_, i64>(1)?,    // resource capacity
@@ -1132,30 +1132,37 @@ fn read_project_settings(connection: &Connection) -> Result<ProjectSettings> {
             row.get::<_, i64>(4)?,    // evm display preference
             row.get::<_, String>(5)?, // calendars JSON
         ))
-    })?;
+    }) {
+        Ok(row) => {
+            let workweek = decode_week(row.0)?;
+            let calendars_json: String = row.5.clone();
 
-    let workweek = decode_week(row.0)?;
-    let calendars_json: String = row.5.clone();
-
-    Ok(ProjectSettings {
-        currency: "USD".to_string(),
-        default_calendar: "standard".to_string(),
-        workweek,
-        column_visibility: Vec::new(),
-        cost_rates: CostRates {
-            default_rate: row.2,
-            overtime_multiplier: 1.5,
-        },
-        auto_capture_baselines: row.3 != 0,
-        evm_display: match row.4 {
-            0 => EvmDisplayPreference::Full,
-            1 => EvmDisplayPreference::CostOnly,
-            2 => EvmDisplayPreference::ScheduleOnly,
-            _ => EvmDisplayPreference::Hidden,
-        },
-        calendars_json,
-        schema_version: 10,
-    })
+            Ok(ProjectSettings {
+                currency: "USD".to_string(),
+                default_calendar: "standard".to_string(),
+                workweek,
+                column_visibility: Vec::new(),
+                cost_rates: CostRates {
+                    default_rate: row.2,
+                    overtime_multiplier: 1.5,
+                },
+                auto_capture_baselines: row.3 != 0,
+                evm_display: match row.4 {
+                    0 => EvmDisplayPreference::Full,
+                    1 => EvmDisplayPreference::CostOnly,
+                    2 => EvmDisplayPreference::ScheduleOnly,
+                    _ => EvmDisplayPreference::Hidden,
+                },
+                calendars_json,
+                schema_version: 10,
+            })
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            // No settings row exists yet — return defaults.
+            Ok(ProjectSettings::default())
+        }
+        Err(e) => Err(e.into()),
+    }
 }
 
 fn read_production_entries(connection: &Connection) -> Result<Vec<ProductionEntry>> {
