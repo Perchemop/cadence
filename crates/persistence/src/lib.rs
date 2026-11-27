@@ -2105,8 +2105,6 @@ mod tests {
         let path = dir.file("v1.cadence");
         {
             let connection = Connection::open(&path).expect("create database");
-            connection.pragma_update(None, "synchronous", "FULL").ok();
-            connection.pragma_update(None, "journal_mode", "DELETE").ok();
             connection.execute_batch(SCHEMA).expect("create schema");
             // Turn the current schema into the version 1 shape.
             connection
@@ -2147,10 +2145,7 @@ mod tests {
                     [],
                 )
                 .expect("insert activity");
-            // Ensure transaction is committed and data is fully written
-            connection.pragma_update(None, "wal_checkpoint", "FULL").ok();
         }
-        // The connection is dropped here, forcing all changes to be flushed
 
         let project = load_project(&path).expect("load and migrate");
         assert_eq!(project.name, "Legacy");
@@ -2178,8 +2173,6 @@ mod tests {
         let path = dir.file("v2.cadence");
         {
             let connection = Connection::open(&path).expect("create database");
-            connection.pragma_update(None, "synchronous", "FULL").ok();
-            connection.pragma_update(None, "journal_mode", "DELETE").ok();
             connection.execute_batch(SCHEMA).expect("create schema");
             // Turn the current schema into the version 2 shape.
             connection
@@ -2220,10 +2213,7 @@ mod tests {
                     [],
                 )
                 .expect("insert activity");
-            // Ensure transaction is committed and data is fully written
-            connection.pragma_update(None, "wal_checkpoint", "FULL").ok();
         }
-        // The connection is dropped here, forcing all changes to be flushed
 
         let project = load_project(&path).expect("load and migrate");
         assert_eq!(project.name, "Legacy");
@@ -2453,8 +2443,6 @@ mod tests {
         let path = dir.file("v9.cadence");
         {
             let connection = Connection::open(&path).expect("create database");
-            connection.pragma_update(None, "synchronous", "FULL").ok();
-            connection.pragma_update(None, "journal_mode", "DELETE").ok();
             connection.execute_batch(SCHEMA).expect("create schema");
             // Turn the current schema into the version 9 shape: the resource
             // rate and the per-assignment units do not exist yet.
@@ -2498,10 +2486,7 @@ mod tests {
                     [],
                 )
                 .expect("insert assignment");
-            // Ensure transaction is committed and data is fully written
-            connection.pragma_update(None, "wal_checkpoint", "FULL").ok();
         }
-        // The connection is dropped here, forcing all changes to be flushed
 
         let project = load_project(&path).expect("load and migrate");
         assert_eq!(project.resources.len(), 1);
