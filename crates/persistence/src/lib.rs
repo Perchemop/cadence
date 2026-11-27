@@ -2104,7 +2104,7 @@ mod tests {
         let dir = TempDir::new();
         let path = dir.file("v1.cadence");
         {
-            let mut connection = Connection::open(&path).expect("create database");
+            let connection = Connection::open(&path).expect("create database");
             connection.pragma_update(None, "synchronous", "FULL").ok();
             connection.pragma_update(None, "journal_mode", "DELETE").ok();
             connection.execute_batch(SCHEMA).expect("create schema");
@@ -2177,7 +2177,7 @@ mod tests {
         let dir = TempDir::new();
         let path = dir.file("v2.cadence");
         {
-            let mut connection = Connection::open(&path).expect("create database");
+            let connection = Connection::open(&path).expect("create database");
             connection.pragma_update(None, "synchronous", "FULL").ok();
             connection.pragma_update(None, "journal_mode", "DELETE").ok();
             connection.execute_batch(SCHEMA).expect("create schema");
@@ -2452,7 +2452,7 @@ mod tests {
         let dir = TempDir::new();
         let path = dir.file("v9.cadence");
         {
-            let mut connection = Connection::open(&path).expect("create database");
+            let connection = Connection::open(&path).expect("create database");
             connection.pragma_update(None, "synchronous", "FULL").ok();
             connection.pragma_update(None, "journal_mode", "DELETE").ok();
             connection.execute_batch(SCHEMA).expect("create schema");
