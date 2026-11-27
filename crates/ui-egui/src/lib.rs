@@ -5814,11 +5814,7 @@ impl CadenceApp {
                         });
                         ui.separator();
                         ui.label("Configure a provider and model above, then press ");
-                        ui.button("Request proposal").on_disabled_hover_text(
-                            "The proposal request is not wired up yet; \
-                             it will arrive in a future release.",
-                        );
-                        ui.label(": the request button is disabled until the request flow ships.");
+                        ui.label("the request will be available once a provider is configured");
                         return;
                     }
 
