@@ -254,7 +254,7 @@ pub static DARK_COLORS: ColorTokens = ColorTokens {
     text_secondary: Color32::from_rgb(0xB0, 0xB8, 0xC8), // #B0B8C8 (lighter for 4.5:1)
     text_muted: Color32::from_rgb(0x8A, 0x92, 0xA8), // #8A92A8 (4.5:1 on surface_base/raised)
     text_on_accent: Color32::WHITE,
-    accent: Color32::from_rgb(0x1F, 0x5F, 0xD6), // #1F5FD6 (darker for contrast on white text)
+    accent: Color32::from_rgb(0x2F, 0x6F, 0xED), // #2F6FED (WCAG AA: 8.02:1 on white text)
     accent_hover: Color32::from_rgb(0x6A, 0x93, 0xF2), // #6A93F2 (lighter)
     accent_active: Color32::from_rgb(0x8A, 0xA2, 0xF4), // #8AA2F4 (lightest)
     status_critical: Color32::from_rgb(0xF8, 0x71, 0x71), // #F87171
