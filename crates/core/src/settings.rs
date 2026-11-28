@@ -701,10 +701,11 @@ impl Default for AssistantViewSettings {
 }
 
 /// Cost display mode for resources view.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CostDisplay {
     /// Show cost in whole units.
+    #[default]
     Units,
     /// Show cost in minor currency units.
     Minor,
@@ -712,11 +713,6 @@ pub enum CostDisplay {
     Percentage,
 }
 
-impl Default for CostDisplay {
-    fn default() -> Self {
-        Self::Units
-    }
-}
 
 // ========================================================================
 // TOOL SETTINGS (ephemeral, in-memory only)
@@ -795,12 +791,13 @@ pub struct ColumnVisibility {
 }
 
 /// Time scale for Gantt view.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TimeScale {
     /// Day-level granularity.
     Day,
     /// Week-level granularity.
+    #[default]
     Week,
     /// Month-level granularity.
     Month,
@@ -808,17 +805,13 @@ pub enum TimeScale {
     Quarter,
 }
 
-impl Default for TimeScale {
-    fn default() -> Self {
-        Self::Week
-    }
-}
 
 /// Resource grouping mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResourceGroupBy {
     /// No grouping, flat list.
+    #[default]
     None,
     /// Group by resource kind (Labour/Equipment/Material).
     Kind,
@@ -826,17 +819,13 @@ pub enum ResourceGroupBy {
     Calendar,
 }
 
-impl Default for ResourceGroupBy {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 /// Sort key for activity table column ordering.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SortKey {
     /// Sort by name.
+    #[default]
     Name,
     /// Sort by duration.
     Duration,
@@ -850,11 +839,6 @@ pub enum SortKey {
     Constraint,
 }
 
-impl Default for SortKey {
-    fn default() -> Self {
-        Self::Name
-    }
-}
 
 // ========================================================================
 // FALLBACK RESOLUTION HELPERS
@@ -959,9 +943,8 @@ impl SettingsContext {
 
 /// Migrate GlobalSettings from an older schema version.
 pub fn migrate_global_settings(mut settings: GlobalSettings, from_version: u32) -> GlobalSettings {
-    match from_version {
-        0 => { /* initial migration if needed */ }
-        _ => {}
+    if from_version == 0 {
+        // Initial migration if needed.
     }
     settings.schema_version = SCHEMA_VERSION;
     settings
@@ -972,9 +955,8 @@ pub fn migrate_project_settings(
     mut settings: ProjectSettings,
     from_version: u32,
 ) -> ProjectSettings {
-    match from_version {
-        0 => { /* initial migration if needed */ }
-        _ => {}
+    if from_version == 0 {
+        // Initial migration if needed.
     }
     settings.schema_version = SCHEMA_VERSION;
     settings
@@ -982,9 +964,8 @@ pub fn migrate_project_settings(
 
 /// Migrate ViewSettings from an older schema version.
 pub fn migrate_view_settings(mut settings: ViewSettings, from_version: u32) -> ViewSettings {
-    match from_version {
-        0 => { /* add new view settings fields */ }
-        _ => {}
+    if from_version == 0 {
+        // Add new view settings fields.
     }
     settings.schema_version = SCHEMA_VERSION;
     settings
@@ -1051,17 +1032,11 @@ pub fn config_dir() -> PathBuf {
     #[cfg(target_os = "linux")]
     {
         std::env::var("XDG_CONFIG_HOME")
-            .map(|p| {
-                let path = PathBuf::from(p).join("cadence");
-                path
-            })
+            .map(|p| PathBuf::from(p).join("cadence"))
             .unwrap_or_else(|_| {
                 // Fallback to ~/.config/cadence using HOME env var
                 std::env::var("HOME")
-                    .map(|home| {
-                        let path = PathBuf::from(home).join(".config").join("cadence");
-                        path
-                    })
+                    .map(|home| PathBuf::from(home).join(".config").join("cadence"))
                     .unwrap_or_else(|_| {
                         // Last resort fallback
                         PathBuf::from("~/.config/cadence")
@@ -1141,12 +1116,10 @@ pub fn load_global_settings() -> Result<GlobalSettings, std::io::Error> {
     if !path.exists() {
         return Ok(GlobalSettings::default());
     }
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let content = std::fs::read_to_string(&path).map_err(|e| std::io::Error::other(e))?;
     let value: Value =
         serde_json::from_str(&content).unwrap_or_else(|_| Value::Object(Default::default()));
-    migrate_global_settings_to_settings(&value)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    migrate_global_settings_to_settings(&value).map_err(|e| std::io::Error::other(e))
 }
 
 /// Save global settings to the OS config directory with pretty JSON formatting.
@@ -1154,21 +1127,12 @@ pub fn save_global_settings(settings: &GlobalSettings) -> Result<(), std::io::Er
     let path = settings_path();
     // Ensure the config directory exists
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Failed to create config dir: {}", e),
-            )
-        })?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| std::io::Error::other(format!("Failed to create config dir: {}", e)))?;
     }
-    let json = serde_json::to_string_pretty(settings)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-    std::fs::write(&path, json).map_err(|e| {
-        std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("Failed to write settings: {}", e),
-        )
-    })
+    let json = serde_json::to_string_pretty(settings).map_err(|e| std::io::Error::other(e))?;
+    std::fs::write(&path, json)
+        .map_err(|e| std::io::Error::other(format!("Failed to write settings: {}", e)))
 }
 
 // ========================================================================
@@ -1232,13 +1196,14 @@ pub fn migrate_global_settings_json(json: &mut Value, from_version: u32) -> Resu
             // Theme: always include
             new_obj.insert(
                 "theme".into(),
-                serde_json::to_value(&settings.theme).unwrap_or(Value::String("system".into())),
+                serde_json::to_value(settings.theme).unwrap_or(Value::String("system".into())),
             );
 
             // Density: always include
             new_obj.insert(
                 "density".into(),
-                serde_json::to_value(&settings.density).unwrap_or(Value::String("standard".into())),
+                serde_json::to_value(settings.density)
+                    .unwrap_or(Value::String("standard".into())),
             );
 
             // Shortcuts: only if non-default
