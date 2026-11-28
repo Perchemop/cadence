@@ -713,7 +713,6 @@ pub enum CostDisplay {
     Percentage,
 }
 
-
 // ========================================================================
 // TOOL SETTINGS (ephemeral, in-memory only)
 // ========================================================================
@@ -805,7 +804,6 @@ pub enum TimeScale {
     Quarter,
 }
 
-
 /// Resource grouping mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -818,7 +816,6 @@ pub enum ResourceGroupBy {
     /// Group by calendar.
     Calendar,
 }
-
 
 /// Sort key for activity table column ordering.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -838,7 +835,6 @@ pub enum SortKey {
     /// Sort by constraint.
     Constraint,
 }
-
 
 // ========================================================================
 // FALLBACK RESOLUTION HELPERS
@@ -1202,8 +1198,7 @@ pub fn migrate_global_settings_json(json: &mut Value, from_version: u32) -> Resu
             // Density: always include
             new_obj.insert(
                 "density".into(),
-                serde_json::to_value(settings.density)
-                    .unwrap_or(Value::String("standard".into())),
+                serde_json::to_value(settings.density).unwrap_or(Value::String("standard".into())),
             );
 
             // Shortcuts: only if non-default

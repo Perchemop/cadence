@@ -59,17 +59,48 @@ use serde::{de::Visitor, Deserialize, Serialize};
 use std::fmt;
 use std::sync::{Mutex, OnceLock};
 
-// Custom serde for Color32 (serializes as hex string "#RRGGBB")
+// Custom serde for Color32: hex strings "#RRGGBBAA" (reads both 6- and
+// 8-digit forms so older "#RRGGBB" exports still load losslessly for opaque
+// colours). Color32 stores premultiplied bytes, so serializing the stored
+// bytes and reading them back with `from_rgba_premultiplied` is exact.
 mod color32_serde {
     use super::*;
     use serde::{Deserializer, Serializer};
+
+    pub(crate) fn to_hex(color: &Color32) -> String {
+        format!(
+            "#{:02X}{:02X}{:02X}{:02X}",
+            color.r(),
+            color.g(),
+            color.b(),
+            color.a()
+        )
+    }
+
+    pub(crate) fn from_hex(v: &str) -> Result<Color32, String> {
+        let v = v.trim_start_matches('#');
+        let digit = |s: &str| u8::from_str_radix(s, 16).map_err(|e| e.to_string());
+        match v.len() {
+            6 => Ok(Color32::from_rgb(
+                digit(&v[0..2])?,
+                digit(&v[2..4])?,
+                digit(&v[4..6])?,
+            )),
+            8 => Ok(Color32::from_rgba_premultiplied(
+                digit(&v[0..2])?,
+                digit(&v[2..4])?,
+                digit(&v[4..6])?,
+                digit(&v[6..8])?,
+            )),
+            _ => Err(format!("expected 6 or 8 hex digits, got {v}")),
+        }
+    }
 
     pub fn serialize<S>(color: &Color32, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let hex = format!("#{:02X}{:02X}{:02X}", color.r(), color.g(), color.b());
-        serializer.serialize_str(&hex)
+        serializer.serialize_str(&to_hex(color))
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Color32, D::Error>
@@ -90,13 +121,7 @@ mod color32_serde {
                 E: serde::de::Error,
             {
                 let v = v.trim_start_matches('#');
-                if v.len() != 6 {
-                    return Err(E::custom("expected 6 hex digits"));
-                }
-                let r = u8::from_str_radix(&v[0..2], 16).map_err(E::custom)?;
-                let g = u8::from_str_radix(&v[2..4], 16).map_err(E::custom)?;
-                let b = u8::from_str_radix(&v[4..6], 16).map_err(E::custom)?;
-                Ok(Color32::from_rgb(r, g, b))
+                from_hex(v).map_err(E::custom)
             }
         }
 
@@ -675,7 +700,6 @@ pub struct DesignTokenSet {
     pub typography: TypographyScale,
     pub density: Density,
     pub radius: RadiusSet,
-    #[serde(skip)]
     pub elevation: ElevationSet,
     pub motion: MotionSet,
 }
@@ -704,12 +728,70 @@ impl Default for RadiusSet {
     }
 }
 
+/// Custom serde for an elevation shadow `(dx, dy, blur, colour)` —
+/// serializes as `[dx, dy, blur, "#RRGGBBAA"]` so a serde roundtrip is
+/// lossless.
+mod shadow_serde {
+    use super::*;
+    use serde::de::{SeqAccess, Visitor};
+    use serde::ser::SerializeSeq;
+
+    pub fn serialize<S>(
+        shadow: &(f32, f32, f32, Color32),
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut seq = serializer.serialize_seq(Some(4))?;
+        seq.serialize_element(&shadow.0)?;
+        seq.serialize_element(&shadow.1)?;
+        seq.serialize_element(&shadow.2)?;
+        seq.serialize_element(&color32_serde::to_hex(&shadow.3))?;
+        seq.end()
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<(f32, f32, f32, Color32), D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct ShadowVisitor;
+
+        impl<'de> Visitor<'de> for ShadowVisitor {
+            type Value = (f32, f32, f32, Color32);
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a [dx, dy, blur, \"#RRGGBBAA\"] shadow array")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let missing = || serde::de::Error::custom("shadow array needs 4 elements");
+                let dx = seq.next_element::<f32>()?.ok_or_else(missing)?;
+                let dy = seq.next_element::<f32>()?.ok_or_else(missing)?;
+                let blur = seq.next_element::<f32>()?.ok_or_else(missing)?;
+                let hex = seq.next_element::<String>()?.ok_or_else(missing)?;
+                let color = color32_serde::from_hex(&hex).map_err(serde::de::Error::custom)?;
+                Ok((dx, dy, blur, color))
+            }
+        }
+
+        deserializer.deserialize_seq(ShadowVisitor)
+    }
+}
+
 /// Elevation shadows for all levels.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ElevationSet {
+    #[serde(with = "shadow_serde")]
     pub level0: (f32, f32, f32, Color32),
+    #[serde(with = "shadow_serde")]
     pub level1: (f32, f32, f32, Color32),
+    #[serde(with = "shadow_serde")]
     pub level2: (f32, f32, f32, Color32),
+    #[serde(with = "shadow_serde")]
     pub level3: (f32, f32, f32, Color32),
 }
 
@@ -1730,7 +1812,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "ColorTokens cannot be serialized (Color32 doesn't implement Serialize)"]
     fn color_tokens_serializable() {
         let json = serde_json::to_string(&LIGHT_COLORS).unwrap();
         assert!(!json.is_empty());

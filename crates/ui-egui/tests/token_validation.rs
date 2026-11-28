@@ -35,7 +35,11 @@ fn color_roles_complete_and_distinct() {
         // Text roles
         assert_ne!(c.text_primary, c.text_secondary);
         assert_ne!(c.text_secondary, c.text_muted);
-        assert_ne!(c.text_muted, c.disabled_text);
+        // text_muted and disabled_text converge on the same grey in both
+        // themes (each meets its own contrast contract, validated by
+        // contrast_tests); what the roles require is that disabled text is
+        // visible on the disabled background:
+        assert_ne!(c.disabled_text, c.disabled_bg);
 
         // Accent roles
         assert_ne!(c.accent, c.accent_hover);
@@ -340,7 +344,8 @@ fn font_weights_correct() {
     assert_eq!(t.h3.weight, FontWeight::Medium);
     assert_eq!(t.body.weight, FontWeight::Regular);
     assert_eq!(t.small.weight, FontWeight::Regular);
-    assert_eq!(t.caption.weight, FontWeight::Medium);
+    // Caption is Regular: the D40 font decision keeps one family per weight.
+    assert_eq!(t.caption.weight, FontWeight::Regular);
     assert_eq!(t.mono.weight, FontWeight::Regular);
     assert_eq!(t.button.weight, FontWeight::Medium);
 }
@@ -497,8 +502,9 @@ fn theme_parity_structure() {
     let light = light_tokens();
     let dark = dark_tokens();
 
-    // Same accent in both themes
-    assert_eq!(light.colors.accent, dark.colors.accent);
+    // Accents differ: the dark accent is deliberately desaturated for WCAG
+    // AA contrast on dark surfaces (dark-contrast token fixes, 2026-11-27).
+    assert_ne!(light.colors.accent, dark.colors.accent);
 
     // Different surfaces
     assert_ne!(light.colors.surface_base, dark.colors.surface_base);
@@ -569,7 +575,9 @@ fn theme_trait_implementations() {
     let dark_colors = dark_theme.colors();
 
     assert_eq!(light_colors.accent, ACCENT);
-    assert_eq!(dark_colors.accent, ACCENT);
+    // The dark accent deliberately differs from the shared light ACCENT
+    // (desaturated for WCAG AA contrast on dark surfaces).
+    assert_ne!(dark_colors.accent, ACCENT);
     assert_ne!(light_colors.surface_raised, dark_colors.surface_raised);
 }
 
