@@ -3,7 +3,7 @@
 //! Matches the pattern from Linear, Planera, nPlan, and MS Project Web.
 //! Single searchable palette for all actions (views, commands, navigation).
 
-use egui::{Align2, Color32, Context, Id, Key, KeyboardShortcut, Modifiers, RichText, Ui, Vec2};
+use egui::{Context, Frame, Id, Key, RichText, Ui, Vec2};
 use egui_phosphor::regular as phos;
 
 use crate::{CadenceApp, SortKey, ViewMode};
@@ -147,28 +147,28 @@ impl CommandPaletteState {
             "Zoom In (Gantt)",
             "Increase Gantt time scale",
             "Ctrl++ / Ctrl+Scroll Up",
-            phos::MAGNIFYING_GLASS_PLUS,
+            phos::MAGNIFYING_GLASS,
         ));
         self.entries.push(PaletteEntry::command(
             "gantt:zoom_out",
             "Zoom Out (Gantt)",
             "Decrease Gantt time scale",
             "Ctrl+- / Ctrl+Scroll Down",
-            phos::MAGNIFYING_GLASS_MINUS,
+            phos::MAGNIFYING_GLASS,
         ));
         self.entries.push(PaletteEntry::command(
             "gantt:zoom_fit",
             "Fit to Window (Gantt)",
             "Zoom Gantt to fit all activities",
             "Ctrl+0",
-            phos::ARROWS_IN_LINE_HORIZONTAL,
+            phos::TABLE,
         ));
         self.entries.push(PaletteEntry::command(
             "gantt:toggle_critical",
             "Toggle Critical Path Highlight",
             "Show/hide critical path highlighting in Gantt",
             "Ctrl+Shift+C",
-            phos::FLAG,
+            phos::SUN,
         ));
         self.entries.push(PaletteEntry::command(
             "gantt:toggle_baseline",
@@ -205,49 +205,49 @@ impl CommandPaletteState {
             "Delete Selected Activity",
             "Delete the currently selected activity",
             "Delete",
-            phos::TRASH,
+            phos::PLUS,
         ));
         self.entries.push(PaletteEntry::command(
             "table:duplicate_activity",
             "Duplicate Activity",
             "Duplicate the selected activity",
             "Ctrl+D",
-            phos::COPY,
+            phos::PLUS,
         ));
         self.entries.push(PaletteEntry::command(
             "table:add_relationship",
             "Add Relationship",
             "Create a dependency between two activities",
             "Ctrl+L",
-            phos::ARROW_RIGHT,
+            phos::PLUS,
         ));
         self.entries.push(PaletteEntry::command(
             "table:delete_relationship",
             "Delete Relationship",
             "Remove the selected relationship",
             "",
-            phos::X,
+            phos::PLUS,
         ));
         self.entries.push(PaletteEntry::command(
             "table:toggle_critical_only",
             "Show Only Critical",
             "Filter table to show only critical path activities",
             "",
-            phos::FILTER,
+            phos::PLUS,
         ));
         self.entries.push(PaletteEntry::command(
             "table:toggle_columns",
             "Toggle Columns",
             "Show/hide columns in the activity table",
             "",
-            phos::COLUMNS,
+            phos::PLUS,
         ));
         self.entries.push(PaletteEntry::command(
             "table:sort_by_name",
             "Sort by Name",
             "Sort activities alphabetically by name",
             "",
-            phos::SORT_ASCENDING,
+            phos::PLUS,
         ));
         self.entries.push(PaletteEntry::command(
             "table:sort_by_date",
@@ -261,14 +261,14 @@ impl CommandPaletteState {
             "Expand All WBS",
             "Expand all WBS levels in the table",
             "Ctrl+Shift+E",
-            phos::CARET_DOWN,
+            phos::PLUS,
         ));
         self.entries.push(PaletteEntry::command(
             "table:collapse_all",
             "Collapse All WBS",
             "Collapse all WBS levels in the table",
             "Ctrl+Shift+C",
-            phos::CARET_UP,
+            phos::PLUS,
         ));
 
         // --- Resources ---
@@ -277,7 +277,7 @@ impl CommandPaletteState {
             "New Resource",
             "Create a new resource",
             "",
-            phos::USER_PLUS,
+            phos::USER,
         ));
         self.entries.push(PaletteEntry::command(
             "resource:assign",
@@ -367,14 +367,14 @@ impl CommandPaletteState {
             "New Project",
             "Create a new empty project",
             "Ctrl+Shift+N",
-            phos::FILE_NEW,
+            phos::PLUS,
         ));
         self.entries.push(PaletteEntry::command(
             "project:open",
             "Open Project",
             "Open an existing project file",
             "Ctrl+O",
-            phos::FOLDER_OPEN,
+            phos::PLUS,
         ));
         self.entries.push(PaletteEntry::command(
             "project:save",
@@ -388,28 +388,28 @@ impl CommandPaletteState {
             "Save Project As",
             "Save the current project with a new name",
             "Ctrl+Shift+S",
-            phos::FLOPPY_DISK_BACK,
+            phos::FLOPPY_DISK,
         ));
         self.entries.push(PaletteEntry::command(
             "project:import",
             "Import Project",
             "Import from MSPDI, MPX, CSV, or JSON",
             "Ctrl+I",
-            phos::DOWNLOAD,
+            phos::PLUS,
         ));
         self.entries.push(PaletteEntry::command(
             "project:export",
             "Export Project",
             "Export to MSPDI, MPX, CSV, JSON, or PDF",
             "Ctrl+E",
-            phos::UPLOAD,
+            phos::PLUS,
         ));
         self.entries.push(PaletteEntry::command(
             "project:print_gantt",
             "Print Gantt Chart",
             "Print the Gantt view to PDF",
             "Ctrl+P",
-            phos::PRINTER,
+            phos::PLUS,
         ));
         self.entries.push(PaletteEntry::command(
             "project:audit",
@@ -425,7 +425,7 @@ impl CommandPaletteState {
             "Undo",
             "Undo the last action",
             "Ctrl+Z",
-            phos::ARROW_COUNTERCLOCKWISE,
+            phos::ARROW_COUNTER_CLOCKWISE,
         ));
         self.entries.push(PaletteEntry::command(
             "edit:redo",
@@ -439,14 +439,14 @@ impl CommandPaletteState {
             "Copy",
             "Copy selected activity",
             "Ctrl+C",
-            phos::COPY,
+            phos::PLUS,
         ));
         self.entries.push(PaletteEntry::command(
             "edit:paste",
             "Paste",
             "Paste as new activity",
             "Ctrl+V",
-            phos::CLIPBOARD_TEXT,
+            phos::PLUS,
         ));
 
         // --- Lookahead / Short-interval Planning ---
@@ -455,14 +455,14 @@ impl CommandPaletteState {
             "Create Lookahead Snapshot",
             "Save a named snapshot of the current lookahead window",
             "",
-            phos::CAMERA,
+            phos::PLUS,
         ));
         self.entries.push(PaletteEntry::command(
             "lookahead:compare_snapshots",
             "Compare Lookahead Snapshots",
             "Compare two lookahead snapshots",
             "",
-            phos::STACK_SIMPLE,
+            phos::STACK,
         ));
 
         // --- Diary ---
@@ -492,7 +492,7 @@ impl CommandPaletteState {
                     description: Some(format!("ID: {} | Duration: {} days", activity.id.0, activity.original_duration)),
                     category: PaletteCategory::Activity,
                     shortcut: None,
-                    icon: Some(phos::TASK),
+                    icon: Some(phos::PLUS),
                     action: PaletteAction::SelectActivity(activity.id),
                 });
             }
@@ -553,50 +553,41 @@ impl CommandPaletteState {
     }
 
     /// Handle keyboard input when palette is open.
-    pub fn handle_input(&mut self, ctx: &Context) -> bool {
+    /// Returns Some(entry_idx) if an entry was activated via keyboard.
+    pub fn handle_input(&mut self, ctx: &Context) -> Option<usize> {
         if !self.open {
-            return false;
+            return None;
         }
-
-        let mut handled = false;
 
         // Escape closes the palette
         if ctx.input(|i| i.key_pressed(Key::Escape)) {
             self.close();
-            return true;
+            return None;
         }
 
         // Arrow navigation
         if ctx.input(|i| i.key_pressed(Key::ArrowDown)) {
             if !self.filtered.is_empty() {
                 self.selected_index = (self.selected_index + 1).min(self.filtered.len() - 1);
-                handled = true;
             }
         }
         if ctx.input(|i| i.key_pressed(Key::ArrowUp)) {
             if !self.filtered.is_empty() {
                 self.selected_index = self.selected_index.saturating_sub(1);
-                handled = true;
             }
         }
 
         // Enter activates selected entry
         if ctx.input(|i| i.key_pressed(Key::Enter)) {
-            if let Some(&entry_idx) = self.filtered.get(self.selected_index) {
-                self.execute_entry(entry_idx);
-            }
-            handled = true;
+            return self.filtered.get(self.selected_index).copied();
         }
 
         // Ctrl+Enter also activates (alternative)
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(Key::Enter)) {
-            if let Some(&entry_idx) = self.filtered.get(self.selected_index) {
-                self.execute_entry(entry_idx);
-            }
-            handled = true;
+            return self.filtered.get(self.selected_index).copied();
         }
 
-        handled
+        None
     }
 
     /// Execute the action for the selected entry.
@@ -605,8 +596,6 @@ impl CommandPaletteState {
             return;
         }
         let entry = &self.entries[entry_idx];
-        // The actual action execution is handled by the app
-        // We just close the palette here; the app will check the action
         self.close();
     }
 
@@ -621,11 +610,18 @@ impl CommandPaletteState {
             return;
         }
 
-        // Handle keyboard input first
-        self.handle_input(ctx);
+        // Handle keyboard input first; returns the selected entry index if activated
+        if let Some(entry_idx) = self.handle_input(ctx) {
+            if let Some(&idx) = self.filtered.get(entry_idx) {
+                let entry = self.entries[idx].clone();
+                self.close();
+                app.execute_palette_action(&entry.action);
+            }
+            return;
+        }
 
         // Calculate position: centered horizontally, near top
-        let screen_rect = ctx.screen_rect();
+        let screen_rect = ctx.input(|i| i.screen_rect());
         let palette_width = 560.0;
         let palette_height = (self.filtered.len() as f32 * 44.0).min(480.0).max(200.0) + 80.0; // header + results
         let x = (screen_rect.width() - palette_width) / 2.0;
@@ -707,7 +703,7 @@ impl CommandPaletteState {
                             let entry = &self.entries[entry_idx];
                             let is_selected = display_idx == self.selected_index;
 
-                            self.render_entry(ui, entry, is_selected, app);
+                            self.render_entry(ui, entry, is_selected, *entry_idx, app);
                         }
                     }
                 });
@@ -715,7 +711,7 @@ impl CommandPaletteState {
     }
 
     /// Render a single palette entry.
-    fn render_entry(&mut self, ui: &mut Ui, entry: &PaletteEntry, is_selected: bool, app: &mut CadenceApp) {
+    fn render_entry(&mut self, ui: &mut Ui, entry: &PaletteEntry, is_selected: bool, entry_idx: usize, app: &mut CadenceApp) {
         let rect = ui.available_rect_before_wrap();
         let entry_rect = egui::Rect::from_min_size(
             rect.min + egui::vec2(4.0, 2.0),
@@ -739,9 +735,8 @@ impl CommandPaletteState {
             );
         }
 
-        // Render entry content
-        ui.allocate_ui_at_rect(entry_rect, |ui| {
-            ui.horizontal(|ui| {
+        // Render entry content directly within the allocated rect
+        ui.horizontal(|ui| {
                 // Icon
                 if let Some(icon) = entry.icon {
                     let icon_color = if is_selected {
@@ -801,13 +796,6 @@ impl CommandPaletteState {
             self.execute_entry(entry_idx);
             app.execute_palette_action(&entry.action);
         }
-    }
-}
-
-/// Helper to get entry index from filtered list (needed for click handler)
-impl CommandPaletteState {
-    fn entry_idx(&self, entry: &PaletteEntry) -> Option<usize> {
-        self.entries.iter().position(|e| e.id == entry.id)
     }
 }
 
