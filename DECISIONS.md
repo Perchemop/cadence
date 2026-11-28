@@ -1121,3 +1121,25 @@ The one-time signing setup hit two facts worth recording:
   existing inputs; zero-denominator conventions match existing module
   conventions for CPI/SPI None-values; TDD red/green CI cycle passed.
 
+## D41 — `Project` drops `Eq`; workspace bumped to 0.19.0 for the settings fields (2026-11-28)
+
+- **Trigger:** The settings-persistence slice added three public fields to
+  `Project` (`global_settings`, `view_settings`, `tool_settings`). They hold
+  `f32` values (zoom scales, pane ratios, sampling temperature), so
+  `Project: Eq` became unsatisfiable and every required CI check failed to
+  compile; `cargo-semver-checks` additionally flagged
+  `constructible_struct_adds_field` against the base commit.
+- **Decision:** Remove `Eq` from `Project`'s derive (documented in-code) and
+  bump the workspace version 0.18.3 → 0.19.0. For a 0.x crate a minor bump is
+  the semver signal for a breaking change, which satisfies
+  `constructible_struct_adds_field` while keeping the struct exhaustively
+  constructible.
+- **Rejected:** `#[non_exhaustive]` on `Project` — `Project { … }` literals
+  exist in persistence, interchange, ui-egui tests and core tests, so the
+  attribute would break five crates at once. That failure is what the earlier
+  revert commit `6f89599` misdiagnosed, taking the correct `Eq` removal down
+  with it and leaving the branch unbuildable.
+- **Constraint kept:** `Eq` stays off `Project` unless the settings types lose
+  every `f32`; the derive carries an explanatory comment so the removal is
+  not "fixed" back.
+

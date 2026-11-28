@@ -14,8 +14,19 @@ pub mod lookahead;
 pub mod model;
 pub mod pdf;
 pub mod report;
+pub mod settings;
 pub mod wbs;
 
 pub use calendar_set::{CalendarId, CalendarSet, CalendarSetError, NamedCalendar};
-pub use model::{Activity, ActivityId, Calendar, CalendarError, LinkType, Project, Relationship};
+pub use model::{
+    Activity, ActivityId, AssistantMessage, Calendar, CalendarError, LinkType, Project,
+    Relationship,
+};
+pub use settings::{
+    AssistantConfig, AuditViewSettings, BaselinesViewSettings, CalendarProjectSettings,
+    CalendarsViewSettings, ColumnVisibility, CostDisplay, CostRates, DensityLevel,
+    EvmDisplayPreference, GanttViewSettings, GlobalSettings, ProjectSettings,
+    ResourcesViewSettings, SettingsContext, SortKey, TableViewSettings, ThemePreference, TimeScale,
+    ToolSettings, ViewSettings,
+};
 pub use wbs::{WbsError, WbsId, WbsNode, WbsTree};

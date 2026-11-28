@@ -11,6 +11,7 @@ description = "Cadence scheduling domain model and CPM engine"
 [dependencies]
 time.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

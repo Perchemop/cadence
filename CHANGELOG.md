@@ -15,15 +15,20 @@ over-attribution caveat recorded.
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-11-28
+
 ### Added
+- **Project settings persistence (RP-2)** — per-project preferences (workweek, resource capacity and cost rates, baseline auto-capture, EVM display, calendar settings) persisted in the project file's `project_settings` table and restored on open; app-wide preferences (theme, density, shortcuts, assistant configuration) stored in a local JSON settings file, with the assistant API key redacted in serde and never persisted.
 - **EVM EAC/BAC/TCPI/VAC metrics** — 8 unit tests verifying existing implementation in `crates/core/tests/evm_tests.rs` (resolves P1 gap from `docs/gaps.md` CAP-029).
 - **Assistant review panel RP-3** — view shell + enabling state with headless test seams (`set_assistant_config`, `set_assistant_proposal`) and AccessKit assertion test in `crates/ui-egui/tests/a11y_harness.rs` (resolves P1 gap from `docs/gaps.md` CAP-056..061 RP-3).
+- **Assistant review panel RP-4** — request flow + review rendering + apply/discard in `crates/ui-egui`: text input + submit button, background provider call, spinner/waiting state, enable/disable logic. Resolves P1 gap from `docs/gaps.md` CAP-056..061 RP-4.
+- **Assistant review panel RP-5** — keyboard + AccessKit harness pass in `crates/ui-egui/tests/a11y_harness.rs`: named-input check across all three states and request state reachability. Resolves P1 gap from `docs/gaps.md` CAP-056..061 RP-5.
 - **Ubuntu lavapipe CI job** — rendered-evidence pipeline phase 2b with 3-retry loop for SIGSEGV flake handling per guide §M.5 (advances `docs/gaps.md` issue #163).
 
 ### Fixed
-- **Clippy warnings in EVM tests** — removed unnecessary `Some(...).unwrap()` patterns and `vec![]` macro for two-element array.
-
-## [0.18.1] — 2026-11-24
+- **Lossless design-token serde** — colours now serialize as `#RRGGBBAA` (reads the older 6-digit form) and elevation shadows are included instead of skipped, so a serde roundtrip of the token set is exact; previously alpha was dropped (a semi-transparent scrim came back opaque) and shadows were lost.
+- **Project drops `Eq`** — the new settings fields hold `f32` values, making `Project: Eq` unsatisfiable; the derive was removed with an explanatory comment and the workspace bumped 0.18.3 → 0.19.0 for the breaking field additions (D41).
+- **CI gate repairs** — the token-discipline step now excludes the token modules themselves (it previously outlawed `design_tokens.rs`, the very module the tokens live in); the rendered-evidence job installs `libgl1` (`libgl1-mesa-glx` was removed in Ubuntu 24.04); clippy is clean under `-D warnings` across `core`, `persistence`, the legacy `design.rs` layer and `settings.rs`; the assistant a11y harness now actually renders the Assistant view in its request-state test.
 
 ## [0.18.1] — 2026-11-24
 

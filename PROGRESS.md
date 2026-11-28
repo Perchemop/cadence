@@ -2657,3 +2657,55 @@ Done in this slice per guide §12.1 suite standards (D27):
 - **README screenshots placeholder:** Added a "Screenshots" section in README.md with placeholder images for Table, Gantt, Resources, and Report views. These will be refreshed at v1.0 and every major release per the suite standards.
 
 Verification: CI green on the pull request (run 44966274579, head `ebc0f90` — verify on all four platforms, clippy, semver, packaging, rendered evidence) and on `main` after the squash merge (run 44966739470, commit `7320513`). The workspace identity is `Cadence Dev` <dev@example.com>.
+
+## 2026-11-27 — assistant review panel, RP-3+5: view shell, request flow, AccessKit harness (D38..D40)
+
+UI slice in `crates/ui-egui`; no assistant crate changes. All three tickets verify headless; no new dependencies, lockfile unchanged:
+
+- **RP-3 — Assistant view shell + enabling state** (`crates/ui-egui/src/lib.rs`): tab added as tenth centre view; enabling state (off by default, config form) verified via `assistant_view_enabling_state` test; configuration form present with provider/combo, model, base URL, API key fields; API key session-only, never persisted. CI green.
+- **RP-4 — Request flow + review rendering + apply/discard** (`crates/ui-egui/src/lib.rs`): text input field labelled "Request" + submit button "Request proposal" in configured state; request triggers background provider call via `mpsc::channel`; spinner + "Requesting proposal…" while in progress; request button disabled when buffer empty/in progress/error. CI green.
+- **RP-5 — Keyboard + AccessKit harness pass** (`crates/ui-egui/tests/a11y_harness.rs`): two new assertions: `assistant_view_inputs_have_accessible_names` (loops both themes, 2 frames, `unnamed_inputs` empty, text inputs labelled "Request"/"Model"/"Base URL"/"API key", checkbox labelled "Enable assistant") and `assistant_view_request_state_is_reachable_and_named` (configured state reachable, request text input labelled "Request", "Request proposal" button labelled and present in AccessKit tree). CI green.
+- Records: CHANGELOG 0.15.1 Added, DECISIONS D38..D40, REQUIREMENTS_TRACEABILITY AI rows.
+- No code modifications outside `crates/ui-egui/**`.
+
+Verification: completed 2026-11-28 — required checks green on run 46116168674 (head `bdf7a8f`) after the CI gate repairs recorded in the 2026-11-28 entry below.
+
+## 2026-11-28 — assistant review panel landed + CI gate repairs (D41); v0.19.0 prep
+
+The RP-3..RP-5 slice and the branch-only settings-persistence slice (RP-2
+storage) went through the full required-checks gate for the first time; ten
+CI iterations (final green run 46116168674 on `bdf7a8f`, PR #209) exposed and
+fixed everything the earlier unverified "green" claims had hidden:
+
+- **Build gate**: `Project` derived `Eq` while its new settings fields hold
+  `f32` — unsatisfiable; `Eq` removed (documented in-code, D41) and the
+  workspace bumped 0.18.3 → 0.19.0 for the semver-major field additions
+  (`constructible_struct_adds_field`; `#[non_exhaustive]` rejected — five
+  crates construct `Project` literally).
+- **Clippy (`-D warnings`)**: 16 violations in `settings.rs` (derivable
+  defaults, single-match, let-and-return, `io::Error::other`, needless
+  borrows), plus persistence, the legacy `design.rs` layer and two core
+  tests — all fixed.
+- **Tests**: five token-validation tests had drifted from deliberate token
+  decisions (dark accent desaturated for WCAG AA contrast, D40 caption
+  weight, muted/disabled-text convergence) — synced with the recorded
+  decisions, and the muted/disabled-text check was strengthened to assert
+  disabled-text visibility on the disabled background.
+- **Token serde made lossless**: colours serialize as `#RRGGBBAA` (6-digit
+  still reads) and elevation shadows are serialized instead of skipped; the
+  previously-ignored `color_tokens_serializable` test now runs.
+- **CI definitions**: the token-discipline step no longer outlaws the token
+  modules themselves (it excluded only the legacy `design.rs`); the
+  rendered-evidence job installs `libgl1` (Ubuntu 24.04 removed
+  `libgl1-mesa-glx`).
+- **Tracking**: duplicate PROGRESS/CHANGELOG headings removed; stale
+  `PRODUCT.md` facts corrected (Assistant view landed, ten views); the
+  `impeccable` UI audit recorded — theming, contrast, keyboard and states
+  all at the guide floor (19/20), the only structural gap being the
+  8,701-line `lib.rs` split (next slice).
+
+Verification: `=== CI RESULT: SUCCESS ===` on all required checks — run
+46116168674, head `bdf7a8f` (PR #209 → main). Known follow-up:
+`docs/design/design-tokens.json` is a generated export that has drifted from
+the code (no CI job regenerates it) — regeneration belongs to a follow-up
+slice.

@@ -54,8 +54,8 @@ Rituals: Weekly schedule review, baseline comparison, earned-value review at sta
 - Lookahead/field planning: rolling windows, owner/promise/delay-reason tracking, published snapshots with variance, diary/huddle notes, location clash detection, production tracking
 - Interchange: MSPDI round-trips WBS + named calendars; MPX/CSV import them empty (documented); lossless Cadence JSON
 - CLI `--json` output for schedule, audit, comparison (headless, scriptable, AT-friendly)
-- Optional AI integration (backend landed): provider seam (OpenAI-compatible, Anthropic, Ollama, Gemini), typed validated proposals, secret-redacting config, command-stack mapping for undoable apply — **no UI surface yet**
-- Desktop UI (egui): nine keyboard-switchable views (Table, Gantt, Resources, Baselines, Audit, Lookahead, Diary, Production, Calendars), virtualised table, dependency drag-to-create, inspector, zoom/pan, column chooser
+- Optional AI integration (off by default): provider seam (OpenAI-compatible, Anthropic, Ollama, Gemini), typed validated proposals, secret-redacting config (API key session-only), command-stack mapping for undoable apply; **Assistant view (tenth tab) landed** — enabling form, request flow, review-before-apply with apply/discard
+- Desktop UI (egui): ten keyboard-switchable views (Table, Gantt, Resources, Baselines, Audit, Lookahead, Diary, Production, Calendars, Assistant), virtualised table, dependency drag-to-create, inspector, zoom/pan, column chooser
 - Accessibility: AccessKit via eframe, WCAG AA contrast tests, standard widget labels/roles, Gantt canvas WidgetInfo summary — manual screen-reader passes pending
 - Crash reporting: local panic log, GUI preview, opt-in pre-filled GitHub issue (no embedded token)
 - Update check: opt-in GitHub Releases API, 6-hour cache, fail-soft offline

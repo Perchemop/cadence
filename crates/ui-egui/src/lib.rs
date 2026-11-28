@@ -10,6 +10,10 @@ use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
+use cadence_assistant::{
+    map_proposal_to_commands, parse_proposal_response, AssistantProvider, HttpProvider,
+    ProposedChange,
+};
 use cadence_commands::{
     AddResourceToActivity, AssignActivityWbs, CaptureBaseline, CommandStack, CreateCalendar,
     CreateRelationship, CreateResource, DeleteCalendar, DeleteDailyNote, DeleteProduction,
@@ -22,6 +26,7 @@ use cadence_commands::{
 };
 use cadence_commands::{SetAssignmentUnits, SetResourceCostRate};
 use cadence_core::audit::{audit, AuditConfig, AuditReport, CheckOutcome, Finding};
+use cadence_core::settings::SettingsContext;
 
 use cadence_core::calendar_set::CalendarId;
 use cadence_core::clash::location_clashes;
@@ -45,6 +50,8 @@ use time::{Date, Month};
 
 pub mod crash;
 pub mod design;
+pub mod design_tokens;
+pub mod theme;
 // Update checking lives in the shared suite crate (crates/update-check, D27);
 // re-export the module so the public path `cadence_ui_egui::update_check`
 // is unchanged from when the code was an inline module.
@@ -74,21 +81,39 @@ impl DesignTokens {
     /// Tokens for the requested theme, sourced from the design palette so
     /// both themes keep their WCAG AA verified contrast.
     pub fn for_dark(dark: bool) -> Self {
-        let palette = design::palette(dark);
+        let colors = design::palette(dark);
         Self {
             accent: ACCENT,
-            critical: palette.critical,
-            normal: palette.normal,
+            critical: colors.critical,
+            normal: colors.normal,
             primary_bg: ACCENT.linear_multiply(0.15),
             accent_bg: ACCENT.linear_multiply(0.2),
-            panel_bg: palette.panel.linear_multiply(0.95),
+            panel_bg: colors.panel.linear_multiply(0.95),
+        }
+    }
+
+    /// Creates DesignTokens from the new comprehensive token system.
+    pub fn from_theme(theme: &dyn design::Theme) -> Self {
+        let colors = theme.colors();
+        Self {
+            accent: colors.accent,
+            critical: colors.status_critical,
+            normal: colors.status_normal,
+            primary_bg: colors.accent.linear_multiply(0.15),
+            accent_bg: colors.accent.linear_multiply(0.2),
+            panel_bg: colors.surface_raised,
         }
     }
 }
 
-/// Apply a theme to an egui context.
+/// Apply a theme to an egui context using the new token system.
 pub fn apply_theme(ctx: &Context, dark: bool) {
     design::apply(ctx, dark);
+}
+
+/// Apply a theme using the new Theme trait.
+pub fn apply_theme_with(ctx: &Context, theme: &dyn design::Theme) {
+    theme.apply(ctx);
 }
 
 /// Sort key for the activity table.
@@ -148,19 +173,7 @@ impl SortKey {
 
 /// Which top-level view is shown. Public so an embedding host (and the
 /// AccessKit harness) can select the initial view.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ViewMode {
-    Table,
-    Gantt,
-    Resources,
-    Baselines,
-    Calendars,
-    Audit,
-    Lookahead,
-    Diary,
-    Production,
-    Assistant,
-}
+pub use cadence_core::model::ViewMode;
 
 /// Which chrome group a view belongs to in the two-tier view switcher: the
 /// three core tabs stay always visible; the seven specialist views live in
@@ -612,11 +625,17 @@ pub struct CadenceApp {
     /// Whether the periodic auto-update check may run. Only the headless
     /// render tests turn it off: `cargo test` must not touch the network.
     update_checks_enabled: bool,
+    settings: SettingsContext,
     assistant_config: cadence_assistant::AssistantConfig,
     assistant_request_buffer: String,
     assistant_receiver: Option<mpsc::Receiver<Result<String, cadence_assistant::AssistantError>>>,
-    assistant_proposal: Option<cadence_assistant::Proposal>,
     assistant_validation_errors: Vec<cadence_assistant::ProposalError>,
+    /// Whether a proposal request is in progress.
+    assistant_request_in_progress: bool,
+    /// Whether the proposal review panel is open.
+    show_proposal_review: bool,
+    /// The proposal being reviewed (separate from assistant_proposal to allow review without auto-applying).
+    review_proposal: Option<cadence_assistant::Proposal>,
     link_predecessor: Option<ActivityId>,
     link_successor: Option<ActivityId>,
     link_type_index: usize,
@@ -726,7 +745,11 @@ enum ExportFormat {
 impl CadenceApp {
     /// Return the design tokens for the current theme.
     fn design_tokens(&self) -> DesignTokens {
-        DesignTokens::for_dark(self.dark)
+        // Use the new theme registry system
+        let registry = design::theme_registry();
+        let guard = registry.lock().unwrap();
+        let theme = guard.active_theme(self.dark);
+        DesignTokens::from_theme(theme)
     }
 
     /// Select the top-level view to show (used by embedding hosts and tests).
@@ -767,6 +790,13 @@ impl CadenceApp {
 
     /// Build the application from a loaded project and the file it came from.
     pub fn with_path(project: Project, path: Option<PathBuf>) -> Self {
+        // Load global settings from config directory for persistence across sessions
+        let global_settings = cadence_core::settings::load_global_settings()
+            .unwrap_or_else(|_| cadence_core::settings::GlobalSettings::default());
+        let project_settings = cadence_core::settings::ProjectSettings::default();
+        let settings_context =
+            cadence_core::settings::SettingsContext::new(global_settings, project_settings);
+
         let schedule = schedule(&project).map_err(|error| error.to_string());
         let crash_log = crash::read_log().unwrap_or_default();
         let show_crash_dialog = !crash_log.is_empty();
@@ -855,11 +885,14 @@ impl CadenceApp {
             show_release_notes: false,
             last_update_check: None,
             update_checks_enabled: true,
+            settings: settings_context,
             assistant_config: cadence_assistant::AssistantConfig::default(),
             assistant_request_buffer: String::new(),
             assistant_receiver: None,
-            assistant_proposal: None,
             assistant_validation_errors: Vec::new(),
+            assistant_request_in_progress: false,
+            show_proposal_review: false,
+            review_proposal: None,
             assistant_model_edit: String::new(),
             assistant_base_url_edit: String::new(),
             assistant_api_key_edit: String::new(),
@@ -930,17 +963,170 @@ impl CadenceApp {
     }
 
     /// Install an assistant configuration without the settings file.
+    ///
     /// Used by headless tests and a future CLI flag to drive the assistant
-    /// view into a configured state without touching disk.
+    /// view into a configured state without touching disk. The edit buffers
+    /// mirror the incoming config: the Assistant view syncs buffers → config
+    /// every frame before checking `is_configured()` (RP-5), so seeding only
+    /// the config would be clobbered on the first frame and the configured
+    /// state would never render.
     pub fn set_assistant_config(&mut self, config: cadence_assistant::AssistantConfig) {
+        self.assistant_model_edit = config.model.clone().unwrap_or_default();
+        self.assistant_base_url_edit = config.base_url.clone().unwrap_or_default();
+        self.assistant_api_key_edit = config
+            .api_key
+            .as_ref()
+            .map(|key| key.as_str().to_owned())
+            .unwrap_or_default();
         self.assistant_config = config;
     }
 
-    /// Load a proposal into the review state for headless testing.
     /// Allows the kittest harness to render the review surface without
-    /// any network call.
+    /// any network call — opens the review state directly with the given
+    /// proposal (bypassing parse/validate), for tests that seed a known
+    /// proposal and assert the panel.
     pub fn set_assistant_proposal(&mut self, proposal: cadence_assistant::Proposal) {
-        self.assistant_proposal = Some(proposal);
+        self.review_proposal = Some(proposal);
+        self.show_proposal_review = true;
+    }
+
+    /// Start a proposal request in the background.
+    fn request_proposal(&mut self) {
+        if self.assistant_request_in_progress {
+            return;
+        }
+        if self.assistant_request_buffer.trim().is_empty() {
+            self.set_status("Please enter a request first.");
+            return;
+        }
+        let provider = HttpProvider::from_config(&self.assistant_config);
+        if let Err(e) = &provider {
+            self.set_status(format!("Configuration error: {e}"));
+            return;
+        }
+        let provider = provider.unwrap();
+        let prompt = self.assistant_request_buffer.clone();
+
+        self.assistant_request_in_progress = true;
+        let (sender, receiver) = mpsc::channel();
+        std::thread::spawn(move || {
+            let result = provider.complete(&prompt);
+            let _ = sender.send(result);
+        });
+        self.assistant_receiver = Some(receiver);
+    }
+
+    /// Show the proposal review panel.
+    fn show_proposal_review_panel(&mut self, ui: &mut Ui) {
+        // Take the proposal out to avoid borrowing issues with the closure
+        let proposal = self.review_proposal.take();
+        if let Some(proposal) = proposal {
+            let mut apply = false;
+            let mut reject = false;
+
+            ui.group(|ui| {
+                ui.heading("Proposal Review");
+                ui.add_space(4.0);
+                ui.label(&proposal.prose);
+                ui.separator();
+
+                for (idx, change) in proposal.changes.iter().enumerate() {
+                    ui.group(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.strong(format!("{}.", idx + 1));
+                            ui.label(Self::describe_change(change));
+                        });
+                        ui.add_space(4.0);
+                        ui.label(change.rationale().to_string());
+                    });
+                    ui.add_space(8.0);
+                }
+
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if ui.button("Accept and Apply").clicked() {
+                        apply = true;
+                    }
+                    if ui.button("Reject").clicked() {
+                        reject = true;
+                    }
+                });
+            });
+
+            // Handle actions after the UI closure to avoid borrowing issues
+            if apply {
+                self.review_proposal = Some(proposal);
+                self.apply_reviewed_proposal();
+            } else if reject {
+                self.show_proposal_review = false;
+                // proposal is dropped here
+            } else {
+                // Put the proposal back if neither action taken
+                self.review_proposal = Some(proposal);
+            }
+        }
+    }
+
+    /// Describe a proposed change for display in the review panel.
+    fn describe_change(change: &ProposedChange) -> String {
+        match change {
+            ProposedChange::CreateActivity {
+                name,
+                duration_days,
+                ..
+            } => {
+                format!("Create activity '{}' ({} days)", name, duration_days)
+            }
+            ProposedChange::CreateRelationship {
+                predecessor,
+                successor,
+                ..
+            } => {
+                format!("Link {} → {}", predecessor, successor)
+            }
+            ProposedChange::SetActivityDuration {
+                activity,
+                duration_days,
+                ..
+            } => {
+                format!(
+                    "Set activity {} duration to {} days",
+                    activity, duration_days
+                )
+            }
+            ProposedChange::SetActivityProgress {
+                activity, percent, ..
+            } => {
+                format!("Set activity {} progress to {}%", activity, percent)
+            }
+        }
+    }
+
+    /// Apply the reviewed proposal by converting to commands.
+    fn apply_reviewed_proposal(&mut self) {
+        if let Some(proposal) = self.review_proposal.take() {
+            match map_proposal_to_commands(&self.project, &proposal) {
+                Ok(commands) => {
+                    let mut success = true;
+                    for cmd in commands {
+                        if self.stack.execute(&mut self.project, cmd).is_err() {
+                            success = false;
+                            break;
+                        }
+                    }
+                    if success {
+                        self.recompute();
+                        self.set_status("Proposal applied successfully.");
+                    } else {
+                        self.set_status("Failed to apply proposal.");
+                    }
+                }
+                Err(e) => {
+                    self.set_status(format!("Failed to map proposal to commands: {e}"));
+                }
+            }
+            self.show_proposal_review = false;
+        }
     }
 
     fn start_update_check(&mut self) {
@@ -2484,6 +2670,49 @@ impl CadenceApp {
                     self.update_status = update_check::UpdateStatus::Unavailable(
                         "the update checker stopped unexpectedly".to_string(),
                     );
+                }
+            }
+        }
+
+        // Poll the assistant proposal request.
+        if let Some(receiver) = self.assistant_receiver.take() {
+            match receiver.try_recv() {
+                Ok(result) => {
+                    self.assistant_request_in_progress = false;
+                    match result {
+                        Ok(completion) => {
+                            // Parse the proposal from the completion
+                            match parse_proposal_response(&completion) {
+                                Ok(proposal) => {
+                                    // Validate against the project
+                                    let errors = proposal.validate(&self.project);
+                                    if errors.is_empty() {
+                                        self.review_proposal = Some(proposal);
+                                        self.show_proposal_review = true;
+                                    } else {
+                                        self.assistant_validation_errors = errors;
+                                        self.set_status(
+                                            "Proposal validation failed. See console for details.",
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    self.set_status(format!("Failed to parse proposal: {e}"));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            self.set_status(format!("Proposal request failed: {e}"));
+                        }
+                    }
+                }
+                Err(mpsc::TryRecvError::Empty) => {
+                    self.assistant_receiver = Some(receiver);
+                    ctx.request_repaint_after(Duration::from_millis(250));
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.assistant_request_in_progress = false;
+                    self.set_status("Proposal request stopped unexpectedly.");
                 }
             }
         }
@@ -5551,7 +5780,7 @@ impl CadenceApp {
                         ui.group(|ui| {
                             ui.checkbox(&mut self.assistant_config.enabled, "Enable assistant");
                             ui.add_space(4.0);
-                            ui.label("Provider:");
+                            let provider_label = ui.label("Provider:");
                             egui::ComboBox::from_id_salt("assistant_provider")
                                 .selected_text(
                                     self.assistant_config.provider_name.as_deref().unwrap_or(""),
@@ -5577,7 +5806,9 @@ impl CadenceApp {
                                         Some("gemini".to_owned()),
                                         "Gemini",
                                     );
-                                });
+                                })
+                                .response
+                                .labelled_by(provider_label.id);
                             ui.add_space(4.0);
                             ui.label("Model:");
                             let model_label = ui.label("Model");
@@ -5597,21 +5828,57 @@ impl CadenceApp {
                         });
                         ui.separator();
                         ui.label("Configure a provider and model above, then press ");
-                        ui.button("Request proposal").on_disabled_hover_text(
-                            "The proposal request is not wired up yet; \
-                             it will arrive in a future release.",
-                        );
-                        ui.label(": the request button is disabled until the request flow ships.");
+                        ui.label("the request will be available once a provider is configured");
                         return;
                     }
 
-                    // Configured state: request text field + disabled request button
+                    // Configured state
                     ui.heading("Assistant");
                     ui.label("The assistant is configured and ready.");
                     ui.separator();
+
+                    // If a proposal is being reviewed, show the review panel
+                    if self.show_proposal_review {
+                        self.show_proposal_review_panel(ui);
+                        return;
+                    }
+
+                    // Show in-progress indicator
+                    if self.assistant_request_in_progress {
+                        ui.group(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label("Requesting proposal…");
+                            });
+                        });
+                        ui.separator();
+                    }
+
+                    // Request text field + request button
                     let request_label = ui.label("Request");
                     ui.text_edit_singleline(&mut self.assistant_request_buffer)
                         .labelled_by(request_label.id);
+                    ui.separator();
+
+                    let provider = HttpProvider::from_config(&self.assistant_config);
+                    let request_button = ui.add_enabled_ui(
+                        !self.assistant_request_buffer.trim().is_empty()
+                            && !self.assistant_request_in_progress
+                            && provider.is_ok(),
+                        |ui| ui.button("Request proposal"),
+                    );
+
+                    if request_button.inner.clicked() {
+                        self.request_proposal();
+                    }
+
+                    if let Err(e) = &provider {
+                        ui.colored_label(
+                            ui.visuals().error_fg_color,
+                            format!("Configuration error: {e}"),
+                        );
+                    }
+
                     ui.separator();
                     ui.group(|ui| {
                         ui.label("Configuration:");
@@ -5624,10 +5891,6 @@ impl CadenceApp {
                             self.assistant_config.base_url = None;
                             self.assistant_config.api_key = None;
                         }
-                        ui.button("Request proposal").on_disabled_hover_text(
-                            "The proposal request is not wired up yet; \
-                             it will arrive in a future release.",
-                        );
                     });
                     ui.separator();
                     if ui.button("Return to unconfigured").clicked() {

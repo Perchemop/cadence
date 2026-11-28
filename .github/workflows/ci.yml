@@ -44,13 +44,23 @@ jobs:
       - name: Token discipline (raw colours)
         if: runner.os == 'Linux'
         run: |
-          hits=$(git grep -n -E 'Color32::from_(rgb|rgba|gray|rgba_unmultiplied)' -- crates ':!crates/ui-egui/src/design.rs' | grep -v 'allow-raw-color' || true)
+          # Raw colour constructors are allowed only inside the theme system
+          # itself (design_tokens.rs definitions, theme.rs bridge, design.rs
+          # legacy re-export) and the token tests that assert expected values.
+          # Widget code (lib.rs and every other crate) must read tokens; a
+          # justified exception carries an `allow-raw-color:` comment.
+          hits=$(git grep -n -E 'Color32::from_(rgb|rgba|gray|rgba_unmultiplied)' -- crates \
+            ':!crates/ui-egui/src/design.rs' \
+            ':!crates/ui-egui/src/design_tokens.rs' \
+            ':!crates/ui-egui/src/theme.rs' \
+            ':!crates/ui-egui/tests' \
+            | grep -v 'allow-raw-color' || true)
           if [ -n "$hits" ]; then
-            echo "::error::Raw colour literals must live in crates/ui-egui/src/design.rs (guide II.30.6). Use a design token instead."
+            echo "::error::Raw colour literals must live in the token modules (crates/ui-egui/src/design_tokens.rs or theme.rs; guide II.30.6). Use a design token instead."
             echo "$hits"
             exit 1
           fi
-          echo "Token discipline OK: no raw colour literals outside crates/ui-egui/src/design.rs."
+          echo "Token discipline OK: no raw colour literals outside the token modules."
 
       # The token ledger (guide §24, D34/D36) is aggregated from local usage
       # records by scripts/token-ledger.py, which CI cannot run. CI therefore
@@ -231,9 +241,8 @@ jobs:
   # deliberately absent from .ci-required.txt; it is self-contained, so a
   # failure here cannot affect the verify or security jobs.
   #
-  # Mitigation for intermittent lavapipe SIGSEGV: retry once with gl (llvmpipe)
-  # backend. Uses continue-on-error so a single crash does not block merges;
-  # only fails if both attempts crash (two-strike rule).
+  # Use gl (llvmpipe) backend directly to avoid intermittent lavapipe SIGSEGV
+  # on CI runners. Lavapipe is known to crash on some CI runner configurations.
   evidence:
     name: Evidence (rendered)
     runs-on: ubuntu-latest
@@ -241,9 +250,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install software Vulkan (lavapipe)
+      - name: Install software OpenGL (llvmpipe)
         run: |
-          sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1
+          # libgl1-mesa-glx was removed in Ubuntu 24.04; libgl1 is its
+          # successor and provides the same software-GL (llvmpipe) path.
+          sudo apt-get update && sudo apt-get install -y mesa-utils libgl1
 
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
@@ -251,32 +262,12 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
-      - name: Render evidence (attempt 1 with vulkan backend)
-        id: attempt_1
-        env:
-          WGPU_BACKEND: vulkan
-        run: |
-          set -o pipefail
-          cargo test -p cadence-ui-egui --lib -- --ignored evidence_ 2>&1 | tee /tmp/evidence_run1.log
-
-      - name: Check for SIGSEGV in attempt 1 output
-        if: always()
-        id: sigsegv_check
-        run: |
-          if grep -iq 'SIGSEGV' /tmp/evidence_run1.log; then
-            echo "crashed=true" >> $GITHUB_OUTPUT
-          else
-            echo "crashed=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Render evidence (attempt 2 with gl fallback)
-        id: attempt_2
-        if: ${{ !cancelled() && steps.sigsegv_check.outputs.crashed == 'true' }}
+      - name: Render evidence with gl (llvmpipe) backend
         env:
           WGPU_BACKEND: gl
         run: |
           set -o pipefail
-          cargo test -p cadence-ui-egui --lib -- --ignored evidence_ 2>&1 | tee /tmp/evidence_run2.log || true
+          cargo test -p cadence-ui-egui --lib -- --ignored evidence_ 2>&1 | tee /tmp/evidence_run.log
 
       - name: Upload rendered evidence
         if: always()
@@ -292,15 +283,7 @@ jobs:
         shell: bash
         run: |
           echo "## Evidence (rendered) job result"
-          if [ "${{ steps.sigsegv_check.outputs.crashed }}" = "true" ]; then
-            if [ "${{ steps.attempt_2.outcome }}" = "success" ]; then
-              echo "First attempt (vulkan) crashed with SIGSEGV — gl fallback rendered the evidence."
-            else
-              echo "First attempt (vulkan) crashed with SIGSEGV — gl fallback did not produce renders (outcome: ${{ steps.attempt_2.outcome }})."
-            fi
-          else
-            echo "First attempt (vulkan) succeeded — no fallback needed."
-          fi
+          echo "Rendered with gl (llvmpipe) backend to avoid lavapipe SIGSEGV."
           echo "Evidence job is advisory; does not block merges on flaky crashes."
 
   package:
@@ -373,3 +356,64 @@ jobs:
         with:
           package: cadence-core,cadence-commands,cadence-persistence,cadence-interchange
           baseline-rev: ${{ github.event.pull_request.base.sha }}
+
+  # Accessibility gates (guide II.21): WCAG 2.2 AA contrast, keyboard, focus, target size
+  a11y-contrast-tests:
+    name: a11y-contrast-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Run contrast tests
+        run: cargo test -p cadence-ui-egui --test contrast_tests -- --nocapture
+
+  a11y-harness-tests:
+    name: a11y-harness-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Run a11y harness tests
+        run: cargo test -p cadence-ui-egui --test a11y_harness -- --nocapture
+
+  a11y-target-size-tests:
+    name: a11y-target-size-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Run target size tests
+        run: cargo test -p cadence-ui-egui --lib -- target_size --nocapture
+
+  a11y-focus-ring-tests:
+    name: a11y-focus-ring-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Run focus ring tests
+        run: cargo test -p cadence-ui-egui --lib -- focus_ring --nocapture
+
+  a11y-density-tests:
+    name: a11y-density-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Run density tests
+        run: cargo test -p cadence-ui-egui --lib -- density --nocapture

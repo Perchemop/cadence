@@ -253,6 +253,53 @@ files** list, and Close/Exit.
 Reports live outside the views: `cadence report` writes Markdown and
 `cadence print` writes a PDF, both from any project file.
 
+## Assistant proposals
+
+The assistant review panel is an optional feature that is off by default.
+When enabled, it lets the user ask the configured AI provider to propose
+changes to the current project. A proposal consists of up to four kinds of
+changes — creating activities or relationships, or setting an activity's
+duration or progress — each with a rationale explaining why the change is
+suggested. No changes are applied until the user reviews and approves them
+via the "Apply selected changes" button; each proposal can be discarded
+instead.
+
+To enable the assistant:
+1. Open the **Assistant** view from the view tab selector (the tenth tab).
+2. Configure a provider (openai, anthropic, ollama, or gemini), a model,
+   and an API key (the key is stored only for the current session and never
+   written to disk).
+3. Enter a request describing the change you want (for example: "Add a
+   critical-path activity called 'Design review' with a 2-day duration").
+4. Press **Request proposal**; the assistant sends the project snapshot and
+   your request to the provider off the UI thread.
+5. Review the proposal in the panel that appears: each change card shows
+   what would happen, its rationale, and a selection checkbox. Ticked
+   changes will be applied when you press **Apply selected changes**; unticked
+   changes are ignored. Pressing **Discard proposal** closes the panel
+   without applying anything.
+6. If a proposal is accepted, the changes are applied as ordinary undoable
+   edits — the undo stack walks back change by change, so ⌘Z / Ctrl+Z
+   reverses them.
+
+Error sentences you may see:
+- **"Configuration error:"** — provider or model not properly set.
+- **"Proposal validation failed."** — the provider's output could not be
+  parsed or did not pass project-level checks (unknown activities, blank
+  names, durations > 100%, etc.).
+- **"Proposal request failed:"** — the provider request could not be
+  completed.
+
+The API key is never stored on disk and must be re-entered after a restart.
+The assistant is consent-gated: it is off until the user explicitly enables
+it and configures a provider.
+
+Shortcut: there is no global chord for the assistant; use the view tab
+selector or the **View** menu to reach the Assistant panel.
+
+Reports live outside the views: `cadence report` writes Markdown and
+`cadence print` writes a PDF, both from any project file.
+
 ## Examples
 
 `cargo run -p cadence-app --example bridge_report` builds the sample bridge

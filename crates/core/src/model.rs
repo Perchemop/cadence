@@ -13,11 +13,29 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
+use serde_json;
 use thiserror::Error;
 use time::{Date, Duration};
 
 use crate::calendar_set::{CalendarId, CalendarSet, CalendarSetError};
+use crate::settings::{CalendarProjectSettings, CostRates, EvmDisplayPreference, ProjectSettings};
 use crate::wbs::{WbsId, WbsTree};
+
+/// Which top-level view is shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ViewMode {
+    #[default]
+    Table,
+    Gantt,
+    Resources,
+    Baselines,
+    Calendars,
+    Audit,
+    Lookahead,
+    Diary,
+    Production,
+    Assistant,
+}
 
 /// Stable identifier for an [`Activity`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -869,7 +887,11 @@ impl Relationship {
 }
 
 /// Root aggregate for a scheduling project.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Deliberately not `Eq`: the settings structs it carries hold `f32` fields
+/// (zoom scales, pane ratios, sampling temperature), and `Eq` on `Project`
+/// would make any of them a compile error. Equality testing uses `PartialEq`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Project {
     /// Project name.
     pub name: String,
@@ -906,6 +928,15 @@ pub struct Project {
     /// Production entries: dated actual progress recorded against activities.
     #[serde(default)]
     pub production_entries: Vec<ProductionEntry>,
+    /// Global settings — app-wide preferences, shared across all projects.
+    #[serde(default)]
+    pub global_settings: crate::settings::GlobalSettings,
+    /// View-level settings — specific to the currently active view/window.
+    #[serde(default)]
+    pub view_settings: crate::settings::ViewSettings,
+    /// Tool-level settings — per‑(project, view, tool) transient preferences.
+    #[serde(default)]
+    pub tool_settings: crate::settings::ToolSettings,
 }
 
 impl Project {
@@ -924,6 +955,10 @@ impl Project {
             lookahead_snapshots: Vec::new(),
             daily_notes: Vec::new(),
             production_entries: Vec::new(),
+            // Settings default to their own defaults (via #[serde(default)]).
+            global_settings: Default::default(),
+            view_settings: Default::default(),
+            tool_settings: Default::default(),
         }
     }
 
@@ -1011,6 +1046,77 @@ impl Project {
                 .unwrap_or_default()
                 .saturating_add(1),
         )
+    }
+
+    /// Global settings — app-wide preferences.
+    pub fn global_settings(&self) -> &crate::settings::GlobalSettings {
+        &self.global_settings
+    }
+
+    /// View-level settings — specific to the currently active view/window.
+    pub fn view_settings(&self) -> &crate::settings::ViewSettings {
+        &self.view_settings
+    }
+
+    /// Tool-level settings — per‑(project, view, tool) transient preferences.
+    pub fn tool_settings(&self) -> &crate::settings::ToolSettings {
+        &self.tool_settings
+    }
+
+    /// Mutably borrow global settings.
+    pub fn global_settings_mut(&mut self) -> &mut crate::settings::GlobalSettings {
+        &mut self.global_settings
+    }
+
+    /// Mutably borrow view settings.
+    pub fn view_settings_mut(&mut self) -> &mut crate::settings::ViewSettings {
+        &mut self.view_settings
+    }
+
+    /// Mutably borrow tool settings.
+    pub fn tool_settings_mut(&mut self) -> &mut crate::settings::ToolSettings {
+        &mut self.tool_settings
+    }
+
+    /// Return a copy of all project settings (global + view + tool).
+    pub fn settings(&self) -> ProjectSettings {
+        let workweek = self.calendar.working_weekdays();
+        // Convert the named calendars to a BTreeMap keyed by name.
+        let calendars: BTreeMap<String, CalendarProjectSettings> = self
+            .calendars
+            .calendars()
+            .iter()
+            .map(|nc| {
+                (
+                    nc.name.clone(),
+                    CalendarProjectSettings {
+                        workweek: nc.calendar.working_weekdays(),
+                        holidays: nc
+                            .calendar
+                            .holidays()
+                            .iter()
+                            .map(|d| d.to_string())
+                            .collect(),
+                    },
+                )
+            })
+            .collect();
+        // Serialize calendars to JSON for storage
+        let calendars_json = serde_json::to_string(&calendars).unwrap_or_default();
+        ProjectSettings {
+            workweek,
+            currency: "USD".to_string(),
+            default_calendar: "standard".to_string(),
+            column_visibility: Vec::new(),
+            cost_rates: CostRates::default(),
+            auto_capture_baselines: false,
+            evm_display: self
+                .tool_settings
+                .evm_display
+                .unwrap_or(EvmDisplayPreference::Full),
+            calendars_json,
+            schema_version: 10,
+        }
     }
 
     /// Next unused resource identifier.
@@ -2058,4 +2164,15 @@ mod tests {
         // A resource that is no longer in the dictionary is skipped.
         assert_eq!(activity.resource_cost(&[]), 0);
     }
+}
+
+/// A single message in the assistant conversation history.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct AssistantMessage {
+    /// The role of the message sender (user or assistant).
+    pub role: String,
+    /// The message content.
+    pub content: String,
+    /// Optional timestamp.
+    pub timestamp: Option<String>,
 }

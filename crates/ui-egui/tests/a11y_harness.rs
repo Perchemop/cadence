@@ -424,3 +424,151 @@ fn assistant_view_enabling_state() {
         "is_assistant_enabled should be false for partial config"
     );
 }
+
+/// Assistant view RP-5 (guide II.30.7) — named inputs in the config form.
+/// Verifies that in the default (unconfigured) Assistant view every visible
+/// input widget carries a non-empty accessible name, on both themes and
+/// across two layout frames (egui sometimes needs a second pass). Each text
+/// field pairs with its visible label via `Response::labelled_by`, and the
+/// provider combo box exposes its visible "Provider:" label as the
+/// accessible name.
+#[test]
+fn assistant_view_inputs_have_accessible_names() {
+    use cadence_ui_egui::ViewMode;
+
+    for dark in [true, false] {
+        let mut app = build_app();
+        app.set_view_mode(ViewMode::Assistant);
+        let mut harness = build_harness(&mut app, dark);
+
+        for frame in 1..=2 {
+            harness.step();
+            let unnamed = unnamed_inputs(&harness);
+            assert!(
+                unnamed.is_empty(),
+                "frame {frame} (dark={dark}) assistant view: {unnamed:#?}"
+            );
+        }
+
+        // Text inputs must have names from their visible labels.
+        let text_inputs = role_labels(&harness, Role::TextInput);
+        assert!(
+            !text_inputs.is_empty(),
+            "no text input is exposed to AccessKit (dark={dark})"
+        );
+        assert!(
+            text_inputs
+                .iter()
+                .any(|label| label.as_deref().is_some_and(|l| l.contains("Model"))),
+            "the model text input is not labelled \"Model\" \
+             (text-input labels: {text_inputs:?})"
+        );
+        assert!(
+            text_inputs
+                .iter()
+                .any(|label| label.as_deref().is_some_and(|l| l.contains("Base URL"))),
+            "the base URL text input is not labelled \"Base URL\" \
+             (text-input labels: {text_inputs:?})"
+        );
+        assert!(
+            text_inputs
+                .iter()
+                .any(|label| label.as_deref().is_some_and(|l| l.contains("API key"))),
+            "the API key text input is not labelled \"API key\" \
+             (text-input labels: {text_inputs:?})"
+        );
+
+        // The provider combo box must expose the visible "Provider:" label
+        // as its accessible name (the shell ties it with `Response::labelled_by`).
+        let provider_combo = labels_containing(&harness, "Provider")
+            .into_iter()
+            .filter(|(role, _)| *role == Role::ComboBox)
+            .map(|(_, label)| label)
+            .collect::<Vec<_>>();
+        assert!(
+            provider_combo
+                .iter()
+                .any(|label| label.as_deref().is_some_and(|l| l.contains("Provider"))),
+            "the provider combo box is not labelled \"Provider:\" \
+             (combo labels: {provider_combo:?})"
+        );
+        // Checkbox must carry its visible label.
+        let checkboxes = role_labels(&harness, Role::CheckBox);
+        assert!(
+            checkboxes
+                .iter()
+                .any(|label| label.as_deref() == Some("Enable assistant")),
+            "the \"Enable assistant\" checkbox lost its label (checkbox labels: {checkboxes:?})"
+        );
+    }
+}
+
+/// Assistant view RP-5 — request state is reachable and named.
+/// Assistant view RP-5 (guide II.30.7) — the configured request state is
+/// reachable and named. Seeding a full config through `set_assistant_config`
+/// must render the configured state (the edit buffers mirror the config so
+/// the first frame cannot clobber it), where the "Request" field and the
+/// "Request proposal" button expose accessible names — and with an empty
+/// request field the button is disabled: state is never conveyed by colour
+/// alone (II.30.7.2).
+#[test]
+fn assistant_view_request_state_is_reachable_and_named() {
+    use cadence_assistant::AssistantConfig;
+
+    let mut app = build_app();
+    // Configure the assistant so the configured-state UI is reachable.
+    let full = AssistantConfig {
+        enabled: true,
+        provider_name: Some("openai".to_owned()),
+        model: Some("gpt-4".to_owned()),
+        base_url: None,
+        api_key: Some(cadence_assistant::SecretKey::new("test-key".to_owned())),
+    };
+    app.set_assistant_config(full.clone());
+
+    // The Assistant view must be the rendered view; the shell starts on
+    // Table, and the request UI only exists in the Assistant centre view.
+    app.set_view_mode(cadence_ui_egui::ViewMode::Assistant);
+
+    // Dark theme only; the test is a named-input gate, not a full a11y
+    // suite. The button and text input are the same in both themes.
+    let mut harness = build_harness(&mut app, true);
+
+    // Step two frames to settle layout (egui sometimes needs two passes).
+    for _ in 1..=2 {
+        harness.step();
+    }
+
+    // The request text input must exist and be labelled "Request".
+    let text_inputs = role_labels(&harness, Role::TextInput);
+    assert!(
+        !text_inputs.is_empty(),
+        "no text input is exposed to AccessKit in the assistant request state"
+    );
+    assert!(
+        text_inputs
+            .iter()
+            .any(|label| label.as_deref().is_some_and(|l| l.contains("Request"))),
+        "the request text input is not labelled \"Request\" \
+         (text-input labels: {text_inputs:?})"
+    );
+
+    // The "Request proposal" button must be labelled and present.
+    let button_labels = button_labels_containing(&harness, "Request proposal");
+    assert!(
+        !button_labels.is_empty(),
+        "the \"Request proposal\" button is not exposed to AccessKit \
+         (button labels: {button_labels:?})"
+    );
+
+    // With an empty request field the button must exist, be named, and be
+    // disabled (the enable condition at lib.rs:5851 is false while the
+    // buffer is empty) — deterministic, no in-progress state seeded.
+    let disabled = disabled_states(&harness, "Request proposal");
+    assert_eq!(
+        disabled,
+        [true],
+        "the \"Request proposal\" button should be disabled while the \
+         request field is empty (disabled states: {disabled:?})"
+    );
+}

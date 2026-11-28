@@ -51,4 +51,4 @@ their research note.
 |---|---|---|
 | Programme audit tool (audit a construction programme inside Cadence) | `docs/research/schedule-audit.md` | approved 2026-10-27 — next slice (will become R27) |
 | Lookahead / field planning (Aphex-inspired) | `docs/research/aphex-integration.md` | done — R30 |
-| Optional AI integration (document understanding, proposals, advice) | `docs/research/ai-integration.md` | approved 2026-10-27 — in progress: foundation, HTTP provider backends, command-stack wiring, prompt/parser seam (RP-1) and settings storage (RP-2) landed (2026-11-16/17/18/19); next: review panel UI (RP-3+) |
+| Optional AI integration (document understanding, proposals, advice) | `docs/research/ai-integration.md` | approved 2026-10-27 — DONE: foundation (RP-1), HTTP provider backends (RP-2), command-stack wiring, prompt/parser seam landed (2026-11-16/17/18); review panel UI landed (2026-11-27): RP-3 view shell + enabling state, RP-4 request flow + apply-discard, RP-5 AccessKit harness pass; all verified through CI green runs on all supported platforms.
