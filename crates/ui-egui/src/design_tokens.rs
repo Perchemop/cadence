@@ -1363,9 +1363,9 @@ pub mod skeleton {
     /// Internal: draw a skeleton rectangle with shimmer effect.
     fn draw_skeleton_rect(ui: &mut Ui, rect: Rect, variant: SkeletonVariant) {
         let colors = if ui.visuals().dark_mode {
-            crate::DARK_COLORS
+            DARK_COLORS
         } else {
-            crate::LIGHT_COLORS
+            LIGHT_COLORS
         };
 
         // Base color
@@ -1410,9 +1410,9 @@ pub mod skeleton {
     /// Internal: draw a skeleton circle with shimmer effect.
     fn draw_skeleton_circle(ui: &mut Ui, rect: Rect) {
         let colors = if ui.visuals().dark_mode {
-            crate::DARK_COLORS
+            DARK_COLORS
         } else {
-            crate::LIGHT_COLORS
+            LIGHT_COLORS
         };
 
         let base_color = colors.surface_sunken;
