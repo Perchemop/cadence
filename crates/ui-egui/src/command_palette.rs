@@ -864,7 +864,7 @@ impl CadenceApp {
 
             // Table commands
             "table:new_activity" => {
-                self.add_activity_at_end();
+                self.create_activity();
             }
             "table:delete_activity" => {
                 if let Some(id) = self.selected {
@@ -939,9 +939,9 @@ impl CadenceApp {
 
             // Project commands
             "project:new" => self.new_project(),
-            "project:open" => self.open_project_dialog(),
-            "project:save" => self.save_project(),
-            "project:save_as" => self.save_project_as(),
+            "project:open" => self.open_dialog(),
+            "project:save" => self.save_or_prompt(),
+            "project:save_as" => self.save_as_dialog(),
             "project:import" => { self.show_import_dialog = true; },
             "project:export" => { self.show_export_dialog = true; },
             "project:print_gantt" => self.print_gantt_dialog(),
@@ -952,8 +952,16 @@ impl CadenceApp {
             }
 
             // Edit commands
-            "edit:undo" => self.undo(),
-            "edit:redo" => self.redo(),
+            "edit:undo" => {
+                let _ = self.stack.undo(&mut self.project);
+                self.recompute();
+                self.set_status("Undone.");
+            }
+            "edit:redo" => {
+                let _ = self.stack.redo(&mut self.project);
+                self.recompute();
+                self.set_status("Redone.");
+            }
             "edit:copy" => {
                 if let Some(id) = self.selected {
                     // Copy to clipboard would need system clipboard access
