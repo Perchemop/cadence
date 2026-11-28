@@ -660,7 +660,9 @@ fn print_version() -> Result<(), String> {
         Some(update_check::UpdateStatus::Unavailable(message)) => {
             println!("The last update check failed: {message}");
         }
-        Some(update_check::UpdateStatus::NotChecked) | None => {
+        Some(update_check::UpdateStatus::NotChecked)
+        | Some(update_check::UpdateStatus::Checking)
+        | None => {
             println!("No recent update check; run `cadence check-updates` or open the GUI.");
         }
     }
@@ -679,7 +681,8 @@ fn check_updates() -> Result<(), String> {
         update_check::UpdateStatus::Unavailable(message) => {
             println!("Update check unavailable: {message}");
         }
-        update_check::UpdateStatus::NotChecked => {
+        update_check::UpdateStatus::NotChecked
+        | update_check::UpdateStatus::Checking => {
             println!("No update status is available yet.");
         }
     }

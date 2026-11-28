@@ -34,6 +34,8 @@ const MAX_RESPONSE_BYTES: u64 = 256 * 1024;
 pub enum UpdateStatus {
     /// No check has run yet and there is no fresh cache entry.
     NotChecked,
+    /// A check is currently in progress (skeleton loader shown in UI).
+    Checking,
     /// The running version is the latest known release.
     UpToDate,
     /// A newer release exists; `version` is its tag without the leading `v`.
@@ -116,6 +118,13 @@ impl CachedStatus {
     }
 }
 
+/// Checking is a transient state that should never be cached.
+impl UpdateStatus {
+    fn is_cachable(&self) -> bool {
+        !matches!(self, UpdateStatus::Checking | UpdateStatus::NotChecked | UpdateStatus::Unavailable(_))
+    }
+}
+
 fn fetch_latest_release() -> Result<GitHubRelease, String> {
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_secs(4))
@@ -153,7 +162,9 @@ fn write_cache(status: &UpdateStatus) {
             version: Some(version.clone()),
             url: Some(url.clone()),
         },
-        UpdateStatus::NotChecked | UpdateStatus::Unavailable(_) => return,
+        UpdateStatus::Checking
+        | UpdateStatus::NotChecked
+        | UpdateStatus::Unavailable(_) => return,
     };
     if let Ok(text) = serde_json::to_string(&cached) {
         let _ = std::fs::write(cache_path(), text);

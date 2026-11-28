@@ -49,6 +49,7 @@ use egui_extras::DatePickerButton;
 use time::{Date, Month};
 
 pub mod crash;
+pub mod command_palette;
 pub mod design;
 pub mod design_tokens;
 pub mod theme;
@@ -75,6 +76,8 @@ pub struct DesignTokens {
     pub accent_bg: Color32,
     /// Panel/Toolbar background.
     pub panel_bg: Color32,
+    /// UI density (Compact / Standard / Comfortable).
+    pub density: crate::design_tokens::Density,
 }
 
 impl DesignTokens {
@@ -89,6 +92,7 @@ impl DesignTokens {
             primary_bg: ACCENT.linear_multiply(0.15),
             accent_bg: ACCENT.linear_multiply(0.2),
             panel_bg: colors.panel.linear_multiply(0.95),
+            density: Density::Standard,
         }
     }
 
@@ -102,6 +106,7 @@ impl DesignTokens {
             primary_bg: colors.accent.linear_multiply(0.15),
             accent_bg: colors.accent.linear_multiply(0.2),
             panel_bg: colors.surface_raised,
+            density: theme.density(),
         }
     }
 }
@@ -1140,6 +1145,7 @@ impl CadenceApp {
         if self.update_receiver.is_some() {
             return;
         }
+        self.update_status = update_check::UpdateStatus::Checking;
         let (sender, receiver) = mpsc::channel();
         std::thread::spawn(move || {
             let status = update_check::check_for_update();
@@ -2782,6 +2788,7 @@ impl CadenceApp {
         };
         if self.update_checks_enabled && should_check {
             self.last_update_check = Some(now);
+            self.update_status = update_check::UpdateStatus::Checking;
             let (sender, receiver) = mpsc::channel();
             self.update_receiver = Some(receiver);
             std::thread::spawn(move || {
@@ -6454,6 +6461,10 @@ impl CadenceApp {
                     match &self.update_status {
                         update_check::UpdateStatus::NotChecked => {
                             ui.label("No update check has run yet.");
+                        }
+                        update_check::UpdateStatus::Checking => {
+                            // Skeleton loader while checking
+                            crate::design_tokens::skeleton::skeleton_status_area(ui, self.design_tokens().density);
                         }
                         update_check::UpdateStatus::UpToDate => {
                             ui.label("You are running the latest release.");

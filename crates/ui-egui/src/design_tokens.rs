@@ -1285,6 +1285,224 @@ pub fn install_fonts(ctx: &Context) {
 }
 
 // ============================================================================
+// SKELETON COMPONENTS
+// ============================================================================
+//
+// Skeleton loaders for async operations - matches Linear, Planera, Airtable patterns.
+// Subtle shimmer animation, matches exact shape of real content.
+
+/// Skeleton variant for different content types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkeletonVariant {
+    /// Text line skeleton (for labels, names, descriptions)
+    Text,
+    /// Table cell skeleton
+    TableCell,
+    /// Gantt bar skeleton
+    GanttBar,
+    /// Circular avatar/profile skeleton
+    Circle,
+    /// Rectangular card/panel skeleton
+    Rect,
+}
+
+/// Skeleton component for rendering loading placeholders.
+///
+/// Usage:
+/// ```rust
+/// // In a table cell
+/// skeleton::table_cell(ui, density);
+/// 
+/// // In a Gantt chart row
+/// skeleton::gantt_bar(ui, density);
+/// 
+/// // In a status area
+/// skeleton::text_line(ui, 100.0, density);
+/// ```
+pub mod skeleton {
+    use super::*;
+    use egui::{Color32, Rect, Sense, Shape, Stroke, Ui, Vec2};
+
+    /// Render a skeleton line (for text placeholders).
+    pub fn text_line(ui: &mut Ui, width: f32, density: Density) {
+        let height = (11.0 * density.multiplier()).max(8.0);
+        let rect = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover()).0;
+        draw_skeleton_rect(ui, rect, SkeletonVariant::Text);
+    }
+
+    /// Render a skeleton table cell.
+    pub fn table_cell(ui: &mut Ui, density: Density) {
+        let height = (24.0 * density.multiplier()).max(16.0);
+        let width = ui.available_width().max(60.0);
+        let rect = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover()).0;
+        draw_skeleton_rect(ui, rect, SkeletonVariant::TableCell);
+    }
+
+    /// Render a skeleton Gantt bar.
+    pub fn gantt_bar(ui: &mut Ui, width: f32, density: Density) {
+        let height = (16.0 * density.multiplier()).max(12.0);
+        let rect = ui.allocate_exact_size(Vec2::new(width.max(40.0), height), Sense::hover()).0;
+        draw_skeleton_rect(ui, rect, SkeletonVariant::GanttBar);
+    }
+
+    /// Render a skeleton circle (for avatars).
+    pub fn circle(ui: &mut Ui, diameter: f32, density: Density) {
+        let size = diameter * density.multiplier();
+        let rect = ui.allocate_exact_size(Vec2::new(size, size), Sense::hover()).0;
+        draw_skeleton_circle(ui, rect);
+    }
+
+    /// Render a skeleton rectangle (for cards, panels).
+    pub fn rect(ui: &mut Ui, width: f32, height: f32, density: Density) {
+        let w = width * density.multiplier();
+        let h = height * density.multiplier();
+        let rect = ui.allocate_exact_size(Vec2::new(w, h), Sense::hover()).0;
+        draw_skeleton_rect(ui, rect, SkeletonVariant::Rect);
+    }
+
+    /// Internal: draw a skeleton rectangle with shimmer effect.
+    fn draw_skeleton_rect(ui: &mut Ui, rect: Rect, variant: SkeletonVariant) {
+        let colors = if ui.visuals().dark_mode {
+            crate::DARK_COLORS
+        } else {
+            crate::LIGHT_COLORS
+        };
+
+        // Base color
+        let base_color = colors.surface_sunken;
+        
+        // Shimmer highlight color
+        let highlight_color = if ui.visuals().dark_mode {
+            Color32::from_rgba_unmultiplied(255, 255, 255, 30)
+        } else {
+            Color32::from_rgba_unmultiplied(0, 0, 0, 20)
+        };
+
+        // Draw base rectangle
+        let radius = match variant {
+            SkeletonVariant::Text => 2.0,
+            SkeletonVariant::TableCell => 4.0,
+            SkeletonVariant::GanttBar => 3.0,
+            SkeletonVariant::Rect => 6.0,
+            SkeletonVariant::Circle => 9999.0,
+        };
+        
+        ui.painter().rect_filled(rect, radius, base_color);
+
+        // Add shimmer animation (time-based)
+        let time = ui.input(|i| i.time);
+        let shimmer_speed = 1.5; // cycles per second
+        let shimmer_pos = (time * shimmer_speed * std::f32::consts::TAU).sin() * 0.5 + 0.5;
+        let shimmer_x = rect.left() + shimmer_pos * rect.width();
+
+        // Draw shimmer overlay
+        let shimmer_width = rect.width() * 0.4;
+        let shimmer_rect = Rect::from_min_max(
+            egui::pos2(shimmer_x - shimmer_width * 0.5, rect.top()),
+            egui::pos2(shimmer_x + shimmer_width * 0.5, rect.bottom()),
+        ).intersect(rect);
+
+        if !shimmer_rect.is_empty() {
+            ui.painter().rect_filled(shimmer_rect, radius, highlight_color);
+        }
+    }
+
+    /// Internal: draw a skeleton circle with shimmer effect.
+    fn draw_skeleton_circle(ui: &mut Ui, rect: Rect) {
+        let colors = if ui.visuals().dark_mode {
+            crate::DARK_COLORS
+        } else {
+            crate::LIGHT_COLORS
+        };
+
+        let base_color = colors.surface_sunken;
+        let highlight_color = if ui.visuals().dark_mode {
+            Color32::from_rgba_unmultiplied(255, 255, 255, 30)
+        } else {
+            Color32::from_rgba_unmultiplied(0, 0, 0, 20)
+        };
+
+        let center = rect.center();
+        let radius = rect.width().min(rect.height()) * 0.5;
+
+        // Draw base circle
+        ui.painter().circle_filled(center, radius, base_color);
+
+        // Add shimmer
+        let time = ui.input(|i| i.time);
+        let shimmer_speed = 1.5;
+        let shimmer_pos = (time * shimmer_speed * std::f32::consts::TAU).sin() * 0.5 + 0.5;
+        let shimmer_x = rect.left() + shimmer_pos * rect.width();
+        let shimmer_width = rect.width() * 0.4;
+
+        let shimmer_rect = Rect::from_min_max(
+            egui::pos2(shimmer_x - shimmer_width * 0.5, rect.top()),
+            egui::pos2(shimmer_x + shimmer_width * 0.5, rect.bottom()),
+        ).intersect(rect);
+
+        if !shimmer_rect.is_empty() {
+            ui.painter().circle_filled(
+                shimmer_rect.center(),
+                shimmer_rect.width().min(shimmer_rect.height()) * 0.5,
+                highlight_color,
+            );
+        }
+    }
+}
+
+/// Render multiple skeleton rows for a table (e.g., during project load).
+pub fn skeleton_table_rows(ui: &mut Ui, row_count: usize, density: Density) {
+    for _ in 0..row_count {
+        ui.horizontal(|ui| {
+            // ID column
+            skeleton::table_cell(ui, density);
+            ui.add_space(8.0);
+            // Name column (wider)
+            let name_width = ui.available_width() * 0.4;
+            skeleton::text_line(ui, name_width, density);
+            ui.add_space(8.0);
+            // Duration column
+            skeleton::text_line(ui, 50.0, density);
+            ui.add_space(8.0);
+            // Date columns
+            skeleton::text_line(ui, 80.0, density);
+            ui.add_space(8.0);
+            skeleton::text_line(ui, 80.0, density);
+        });
+        ui.add_space(2.0 * density.multiplier());
+    }
+}
+
+/// Render skeleton Gantt chart rows.
+pub fn skeleton_gantt_rows(ui: &mut Ui, row_count: usize, density: Density) {
+    for _ in 0..row_count {
+        ui.horizontal(|ui| {
+            // Name label area
+            let name_width = 200.0 * density.multiplier();
+            skeleton::text_line(ui, name_width, density);
+            ui.add_space(12.0);
+            // Gantt bar area
+            let bar_width = ui.available_width();
+            skeleton::gantt_bar(ui, bar_width, density);
+        });
+        ui.add_space(4.0 * density.multiplier());
+    }
+}
+
+/// Render skeleton status area (for update check, etc.).
+pub fn skeleton_status_area(ui: &mut Ui, density: Density) {
+    ui.horizontal(|ui| {
+        skeleton::circle(ui, 32.0, density);
+        ui.add_space(12.0);
+        ui.vertical(|ui| {
+            skeleton::text_line(ui, 120.0, density);
+            ui.add_space(4.0);
+            skeleton::text_line(ui, 80.0, density);
+        });
+    });
+}
+
+// ============================================================================
 // COMPATIBILITY LAYER (for migration from design.rs)
 // ============================================================================
 
