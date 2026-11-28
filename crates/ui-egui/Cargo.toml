@@ -25,7 +25,7 @@ egui_extras = { version = "0.36.0", features = ["datepicker"] }
 egui-phosphor = "0.14.0"
 # The egui_extras date picker works on jiff calendar dates; Cadence keeps the
 # `time` crate for scheduling, so the two are converted at the field boundary.
-jiff = { version = "0.2", default-features = false, features = ["std"] }
+jiff = { version = "1.0", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 # Headless AccessKit assertions (tests/a11y_harness.rs) and the rendered
