@@ -229,9 +229,6 @@ pub fn theme_registry() -> &'static Mutex<ThemeRegistry> {
     tokens_theme_registry()
 }
 
-/// Theme trait for dynamic theming (legacy compatibility).
-/// This is an alias for the design_tokens::Theme trait.
-
 /// Theme colors returned by the Theme trait.
 #[derive(Debug, Clone, Copy)]
 pub struct ThemeColors {
@@ -242,16 +239,9 @@ pub struct ThemeColors {
 }
 
 /// Light theme implementation (wraps design_tokens::LightTheme).
+#[derive(Default)]
 pub struct LightThemeImpl {
     inner: LightTheme,
-}
-
-impl Default for LightThemeImpl {
-    fn default() -> Self {
-        Self {
-            inner: LightTheme::default(),
-        }
-    }
 }
 
 impl Theme for LightThemeImpl {
@@ -293,16 +283,9 @@ impl Theme for LightThemeImpl {
 }
 
 /// Dark theme implementation (wraps design_tokens::DarkTheme).
+#[derive(Default)]
 pub struct DarkThemeImpl {
     inner: DarkTheme,
-}
-
-impl Default for DarkThemeImpl {
-    fn default() -> Self {
-        Self {
-            inner: DarkTheme::default(),
-        }
-    }
 }
 
 impl Theme for DarkThemeImpl {
@@ -377,6 +360,12 @@ impl ThemeRegistryCompat {
     /// Apply the current theme to a context.
     pub fn apply(&self, ctx: &Context) {
         self.current().apply(ctx);
+    }
+}
+
+impl Default for ThemeRegistryCompat {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
