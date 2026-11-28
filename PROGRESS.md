@@ -2668,4 +2668,44 @@ UI slice in `crates/ui-egui`; no assistant crate changes. All three tickets veri
 - Records: CHANGELOG 0.15.1 Added, DECISIONS D38..D40, REQUIREMENTS_TRACEABILITY AI rows.
 - No code modifications outside `crates/ui-egui/**`.
 
-Verification: required checks green on the slice head.
+Verification: completed 2026-11-28 — required checks green on run 46116168674 (head `bdf7a8f`) after the CI gate repairs recorded in the 2026-11-28 entry below.
+
+## 2026-11-28 — assistant review panel landed + CI gate repairs (D41); v0.19.0 prep
+
+The RP-3..RP-5 slice and the branch-only settings-persistence slice (RP-2
+storage) went through the full required-checks gate for the first time; ten
+CI iterations (final green run 46116168674 on `bdf7a8f`, PR #209) exposed and
+fixed everything the earlier unverified "green" claims had hidden:
+
+- **Build gate**: `Project` derived `Eq` while its new settings fields hold
+  `f32` — unsatisfiable; `Eq` removed (documented in-code, D41) and the
+  workspace bumped 0.18.3 → 0.19.0 for the semver-major field additions
+  (`constructible_struct_adds_field`; `#[non_exhaustive]` rejected — five
+  crates construct `Project` literally).
+- **Clippy (`-D warnings`)**: 16 violations in `settings.rs` (derivable
+  defaults, single-match, let-and-return, `io::Error::other`, needless
+  borrows), plus persistence, the legacy `design.rs` layer and two core
+  tests — all fixed.
+- **Tests**: five token-validation tests had drifted from deliberate token
+  decisions (dark accent desaturated for WCAG AA contrast, D40 caption
+  weight, muted/disabled-text convergence) — synced with the recorded
+  decisions, and the muted/disabled-text check was strengthened to assert
+  disabled-text visibility on the disabled background.
+- **Token serde made lossless**: colours serialize as `#RRGGBBAA` (6-digit
+  still reads) and elevation shadows are serialized instead of skipped; the
+  previously-ignored `color_tokens_serializable` test now runs.
+- **CI definitions**: the token-discipline step no longer outlaws the token
+  modules themselves (it excluded only the legacy `design.rs`); the
+  rendered-evidence job installs `libgl1` (Ubuntu 24.04 removed
+  `libgl1-mesa-glx`).
+- **Tracking**: duplicate PROGRESS/CHANGELOG headings removed; stale
+  `PRODUCT.md` facts corrected (Assistant view landed, ten views); the
+  `impeccable` UI audit recorded — theming, contrast, keyboard and states
+  all at the guide floor (19/20), the only structural gap being the
+  8,701-line `lib.rs` split (next slice).
+
+Verification: `=== CI RESULT: SUCCESS ===` on all required checks — run
+46116168674, head `bdf7a8f` (PR #209 → main). Known follow-up:
+`docs/design/design-tokens.json` is a generated export that has drifted from
+the code (no CI job regenerates it) — regeneration belongs to a follow-up
+slice.
