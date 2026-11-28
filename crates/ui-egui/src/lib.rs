@@ -49,6 +49,7 @@ use egui_extras::DatePickerButton;
 use time::{Date, Month};
 
 pub mod crash;
+pub mod command_palette;
 pub mod design;
 pub mod design_tokens;
 pub mod theme;
@@ -75,6 +76,8 @@ pub struct DesignTokens {
     pub accent_bg: Color32,
     /// Panel/Toolbar background.
     pub panel_bg: Color32,
+    /// UI density (Compact / Standard / Comfortable).
+    pub density: crate::design_tokens::Density,
 }
 
 impl DesignTokens {
@@ -89,6 +92,7 @@ impl DesignTokens {
             primary_bg: ACCENT.linear_multiply(0.15),
             accent_bg: ACCENT.linear_multiply(0.2),
             panel_bg: colors.panel.linear_multiply(0.95),
+            density: Density::Standard,
         }
     }
 
@@ -102,6 +106,7 @@ impl DesignTokens {
             primary_bg: colors.accent.linear_multiply(0.15),
             accent_bg: colors.accent.linear_multiply(0.2),
             panel_bg: colors.surface_raised,
+            density: theme.density(),
         }
     }
 }
@@ -513,6 +518,10 @@ enum PendingFileAction {
     Open(PathBuf),
 }
 
+// Import the command palette module
+pub mod command_palette;
+use command_palette::{CommandPaletteState, PaletteAction};
+
 /// The Cadence application state.
 #[allow(dead_code)]
 pub struct CadenceApp {
@@ -715,6 +724,8 @@ pub struct CadenceApp {
     show_import_dialog: bool,
     /// Export dialog state.
     show_export_dialog: bool,
+    /// Command palette state (Ctrl+K)
+    command_palette: CommandPaletteState,
 }
 
 /// Whether an activity passes the table filter: a case-insensitive substring
@@ -950,6 +961,7 @@ impl CadenceApp {
             pending_delete_activity_id: None,
             show_import_dialog: false,
             show_export_dialog: false,
+            command_palette: CommandPaletteState::default(),
         }
     }
 
@@ -1133,6 +1145,7 @@ impl CadenceApp {
         if self.update_receiver.is_some() {
             return;
         }
+        self.update_status = update_check::UpdateStatus::Checking;
         let (sender, receiver) = mpsc::channel();
         std::thread::spawn(move || {
             let status = update_check::check_for_update();
@@ -2200,6 +2213,54 @@ impl CadenceApp {
         }
     }
 
+    /// Open the Print Gantt dialog (chooses PDF output path and triggers screenshot).
+    fn print_gantt_dialog(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("PDF document", &["pdf"])
+            .set_file_name(format!(
+                "{}-gantt.pdf",
+                file_stem(&self.project.name)
+            ))
+            .save_file()
+        {
+            self.gantt_print_path = Some(path);
+            // The screenshot will be captured on the next frame
+            // We need to request a repaint to trigger the screenshot capture
+            // This is handled in the render loop when gantt_print_path is Some
+        }
+    }
+
+    /// Level resources (auto-level overallocations).
+    fn level_resources(&mut self) {
+        match level_resources(&mut self.project) {
+            Ok(result) => {
+                // Format the leveling result as a string report
+                let delayed: Vec<&cadence_core::engine::LeveledActivity> = result
+                    .activities
+                    .iter()
+                    .filter(|activity| activity.delay > 0)
+                    .collect();
+                let report = if !result.conflicts.is_empty() {
+                    format!("{} over-allocated days remain after leveling", result.conflicts.len())
+                } else if delayed.is_empty() {
+                    "The schedule is already free of over-allocation".to_string()
+                } else {
+                    format!(
+                        "Leveling delays {} activities, for example {}",
+                        delayed.len(),
+                        delayed.first().map(|a| a.id.0).unwrap_or(0)
+                    )
+                };
+                self.leveling_report = Some(report);
+                self.recompute();
+                self.set_status("Resource leveling complete.");
+            }
+            Err(e) => {
+                self.set_status(format!("Leveling failed: {e}"));
+            }
+        }
+    }
+
     /// Prompt for a project file and open it.
     fn open_dialog(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
@@ -2727,6 +2788,7 @@ impl CadenceApp {
         };
         if self.update_checks_enabled && should_check {
             self.last_update_check = Some(now);
+            self.update_status = update_check::UpdateStatus::Checking;
             let (sender, receiver) = mpsc::channel();
             self.update_receiver = Some(receiver);
             std::thread::spawn(move || {
@@ -2850,6 +2912,19 @@ impl CadenceApp {
         // F1 opens the keyboard reference from every view.
         if !dialog_open && ctx.input(|input| input.key_pressed(egui::Key::F1)) {
             self.show_shortcuts_dialog = true;
+        }
+
+        // Ctrl+K (or Cmd+K on macOS): open the command palette.
+        // This is the primary keyboard shortcut for power users to access any action.
+        let palette_requested = !dialog_open
+            && !ctx.text_edit_focused()
+            && ctx.input(|input| {
+                input.key_pressed(egui::Key::K) && input.modifiers.ctrl
+            });
+        if palette_requested {
+            self.command_palette.open();
+            // Rebuild entries in case the project state changed
+            self.command_palette.rebuild_entries(self.selected, &self.project);
         }
 
         // Gantt zoom from the keyboard; Ctrl+wheel remains the pointer path.
@@ -6387,6 +6462,10 @@ impl CadenceApp {
                         update_check::UpdateStatus::NotChecked => {
                             ui.label("No update check has run yet.");
                         }
+                        update_check::UpdateStatus::Checking => {
+                            // Skeleton loader while checking
+                            crate::design_tokens::skeleton::skeleton_status_area(ui, self.design_tokens().density);
+                        }
                         update_check::UpdateStatus::UpToDate => {
                             ui.label("You are running the latest release.");
                         }
@@ -6681,6 +6760,12 @@ impl CadenceApp {
             }
         }
     }
+
+    // ─── COMMAND PALETTE ───
+    // Render the command palette (Ctrl+K) as a modal overlay on top of everything.
+    // This must be called after all other UI so it appears on top.
+    let ctx = ui.ctx().clone();
+    self.command_palette.show(&ctx, self);
 }
 
 impl eframe::App for CadenceApp {
