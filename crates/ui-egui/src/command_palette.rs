@@ -131,7 +131,7 @@ impl CommandPaletteState {
     }
 
     /// Rebuild all palette entries based on current application state.
-    pub fn rebuild_entries(&mut self, app: &CadenceApp) {
+    pub fn rebuild_entries(&mut self, selected_activity_id: Option<cadence_core::model::ActivityId>, project: &cadence_core::model::Project) {
         self.entries.clear();
 
         // --- Views ---
@@ -484,8 +484,8 @@ impl CommandPaletteState {
         ));
 
         // Add activity-specific entries if an activity is selected
-        if let Some(id) = app.selected {
-            if let Some(activity) = app.project.activity(id) {
+        if let Some(id) = selected_activity_id {
+            if let Some(activity) = project.activity(id) {
                 self.entries.push(PaletteEntry {
                     id: format!("activity:{}", activity.id.0),
                     label: format!("Activity: {}", activity.name),

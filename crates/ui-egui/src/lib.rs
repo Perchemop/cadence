@@ -2900,7 +2900,7 @@ impl CadenceApp {
         if palette_requested {
             self.command_palette.open();
             // Rebuild entries in case the project state changed
-            self.command_palette.rebuild_entries(self);
+            self.command_palette.rebuild_entries(self.selected, &self.project);
         }
 
         // Gantt zoom from the keyboard; Ctrl+wheel remains the pointer path.
