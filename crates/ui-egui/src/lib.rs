@@ -2227,7 +2227,24 @@ impl CadenceApp {
     /// Level resources (auto-level overallocations).
     fn level_resources(&mut self) {
         match level_resources(&mut self.project) {
-            Ok(report) => {
+            Ok(result) => {
+                // Format the leveling result as a string report
+                let delayed: Vec<&cadence_core::engine::LeveledActivity> = result
+                    .activities
+                    .iter()
+                    .filter(|activity| activity.delay > 0)
+                    .collect();
+                let report = if !result.conflicts.is_empty() {
+                    format!("{} over-allocated days remain after leveling", result.conflicts.len())
+                } else if delayed.is_empty() {
+                    "The schedule is already free of over-allocation".to_string()
+                } else {
+                    format!(
+                        "Leveling delays {} activities, for example {}",
+                        delayed.len(),
+                        delayed.first().map(|a| a.id.0).unwrap_or(0)
+                    )
+                };
                 self.leveling_report = Some(report);
                 self.recompute();
                 self.set_status("Resource leveling complete.");
