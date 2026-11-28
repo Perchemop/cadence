@@ -737,10 +737,7 @@ mod shadow_serde {
     use serde::ser::SerializeSeq;
     use serde::{Deserializer, Serializer};
 
-    pub fn serialize<S>(
-        shadow: &(f32, f32, f32, Color32),
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(shadow: &(f32, f32, f32, Color32), serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
