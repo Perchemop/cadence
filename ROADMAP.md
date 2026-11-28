@@ -244,7 +244,7 @@ acceptance criteria drive implementation; it does not promise a release date.
       comparison (`cadence audit-compare`). Inspired by public
       DCMA 14-point / GAO ten-practices behaviour and the commercial audit
       tools; research: [`docs/research/schedule-audit.md`](docs/research/schedule-audit.md).
-- [ ] **Optional AI integration** — off-by-default assistant that reads
+- [x] **Optional AI integration** — off-by-default assistant that reads
       user-supplied PDFs/emails/documents and proposes programme advice,
       skeleton WBS/activities, activity enrichment and status updates as
       reviewable, undoable command proposals; bring-your-own provider, no
@@ -259,8 +259,10 @@ acceptance criteria drive implementation; it does not promise a release date.
       errors, no test sockets. **Command-stack wiring landed (2026-11-18):**
       `map_proposal_to_commands` turns validated proposals into the ordinary
       undoable commands, so accepted suggestions apply, undo and redo exactly
-      like manual edits. Next: the review panel that shows a proposal, cites
-      its rationales and applies it on acceptance.
+      like manual edits. **Review panel landed (2026-11-27):** Assistant
+      view shell (RP-3), request flow + review rendering + apply-discard (RP-4),
+      and AccessKit harness pass (RP-5); all verified through CI green runs
+      445*** (RP-1/2) and new a11y harness assertions (RP-3/4/5).
 - [x] **Lookahead / field planning (Aphex-inspired)** — rolling short-interval
       windows derived from the master schedule, weekly work plans with
       owner/promise tracking, a daily diary and huddle briefing, production

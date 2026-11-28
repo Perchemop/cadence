@@ -629,7 +629,6 @@ pub struct CadenceApp {
     assistant_config: cadence_assistant::AssistantConfig,
     assistant_request_buffer: String,
     assistant_receiver: Option<mpsc::Receiver<Result<String, cadence_assistant::AssistantError>>>,
-    assistant_proposal: Option<cadence_assistant::Proposal>,
     assistant_validation_errors: Vec<cadence_assistant::ProposalError>,
     /// Whether a proposal request is in progress.
     assistant_request_in_progress: bool,
@@ -890,7 +889,6 @@ impl CadenceApp {
             assistant_config: cadence_assistant::AssistantConfig::default(),
             assistant_request_buffer: String::new(),
             assistant_receiver: None,
-            assistant_proposal: None,
             assistant_validation_errors: Vec::new(),
             assistant_request_in_progress: false,
             show_proposal_review: false,
@@ -965,17 +963,31 @@ impl CadenceApp {
     }
 
     /// Install an assistant configuration without the settings file.
+    ///
     /// Used by headless tests and a future CLI flag to drive the assistant
-    /// view into a configured state without touching disk.
+    /// view into a configured state without touching disk. The edit buffers
+    /// mirror the incoming config: the Assistant view syncs buffers → config
+    /// every frame before checking `is_configured()` (RP-5), so seeding only
+    /// the config would be clobbered on the first frame and the configured
+    /// state would never render.
     pub fn set_assistant_config(&mut self, config: cadence_assistant::AssistantConfig) {
+        self.assistant_model_edit = config.model.clone().unwrap_or_default();
+        self.assistant_base_url_edit = config.base_url.clone().unwrap_or_default();
+        self.assistant_api_key_edit = config
+            .api_key
+            .as_ref()
+            .map(|key| key.as_str().to_owned())
+            .unwrap_or_default();
         self.assistant_config = config;
     }
 
-    /// Load a proposal into the review state for headless testing.
     /// Allows the kittest harness to render the review surface without
-    /// any network call.
+    /// any network call — opens the review state directly with the given
+    /// proposal (bypassing parse/validate), for tests that seed a known
+    /// proposal and assert the panel.
     pub fn set_assistant_proposal(&mut self, proposal: cadence_assistant::Proposal) {
-        self.assistant_proposal = Some(proposal);
+        self.review_proposal = Some(proposal);
+        self.show_proposal_review = true;
     }
 
     /// Start a proposal request in the background.
@@ -5768,7 +5780,7 @@ impl CadenceApp {
                         ui.group(|ui| {
                             ui.checkbox(&mut self.assistant_config.enabled, "Enable assistant");
                             ui.add_space(4.0);
-                            ui.label("Provider:");
+                            let provider_label = ui.label("Provider:");
                             egui::ComboBox::from_id_salt("assistant_provider")
                                 .selected_text(
                                     self.assistant_config.provider_name.as_deref().unwrap_or(""),
@@ -5794,7 +5806,9 @@ impl CadenceApp {
                                         Some("gemini".to_owned()),
                                         "Gemini",
                                     );
-                                });
+                                })
+                                .response
+                                .labelled_by(provider_label.id);
                             ui.add_space(4.0);
                             ui.label("Model:");
                             let model_label = ui.label("Model");

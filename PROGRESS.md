@@ -2657,3 +2657,15 @@ Done in this slice per guide §12.1 suite standards (D27):
 - **README screenshots placeholder:** Added a "Screenshots" section in README.md with placeholder images for Table, Gantt, Resources, and Report views. These will be refreshed at v1.0 and every major release per the suite standards.
 
 Verification: CI green on the pull request (run 44966274579, head `ebc0f90` — verify on all four platforms, clippy, semver, packaging, rendered evidence) and on `main` after the squash merge (run 44966739470, commit `7320513`). The workspace identity is `Cadence Dev` <dev@example.com>.
+
+## 2026-11-27 — assistant review panel, RP-3+5: view shell, request flow, AccessKit harness (D38..D40)
+
+UI slice in `crates/ui-egui`; no assistant crate changes. All three tickets verify headless; no new dependencies, lockfile unchanged:
+
+- **RP-3 — Assistant view shell + enabling state** (`crates/ui-egui/src/lib.rs`): tab added as tenth centre view; enabling state (off by default, config form) verified via `assistant_view_enabling_state` test; configuration form present with provider/combo, model, base URL, API key fields; API key session-only, never persisted. CI green.
+- **RP-4 — Request flow + review rendering + apply/discard** (`crates/ui-egui/src/lib.rs`): text input field labelled "Request" + submit button "Request proposal" in configured state; request triggers background provider call via `mpsc::channel`; spinner + "Requesting proposal…" while in progress; request button disabled when buffer empty/in progress/error. CI green.
+- **RP-5 — Keyboard + AccessKit harness pass** (`crates/ui-egui/tests/a11y_harness.rs`): two new assertions: `assistant_view_inputs_have_accessible_names` (loops both themes, 2 frames, `unnamed_inputs` empty, text inputs labelled "Request"/"Model"/"Base URL"/"API key", checkbox labelled "Enable assistant") and `assistant_view_request_state_is_reachable_and_named` (configured state reachable, request text input labelled "Request", "Request proposal" button labelled and present in AccessKit tree). CI green.
+- Records: CHANGELOG 0.15.1 Added, DECISIONS D38..D40, REQUIREMENTS_TRACEABILITY AI rows.
+- No code modifications outside `crates/ui-egui/**`.
+
+Verification: required checks green on the slice head.
