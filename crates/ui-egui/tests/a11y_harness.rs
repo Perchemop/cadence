@@ -526,6 +526,10 @@ fn assistant_view_request_state_is_reachable_and_named() {
     };
     app.set_assistant_config(full.clone());
 
+    // The Assistant view must be the rendered view; the shell starts on
+    // Table, and the request UI only exists in the Assistant centre view.
+    app.set_view_mode(cadence_ui_egui::ViewMode::Assistant);
+
     // Dark theme only; the test is a named-input gate, not a full a11y
     // suite. The button and text input are the same in both themes.
     let mut harness = build_harness(&mut app, true);
@@ -534,6 +538,28 @@ fn assistant_view_request_state_is_reachable_and_named() {
     for _ in 1..=2 {
         harness.step();
     }
+
+    // The request text input must exist and be labelled "Request".
+    let text_inputs = role_labels(&harness, Role::TextInput);
+    assert!(
+        !text_inputs.is_empty(),
+        "no text input is exposed to AccessKit in the assistant request state"
+    );
+    assert!(
+        text_inputs
+            .iter()
+            .any(|label| label.as_deref().is_some_and(|l| l.contains("Request"))),
+        "the request text input is not labelled \"Request\" \
+         (text-input labels: {text_inputs:?})"
+    );
+
+    // The "Request proposal" button must be labelled and present.
+    let button_labels = button_labels_containing(&harness, "Request proposal");
+    assert!(
+        !button_labels.is_empty(),
+        "the \"Request proposal\" button is not exposed to AccessKit \
+         (button labels: {button_labels:?})"
+    );
 
     // With an empty request field the button must exist, be named, and be
     // disabled (the enable condition at lib.rs:5851 is false while the

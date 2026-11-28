@@ -44,13 +44,23 @@ jobs:
       - name: Token discipline (raw colours)
         if: runner.os == 'Linux'
         run: |
-          hits=$(git grep -n -E 'Color32::from_(rgb|rgba|gray|rgba_unmultiplied)' -- crates ':!crates/ui-egui/src/design.rs' | grep -v 'allow-raw-color' || true)
+          # Raw colour constructors are allowed only inside the theme system
+          # itself (design_tokens.rs definitions, theme.rs bridge, design.rs
+          # legacy re-export) and the token tests that assert expected values.
+          # Widget code (lib.rs and every other crate) must read tokens; a
+          # justified exception carries an `allow-raw-color:` comment.
+          hits=$(git grep -n -E 'Color32::from_(rgb|rgba|gray|rgba_unmultiplied)' -- crates \
+            ':!crates/ui-egui/src/design.rs' \
+            ':!crates/ui-egui/src/design_tokens.rs' \
+            ':!crates/ui-egui/src/theme.rs' \
+            ':!crates/ui-egui/tests' \
+            | grep -v 'allow-raw-color' || true)
           if [ -n "$hits" ]; then
-            echo "::error::Raw colour literals must live in crates/ui-egui/src/design.rs (guide II.30.6). Use a design token instead."
+            echo "::error::Raw colour literals must live in the token modules (crates/ui-egui/src/design_tokens.rs or theme.rs; guide II.30.6). Use a design token instead."
             echo "$hits"
             exit 1
           fi
-          echo "Token discipline OK: no raw colour literals outside crates/ui-egui/src/design.rs."
+          echo "Token discipline OK: no raw colour literals outside the token modules."
 
       # The token ledger (guide §24, D34/D36) is aggregated from local usage
       # records by scripts/token-ledger.py, which CI cannot run. CI therefore
@@ -242,7 +252,9 @@ jobs:
 
       - name: Install software OpenGL (llvmpipe)
         run: |
-          sudo apt-get update && sudo apt-get install -y mesa-utils libgl1-mesa-glx
+          # libgl1-mesa-glx was removed in Ubuntu 24.04; libgl1 is its
+          # successor and provides the same software-GL (llvmpipe) path.
+          sudo apt-get update && sudo apt-get install -y mesa-utils libgl1
 
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
