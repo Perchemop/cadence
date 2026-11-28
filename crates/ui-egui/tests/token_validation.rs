@@ -229,7 +229,12 @@ fn spacing_tokens_correct_multipliers() {
 
     for (token, mult) in expected {
         let value = token.value(Density::Standard);
-        assert_eq!(value, base * mult, "Token {:?} should be {mult}× base", token);
+        assert_eq!(
+            value,
+            base * mult,
+            "Token {:?} should be {mult}× base",
+            token
+        );
     }
 }
 
@@ -392,8 +397,14 @@ fn color_parsing_formats() {
     );
 
     // RGB
-    assert_eq!(parse_color("rgb(244, 245, 247)"), Color32::from_rgb(244, 245, 247));
-    assert_eq!(parse_color("rgb(31, 41, 51)"), Color32::from_rgb(31, 41, 51));
+    assert_eq!(
+        parse_color("rgb(244, 245, 247)"),
+        Color32::from_rgb(244, 245, 247)
+    );
+    assert_eq!(
+        parse_color("rgb(31, 41, 51)"),
+        Color32::from_rgb(31, 41, 51)
+    );
 
     // RGBA with 0-1 alpha
     assert_eq!(
@@ -429,8 +440,14 @@ fn variance_color_mapping() {
 fn status_severity_colors() {
     assert_eq!(StatusSeverity::Info.color(false), LIGHT_COLORS.text_muted);
     assert_eq!(StatusSeverity::Success.color(false), LIGHT_COLORS.status_ok);
-    assert_eq!(StatusSeverity::Warning.color(false), LIGHT_COLORS.status_warn);
-    assert_eq!(StatusSeverity::Error.color(false), LIGHT_COLORS.status_critical);
+    assert_eq!(
+        StatusSeverity::Warning.color(false),
+        LIGHT_COLORS.status_warn
+    );
+    assert_eq!(
+        StatusSeverity::Error.color(false),
+        LIGHT_COLORS.status_critical
+    );
 }
 
 /// Test status severity classification.

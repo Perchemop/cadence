@@ -216,7 +216,7 @@ pub static LIGHT_COLORS: ColorTokens = ColorTokens {
     surface_sunken: Color32::from_rgb(0xE2, 0xE8, 0xF2), // #E2E8F2
     text_primary: Color32::from_rgb(0x1F, 0x29, 0x33), // #1F2933
     text_secondary: Color32::from_rgb(0x4A, 0x55, 0x68), // #4A5568 (darker for 4.5:1)
-    text_muted: Color32::from_rgb(0x5F, 0x6B, 0x7A), // #5F6B7A (4.5:1 on surface_base/raised)
+    text_muted: Color32::from_rgb(0x5F, 0x6B, 0x7A),   // #5F6B7A (4.5:1 on surface_base/raised)
     text_on_accent: Color32::WHITE,
     accent: Color32::from_rgb(0x2F, 0x6F, 0xED), // #2F6FED
     accent_hover: Color32::from_rgb(0x1E, 0x5F, 0xD6), // #1E5FD6 (darker)
@@ -252,7 +252,7 @@ pub static DARK_COLORS: ColorTokens = ColorTokens {
     surface_sunken: Color32::from_rgb(0x2E, 0x33, 0x3D), // #2E333D
     text_primary: Color32::from_rgb(0xE3, 0xE7, 0xEB), // #E3E7EB
     text_secondary: Color32::from_rgb(0xB0, 0xB8, 0xC8), // #B0B8C8 (lighter for 4.5:1)
-    text_muted: Color32::from_rgb(0x8A, 0x92, 0xA8), // #8A92A8 (4.5:1 on surface_base/raised)
+    text_muted: Color32::from_rgb(0x8A, 0x92, 0xA8),   // #8A92A8 (4.5:1 on surface_base/raised)
     text_on_accent: Color32::WHITE,
     accent: Color32::from_rgb(0x54, 0x72, 0x8A), // #54728A (WCAG AA: 3.51:1 on surface_base, 5.06:1 on white text)
     accent_hover: Color32::from_rgb(0x5A, 0x78, 0x96), // #5A7896 (WCAG AA: 3.86:1 on surface_base, 4.60:1 on white text)
@@ -260,14 +260,14 @@ pub static DARK_COLORS: ColorTokens = ColorTokens {
     status_critical: Color32::from_rgb(0xF8, 0x71, 0x71), // #F87171
     status_critical_on: Color32::from_rgb(0x16, 0x18, 0x1D), // dark surface
     status_normal: Color32::from_rgb(0x93, 0xC5, 0xFD), // #93C5FD
-    status_ok: Color32::from_rgb(0x4A, 0xDE, 0x80), // #4ADE80
-    status_ok_on: Color32::from_rgb(0x16, 0x18, 0x1D), // dark surface
-    status_warn: Color32::from_rgb(0xFB, 0xBF, 0x24), // #FBBF24
+    status_ok: Color32::from_rgb(0x4A, 0xDE, 0x80),     // #4ADE80
+    status_ok_on: Color32::from_rgb(0x16, 0x18, 0x1D),  // dark surface
+    status_warn: Color32::from_rgb(0xFB, 0xBF, 0x24),   // #FBBF24
     status_warn_on: Color32::from_rgb(0x16, 0x18, 0x1D), // dark surface
     border_subtle: Color32::from_rgb(0x6A, 0x72, 0x8A), // #6A728A (3:1 on surface_base/raised)
     border_strong: Color32::from_rgb(0x7A, 0x82, 0x9A), // #7A829A (3:1 on surface_base/raised)
-    focus_ring: Color32::from_rgb(0x2F, 0x6F, 0xED), // same as accent
-    selection_bg: Color32::from_rgb(0x2F, 0x6F, 0xED), // accent
+    focus_ring: Color32::from_rgb(0x2F, 0x6F, 0xED),    // same as accent
+    selection_bg: Color32::from_rgb(0x2F, 0x6F, 0xED),  // accent
     selection_text: Color32::WHITE,
     surface_deep: Color32::from_rgb(0x11, 0x13, 0x18), // #111318
     non_working_day: Color32::from_rgb(0x68, 0x7A, 0x9A), // #687A9A (3:1 on surface_base)
@@ -1284,9 +1284,9 @@ impl ContrastRatio {
     }
 }
 
+pub use crate::theme::{non_working_color, parse_color, status_date_color, ThemeVariant};
 /// Re-export items from sibling modules for test convenience.
 pub use crate::StatusSeverity;
-pub use crate::theme::{non_working_color, parse_color, status_date_color, ThemeVariant};
 
 pub mod chrome {
     use super::*;

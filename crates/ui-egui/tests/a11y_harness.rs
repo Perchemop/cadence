@@ -492,6 +492,8 @@ fn assistant_view_inputs_have_accessible_names() {
             "the provider combo box is not labelled \"Provider:\" \
              (combo labels: {provider_combo:?})"
         );
+        // Checkbox must carry its visible label.
+        let checkboxes = role_labels(&harness, Role::CheckBox);
         assert!(
             checkboxes
                 .iter()
@@ -544,4 +546,3 @@ fn assistant_view_request_state_is_reachable_and_named() {
          request field is empty (disabled states: {disabled:?})"
     );
 }
-
