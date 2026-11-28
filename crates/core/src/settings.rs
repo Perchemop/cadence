@@ -1112,10 +1112,10 @@ pub fn load_global_settings() -> Result<GlobalSettings, std::io::Error> {
     if !path.exists() {
         return Ok(GlobalSettings::default());
     }
-    let content = std::fs::read_to_string(&path).map_err(|e| std::io::Error::other(e))?;
+    let content = std::fs::read_to_string(&path).map_err(std::io::Error::other)?;
     let value: Value =
         serde_json::from_str(&content).unwrap_or_else(|_| Value::Object(Default::default()));
-    migrate_global_settings_to_settings(&value).map_err(|e| std::io::Error::other(e))
+    migrate_global_settings_to_settings(&value).map_err(std::io::Error::other)
 }
 
 /// Save global settings to the OS config directory with pretty JSON formatting.
@@ -1126,7 +1126,7 @@ pub fn save_global_settings(settings: &GlobalSettings) -> Result<(), std::io::Er
         std::fs::create_dir_all(parent)
             .map_err(|e| std::io::Error::other(format!("Failed to create config dir: {}", e)))?;
     }
-    let json = serde_json::to_string_pretty(settings).map_err(|e| std::io::Error::other(e))?;
+    let json = serde_json::to_string_pretty(settings).map_err(std::io::Error::other)?;
     std::fs::write(&path, json)
         .map_err(|e| std::io::Error::other(format!("Failed to write settings: {}", e)))
 }
