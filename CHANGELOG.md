@@ -16,6 +16,7 @@ over-attribution caveat recorded.
 ## [Unreleased]
 
 ### Added
+- **Project settings persistence (RP-2)** — per-project preferences (workweek, resource capacity and cost rates, baseline auto-capture, EVM display, calendar settings) persisted in the project file's `project_settings` table and restored on open; app-wide preferences (theme, density, shortcuts, assistant configuration) stored in a local JSON settings file, with the assistant API key redacted in serde and never persisted.
 - **EVM EAC/BAC/TCPI/VAC metrics** — 8 unit tests verifying existing implementation in `crates/core/tests/evm_tests.rs` (resolves P1 gap from `docs/gaps.md` CAP-029).
 - **Assistant review panel RP-3** — view shell + enabling state with headless test seams (`set_assistant_config`, `set_assistant_proposal`) and AccessKit assertion test in `crates/ui-egui/tests/a11y_harness.rs` (resolves P1 gap from `docs/gaps.md` CAP-056..061 RP-3).
 - **Assistant review panel RP-4** — request flow + review rendering + apply/discard in `crates/ui-egui`: text input + submit button, background provider call, spinner/waiting state, enable/disable logic. Resolves P1 gap from `docs/gaps.md` CAP-056..061 RP-4.

@@ -887,7 +887,11 @@ impl Relationship {
 }
 
 /// Root aggregate for a scheduling project.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Deliberately not `Eq`: the settings structs it carries hold `f32` fields
+/// (zoom scales, pane ratios, sampling temperature), and `Eq` on `Project`
+/// would make any of them a compile error. Equality testing uses `PartialEq`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Project {
     /// Project name.
     pub name: String,
