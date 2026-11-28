@@ -6708,7 +6708,6 @@ impl CadenceApp {
     let ctx = ui.ctx().clone();
     self.command_palette.show(&ctx, self);
 }
-}
 
 impl eframe::App for CadenceApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
