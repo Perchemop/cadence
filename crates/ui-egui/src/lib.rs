@@ -2207,6 +2207,37 @@ impl CadenceApp {
         }
     }
 
+    /// Open the Print Gantt dialog (chooses PDF output path and triggers screenshot).
+    fn print_gantt_dialog(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("PDF document", &["pdf"])
+            .set_file_name(format!(
+                "{}-gantt.pdf",
+                file_stem(&self.project.name)
+            ))
+            .save_file()
+        {
+            self.gantt_print_path = Some(path);
+            // The screenshot will be captured on the next frame
+            // We need to request a repaint to trigger the screenshot capture
+            // This is handled in the render loop when gantt_print_path is Some
+        }
+    }
+
+    /// Level resources (auto-level overallocations).
+    fn level_resources(&mut self) {
+        match level_resources(&mut self.project) {
+            Ok(report) => {
+                self.leveling_report = Some(report);
+                self.recompute();
+                self.set_status("Resource leveling complete.");
+            }
+            Err(e) => {
+                self.set_status(format!("Leveling failed: {e}"));
+            }
+        }
+    }
+
     /// Prompt for a project file and open it.
     fn open_dialog(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
