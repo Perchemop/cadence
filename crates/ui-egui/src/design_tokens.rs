@@ -735,6 +735,7 @@ mod shadow_serde {
     use super::*;
     use serde::de::{SeqAccess, Visitor};
     use serde::ser::SerializeSeq;
+    use serde::{Deserializer, Serializer};
 
     pub fn serialize<S>(
         shadow: &(f32, f32, f32, Color32),
