@@ -513,6 +513,10 @@ enum PendingFileAction {
     Open(PathBuf),
 }
 
+// Import the command palette module
+pub mod command_palette;
+use command_palette::{CommandPaletteState, PaletteAction};
+
 /// The Cadence application state.
 #[allow(dead_code)]
 pub struct CadenceApp {
@@ -715,6 +719,8 @@ pub struct CadenceApp {
     show_import_dialog: bool,
     /// Export dialog state.
     show_export_dialog: bool,
+    /// Command palette state (Ctrl+K)
+    command_palette: CommandPaletteState,
 }
 
 /// Whether an activity passes the table filter: a case-insensitive substring
@@ -950,6 +956,7 @@ impl CadenceApp {
             pending_delete_activity_id: None,
             show_import_dialog: false,
             show_export_dialog: false,
+            command_palette: CommandPaletteState::default(),
         }
     }
 
@@ -2850,6 +2857,19 @@ impl CadenceApp {
         // F1 opens the keyboard reference from every view.
         if !dialog_open && ctx.input(|input| input.key_pressed(egui::Key::F1)) {
             self.show_shortcuts_dialog = true;
+        }
+
+        // Ctrl+K (or Cmd+K on macOS): open the command palette.
+        // This is the primary keyboard shortcut for power users to access any action.
+        let palette_requested = !dialog_open
+            && !ctx.text_edit_focused()
+            && ctx.input(|input| {
+                input.key_pressed(egui::Key::K) && input.modifiers.ctrl
+            });
+        if palette_requested {
+            self.command_palette.open();
+            // Rebuild entries in case the project state changed
+            self.command_palette.rebuild_entries(self);
         }
 
         // Gantt zoom from the keyboard; Ctrl+wheel remains the pointer path.
@@ -6681,6 +6701,13 @@ impl CadenceApp {
             }
         }
     }
+
+    // ─── COMMAND PALETTE ───
+    // Render the command palette (Ctrl+K) as a modal overlay on top of everything.
+    // This must be called after all other UI so it appears on top.
+    let ctx = ui.ctx().clone();
+    self.command_palette.show(&ctx, self);
+}
 }
 
 impl eframe::App for CadenceApp {
