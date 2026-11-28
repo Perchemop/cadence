@@ -1459,7 +1459,7 @@ mod tests {
         let vs = ViewSettings::default();
         assert_eq!(vs.view_mode, ViewMode::Table);
         assert_eq!(vs.table.sort_key, SortKey::Name); // SortKey default is Name
-        assert_eq!(vs.table.sort_ascending, true);
+        assert!(vs.table.sort_ascending);
         assert_eq!(vs.table.filter_text, "");
         assert!(!vs.table.critical_only);
         assert!(vs.table.collapsed_wbs.is_empty());
@@ -1578,8 +1578,10 @@ mod tests {
 
     #[test]
     fn settings_context_effective_density() {
-        let mut global = GlobalSettings::default();
-        global.density = DensityLevel::Compact;
+        let global = GlobalSettings {
+            density: DensityLevel::Compact,
+            ..Default::default()
+        };
         let project = ProjectSettings::default();
         let ctx = SettingsContext::new(global, project);
         assert_eq!(ctx.effective_density(), DensityLevel::Compact);

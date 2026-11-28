@@ -654,7 +654,7 @@ fn ensure_schema(connection: &Connection) -> Result<()> {
             supported: SCHEMA_VERSION,
         }),
     }?; // propagate any error from the version match
-    ensure_project_settings_table(&connection)?;
+    ensure_project_settings_table(connection)?;
     Ok(())
 }
 
